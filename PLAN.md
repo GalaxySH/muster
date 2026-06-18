@@ -8,8 +8,8 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Phase 1 in progress — foundation + domain rules engine built
-- **Version:** 0.8
+- **Status:** Phase 1 done; Phase 2 in progress (availability form built)
+- **Version:** 0.9
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -637,6 +637,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.9 (2026-06-18)** — **Google auth + roster + availability form.** Wired Auth.js
+  v5 Google sign-in (sign-in scopes only, `hd=wisc.edu` enforced; admin = env allowlist
+  ∪ roster `admin_users`). Built the roster importer (PCPL "People Coming" → students +
+  admins, data-minimized, idempotent) and sign-in linking — confirmed §16.1 (PCPL emails
+  are netid@wisc.edu = the Google identity) and §16.2 (title→position map; Southeast Cafe
+  Team Member → Barista; supervisors → admins; DAB skipped). Built the student
+  availability form (`/availability`): weekday/weekend grid, every-weekend opt-in,
+  desired-hours, live validation via the shared rules engine, draft/submit with
+  server-side re-validation (one submission per student via a unique constraint).
 - **0.8 (2026-06-18)** — **Phase 1 foundation built.** Scaffolded Next.js (App
   Router) + TypeScript + Drizzle/MariaDB + Auth.js-ready env, with a TDD toolchain
   (Vitest + Testing Library + Playwright), ESLint/Prettier, and Docker/Caddy deploy

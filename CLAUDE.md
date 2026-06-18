@@ -4,10 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Phase 1 foundation is in place: Next.js app scaffold, the full TDD toolchain, the
-DB schema + migration, the **complete pure-domain rules engine**, **Google sign-in
-(Auth.js v5)**, and the **roster import + sign-in linking**. The real UI (student
-availability form + admin views) is not built yet.
+Phase 1 is done and Phase 2 is underway: Next.js scaffold, full TDD toolchain, DB
+schema + migrations, the **pure-domain rules engine**, **Google sign-in (Auth.js
+v5)**, **roster import + sign-in linking**, and the **student availability form**
+(`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
+validation, draft/submit with server-side re-validation). Still to build: evidence
+uploads/Drive relay, weekend auto-assign + flag persistence (Phase 3), and the admin
+views (Phase 4).
+
+Availability form layering: `src/lib/availability/` has the pure grid view-model
+(`grid.ts`) + selection-key helpers (`selection.ts`), the server data loader
+(`data.ts`, server-only), and the save action (`actions.ts`) which is the authority
+— it reloads blocks, drops cells outside the position, re-runs `validateAvailability`,
+and refuses to submit on a hard-rule failure. The client form
+(`components/AvailabilityForm.tsx`) runs the same validator live for feedback.
 
 Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`.
 Google OAuth client must list the redirect URI `<base>/api/auth/callback/google`

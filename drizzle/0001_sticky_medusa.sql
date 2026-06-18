@@ -1,0 +1,1 @@
+ALTER TABLE `submissions` ADD CONSTRAINT `submissions_student_email_unique` UNIQUE(`student_email`);

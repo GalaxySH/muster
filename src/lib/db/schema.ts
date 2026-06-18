@@ -61,15 +61,17 @@ export const students = mysqlTable("students", {
 /** One student's availability submission (PLAN.md §9). No image bytes — Drive fileIds only. */
 export const submissions = mysqlTable("submissions", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  // One submission per student per cycle.
   studentEmail: varchar("student_email", { length: 255 })
     .notNull()
+    .unique()
     .references(() => students.email),
   status: mysqlEnum("status", submissionStatusEnum).notNull().default("draft"),
   everyWeekendOptIn: boolean("every_weekend_opt_in").notNull().default(false),
   desiredHours: int("desired_hours"),
   courseScheduleFileId: varchar("course_schedule_file_id", { length: 255 }),
   extracurricularNotes: text("extracurricular_notes"),
-  submittedAt: datetime("submitted_at"),
+  submittedAt: datetime("submitted_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
 });

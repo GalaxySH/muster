@@ -30,8 +30,12 @@ export default async function MePage() {
               : " — position not set"}
             {student.international ? " · international" : ""}.
           </p>
-          <p style={{ color: "#666" }}>
-            The availability form isn&apos;t built yet — this confirms sign-in + roster linking.
+          <p>
+            {student.positionId ? (
+              <Link href="/availability">Fill out your availability →</Link>
+            ) : (
+              "Your position isn't set yet — onboarding to pick it is coming soon."
+            )}
           </p>
         </div>
       ) : (

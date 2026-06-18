@@ -8,6 +8,13 @@
       "when": 1781816921222,
       "tag": "0000_shallow_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1781824470883,
+      "tag": "0001_sticky_medusa",
+      "breakpoints": true
     }
   ]
 }
