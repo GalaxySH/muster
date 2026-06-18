@@ -19,7 +19,18 @@ const schema = z.object({
 });
 
 function loadEnv() {
-  const parsed = schema.safeParse(process.env);
+  // During `next build` (no runtime secrets present) validation is relaxed so
+  // module evaluation doesn't fail; real values are required at runtime. Set
+  // SKIP_ENV_VALIDATION=1 to force this manually.
+  const skip =
+    process.env.SKIP_ENV_VALIDATION === "1" || process.env.NEXT_PHASE === "phase-production-build";
+
+  const source: Record<string, string | undefined> = { ...process.env };
+  if (skip && !source.DATABASE_URL) {
+    source.DATABASE_URL = "mysql://build:build@localhost:3306/build";
+  }
+
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)

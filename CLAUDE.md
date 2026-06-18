@@ -5,8 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current state
 
 Phase 1 foundation is in place: Next.js app scaffold, the full TDD toolchain, the
-DB schema + migration, and the **complete pure-domain rules engine**. Auth, the
-roster import, and all UI (student form + admin views) are not built yet.
+DB schema + migration, the **complete pure-domain rules engine**, and **Google
+sign-in (Auth.js v5)**. The roster import and all real UI (student availability
+form + admin views) are not built yet.
+
+Auth surfaces: `/signin`, protected `/me` and `/admin` (admin-gated via the
+`ADMIN_EMAILS` allowlist), `/api/auth/[...nextauth]`. Google OAuth client must list
+the redirect URI `<base>/api/auth/callback/google` (e.g. for localhost and
+`https://muster.hauge.rocks`). Auth uses JWT sessions (no DB adapter) and resolves
+through `getAppSession()` in `src/lib/auth/session.ts` — the method-agnostic seam
+the magic-link fallback will plug into.
 
 - `PLAN.md` — the authoritative spec. Treat it as the source of truth for domain
   rules, data model, auth, and architecture. **When behavior changes, update PLAN.md
