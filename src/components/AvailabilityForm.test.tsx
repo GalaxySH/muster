@@ -38,7 +38,7 @@ const position: Position = {
   weekendExempt: false,
 };
 
-function renderForm() {
+function renderForm(extra?: { preview?: boolean }) {
   return render(
     <AvailabilityForm
       position={position}
@@ -48,6 +48,7 @@ function renderForm() {
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
       initialStatus={null}
+      preview={extra?.preview}
     />,
   );
 }
@@ -106,5 +107,17 @@ describe("AvailabilityForm", () => {
     // No weekend selected: submit still allowed (soft), warning shown.
     expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
     expect(screen.getByText(/no weekend shift/i)).toBeInTheDocument();
+  });
+
+  it("in preview mode shows a banner and never persists", async () => {
+    const user = userEvent.setup();
+    renderForm({ preview: true });
+    expect(screen.getByText(/admin preview/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+
+    expect(saveAvailability).not.toHaveBeenCalled();
+    expect(screen.getByText(/nothing saved/i)).toBeInTheDocument();
   });
 });

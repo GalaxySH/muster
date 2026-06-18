@@ -25,6 +25,8 @@ export interface AvailabilityFormProps {
   initialEveryWeekendOptIn: boolean;
   initialDesiredHours: number | null;
   initialStatus: "draft" | "submitted" | null;
+  /** Admin inspection mode: live validation works, but nothing is persisted. */
+  preview?: boolean;
 }
 
 export function AvailabilityForm(props: AvailabilityFormProps) {
@@ -55,6 +57,13 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   }
 
   function save(submit: boolean) {
+    if (props.preview) {
+      setMessage({
+        ok: true,
+        text: `Preview mode — nothing saved. (Would ${submit ? "submit" : "save a draft"}.)`,
+      });
+      return;
+    }
     startTransition(async () => {
       const res = await saveAvailability({
         selection,
@@ -75,6 +84,21 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
 
   return (
     <div style={{ maxWidth: 760 }}>
+      {props.preview && (
+        <p
+          role="note"
+          style={{
+            background: "#fff4d6",
+            border: "1px solid #e0c060",
+            borderRadius: 6,
+            padding: "0.5rem 0.8rem",
+            fontSize: 14,
+          }}
+        >
+          <strong>Admin preview</strong> — this is the student view of the {props.position.name}{" "}
+          form. Toggling cells exercises live validation, but nothing is saved.
+        </p>
+      )}
       <h1>Your availability — {props.position.name}</h1>
       <p style={{ color: "#555" }}>
         Check every shift you&apos;d be willing to work. Selecting more than your hours is fine —
