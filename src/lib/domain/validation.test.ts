@@ -4,7 +4,14 @@ import { validateAvailability } from "./validation";
 import type { ShiftBlock, Position, SelectedShift } from "./types";
 
 function b(id: string, dt: "weekday" | "weekend", start: string, end: string): ShiftBlock {
-  return { id, positionId: "ca", dayType: dt, start: parseTime(start), end: parseTime(end), highDemand: false };
+  return {
+    id,
+    positionId: "ca",
+    dayType: dt,
+    start: parseTime(start),
+    end: parseTime(end),
+    highDemand: false,
+  };
 }
 
 // Culinary Assistant blocks (PLAN.md §6.3).
@@ -19,8 +26,20 @@ const CA_BLOCKS: ShiftBlock[] = [
   b("we-close", "weekend", "7:45p", "11:30p"), // 225
 ];
 
-const CA: Position = { id: "ca", name: "Culinary Assistant", minHours: 10, minDays: 2, weekendExempt: false };
-const BARISTA: Position = { id: "barista", name: "Barista", minHours: 10, minDays: 2, weekendExempt: true };
+const CA: Position = {
+  id: "ca",
+  name: "Culinary Assistant",
+  minHours: 10,
+  minDays: 2,
+  weekendExempt: false,
+};
+const BARISTA: Position = {
+  id: "barista",
+  name: "Barista",
+  minHours: 10,
+  minDays: 2,
+  weekendExempt: true,
+};
 
 const s = (blockId: string, day: SelectedShift["day"]): SelectedShift => ({ blockId, day });
 const ids = (checks: { id: string; passed: boolean }[]) =>
@@ -28,7 +47,12 @@ const ids = (checks: { id: string; passed: boolean }[]) =>
 
 describe("validateAvailability", () => {
   it("passes a complete selection with no flags", () => {
-    const selection = [s("wd-open", "mon"), s("wd-open", "tue"), s("wd-open", "wed"), s("we-open", "sat")];
+    const selection = [
+      s("wd-open", "mon"),
+      s("wd-open", "tue"),
+      s("wd-open", "wed"),
+      s("we-open", "sat"),
+    ];
     const r = validateAvailability(selection, CA, CA_BLOCKS, { everyWeekendOptIn: false });
     expect(r.canSubmit).toBe(true);
     expect(r.flags).toEqual([]);

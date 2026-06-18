@@ -4,18 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is **planning/scaffolding — there is no code yet** (v0.7). It contains:
+Phase 1 foundation is in place: Next.js app scaffold, the full TDD toolchain, the
+DB schema + migration, and the **complete pure-domain rules engine**. Auth, the
+roster import, and all UI (student form + admin views) are not built yet.
 
 - `PLAN.md` — the authoritative spec. Treat it as the source of truth for domain
   rules, data model, auth, and architecture. **When behavior changes, update PLAN.md
   (and its Changelog + version) alongside the code.**
-- `*_wireframe_*.html` / `*_v2.html` — static HTML mockups of admin surfaces. They
-  use CSS custom properties (`--color-*`, `--font-sans`, `--border-radius-*`) and
-  Tabler icons (`ti ti-*`); these are design references, not wired-up components.
+- `docs/wireframes/*.html` — static HTML mockups of admin surfaces. They use CSS
+  custom properties (`--color-*`, `--font-sans`, `--border-radius-*`) and Tabler
+  icons (`ti ti-*`); design references, not wired-up components.
 
-There is no build, lint, or test tooling yet. When scaffolding the app, follow the
-stack decided in PLAN.md §14 unless the user says otherwise (Next.js App Router +
-TypeScript + MariaDB + Auth.js; Drizzle-vs-Prisma still open).
+### Settled stack decisions (beyond PLAN.md §14)
+
+- **ORM:** Drizzle (`drizzle-kit` migrations in `drizzle/`).
+- **Tests:** Vitest (unit/integration), Testing Library (components), Playwright (E2E).
+- **Reverse proxy/TLS:** Caddy (automatic HTTPS).
+- **Magic-link email:** Resend (abstract behind an interface until Phase 2/3).
+- **Weekend cycle-averaging:** both weekend days are summed, then ×0.5 under A/B
+  (×1.0 with the every-weekend opt-in). See `src/lib/domain/capacity.ts`.
+
+## Commands
+
+```bash
+npm run dev            # next dev (needs a DB; see local setup below)
+npm run build          # production build (standalone output for Docker)
+npm test               # vitest run (all unit/integration tests)
+npm run test:watch     # vitest in watch mode (TDD loop)
+npx vitest run src/lib/domain/time.test.ts   # run a single test file
+npm run test:e2e       # playwright (auto-starts dev server)
+npm run typecheck      # tsc --noEmit
+npm run lint           # eslint (next + prettier)
+npm run format         # prettier --write
+
+# Database (MariaDB)
+docker compose -f compose.dev.yaml up -d     # local DB on localhost:3306
+npm run db:generate    # generate a migration from schema changes
+npm run db:migrate     # apply migrations
+npm run db:seed        # upsert canonical position/block config
+```
+
+Local dev setup: `cp .env.example .env.local`, start the dev DB, then
+`npm run db:migrate && npm run db:seed && npm run dev`. Production deploys via
+`docker compose up -d --build` (db + one-shot migrate + app + Caddy).
 
 ## What Muster is (and is not)
 
@@ -56,6 +87,22 @@ These are non-obvious and pervade the data model — internalize them before edi
   extracurriculars (optional), and travel proofs are all uploaded images/PDFs shown
   to the scheduler as clickable thumbnails → lightbox for manual review. Conflict
   detection against the course schedule is done by eyeball, not code.
+
+## Code layout & conventions
+
+- `src/lib/domain/` — **pure** scheduling logic (time, blocks, packing, capacity,
+  validation, travel). No I/O, no env, no DB imports — this is the TDD core; every
+  module has a co-located `*.test.ts`. The same `validateAvailability` runs on the
+  client (live feedback) and server (authority). Keep it pure.
+- `src/lib/config/positions.ts` — canonical positions/blocks as editable data. A
+  test asserts the derived open/close match PLAN §6.3.
+- `src/lib/db/` — Drizzle schema + client. `index.ts` is `server-only` (lazy pool);
+  `client.ts` is the plain `createDb()` factory CLI scripts (seed/migrate) reuse.
+- `src/lib/env.ts` — zod-validated env; import only from server modules.
+- Path alias `@/*` → `src/*`. Migrations live in `drizzle/` (committed).
+
+When adding rules, extend the domain layer test-first; wire DB/UI around it rather
+than embedding logic in routes or components.
 
 ## Privacy / storage invariant (do not violate)
 

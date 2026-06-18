@@ -4,10 +4,24 @@ import { computeCapacity, distinctSelectedDays } from "./capacity";
 import type { ShiftBlock, SelectedShift } from "./types";
 
 function wk(id: string, start: string, end: string): ShiftBlock {
-  return { id, positionId: "ca", dayType: "weekday", start: parseTime(start), end: parseTime(end), highDemand: false };
+  return {
+    id,
+    positionId: "ca",
+    dayType: "weekday",
+    start: parseTime(start),
+    end: parseTime(end),
+    highDemand: false,
+  };
 }
 function we(id: string, start: string, end: string): ShiftBlock {
-  return { id, positionId: "ca", dayType: "weekend", start: parseTime(start), end: parseTime(end), highDemand: false };
+  return {
+    id,
+    positionId: "ca",
+    dayType: "weekend",
+    start: parseTime(start),
+    end: parseTime(end),
+    highDemand: false,
+  };
 }
 
 // Culinary Assistant blocks (PLAN.md §6.3), a representative subset.
@@ -51,13 +65,20 @@ describe("computeCapacity", () => {
   });
 
   it("throws on a selection referencing an unknown block", () => {
-    expect(() => computeCapacity([sel("nope", "mon")], blocks, { everyWeekendOptIn: false })).toThrow();
+    expect(() =>
+      computeCapacity([sel("nope", "mon")], blocks, { everyWeekendOptIn: false }),
+    ).toThrow();
   });
 });
 
 describe("distinctSelectedDays", () => {
   it("counts distinct days touched by the selection", () => {
-    const selection = [sel("wd-open", "mon"), sel("wd-mid", "mon"), sel("wd-open", "wed"), sel("we-open", "sat")];
+    const selection = [
+      sel("wd-open", "mon"),
+      sel("wd-mid", "mon"),
+      sel("wd-open", "wed"),
+      sel("we-open", "sat"),
+    ];
     expect(distinctSelectedDays(selection)).toEqual(new Set(["mon", "wed", "sat"]));
   });
 });

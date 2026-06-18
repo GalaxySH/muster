@@ -7,7 +7,12 @@
  */
 import { dayTypeOf, type Position, type SelectedShift, type ShiftBlock } from "./types";
 import { deriveOpenClose } from "./blocks";
-import { computeCapacity, distinctSelectedDays, type CapacityOptions, type CapacityResult } from "./capacity";
+import {
+  computeCapacity,
+  distinctSelectedDays,
+  type CapacityOptions,
+  type CapacityResult,
+} from "./capacity";
 
 export type CheckId = "min_hours" | "open_or_close" | "min_days" | "weekend";
 export type FlagType = "auto_assigned_weekend" | "travel_late";

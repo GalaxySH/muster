@@ -8,9 +8,9 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Planning / scaffolding (no code yet)
-- **Version:** 0.7
-- **Last updated:** 2026-06-12
+- **Status:** Phase 1 in progress — foundation + domain rules engine built
+- **Version:** 0.8
+- **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -280,9 +280,9 @@ scheduler (not auto-parsed).
 | A weekend shift selected (**Barista exempt**) | **Soft** | auto-assign a weekend shift + raise Flag; show *"I randomly chose this shift for you."* |
 | Travel entry created after semester-start cutoff | **Soft** | accept but mark **"not excused (late)"** + flag (§7b) |
 
-> **Cycle-averaging:** weekday blocks count every week; weekend blocks count every
-> *other* week under A/B (×0.5), or every week if the every-weekend opt-in is set.
-> Exact averaging math to confirm alongside the §16 min/max model.
+> **Cycle-averaging (decided):** weekday blocks count every week; **both** weekend
+> days are summed and then weighted ×0.5 under A/B (×1.0 with the every-weekend
+> opt-in). Implemented in `src/lib/domain/capacity.ts`.
 
 ---
 
@@ -578,9 +578,10 @@ auth-method-agnostic.
    up SPF/DKIM/DMARC on hauge.rocks for M365 deliverability (§11).
 6. **Admin export format** — what exact layout do you want to read from while typing
    into W2W?
-7. **ORM choice** — Drizzle vs Prisma.
 
-**Recently resolved:** email transport = provider-direct (Power Automate ruled out —
+**Recently resolved:** ORM = Drizzle · test stack = Vitest + Playwright · reverse
+proxy = Caddy · cycle-averaging = both weekend days summed ×0.5 under A/B (§8) ·
+email transport = provider-direct (Power Automate ruled out —
 premium; §11) · per-student admin view spec + wireframe (§10a) · max-hours model
 (preferences; over-selection allowed, only the floor is hard-checked) · Cashier/Stocker
 = one position each, two merged venues (§6.1) · travel cutoff = 9/1 global (§13) ·
@@ -636,6 +637,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.8 (2026-06-18)** — **Phase 1 foundation built.** Scaffolded Next.js (App
+  Router) + TypeScript + Drizzle/MariaDB + Auth.js-ready env, with a TDD toolchain
+  (Vitest + Testing Library + Playwright), ESLint/Prettier, and Docker/Caddy deploy
+  (compose for prod + local DB). Implemented the **pure domain rules engine** test-first
+  (`src/lib/domain`): time parsing, open/close derivation, non-overlapping packing,
+  cycle-averaged capacity, the hard/soft validation engine, and the travel cutoff.
+  Encoded the **canonical position/block config** (§6.3) as data with a test verifying
+  derived open/close. Resolved stack decisions: **ORM = Drizzle**, tests = Vitest +
+  Playwright, proxy = Caddy, email = Resend. Resolved **cycle-averaging**: both weekend
+  days summed ×0.5 under A/B (§8).
 - **0.7 (2026-06-12)** — **Power Automate ruled out** (HTTP trigger is premium); email
   transport is now **provider-direct** (Resend/SendGrid/SES from `hauge.rocks` with
   SPF/DKIM/DMARC), app still owns the token (§11, §14). Added the **per-student admin
