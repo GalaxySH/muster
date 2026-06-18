@@ -1,0 +1,28 @@
+# Local development: just MariaDB, exposed on localhost:3306.
+# Run the app itself on the host with `npm run dev`.
+#
+#   docker compose -f compose.dev.yaml up -d
+#   cp .env.example .env.local   # then `npm run db:migrate && npm run db:seed`
+#   npm run dev
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_DATABASE: muster
+      MARIADB_USER: muster
+      MARIADB_PASSWORD: muster
+      MARIADB_ROOT_PASSWORD: muster
+    volumes:
+      - db_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db_dev_data:
