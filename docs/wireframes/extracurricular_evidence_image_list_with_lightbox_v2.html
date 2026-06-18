@@ -1,0 +1,49 @@
+<h2 class="sr-only">Corrected extracurriculars panel: a list of clickable proof-image thumbnails that open a popup of the full image, plus the optional details text the student typed.</h2>
+
+<div style="padding:0.5rem 0; font-family:var(--font-sans); color:var(--color-text-primary);">
+  <div style="position:relative; background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 1rem; max-width:460px;">
+    <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:10px;">extracurricular evidence <span style="color:var(--color-text-tertiary);">— click to enlarge</span></div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div data-img="proof 1" style="width:96px;">
+        <div style="height:72px; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); background:var(--color-background-secondary); display:flex; align-items:center; justify-content:center; color:var(--color-text-tertiary);"><i class="ti ti-photo" aria-hidden="true" style="font-size:22px;"></i></div>
+        <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:4px; text-align:center;">proof 1</div>
+      </div>
+      <div data-img="proof 2" style="width:96px;">
+        <div style="height:72px; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); background:var(--color-background-secondary); display:flex; align-items:center; justify-content:center; color:var(--color-text-tertiary);"><i class="ti ti-photo" aria-hidden="true" style="font-size:22px;"></i></div>
+        <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:4px; text-align:center;">proof 2</div>
+      </div>
+      <div data-img="proof 3" style="width:96px;">
+        <div style="height:72px; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); background:var(--color-background-secondary); display:flex; align-items:center; justify-content:center; color:var(--color-text-tertiary);"><i class="ti ti-photo" aria-hidden="true" style="font-size:22px;"></i></div>
+        <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:4px; text-align:center;">proof 3</div>
+      </div>
+    </div>
+
+    <div style="font-size:13px; color:var(--color-text-secondary); margin-top:12px; padding-top:10px; border-top:0.5px solid var(--color-border-tertiary);">
+      <span style="color:var(--color-text-tertiary);">details:</span> &ldquo;I'm in marching band — rehearsals are mandatory.&rdquo;
+    </div>
+
+    <div id="lb" style="position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); border-radius:var(--border-radius-lg);">
+      <div style="background:var(--color-background-primary); border-radius:var(--border-radius-md); padding:0.9rem; width:78%; max-width:320px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span id="lbcap" style="font-size:13px; color:var(--color-text-secondary);">proof 1</span>
+          <button id="lbx" aria-label="Close" style="width:28px; height:28px; padding:0;"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div style="height:170px; background:var(--color-background-secondary); border-radius:var(--border-radius-md); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--color-text-tertiary);">
+          <i class="ti ti-photo" aria-hidden="true" style="font-size:32px;"></i>
+          <span style="font-size:12px;">full image</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var lb=document.getElementById('lb'), cap=document.getElementById('lbcap');
+document.querySelectorAll('[data-img]').forEach(function(t){
+  t.style.cursor='pointer';
+  t.addEventListener('click',function(){ cap.textContent=t.getAttribute('data-img'); lb.style.display='flex'; });
+});
+document.getElementById('lbx').addEventListener('click',function(){ lb.style.display='none'; });
+lb.addEventListener('click',function(e){ if(e.target===lb) lb.style.display='none'; });
+</script>

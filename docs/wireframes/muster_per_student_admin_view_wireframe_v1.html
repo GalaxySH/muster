@@ -1,0 +1,177 @@
+<h2 class="sr-only">Wireframe of Muster's per-student admin view: an identity header with prev/next and a mark-scheduled toggle, four hour-summary cards, an auto-computed flags panel, a weekday and weekend preferences grid beside the course-schedule image, extracurricular and travel excusals, and a scheduler notes field.</h2>
+
+<div style="padding:0.5rem 0; font-family:var(--font-sans); color:var(--color-text-primary);">
+
+  <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button aria-label="Previous student" style="width:32px; height:32px; padding:0;"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+      <div style="width:40px; height:40px; border-radius:50%; background:var(--color-background-info); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--color-text-info);">JP</div>
+      <div>
+        <div style="font-weight:500;">Jordan Park <span style="color:var(--color-text-tertiary); font-weight:400; font-size:13px;">· 142 of 380</span></div>
+        <div style="font-size:13px; color:var(--color-text-secondary);">stu@wisc.edu &nbsp;·&nbsp; <span style="background:var(--color-background-secondary); padding:1px 8px; border-radius:var(--border-radius-md); font-size:12px;">Cashier</span></div>
+      </div>
+      <button aria-label="Next student" style="width:32px; height:32px; padding:0;"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="font-size:12px; color:var(--color-text-tertiary);">submitted · edited Aug 12</span>
+      <button style="font-size:13px;"><i class="ti ti-check" aria-hidden="true" style="font-size:15px; vertical-align:-2px;"></i> mark scheduled</button>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:0.8rem;">
+    <div style="background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:0.8rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary);">hour cap</div>
+      <div style="font-size:22px; font-weight:500;">20h</div>
+      <div style="font-size:12px; color:var(--color-text-tertiary);">international</div>
+    </div>
+    <div style="background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:0.8rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary);">requested</div>
+      <div style="font-size:22px; font-weight:500;">18h</div>
+      <div style="font-size:12px; color:var(--color-text-tertiary);">desired</div>
+    </div>
+    <div style="background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:0.8rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary);">pref. capacity</div>
+      <div style="font-size:22px; font-weight:500;">23h</div>
+      <div style="font-size:12px; color:var(--color-text-tertiary);">floor 10 · cap 20</div>
+    </div>
+    <div style="background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:0.8rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary);">days covered</div>
+      <div style="font-size:22px; font-weight:500;">5 <span style="font-size:13px; color:var(--color-text-tertiary);">of 7</span></div>
+      <div style="font-size:12px; color:var(--color-text-tertiary);">A/B weekend</div>
+    </div>
+  </div>
+
+  <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 1rem; margin-top:0.8rem;">
+    <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;">flags &amp; checks &nbsp;<span style="color:var(--color-text-tertiary);">(auto-computed)</span></div>
+    <div style="display:flex; flex-direction:column; gap:6px; font-size:14px;">
+      <div><i class="ti ti-check" aria-hidden="true" style="color:var(--color-text-success); margin-right:8px;"></i>Minimum reachable — 23h non-overlapping ≥ 10h floor</div>
+      <div><i class="ti ti-check" aria-hidden="true" style="color:var(--color-text-success); margin-right:8px;"></i>Opening selected — 6:45a–10a (Mon, Wed, Fri)</div>
+      <div><i class="ti ti-check" aria-hidden="true" style="color:var(--color-text-success); margin-right:8px;"></i>Spans 5 days (≥ 2 required)</div>
+      <div><i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--color-text-warning); margin-right:8px;"></i>No weekend shift selected — auto-assigned Sat 5p–8:30p</div>
+      <div><i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--color-text-warning); margin-right:8px;"></i>1 travel entry after 9/1 — not excused (late)</div>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:12px; margin-top:0.8rem;">
+
+    <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;">preferences — weekday</div>
+      <table style="width:100%; table-layout:fixed; border-collapse:separate; border-spacing:3px; font-size:11px;">
+        <tr style="color:var(--color-text-tertiary);">
+          <td style="width:86px;"></td><td style="text-align:center;">Mon</td><td style="text-align:center;">Tue</td><td style="text-align:center;">Wed</td><td style="text-align:center;">Thu</td><td style="text-align:center;">Fri</td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">6:45a–10a <span style="color:var(--color-text-info);">open</span></td>
+          <td data-on></td><td></td><td data-on></td><td></td><td data-on></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">9:45a–12:45p</td>
+          <td></td><td data-on></td><td></td><td data-on></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap; border-left:3px solid var(--color-text-danger); padding-left:5px;">10:45a–12:45p</td>
+          <td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap; border-left:3px solid var(--color-text-danger); padding-left:5px;">12:30p–2:30p</td>
+          <td data-on></td><td data-on></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">2:30p–5:15p</td>
+          <td></td><td></td><td data-on></td><td data-on></td><td data-on></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">5p–8:30p</td>
+          <td data-on></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">8p–11:30p <span style="color:var(--color-text-info);">close</span></td>
+          <td></td><td></td><td></td><td></td><td></td>
+        </tr>
+      </table>
+
+      <div style="font-size:13px; color:var(--color-text-secondary); margin:12px 0 8px;">preferences — weekend</div>
+      <table style="width:100%; table-layout:fixed; border-collapse:separate; border-spacing:3px; font-size:11px;">
+        <tr style="color:var(--color-text-tertiary);">
+          <td style="width:86px;"></td><td style="text-align:center;">Sat</td><td style="text-align:center;">Sun</td><td style="width:50%;"></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">8:45a–12:30p <span style="color:var(--color-text-info);">open</span></td>
+          <td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">2:30p–5:15p</td>
+          <td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">5p–8:30p</td>
+          <td data-auto></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td style="white-space:nowrap;">8p–11:30p <span style="color:var(--color-text-info);">close</span></td>
+          <td></td><td></td><td></td>
+        </tr>
+      </table>
+
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:var(--color-text-tertiary);">
+        <span><span style="display:inline-block; width:11px; height:11px; border-radius:3px; background:var(--color-background-info); vertical-align:-1px;"></span> preferred</span>
+        <span><span style="display:inline-block; width:11px; height:11px; border-radius:3px; background:var(--color-background-warning); border:1px dashed var(--color-border-warning); vertical-align:-1px;"></span> auto-assigned</span>
+        <span><span style="display:inline-block; width:3px; height:11px; background:var(--color-text-danger); vertical-align:-1px;"></span> high-demand</span>
+      </div>
+    </div>
+
+    <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 0.9rem; display:flex; flex-direction:column;">
+      <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;">course schedule</div>
+      <div style="flex:1; min-height:150px; border:0.5px dashed var(--color-border-secondary); border-radius:var(--border-radius-md); background:var(--color-background-secondary); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--color-text-tertiary);">
+        <i class="ti ti-photo" aria-hidden="true" style="font-size:26px;"></i>
+        <span style="font-size:12px;">course-schedule.png</span>
+        <span style="font-size:11px;">click to enlarge</span>
+      </div>
+      <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:8px;">Eyeball against the grid — conflicts aren't auto-detected (image only).</div>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:0.8rem;">
+    <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;">extracurriculars</div>
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="width:38px; height:38px; border-radius:var(--border-radius-md); background:var(--color-background-secondary); display:flex; align-items:center; justify-content:center; color:var(--color-text-tertiary); flex-shrink:0;"><i class="ti ti-paperclip" aria-hidden="true"></i></div>
+        <div style="font-size:13px;">Marching band <span style="color:var(--color-text-secondary);">(mandatory)</span><div style="color:var(--color-text-secondary); margin-top:2px;">rehearses Mon/Wed 5–7p</div></div>
+      </div>
+    </div>
+    <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.85rem 0.9rem;">
+      <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;">travel</div>
+      <div style="font-size:13px; display:flex; flex-direction:column; gap:6px;">
+        <div><i class="ti ti-check" aria-hidden="true" style="color:var(--color-text-success); margin-right:6px;"></i>Aug 20–24 · proof attached · <span style="color:var(--color-text-success);">excused</span></div>
+        <div><i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--color-text-warning); margin-right:6px;"></i>Sep 6–8 · proof attached · <span style="color:var(--color-text-warning);">not excused (late)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:0.8rem;">
+    <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:6px;">scheduling notes</div>
+    <textarea placeholder="e.g. A weekend + Tue close; gave 5p–8:30p Mon/Wed…" style="width:100%; min-height:54px; resize:vertical;"></textarea>
+  </div>
+
+</div>
+
+<script>
+document.querySelectorAll('td[data-on]').forEach(function(c){
+  c.style.background='var(--color-background-info)';
+  c.style.borderRadius='4px';
+  c.innerHTML='<i class="ti ti-check" aria-hidden="true" style="color:var(--color-text-info); font-size:13px; display:block; text-align:center;"></i>';
+});
+document.querySelectorAll('td[data-auto]').forEach(function(c){
+  c.style.background='var(--color-background-warning)';
+  c.style.border='1.5px dashed var(--color-border-warning)';
+  c.style.borderRadius='4px';
+  c.innerHTML='<span style="color:var(--color-text-warning); font-size:10px; display:block; text-align:center;">auto</span>';
+});
+document.querySelectorAll('table td:not([data-on]):not([data-auto])').forEach(function(c){
+  if(c.children.length===0 && c.textContent.trim()===''){
+    c.style.background='var(--color-background-secondary)';
+    c.style.borderRadius='4px';
+    c.style.opacity='0.5';
+  }
+});
+</script>
