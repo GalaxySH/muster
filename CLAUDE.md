@@ -5,16 +5,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current state
 
 Phase 1 foundation is in place: Next.js app scaffold, the full TDD toolchain, the
-DB schema + migration, the **complete pure-domain rules engine**, and **Google
-sign-in (Auth.js v5)**. The roster import and all real UI (student availability
-form + admin views) are not built yet.
+DB schema + migration, the **complete pure-domain rules engine**, **Google sign-in
+(Auth.js v5)**, and the **roster import + sign-in linking**. The real UI (student
+availability form + admin views) is not built yet.
 
-Auth surfaces: `/signin`, protected `/me` and `/admin` (admin-gated via the
-`ADMIN_EMAILS` allowlist), `/api/auth/[...nextauth]`. Google OAuth client must list
-the redirect URI `<base>/api/auth/callback/google` (e.g. for localhost and
-`https://muster.hauge.rocks`). Auth uses JWT sessions (no DB adapter) and resolves
+Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`.
+Google OAuth client must list the redirect URI `<base>/api/auth/callback/google`
+(localhost and `https://muster.hauge.rocks`). JWT sessions (no DB adapter) resolve
 through `getAppSession()` in `src/lib/auth/session.ts` — the method-agnostic seam
-the magic-link fallback will plug into.
+the magic-link fallback will plug into. **Admin = `ADMIN_EMAILS` env allowlist OR
+the roster-imported `admin_users` table** (computed in `getAppSession`).
+
+Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
+`students` (minimized fields only) + `admin_users`, idempotently. Title→position
+mapping lives in `position-mapping.ts` (Southeast Cafe Team Member → barista;
+Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are netid
+`@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.
 
 - `PLAN.md` — the authoritative spec. Treat it as the source of truth for domain
   rules, data model, auth, and architecture. **When behavior changes, update PLAN.md
@@ -50,6 +56,7 @@ docker compose -f compose.dev.yaml up -d     # local DB on localhost:3306
 npm run db:generate    # generate a migration from schema changes
 npm run db:migrate     # apply migrations
 npm run db:seed        # upsert canonical position/block config
+npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu   # import roster (PII; gitignored)
 ```
 
 Local dev setup: `cp .env.example .env.local`, start the dev DB, then

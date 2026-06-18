@@ -7,6 +7,7 @@
  */
 import { normalizeEmail } from "./policy";
 import { auth } from "./index";
+import { isAdminInDb } from "@/lib/roster/lookup";
 
 export interface AppSession {
   /** normalized wisc.edu email — the stable identity key (PLAN §9, §11). */
@@ -21,10 +22,16 @@ export async function getAppSession(): Promise<AppSession | null> {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) return null;
+
+  const normalized = normalizeEmail(email);
+  // Admin = env allowlist (carried on the JWT) OR the roster-imported allowlist.
+  // Only hit the DB when the fast path didn't already grant admin.
+  const isAdmin = session.user?.isAdmin === true || (await isAdminInDb(normalized));
+
   return {
-    email: normalizeEmail(email),
+    email: normalized,
     name: session.user?.name ?? null,
-    isAdmin: session.user?.isAdmin ?? false,
+    isAdmin,
     method: "google",
   };
 }
