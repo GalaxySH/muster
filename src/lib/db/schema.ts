@@ -71,6 +71,11 @@ export const submissions = mysqlTable("submissions", {
   desiredHours: int("desired_hours"),
   courseScheduleFileId: varchar("course_schedule_file_id", { length: 255 }),
   extracurricularNotes: text("extracurricular_notes"),
+  // Admin-side progress tracking (PLAN §10a): the "mark scheduled ✓" toggle that
+  // mirrors the roster's "W2W schedule created" column, and free-text scheduler
+  // notes per student. Set by admins in the per-student view, never by students.
+  scheduled: boolean("scheduled").notNull().default(false),
+  schedulerNotes: text("scheduler_notes"),
   submittedAt: datetime("submitted_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),

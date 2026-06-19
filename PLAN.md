@@ -9,9 +9,10 @@
 > collection* step only. The human scheduler still writes schedules in W2W.
 
 - **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay,
-  grant + Shared Drive write confirmed live); Phase 3 done. Next: admin views (Phase 4).
-- **Version:** 0.13
-- **Last updated:** 2026-06-18
+  grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 built (response list
+  + per-student admin view, §10a). Next: edit-window enforcement, magic-link fallback, ops.
+- **Version:** 0.14
+- **Last updated:** 2026-06-19
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -624,7 +625,10 @@ under-18 test (deferred → fallback, §11).
   (Edit-window enforcement still to wire.)
 - **Phase 3 — Validation:** feasibility engine + hard/soft rules ✅; weekend auto-assign
   + flag persistence ✅; travel-cutoff flagging ✅ (`travel_late` flag on submit).
-- **Phase 4 — Admin:** dashboard, per-student grid, flags, non-response, export.
+- **Phase 4 — Admin:** ✅ response dashboard (search/sort, fast prev/next) + per-student
+  view (identity header with "mark scheduled" toggle, hour cards, auto-computed flags,
+  weekday/weekend preferences grid with the auto-assigned cell marked, evidence
+  thumbnails → lightbox, scheduler notes). Still to do: non-response tracking, export.
 - **Phase 5 — Ops:** Docker, reverse proxy/TLS, CI/CD, backups.
 - **Phase 6+ — Future:** SL weekend-close pickup (§18a); dynamic high-demand flags;
   position consolidation.
@@ -650,6 +654,26 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.14 (2026-06-19)** — **Phase 4: admin views.** Built the response dashboard
+  (`/admin/responses`): a searchable/sortable list of every submission (name, position,
+  status, requested hours, flag count, scheduled marker) that links into the per-student
+  view and defines the canonical order its prev/next nav walks (§10 fast prev/next, hard
+  req). Built the **per-student view** (`/admin/students/[email]`, §10a) matching the
+  wireframe: identity header with prev/next + a **"mark scheduled ✓"** progress toggle;
+  four hour-summary cards (cap 20/30, requested, preference capacity vs. floor, days
+  covered); an **auto-computed flags & checks** panel (min reachable, open/close, days
+  span, weekend/auto-assigned, late travel); separate **weekday/weekend preferences
+  grids** with selected cells filled, open/close + high-demand tagged, and the
+  auto-assigned weekend cell marked distinctly; the **course schedule** beside the grid
+  and **extracurricular/travel** evidence — all three as clickable thumbnails opening a
+  **lightbox** (images inline; PDFs via `<iframe>`, option A) through the auth proxy; and
+  free-text **scheduler notes**. New: pure `admin/summary.ts` (`hourCap`, `buildAdminGrid`
+  overlaying selection/auto-assign onto the grid model, test-first); server `admin/data.ts`
+  (`loadStudentDetail`, `listResponses`, `getResponseNeighbors`); admin-gated `admin/actions.ts`
+  (`setScheduled`, `saveSchedulerNotes`). Schema: added `submissions.scheduled` +
+  `submissions.scheduler_notes` (migration `0003`). Design tokens (`--color-*`,
+  `--border-radius-*`) added to `globals.css` so the admin surfaces share the wireframes'
+  vocabulary.
 - **0.13 (2026-06-19)** — **Evidence format decisions.** Dropped HEIC from accepted
   uploads (it can't render in `<img>`); accepted set is now PNG/JPEG/WebP/PDF and the
   student hint reads "PNG/JPEG images only". Recorded the Phase 4 PDF approach ("option

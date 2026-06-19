@@ -4,16 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Phase 1 done; Phase 2 built; Phase 3 done: Next.js scaffold, full TDD toolchain, DB
-schema + migrations, the **pure-domain rules engine**, **Google sign-in (Auth.js
-v5)**, **roster import + sign-in linking**, the **student availability form**
+Phase 1 done; Phase 2 built; Phase 3 done; Phase 4 built: Next.js scaffold, full TDD
+toolchain, DB schema + migrations, the **pure-domain rules engine**, **Google sign-in
+(Auth.js v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
 validation, draft/submit with server-side re-validation), **weekend auto-assign +
-flag persistence** + `travel_late` flagging (Phase 3), and the **Google Drive evidence
-relay** + student `/evidence` page (Phase 2). The Drive relay is **confirmed live** — the
-admin grant + `drive.file` write/read-back into a Shared Drive folder (by `DRIVE_FOLDER_ID`)
-work end-to-end. Still to build: the admin views (Phase 4), edit-window enforcement, and
-the magic-link fallback.
+flag persistence** + `travel_late` flagging (Phase 3), the **Google Drive evidence
+relay** + student `/evidence` page (Phase 2), and the **admin views** (Phase 4): the
+response dashboard (`/admin/responses`) and the per-student view
+(`/admin/students/[email]`). The Drive relay is **confirmed live** — the admin grant +
+`drive.file` write/read-back into a Shared Drive folder (by `DRIVE_FOLDER_ID`) work
+end-to-end. Still to build: non-response tracking + export (rest of Phase 4),
+edit-window enforcement, and the magic-link fallback.
+
+Admin-views layering (`src/lib/admin/` + `src/components/admin/`): `summary.ts` is the
+**pure** presenter (`hourCap`, `buildAdminGrid` — overlays the saved selection +
+auto-assigned cell onto the shared `availability/grid.ts` model as per-cell
+on/auto/off). `data.ts` (server-only) loads `loadStudentDetail` (student + position +
+blocks + submission + selection/auto split + flags + evidence via `evidence/data.ts`),
+`listResponses` (the canonical nav order), and `getResponseNeighbors` (prev/next).
+`actions.ts` ("use server", **admin-gated**) owns the two admin mutations —
+`setScheduled` and `saveSchedulerNotes` — which write the new `submissions.scheduled` /
+`scheduler_notes` columns. The per-student page is a server component; the client islands
+are `MarkScheduledButton`, `SchedulerNotes`, and `EvidenceThumb` (one thumbnail+lightbox
+for all three evidence kinds — images inline, PDFs via `<iframe>`, both through the
+`/api/evidence/[fileId]` proxy). The flags & checks panel is **recomputed live** from
+`validateAvailability` + the evidence, not read from the persisted `flags` rows. Wireframe
+design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`): the admin grants
 `drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,

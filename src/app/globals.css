@@ -1,6 +1,28 @@
 :root {
   --font-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Design tokens shared with docs/wireframes/*.html so the admin surfaces use
+     one vocabulary. Light theme; values mirror the ad-hoc hex used elsewhere. */
+  --color-text-primary: #1a2233;
+  --color-text-secondary: #4a5568;
+  --color-text-tertiary: #8a94a6;
+  --color-text-info: #1a66cc;
+  --color-text-success: #196127;
+  --color-text-warning: #946c00;
+  --color-text-danger: #b00020;
+
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f4f6fa;
+  --color-background-info: #e7f0fd;
+  --color-background-warning: #fff4d6;
+
+  --color-border-secondary: #ccd2de;
+  --color-border-tertiary: #e2e6ee;
+  --color-border-warning: #e0c060;
+
+  --border-radius-md: 6px;
+  --border-radius-lg: 10px;
 }
 
 * {
