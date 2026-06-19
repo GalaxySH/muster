@@ -55,3 +55,16 @@ export function isAllowedGoogleSignIn(claims: GoogleSignInClaims): boolean {
 export function isAdminEmail(email: string, allowlist: ReadonlySet<string>): boolean {
   return allowlist.has(normalizeEmail(email));
 }
+
+/**
+ * Whether the dev-login bypass (a no-OAuth credentials path for local testing)
+ * is active. Strictly gated: the env flag must be set AND it can NEVER be on in
+ * production, regardless of the flag — defense in depth so it can't leak.
+ */
+export function isDevLoginEnabled(
+  flag: string | undefined,
+  nodeEnv: string | undefined,
+): boolean {
+  if (nodeEnv === "production") return false;
+  return flag === "1" || flag === "true";
+}

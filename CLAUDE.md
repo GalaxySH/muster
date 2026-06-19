@@ -45,6 +45,11 @@ through `getAppSession()` in `src/lib/auth/session.ts` — the method-agnostic s
 the magic-link fallback will plug into. **Admin = `ADMIN_EMAILS` env allowlist OR
 the roster-imported `admin_users` table** (computed in `getAppSession`).
 
+For local testing (incl. Playwright MCP), a **dev-login bypass** at `/dev-login`
+signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated by
+`DEV_LOGIN_ENABLED` and **never** honored when `NODE_ENV=production`
+(`isDevLoginEnabled` in `auth/policy.ts`). Run `DEV_LOGIN_ENABLED=1 npm run dev`.
+
 Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
 `students` (minimized fields only) + `admin_users`, idempotently. Title→position
 mapping lives in `position-mapping.ts` (Southeast Cafe Team Member → barista;

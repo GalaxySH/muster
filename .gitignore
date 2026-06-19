@@ -46,3 +46,6 @@ yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Playwright MCP scratch (snapshots/screenshots)
+.playwright-mcp/

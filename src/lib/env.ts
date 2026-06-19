@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseKey } from "@/lib/crypto/secretbox";
+import { isDevLoginEnabled } from "@/lib/auth/policy";
 
 /**
  * Validated, typed access to environment variables.
@@ -31,6 +32,9 @@ const schema = z.object({
     }),
   // Destination Drive folder for evidence relay (a Shared Drive folder id; §12).
   DRIVE_FOLDER_ID: z.string().default(""),
+  // DEV ONLY: enable the no-OAuth dev-login bypass ("1"/"true"). Never honored
+  // in production (see isDevLoginEnabled). Leave empty everywhere but local.
+  DEV_LOGIN_ENABLED: z.string().default(""),
 });
 
 function tryParseKey(value: string): boolean {
@@ -75,3 +79,6 @@ export const adminEmails = new Set(
 
 /** The encryption key as raw bytes, parsed once (for secrets at rest — §12). */
 export const encryptionKey = parseKey(env.ENCRYPTION_KEY);
+
+/** Whether the dev-login bypass is active (flag set AND not production). */
+export const devLoginEnabled = isDevLoginEnabled(env.DEV_LOGIN_ENABLED, process.env.NODE_ENV);

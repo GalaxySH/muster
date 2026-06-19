@@ -5,6 +5,7 @@ import {
   isWiscEmail,
   isAllowedGoogleSignIn,
   isAdminEmail,
+  isDevLoginEnabled,
 } from "./policy";
 
 describe("normalizeEmail", () => {
@@ -62,5 +63,19 @@ describe("isAdminEmail", () => {
   });
   it("rejects non-allowlisted emails", () => {
     expect(isAdminEmail("stu@wisc.edu", allowlist)).toBe(false);
+  });
+});
+
+describe("isDevLoginEnabled", () => {
+  it("is NEVER enabled in production, even with the flag set", () => {
+    expect(isDevLoginEnabled("1", "production")).toBe(false);
+    expect(isDevLoginEnabled("true", "production")).toBe(false);
+  });
+  it("is enabled in non-production only when the flag is set", () => {
+    expect(isDevLoginEnabled("1", "development")).toBe(true);
+    expect(isDevLoginEnabled("true", "test")).toBe(true);
+    expect(isDevLoginEnabled("", "development")).toBe(false);
+    expect(isDevLoginEnabled(undefined, "development")).toBe(false);
+    expect(isDevLoginEnabled("0", "development")).toBe(false);
   });
 });

@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { signIn } from "@/lib/auth";
 import { getAppSession } from "@/lib/auth/session";
+import { devLoginEnabled } from "@/lib/env";
 import { redirect } from "next/navigation";
 
 export default async function SignInPage({
@@ -29,6 +31,11 @@ export default async function SignInPage({
       >
         <button type="submit">Sign in with wisc.edu</button>
       </form>
+      {devLoginEnabled && (
+        <p style={{ marginTop: 16, fontSize: 13 }}>
+          <Link href="/dev-login">Dev login (local testing)</Link>
+        </p>
+      )}
     </main>
   );
 }
