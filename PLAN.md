@@ -10,7 +10,7 @@
 
 - **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done. Next: admin views (Phase 4).
-- **Version:** 0.12
+- **Version:** 0.13
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -361,6 +361,13 @@ The view the scheduler works from. Layout (see wireframe):
   thumbnails that open a popup/lightbox** of the full image. Extracurriculars =
   proof image(s) + the optional **details text** (no structured parsing). Travel also
   shows each entry's inclusive date range + excused / "not excused (late)" state.
+  - **PDF handling (decided — "option A"):** images get a real thumbnail + image
+    lightbox; **PDFs** show a generic placeholder card and open in the lightbox via an
+    `<iframe>` of the auth proxy (native browser PDF view) — no first-page thumbnail
+    render (a dependency we deferred). Served through `/api/evidence/[fileId]`.
+  - Uploads are restricted to **PNG/JPEG/WebP/PDF** (HEIC dropped — won't render in
+    `<img>`); the student hint says "PNG/JPEG images only". *Future:* may restrict the
+    **course schedule** specifically to images so it always thumbnails beside the grid.
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
 
 ---
@@ -643,6 +650,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.13 (2026-06-19)** — **Evidence format decisions.** Dropped HEIC from accepted
+  uploads (it can't render in `<img>`); accepted set is now PNG/JPEG/WebP/PDF and the
+  student hint reads "PNG/JPEG images only". Recorded the Phase 4 PDF approach ("option
+  A": image thumbnail + image lightbox; PDFs via a placeholder card + `<iframe>` lightbox,
+  no first-page render). Internal note: may later restrict the course-schedule upload to
+  images only (§10a).
 - **0.12 (2026-06-19)** — **Google Drive evidence relay + evidence pages.** Built the
   `drive.file` relay (§12): a separate admin-only OAuth grant (offline access, refresh
   token AES-256-GCM **encrypted at rest**, never in a cookie) via `/admin/drive`

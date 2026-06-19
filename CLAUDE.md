@@ -92,6 +92,12 @@ Local dev setup: `cp .env.example .env.local`, start the dev DB, then
 `npm run db:migrate && npm run db:seed && npm run dev`. Production deploys via
 `docker compose up -d --build` (db + one-shot migrate + app + Caddy).
 
+## UI verification
+
+When changing frontend code, use the Playwright MCP server to open the running
+app on localhost, take a screenshot, and visually confirm the change before
+considering the task done. Prefer Playwright MCP over running Playwright via Bash.
+
 ## What Muster is (and is not)
 
 Muster **collects** student dining-worker availability/preferences uniformly,

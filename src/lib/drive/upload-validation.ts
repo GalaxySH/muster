@@ -5,11 +5,12 @@
  * review — never auto-parsed. We accept common screenshot formats and PDFs,
  * cap the size, and reject anything else before a byte ever reaches the relay.
  */
+// HEIC is intentionally excluded: browsers can't render it in <img>, so it
+// would never thumbnail. Students should upload PNG/JPEG screenshots.
 export const ALLOWED_EVIDENCE_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
-  "image/heic",
   "application/pdf",
 ] as const;
 
@@ -21,7 +22,6 @@ const EXTENSION: Record<AllowedEvidenceType, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
   "image/webp": "webp",
-  "image/heic": "heic",
   "application/pdf": "pdf",
 };
 
@@ -46,7 +46,7 @@ export function validateEvidenceUpload(file: UploadCandidate): UploadValidation 
     return { ok: false, error: `File is too large (max ${mb} MB).` };
   }
   if (!isAllowed(file.type)) {
-    return { ok: false, error: "Unsupported file type. Upload a PNG, JPEG, WebP, HEIC, or PDF." };
+    return { ok: false, error: "Unsupported file type. Upload a PNG or JPEG image, or a PDF." };
   }
   return { ok: true };
 }

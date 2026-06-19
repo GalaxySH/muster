@@ -48,6 +48,9 @@ function relayError(e: unknown): string {
   return "Upload failed. Please try again.";
 }
 
+// NOTE (future): we may restrict the course schedule specifically to image
+// types (PNG/JPEG) — PDFs can't be shown as a glanceable thumbnail beside the
+// preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
   const who = await requireStudent();
   if ("error" in who) return { ok: false, error: who.error };

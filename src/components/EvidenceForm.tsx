@@ -80,6 +80,7 @@ export function EvidenceForm({
           <button type="submit" disabled={pending || !driveConnected}>
             {initial.courseScheduleFileId ? "Replace" : "Upload"}
           </button>
+          <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>
         {note("course")}
       </Section>
@@ -122,6 +123,7 @@ export function EvidenceForm({
           <button type="submit" disabled={pending || !driveConnected}>
             Add proof
           </button>
+          <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>
         {note("ec")}
       </Section>
@@ -169,6 +171,7 @@ export function EvidenceForm({
             <button type="submit" disabled={pending || !driveConnected}>
               Add travel entry
             </button>
+            <span style={fmtHint}>{FORMAT_HINT}</span>
           </div>
         </form>
         {note("travel")}
@@ -177,7 +180,8 @@ export function EvidenceForm({
   );
 }
 
-const ACCEPT = "image/png,image/jpeg,image/webp,image/heic,application/pdf";
+const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
+const FORMAT_HINT = "PNG/JPEG images only.";
 
 function Section({
   title,
@@ -257,6 +261,7 @@ function Thumb({
 }
 
 const uploadRow: React.CSSProperties = { display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" };
+const fmtHint: React.CSSProperties = { fontSize: 12, color: "#777" };
 const thumbGrid: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap", margin: "10px 0" };
 const travelRow: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", border: "1px solid #eee", borderRadius: 6, padding: 8 };
 
