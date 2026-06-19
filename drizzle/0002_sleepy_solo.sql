@@ -1,0 +1,1 @@
+ALTER TABLE `shift_selections` ADD `auto_assigned` boolean DEFAULT false NOT NULL;

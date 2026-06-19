@@ -42,7 +42,10 @@ export interface StudentForm {
   position: Position | null;
   blocks: ShiftBlock[];
   submission: ExistingSubmission | null;
+  /** The student's own picks (machine-chosen cells are kept out). */
   selection: SelectedShift[];
+  /** Weekend cell(s) auto-assigned on submit (PLAN §5 #5); display-only overlay. */
+  autoAssigned: SelectedShift[];
 }
 
 /**
@@ -54,7 +57,14 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
   if (!student) return null;
 
   if (!student.positionId) {
-    return { student, position: null, blocks: [], submission: null, selection: [] };
+    return {
+      student,
+      position: null,
+      blocks: [],
+      submission: null,
+      selection: [],
+      autoAssigned: [],
+    };
   }
 
   const db = getDb();
@@ -67,6 +77,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
     .limit(1);
 
   let selection: SelectedShift[] = [];
+  let autoAssigned: SelectedShift[] = [];
   let submission: ExistingSubmission | null = null;
   if (subRow) {
     submission = {
@@ -80,7 +91,12 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
       .select()
       .from(shiftSelections)
       .where(eq(shiftSelections.submissionId, subRow.id));
-    selection = selRows.map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
+    selection = selRows
+      .filter((r) => !r.autoAssigned)
+      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
+    autoAssigned = selRows
+      .filter((r) => r.autoAssigned)
+      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
   }
 
   return {
@@ -89,5 +105,6 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
     blocks: posWithBlocks?.blocks ?? [],
     submission,
     selection,
+    autoAssigned,
   };
 }

@@ -87,6 +87,8 @@ export const shiftSelections = mysqlTable(
       .notNull()
       .references(() => shiftBlocks.id),
     day: mysqlEnum("day", dayEnum).notNull(),
+    // Machine-picked weekend cell (PLAN §5 #5) vs. a student's own choice.
+    autoAssigned: boolean("auto_assigned").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.submissionId, t.shiftBlockId, t.day] })],
 );

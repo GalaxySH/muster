@@ -4,20 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Phase 1 is done and Phase 2 is underway: Next.js scaffold, full TDD toolchain, DB
+Phase 1 done; Phase 2 built; Phase 3 underway: Next.js scaffold, full TDD toolchain, DB
 schema + migrations, the **pure-domain rules engine**, **Google sign-in (Auth.js
-v5)**, **roster import + sign-in linking**, and the **student availability form**
+v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
-validation, draft/submit with server-side re-validation). Still to build: evidence
-uploads/Drive relay, weekend auto-assign + flag persistence (Phase 3), and the admin
-views (Phase 4).
+validation, draft/submit with server-side re-validation), and **weekend auto-assign +
+flag persistence** (Phase 3). Still to build: evidence uploads/Drive relay (the
+remaining Phase 2 piece, blocked on the §16.3 `drive.file` spike) and travel-cutoff
+flag persistence (rides on that flow); the admin views (Phase 4).
 
 Availability form layering: `src/lib/availability/` has the pure grid view-model
 (`grid.ts`) + selection-key helpers (`selection.ts`), the server data loader
 (`data.ts`, server-only), and the save action (`actions.ts`) which is the authority
 — it reloads blocks, drops cells outside the position, re-runs `validateAvailability`,
-and refuses to submit on a hard-rule failure. The client form
-(`components/AvailabilityForm.tsx`) runs the same validator live for feedback.
+refuses to submit on a hard-rule failure, and on submit **auto-assigns a weekend shift**
+for non-exempt students who picked none (pure `domain/auto-assign.ts`), persisting it as
+an `auto_assigned` `shift_selections` row + an `auto_assigned_weekend` `flags` row
+(both submit-time only; cleared on draft). The client form
+(`components/AvailabilityForm.tsx`) runs the same validator live for feedback and renders
+the server's auto-assigned cell distinctly (★, read-only overlay — never re-sent as a
+manual pick).
 
 Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`.
 Google OAuth client must list the redirect URI `<base>/api/auth/callback/google`

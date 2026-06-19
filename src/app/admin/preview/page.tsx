@@ -64,6 +64,7 @@ export default async function AvailabilityPreviewPage({
           gridModel={buildGridModel(selected.blocks)}
           international={false}
           initialSelection={[]}
+          initialAutoAssigned={[]}
           initialEveryWeekendOptIn={false}
           initialDesiredHours={null}
           initialStatus={null}

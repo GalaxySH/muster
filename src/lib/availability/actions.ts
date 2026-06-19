@@ -6,18 +6,25 @@
  * The server is the authority: it reloads the position's blocks, drops any cells
  * the client shouldn't be able to select, re-runs the rules engine, and refuses
  * to submit when a hard rule fails. Drafts persist regardless so students can
- * come back. Flags/auto-assign are handled in a later phase.
+ * come back.
+ *
+ * On submit it also resolves the one soft rule that requires server action: a
+ * non-exempt student who picked no weekend shift gets one auto-assigned (PLAN
+ * §5 #5) and a matching flag is written for the scheduler. Auto-assignment and
+ * flags are submit-time only — a draft clears both.
  */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { submissions, shiftSelections } from "@/lib/db/schema";
+import { submissions, shiftSelections, flags } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadPositionWithBlocks } from "./data";
 import { validateAvailability } from "@/lib/domain/validation";
-import type { SelectedShift } from "@/lib/domain/types";
+import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
+import { formatTime } from "@/lib/domain/time";
+import type { Day, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
 export interface SaveAvailabilityInput {
   selection: SelectedShift[];
@@ -26,10 +33,33 @@ export interface SaveAvailabilityInput {
   submit: boolean;
 }
 
+export interface AutoAssignedShift extends SelectedShift {
+  /** Human label for the chosen cell, e.g. "Sat 8:30a–11a". */
+  label: string;
+}
+
 export interface SaveResult {
   ok: boolean;
   status?: "draft" | "submitted";
+  /** Set when a weekend shift was auto-assigned on this submit. */
+  autoAssigned?: AutoAssignedShift | null;
   errors: string[];
+}
+
+const DAY_LABEL: Record<Day, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
+
+function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
+  const block = blocks.find((b) => b.id === cell.blockId);
+  if (!block) return DAY_LABEL[cell.day];
+  return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
 }
 
 export async function saveAvailability(input: SaveAvailabilityInput): Promise<SaveResult> {
@@ -64,7 +94,10 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
   }
 
   const status = input.submit ? "submitted" : "draft";
+  const willAutoAssign = input.submit && needsWeekendAutoAssign(selection, position);
   const db = getDb();
+
+  let autoAssigned: AutoAssignedShift | null = null;
 
   await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -97,15 +130,49 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
       });
     }
 
+    // Reuse a prior machine-pick so a re-submit keeps the same weekend cell.
+    let chosen: SelectedShift | null = null;
+    if (willAutoAssign) {
+      const priorRows = await tx
+        .select({
+          blockId: shiftSelections.shiftBlockId,
+          day: shiftSelections.day,
+          autoAssigned: shiftSelections.autoAssigned,
+        })
+        .from(shiftSelections)
+        .where(eq(shiftSelections.submissionId, submissionId));
+      const preferred = priorRows.find((r) => r.autoAssigned) ?? null;
+      chosen = chooseWeekendAutoAssign(blocks, {
+        preferred: preferred ? { blockId: preferred.blockId, day: preferred.day } : null,
+      });
+    }
+
     // Replace-all selection strategy keeps the write simple and correct.
     await tx.delete(shiftSelections).where(eq(shiftSelections.submissionId, submissionId));
-    if (selection.length > 0) {
-      await tx
-        .insert(shiftSelections)
-        .values(selection.map((s) => ({ submissionId, shiftBlockId: s.blockId, day: s.day })));
+    const rows = selection.map((s) => ({
+      submissionId,
+      shiftBlockId: s.blockId,
+      day: s.day,
+      autoAssigned: false,
+    }));
+    if (chosen) {
+      rows.push({ submissionId, shiftBlockId: chosen.blockId, day: chosen.day, autoAssigned: true });
+      autoAssigned = { ...chosen, label: describeCell(chosen, blocks) };
+    }
+    if (rows.length > 0) await tx.insert(shiftSelections).values(rows);
+
+    // Flags are recomputed from scratch on every save; only a submit raises them.
+    await tx.delete(flags).where(eq(flags.submissionId, submissionId));
+    if (input.submit && autoAssigned) {
+      await tx.insert(flags).values({
+        id: randomUUID(),
+        submissionId,
+        type: "auto_assigned_weekend",
+        detail: `No weekend shift selected; auto-assigned ${autoAssigned.label}.`,
+      });
     }
   });
 
   revalidatePath("/availability");
-  return { ok: true, status, errors: [] };
+  return { ok: true, status, autoAssigned, errors: [] };
 }

@@ -49,6 +49,7 @@ function renderForm(
       gridModel={buildGridModel(blocks)}
       international={opts.international ?? false}
       initialSelection={[]}
+      initialAutoAssigned={[]}
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
       initialStatus={null}
@@ -149,6 +150,30 @@ describe("AvailabilityForm", () => {
 
     renderForm({ international: true }); // cap 20
     expect(screen.getByRole("button", { name: "Max (20h)" })).toBeInTheDocument();
+  });
+
+  it("reflects a server-side weekend auto-assignment after submit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveAvailability).mockResolvedValueOnce({
+      ok: true,
+      status: "submitted",
+      autoAssigned: { blockId: "we-open", day: "sat", label: "Sat 8:30a–11a" },
+      errors: [],
+    });
+    renderForm();
+
+    // A valid submit with no weekend cell chosen.
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Tue" }));
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
+    await user.type(screen.getByRole("spinbutton"), "12");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(await screen.findByText(/we chose one for you/i)).toBeInTheDocument();
+    const autoCell = screen.getByRole("button", { name: "8:30a–11a Sat" });
+    expect(autoCell).toHaveTextContent("★");
+    expect(autoCell).toHaveAttribute("title", expect.stringContaining("auto-assigned"));
+    expect(autoCell).toHaveAttribute("aria-pressed", "false"); // server-owned, not a manual pick
   });
 
   it("in preview mode shows a banner and never persists", async () => {

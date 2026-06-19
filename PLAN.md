@@ -8,8 +8,9 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Phase 1 done; Phase 2 in progress (availability form built)
-- **Version:** 0.9
+- **Status:** Phase 1 done; Phase 2 built (evidence uploads await the Drive spike);
+  Phase 3 weekend auto-assign + flag persistence done
+- **Version:** 0.10
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -609,8 +610,9 @@ under-18 test (deferred → fallback, §11).
   config; student stub.
 - **Phase 2 — Collection:** availability grid, weekend opt-in, evidence pages (course
   schedule + extracurricular + travel via Drive relay), review/submit + edit window.
-- **Phase 3 — Validation:** feasibility engine + hard/soft rules; weekend auto-assign;
-  travel-cutoff flagging.
+- **Phase 3 — Validation:** feasibility engine + hard/soft rules ✅; weekend auto-assign
+  + flag persistence ✅; travel-cutoff flagging ⏳ (waits on the travel-evidence flow,
+  blocked on the Drive `drive.file` spike).
 - **Phase 4 — Admin:** dashboard, per-student grid, flags, non-response, export.
 - **Phase 5 — Ops:** Docker, reverse proxy/TLS, CI/CD, backups.
 - **Phase 6+ — Future:** SL weekend-close pickup (§18a); dynamic high-demand flags;
@@ -637,6 +639,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.10 (2026-06-18)** — **Phase 3: weekend auto-assign + flag persistence.** On submit,
+  a non-exempt student who picked no weekend shift now gets one auto-assigned (PLAN §5 #5):
+  the pure `auto-assign` domain module enumerates weekend candidate cells and picks one
+  (injectable RNG; reuses a prior machine-pick so a re-submit is stable), and the save
+  action persists it as a `shift_selections` row flagged `auto_assigned` (new column) plus
+  an `auto_assigned_weekend` row in `flags`. Auto-assignment and flags are submit-time only
+  (a draft clears both) and server-owned — the client renders the chosen cell distinctly
+  (★) and shows the "we chose one for you" message, but never sends it back as a manual
+  pick. The feasibility/hard-soft rules engine itself already shipped in 0.8. Travel-cutoff
+  *flagging* waits on the travel-evidence flow (blocked on the Drive `drive.file` spike).
 - **0.9 (2026-06-18)** — **Google auth + roster + availability form.** Wired Auth.js
   v5 Google sign-in (sign-in scopes only, `hd=wisc.edu` enforced; admin = env allowlist
   ∪ roster `admin_users`). Built the roster importer (PCPL "People Coming" → students +

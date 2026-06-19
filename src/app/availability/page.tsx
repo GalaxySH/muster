@@ -43,6 +43,7 @@ export default async function AvailabilityPage() {
         gridModel={buildGridModel(form.blocks)}
         international={form.student.international}
         initialSelection={form.selection}
+        initialAutoAssigned={form.autoAssigned}
         initialEveryWeekendOptIn={form.submission?.everyWeekendOptIn ?? false}
         initialDesiredHours={form.submission?.desiredHours ?? null}
         initialStatus={form.submission?.status ?? null}

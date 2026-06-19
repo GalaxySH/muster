@@ -10,7 +10,7 @@ import {
 } from "@/lib/availability/selection";
 import { validateAvailability } from "@/lib/domain/validation";
 import { hourCap } from "@/lib/domain/caps";
-import type { Day, Position, ShiftBlock } from "@/lib/domain/types";
+import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
 
 const DAY_LABEL: Record<Day, string> = {
@@ -37,6 +37,8 @@ export interface AvailabilityFormProps {
   /** Drives the "Max" desired-hours shortcut (20h international vs 30h domestic). */
   international: boolean;
   initialSelection: { blockId: string; day: Day }[];
+  /** Weekend cell(s) the server auto-assigned on a prior submit (PLAN §5 #5). */
+  initialAutoAssigned: SelectedShift[];
   initialEveryWeekendOptIn: boolean;
   initialDesiredHours: number | null;
   initialStatus: "draft" | "submitted" | null;
@@ -47,6 +49,9 @@ export interface AvailabilityFormProps {
 export function AvailabilityForm(props: AvailabilityFormProps) {
   const [selected, setSelected] = useState<Set<string>>(() =>
     selectionToKeys(props.initialSelection),
+  );
+  const [autoAssigned, setAutoAssigned] = useState<Set<string>>(() =>
+    selectionToKeys(props.initialAutoAssigned),
   );
   const [optIn, setOptIn] = useState(props.initialEveryWeekendOptIn);
   const [desired, setDesired] = useState(props.initialDesiredHours?.toString() ?? "");
@@ -121,11 +126,21 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         desiredHours,
         submit,
       });
+      if (res.ok) {
+        // The server owns auto-assignment; mirror its decision in the grid.
+        setAutoAssigned(
+          res.autoAssigned
+            ? new Set([selectionKey(res.autoAssigned.blockId, res.autoAssigned.day)])
+            : new Set(),
+        );
+      }
       setMessage({
         ok: res.ok,
         text: res.ok
           ? submit
-            ? "Submitted. You can keep editing until your window closes."
+            ? res.autoAssigned
+              ? `Submitted. You didn't pick a weekend shift, so we chose one for you: ${res.autoAssigned.label}. You can keep editing until your window closes.`
+              : "Submitted. You can keep editing until your window closes."
             : "Draft saved."
           : res.errors.join(" · "),
       });
@@ -162,6 +177,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
           sub={props.gridModel.weekday}
           selected={selected}
           covered={coveredKeys}
+          autoAssigned={autoAssigned}
           onToggle={toggle}
         />
 
@@ -171,6 +187,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
               sub={props.gridModel.weekend}
               selected={selected}
               covered={coveredKeys}
+              autoAssigned={autoAssigned}
               onToggle={toggle}
             />
             <p
@@ -256,11 +273,13 @@ function Grid({
   sub,
   selected,
   covered,
+  autoAssigned,
   onToggle,
 }: {
   sub: SubGrid;
   selected: Set<string>;
   covered: Set<string>;
+  autoAssigned: Set<string>;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
@@ -311,7 +330,8 @@ function Grid({
               {sub.days.map((day) => {
                 const key = selectionKey(row.block.id, day);
                 const on = selected.has(key);
-                const isCovered = !on && covered.has(key);
+                const isAuto = !on && autoAssigned.has(key);
+                const isCovered = !on && !isAuto && covered.has(key);
                 return (
                   <td key={day} style={{ padding: 2 }}>
                     <button
@@ -319,20 +339,40 @@ function Grid({
                       aria-pressed={on}
                       aria-label={`${row.label} ${DAY_LABEL[day]}`}
                       title={
-                        isCovered ? "Already covered by a longer shift you selected" : undefined
+                        isAuto
+                          ? "We auto-assigned this weekend shift because you didn't pick one. Click to choose your own."
+                          : isCovered
+                            ? "Already covered by a longer shift you selected"
+                            : undefined
                       }
                       onClick={() => onToggle(row.block.id, day)}
                       style={{
                         width: 30,
                         height: 26,
                         borderRadius: 4,
-                        border: isCovered ? "1px solid #d8c97a" : "1px solid #ccc",
-                        background: on ? "#1a66cc" : isCovered ? "#f0e6ad" : "#fff",
-                        color: on ? "#fff" : isCovered ? "#8a7400" : "transparent",
+                        border: isAuto
+                          ? "1px solid #9575cd"
+                          : isCovered
+                            ? "1px solid #d8c97a"
+                            : "1px solid #ccc",
+                        background: on
+                          ? "#1a66cc"
+                          : isAuto
+                            ? "#ede7f6"
+                            : isCovered
+                              ? "#f0e6ad"
+                              : "#fff",
+                        color: on
+                          ? "#fff"
+                          : isAuto
+                            ? "#5e35b1"
+                            : isCovered
+                              ? "#8a7400"
+                              : "transparent",
                         cursor: "pointer",
                       }}
                     >
-                      {on ? "✓" : isCovered ? "–" : "✓"}
+                      {on ? "✓" : isAuto ? "★" : isCovered ? "–" : "✓"}
                     </button>
                   </td>
                 );
