@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseKey } from "@/lib/crypto/secretbox";
 
 /**
  * Validated, typed access to environment variables.
@@ -7,6 +8,11 @@ import { z } from "zod";
  * logic under `src/lib/domain` must never depend on env so it stays trivially
  * testable.
  */
+
+// Insecure fixed key so local dev can encrypt/decrypt across restarts without
+// setup. NEVER use in production — set a real `openssl rand -base64 32` value.
+const DEV_ENCRYPTION_KEY = "bXVzdGVyLWRldi1pbnNlY3VyZS1lbmNyeXB0aW9uLTA=";
+
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   NEXTAUTH_URL: z.string().url().default("http://localhost:3000"),
@@ -16,7 +22,25 @@ const schema = z.object({
   RESEND_API_KEY: z.string().default(""),
   EMAIL_FROM: z.string().default("GDEC Scheduling <sched@hauge.rocks>"),
   ADMIN_EMAILS: z.string().default(""),
+  // Base64 256-bit key for encrypting secrets at rest (the Drive refresh token).
+  ENCRYPTION_KEY: z
+    .string()
+    .default(DEV_ENCRYPTION_KEY)
+    .refine((v) => tryParseKey(v), {
+      message: "must be a base64-encoded 256-bit key (`openssl rand -base64 32`)",
+    }),
+  // Destination Drive folder for evidence relay (a Shared Drive folder id; §12).
+  DRIVE_FOLDER_ID: z.string().default(""),
 });
+
+function tryParseKey(value: string): boolean {
+  try {
+    parseKey(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function loadEnv() {
   // During `next build` (no runtime secrets present) validation is relaxed so
@@ -48,3 +72,6 @@ export const adminEmails = new Set(
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
 );
+
+/** The encryption key as raw bytes, parsed once (for secrets at rest — §12). */
+export const encryptionKey = parseKey(env.ENCRYPTION_KEY);

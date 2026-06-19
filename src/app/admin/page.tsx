@@ -15,6 +15,9 @@ export default async function AdminPage() {
       <p>
         <Link href="/admin/preview">Preview the student availability form →</Link>
       </p>
+      <p>
+        <Link href="/admin/drive">Manage the Google Drive connection →</Link>
+      </p>
       <p style={{ color: "#666" }}>
         The response list and the per-student view land in later phases.
       </p>
