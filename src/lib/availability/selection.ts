@@ -10,38 +10,62 @@ export function selectionKey(blockId: string, day: Day): string {
   return `${blockId}${SEP}${day}`;
 }
 
+interface Interval {
+  start: number;
+  end: number;
+}
+
+/** Merge overlapping or touching intervals into maximal spans (5p–end touches 5p–start). */
+function mergeIntervals(intervals: Interval[]): Interval[] {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  const merged: Interval[] = [{ ...sorted[0]! }];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i]!;
+    const last = merged[merged.length - 1]!;
+    if (cur.start <= last.end) {
+      last.end = Math.max(last.end, cur.end);
+    } else {
+      merged.push({ ...cur });
+    }
+  }
+  return merged;
+}
+
 /**
  * Cells that are implicitly covered: a block whose time range falls entirely
- * within a longer *selected* shift on the same day (e.g. 10a–12:45p when
- * 10a–2p is selected). These render as "already covered" hints — the student
- * doesn't need to also pick them. Display-only; not part of the saved selection.
+ * within the *combined* span of the selected shifts on that day. Because
+ * adjacent shifts merge (e.g. 2–5p + 5–10p ⇒ 2–10p), a straddling block like
+ * 3:30–7p is covered too. These render as "already covered" hints — the student
+ * needn't also pick them. Display-only; not part of the saved selection.
  */
 export function computeCoveredKeys(
   selection: readonly SelectedShift[],
   blocks: readonly ShiftBlock[],
 ): Set<string> {
   const byId = new Map(blocks.map((b) => [b.id, b]));
-  const selectedByDay = new Map<Day, ShiftBlock[]>();
+  const selectedByDay = new Map<Day, Interval[]>();
+  const selectedKeys = new Set<string>();
   for (const s of selection) {
     const block = byId.get(s.blockId);
     if (!block) continue;
+    selectedKeys.add(selectionKey(s.blockId, s.day));
     const list = selectedByDay.get(s.day) ?? [];
-    list.push(block);
+    list.push({ start: block.start, end: block.end });
     selectedByDay.set(s.day, list);
   }
 
   const covered = new Set<string>();
-  for (const [day, selectedBlocks] of selectedByDay) {
+  for (const [day, intervals] of selectedByDay) {
     const dayType = dayTypeOf(day);
+    const spans = mergeIntervals(intervals);
     for (const candidate of blocks) {
       if (candidate.dayType !== dayType) continue;
-      const isCovered = selectedBlocks.some(
-        (sel) =>
-          sel.start <= candidate.start &&
-          sel.end >= candidate.end &&
-          (sel.start < candidate.start || sel.end > candidate.end), // proper superset
-      );
-      if (isCovered) covered.add(selectionKey(candidate.id, day));
+      const key = selectionKey(candidate.id, day);
+      if (selectedKeys.has(key)) continue; // explicitly selected, not merely covered
+      if (spans.some((s) => s.start <= candidate.start && s.end >= candidate.end)) {
+        covered.add(key);
+      }
     }
   }
   return covered;

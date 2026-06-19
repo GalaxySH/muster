@@ -63,6 +63,40 @@ describe("computeCoveredKeys", () => {
     expect(covered.has(selectionKey("short", "tue"))).toBe(false);
   });
 
+  it("covers a block straddling two adjacent selected shifts (merged span)", () => {
+    const blocks = [
+      b("afternoon", "weekday", "2p", "5p"),
+      b("evening", "weekday", "5p", "10p"),
+      b("straddle", "weekday", "3:30p", "7p"), // crosses the 5p boundary
+      b("gapized", "weekday", "9p", "11p"), // partly outside 2p–10p
+    ];
+    const covered = computeCoveredKeys(
+      [
+        { blockId: "afternoon", day: "mon" },
+        { blockId: "evening", day: "mon" },
+      ],
+      blocks,
+    );
+    expect(covered.has(selectionKey("straddle", "mon"))).toBe(true);
+    expect(covered.has(selectionKey("gapized", "mon"))).toBe(false); // ends after 10p
+  });
+
+  it("does not merge across a gap between selected shifts", () => {
+    const blocks = [
+      b("early", "weekday", "2p", "5p"),
+      b("late", "weekday", "6p", "10p"),
+      b("straddle", "weekday", "3:30p", "7p"), // spans the 5p–6p gap
+    ];
+    const covered = computeCoveredKeys(
+      [
+        { blockId: "early", day: "mon" },
+        { blockId: "late", day: "mon" },
+      ],
+      blocks,
+    );
+    expect(covered.has(selectionKey("straddle", "mon"))).toBe(false);
+  });
+
   it("ignores selections referencing unknown blocks", () => {
     expect(computeCoveredKeys([{ blockId: "ghost", day: "mon" }], cov).size).toBe(0);
   });
