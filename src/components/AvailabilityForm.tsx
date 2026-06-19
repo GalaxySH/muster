@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { GridModel, SubGrid } from "@/lib/availability/grid";
-import { selectionKey, keysToSelection, selectionToKeys } from "@/lib/availability/selection";
+import {
+  selectionKey,
+  keysToSelection,
+  selectionToKeys,
+  computeCoveredKeys,
+} from "@/lib/availability/selection";
 import { validateAvailability } from "@/lib/domain/validation";
 import type { Day, Position, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
@@ -16,6 +21,13 @@ const DAY_LABEL: Record<Day, string> = {
   sat: "Sat",
   sun: "Sun",
 };
+
+interface RequirementItem {
+  key: string;
+  passed: boolean;
+  severity: "hard" | "soft";
+  label: string;
+}
 
 export interface AvailabilityFormProps {
   position: Position;
@@ -38,12 +50,44 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const selection = useMemo(() => keysToSelection(selected), [selected]);
+  // Only consider cells that belong to this position's blocks, so stale state
+  // (e.g. switching previews) can never reference an unknown block.
+  const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
+  const selection = useMemo(
+    () => keysToSelection(selected).filter((s) => validIds.has(s.blockId)),
+    [selected, validIds],
+  );
+
   const validation = useMemo(
     () =>
       validateAvailability(selection, props.position, props.blocks, { everyWeekendOptIn: optIn }),
     [selection, optIn, props.position, props.blocks],
   );
+  const coveredKeys = useMemo(
+    () => computeCoveredKeys(selection, props.blocks),
+    [selection, props.blocks],
+  );
+
+  const desiredHours = desired === "" ? null : Number(desired);
+  const desiredValid = desiredHours !== null && Number.isFinite(desiredHours) && desiredHours > 0;
+  const canSubmit = validation.canSubmit && desiredValid;
+
+  const requirements: RequirementItem[] = [
+    ...validation.checks.map((c) => ({
+      key: c.id,
+      passed: c.passed,
+      severity: c.severity,
+      label: c.detail,
+    })),
+    {
+      key: "desired_hours",
+      passed: desiredValid,
+      severity: "hard" as const,
+      label: desiredValid
+        ? `desired weekly hours: ${desiredHours}h`
+        : "enter your desired weekly hours",
+    },
+  ];
 
   function toggle(blockId: string, day: Day) {
     setMessage(null);
@@ -60,7 +104,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
     if (props.preview) {
       setMessage({
         ok: true,
-        text: `Preview mode — nothing saved. (Would ${submit ? "submit" : "save a draft"}.)`,
+        text: `Preview mode: nothing saved (would ${submit ? "submit" : "save a draft"}).`,
       });
       return;
     }
@@ -68,14 +112,14 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       const res = await saveAvailability({
         selection,
         everyWeekendOptIn: optIn,
-        desiredHours: desired ? Number(desired) : null,
+        desiredHours,
         submit,
       });
       setMessage({
         ok: res.ok,
         text: res.ok
           ? submit
-            ? "Submitted — you can keep editing until your window closes."
+            ? "Submitted. You can keep editing until your window closes."
             : "Draft saved."
           : res.errors.join(" · "),
       });
@@ -83,7 +127,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 980 }}>
       {props.preview && (
         <p
           role="note"
@@ -95,62 +139,81 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
             fontSize: 14,
           }}
         >
-          <strong>Admin preview</strong> — this is the student view of the {props.position.name}{" "}
+          <strong>Admin preview.</strong> This is the student view of the {props.position.name}{" "}
           form. Toggling cells exercises live validation, but nothing is saved.
         </p>
       )}
-      <h1>Your availability — {props.position.name}</h1>
+
+      <h1>Choose your availability preferences</h1>
+      <p style={{ color: "#555" }}>Position: {props.position.name}</p>
       <p style={{ color: "#555" }}>
-        Check every shift you&apos;d be willing to work. Selecting more than your hours is fine —
-        these are preferences, not your final schedule.
+        Check every shift you&apos;d be willing to work. Selecting more than your required hours is
+        fine; these are preferences, not your final schedule.
       </p>
 
-      <Grid sub={props.gridModel.weekday} selected={selected} onToggle={toggle} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>
+        <Grid
+          sub={props.gridModel.weekday}
+          selected={selected}
+          covered={coveredKeys}
+          onToggle={toggle}
+        />
 
-      {props.gridModel.weekend && (
-        <>
-          <Grid sub={props.gridModel.weekend} selected={selected} onToggle={toggle} />
-          <p
-            style={{
-              background: "#f5f5f5",
-              padding: "0.6rem 0.8rem",
-              borderRadius: 6,
-              fontSize: 14,
-            }}
-          >
-            You&apos;ll be placed on an <strong>A/B weekend rotation</strong> (a weekend shift every
-            other weekend).
-            <label style={{ display: "block", marginTop: 6 }}>
-              <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} />{" "}
-              I&apos;d rather work <strong>every</strong> weekend (in exchange for fewer weekday
-              shifts).
-            </label>
-          </p>
-        </>
-      )}
+        {props.gridModel.weekend && (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <Grid
+              sub={props.gridModel.weekend}
+              selected={selected}
+              covered={coveredKeys}
+              onToggle={toggle}
+            />
+            <p
+              style={{
+                background: "#f5f5f5",
+                padding: "0.6rem 0.8rem",
+                borderRadius: 6,
+                fontSize: 14,
+                marginTop: 12,
+              }}
+            >
+              You&apos;ll be placed on an <strong>A/B weekend rotation</strong> (a weekend shift
+              every other weekend).
+              <label style={{ display: "block", marginTop: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={optIn}
+                  onChange={(e) => setOptIn(e.target.checked)}
+                />{" "}
+                I&apos;d rather work <strong>every</strong> weekend (in exchange for fewer weekday
+                shifts).
+              </label>
+            </p>
+          </div>
+        )}
+      </div>
 
-      <label style={{ display: "block", margin: "1rem 0" }}>
-        Desired weekly hours (optional):{" "}
+      <label style={{ display: "block", margin: "1.2rem 0" }}>
+        Desired weekly hours <span style={{ color: "#b00" }}>(required)</span>:{" "}
         <input
           type="number"
-          min={0}
+          min={1}
+          required
           value={desired}
           onChange={(e) => setDesired(e.target.value)}
           style={{ width: 70 }}
         />
       </label>
 
-      <ChecklistPanel validation={validation} />
+      <ChecklistPanel
+        summary={`${validation.capacity.weeklyAverageHours.toFixed(1)}h available · ${validation.daysCovered} day(s) selected`}
+        items={requirements}
+      />
 
       <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
         <button type="button" onClick={() => save(false)} disabled={pending}>
           Save draft
         </button>
-        <button
-          type="button"
-          onClick={() => save(true)}
-          disabled={pending || !validation.canSubmit}
-        >
+        <button type="button" onClick={() => save(true)} disabled={pending || !canSubmit}>
           Submit
         </button>
         {props.initialStatus === "submitted" && (
@@ -170,15 +233,17 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
 function Grid({
   sub,
   selected,
+  covered,
   onToggle,
 }: {
   sub: SubGrid;
   selected: Set<string>;
+  covered: Set<string>;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
   return (
-    <section style={{ marginTop: "1.2rem" }}>
+    <section>
       <h2 style={{ fontSize: 15, color: "#444" }}>{heading}</h2>
       <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
@@ -222,25 +287,30 @@ function Grid({
                 {row.isClose && <span style={{ color: "#1a66cc" }}> · close</span>}
               </th>
               {sub.days.map((day) => {
-                const on = selected.has(selectionKey(row.block.id, day));
+                const key = selectionKey(row.block.id, day);
+                const on = selected.has(key);
+                const isCovered = !on && covered.has(key);
                 return (
                   <td key={day} style={{ padding: 2 }}>
                     <button
                       type="button"
                       aria-pressed={on}
                       aria-label={`${row.label} ${DAY_LABEL[day]}`}
+                      title={
+                        isCovered ? "Already covered by a longer shift you selected" : undefined
+                      }
                       onClick={() => onToggle(row.block.id, day)}
                       style={{
                         width: 30,
                         height: 26,
                         borderRadius: 4,
-                        border: "1px solid #ccc",
-                        background: on ? "#1a66cc" : "#fff",
-                        color: on ? "#fff" : "transparent",
+                        border: isCovered ? "1px solid #d8c97a" : "1px solid #ccc",
+                        background: on ? "#1a66cc" : isCovered ? "#f0e6ad" : "#fff",
+                        color: on ? "#fff" : isCovered ? "#8a7400" : "transparent",
                         cursor: "pointer",
                       }}
                     >
-                      ✓
+                      {on ? "✓" : isCovered ? "–" : "✓"}
                     </button>
                   </td>
                 );
@@ -253,7 +323,7 @@ function Grid({
   );
 }
 
-function ChecklistPanel({ validation }: { validation: ReturnType<typeof validateAvailability> }) {
+function ChecklistPanel({ summary, items }: { summary: string; items: RequirementItem[] }) {
   return (
     <section
       style={{
@@ -263,19 +333,16 @@ function ChecklistPanel({ validation }: { validation: ReturnType<typeof validate
         padding: "0.8rem 1rem",
       }}
     >
-      <div style={{ fontSize: 14, color: "#555", marginBottom: 6 }}>
-        Requirements — {validation.capacity.weeklyAverageHours.toFixed(1)}h reachable ·{" "}
-        {validation.daysCovered} day(s)
-      </div>
+      <div style={{ fontSize: 14, color: "#555", marginBottom: 6 }}>Requirements ({summary})</div>
       <ul
         style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 14, display: "grid", gap: 4 }}
       >
-        {validation.checks.map((c) => (
+        {items.map((c) => (
           <li
-            key={c.id}
+            key={c.key}
             style={{ color: c.passed ? "#196127" : c.severity === "hard" ? "#b00" : "#946c00" }}
           >
-            {c.passed ? "✓" : c.severity === "hard" ? "✗" : "⚠"} {c.detail}
+            {c.passed ? "✓" : c.severity === "hard" ? "✗" : "⚠"} {c.label}
           </li>
         ))}
       </ul>

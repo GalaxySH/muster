@@ -51,13 +51,14 @@ export default async function AvailabilityPreviewPage({
 
       {positionId && !selected && (
         <p style={{ color: "#b00" }}>
-          No configuration found for &quot;{positionId}&quot; — has the DB been seeded (
+          No configuration found for &quot;{positionId}&quot;. Has the DB been seeded (
           <code>npm run db:seed</code>)?
         </p>
       )}
 
       {selected && (
         <AvailabilityForm
+          key={selected.position.id}
           position={selected.position}
           blocks={selected.blocks}
           gridModel={buildGridModel(selected.blocks)}

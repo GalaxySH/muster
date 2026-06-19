@@ -55,13 +55,14 @@ export function validateAvailability(
 
   const checks: Check[] = [];
 
-  // #2 — min hours (hard): best non-overlapping packing, cycle-averaged, ≥ floor.
-  const floorMinutes = position.minHours * 60;
+  // #2 — minimum hours (hard): best non-overlapping packing, cycle-averaged.
+  const minMinutes = position.minHours * 60;
+  const availableHours = hours(capacity.weeklyAverageMinutes);
   checks.push({
     id: "min_hours",
     severity: "hard",
-    passed: capacity.weeklyAverageMinutes + EPSILON_MINUTES >= floorMinutes,
-    detail: `${hours(capacity.weeklyAverageMinutes)}h reachable vs ${position.minHours}h floor`,
+    passed: capacity.weeklyAverageMinutes + EPSILON_MINUTES >= minMinutes,
+    detail: `${availableHours}h available of ${position.minHours}h minimum`,
   });
 
   // #6 — at least one opening OR one closing block selected (hard).
@@ -71,7 +72,9 @@ export function validateAvailability(
     id: "open_or_close",
     severity: "hard",
     passed: hasOpenOrClose,
-    detail: hasOpenOrClose ? "open or close selected" : "no opening or closing block selected",
+    detail: hasOpenOrClose
+      ? "an opening or closing shift is selected"
+      : "select an opening or closing shift",
   });
 
   // #7 — selection spans at least minDays distinct days (hard).
@@ -79,7 +82,7 @@ export function validateAvailability(
     id: "min_days",
     severity: "hard",
     passed: days.size >= position.minDays,
-    detail: `${days.size} day(s) vs ${position.minDays} required`,
+    detail: `${days.size} of ${position.minDays} required days selected`,
   });
 
   // #5 — must work a weekend shift (soft; Barista exempt).
@@ -90,7 +93,9 @@ export function validateAvailability(
       id: "weekend",
       severity: "soft",
       passed: hasWeekend,
-      detail: hasWeekend ? "weekend shift selected" : "no weekend shift — will be auto-assigned",
+      detail: hasWeekend
+        ? "a weekend shift is selected"
+        : "no weekend shift selected; one will be auto-assigned",
     });
     if (!hasWeekend) {
       flags.push({

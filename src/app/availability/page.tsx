@@ -37,6 +37,7 @@ export default async function AvailabilityPage() {
   return (
     <main style={{ padding: "2rem" }}>
       <AvailabilityForm
+        key={form.position.id}
         position={form.position}
         blocks={form.blocks}
         gridModel={buildGridModel(form.blocks)}

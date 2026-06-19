@@ -24,7 +24,7 @@ function b(id: string, dt: "weekday" | "weekend", s: string, e: string): ShiftBl
   };
 }
 
-const blocks: ShiftBlock[] = [
+const defaultBlocks: ShiftBlock[] = [
   b("wd-open", "weekday", "6:30a", "10:15a"),
   b("wd-close", "weekday", "7:45p", "11:30p"),
   b("we-open", "weekend", "8:30a", "11a"),
@@ -38,7 +38,8 @@ const position: Position = {
   weekendExempt: false,
 };
 
-function renderForm(extra?: { preview?: boolean }) {
+function renderForm(opts: { preview?: boolean; blocks?: ShiftBlock[] } = {}) {
+  const blocks = opts.blocks ?? defaultBlocks;
   return render(
     <AvailabilityForm
       position={position}
@@ -48,7 +49,7 @@ function renderForm(extra?: { preview?: boolean }) {
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
       initialStatus={null}
-      preview={extra?.preview}
+      preview={opts.preview}
     />,
   );
 }
@@ -75,38 +76,61 @@ describe("AvailabilityForm", () => {
     expect(cell).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("disables Submit until hard rules pass, then submits the selection", async () => {
+  it("requires both passing rules and desired hours before submit", async () => {
     const user = userEvent.setup();
     renderForm();
     const submit = screen.getByRole("button", { name: "Submit" });
     expect(submit).toBeDisabled();
 
-    // open block on 3 weekdays + a weekend shift clears min-hours/open/days/weekend.
+    // Satisfy the availability hard rules.
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Tue" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
     await user.click(screen.getByRole("button", { name: "8:30a–11a Sat" }));
 
-    expect(submit).toBeEnabled();
-    await user.click(submit);
+    // Still blocked: desired hours is required.
+    expect(submit).toBeDisabled();
+    expect(screen.getByText(/enter your desired weekly hours/i)).toBeInTheDocument();
 
+    await user.type(screen.getByRole("spinbutton"), "14");
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
     expect(saveAvailability).toHaveBeenCalledTimes(1);
     expect(saveAvailability).toHaveBeenCalledWith(
-      expect.objectContaining({ submit: true, everyWeekendOptIn: false }),
+      expect.objectContaining({ submit: true, desiredHours: 14 }),
     );
-    const arg = vi.mocked(saveAvailability).mock.calls[0]![0];
-    expect(arg.selection).toHaveLength(4);
   });
 
-  it("flags a missing weekend shift as a soft warning, not a hard block", async () => {
+  it("treats a missing weekend shift as a soft warning, not a hard block", async () => {
     const user = userEvent.setup();
     renderForm();
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Tue" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
-    // No weekend selected: submit still allowed (soft), warning shown.
+    await user.type(screen.getByRole("spinbutton"), "12");
+
     expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
     expect(screen.getByText(/no weekend shift/i)).toBeInTheDocument();
+  });
+
+  it("marks a shorter shift as covered when a longer overlapping shift is selected", async () => {
+    const user = userEvent.setup();
+    renderForm({
+      blocks: [
+        b("wd-open", "weekday", "6:30a", "10:15a"),
+        b("wd-long", "weekday", "10a", "2p"),
+        b("wd-short", "weekday", "10a", "12:45p"),
+      ],
+    });
+    const short = screen.getByRole("button", { name: "10a–12:45p Mon" });
+    expect(short).not.toHaveAttribute("title");
+
+    await user.click(screen.getByRole("button", { name: "10a–2p Mon" }));
+
+    expect(short).toHaveAttribute("title", expect.stringContaining("covered"));
+    expect(short).toHaveTextContent("–");
+    expect(short).toHaveAttribute("aria-pressed", "false"); // covered, not selected
   });
 
   it("in preview mode shows a banner and never persists", async () => {

@@ -53,15 +53,17 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     everyWeekendOptIn: input.everyWeekendOptIn,
   });
 
-  if (input.submit && !result.canSubmit) {
+  const desiredHours = input.desiredHours && input.desiredHours > 0 ? input.desiredHours : null;
+
+  if (input.submit) {
     const errors = result.checks
       .filter((c) => c.severity === "hard" && !c.passed)
       .map((c) => c.detail);
-    return { ok: false, errors };
+    if (desiredHours === null) errors.push("Enter your desired weekly hours.");
+    if (errors.length > 0) return { ok: false, errors };
   }
 
   const status = input.submit ? "submitted" : "draft";
-  const desiredHours = input.desiredHours && input.desiredHours > 0 ? input.desiredHours : null;
   const db = getDb();
 
   await db.transaction(async (tx) => {

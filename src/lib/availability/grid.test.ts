@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "@/lib/domain/time";
 import { buildGridModel } from "./grid";
-import { selectionKey, selectionToKeys, keysToSelection } from "./selection";
+import { selectionKey, selectionToKeys, keysToSelection, computeCoveredKeys } from "./selection";
 import type { ShiftBlock } from "@/lib/domain/types";
 
 function b(id: string, dt: "weekday" | "weekend", start: string, end: string): ShiftBlock {
@@ -41,6 +41,30 @@ describe("buildGridModel", () => {
   it("returns a null weekend grid for weekday-only positions", () => {
     const weekdayOnly = blocks.filter((x) => x.dayType === "weekday");
     expect(buildGridModel(weekdayOnly).weekend).toBeNull();
+  });
+});
+
+describe("computeCoveredKeys", () => {
+  const cov = [
+    b("long", "weekday", "10a", "2p"), // 10a–2p
+    b("short", "weekday", "10a", "12:45p"), // ⊆ long
+    b("partial", "weekday", "12:30p", "2:30p"), // overlaps but not contained
+  ];
+
+  it("marks a block fully inside a selected longer shift on the same day", () => {
+    const covered = computeCoveredKeys([{ blockId: "long", day: "mon" }], cov);
+    expect(covered.has(selectionKey("short", "mon"))).toBe(true);
+    expect(covered.has(selectionKey("partial", "mon"))).toBe(false); // not contained
+    expect(covered.has(selectionKey("long", "mon"))).toBe(false); // the selected one itself
+  });
+
+  it("is scoped per day", () => {
+    const covered = computeCoveredKeys([{ blockId: "long", day: "mon" }], cov);
+    expect(covered.has(selectionKey("short", "tue"))).toBe(false);
+  });
+
+  it("ignores selections referencing unknown blocks", () => {
+    expect(computeCoveredKeys([{ blockId: "ghost", day: "mon" }], cov).size).toBe(0);
   });
 });
 
