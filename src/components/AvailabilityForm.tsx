@@ -9,6 +9,7 @@ import {
   computeCoveredKeys,
 } from "@/lib/availability/selection";
 import { validateAvailability } from "@/lib/domain/validation";
+import { hourCap } from "@/lib/domain/caps";
 import type { Day, Position, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
 
@@ -33,6 +34,8 @@ export interface AvailabilityFormProps {
   position: Position;
   blocks: ShiftBlock[];
   gridModel: GridModel;
+  /** Drives the "Max" desired-hours shortcut (20h international vs 30h domestic). */
+  international: boolean;
   initialSelection: { blockId: string; day: Day }[];
   initialEveryWeekendOptIn: boolean;
   initialDesiredHours: number | null;
@@ -71,6 +74,9 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const desiredHours = desired === "" ? null : Number(desired);
   const desiredValid = desiredHours !== null && Number.isFinite(desiredHours) && desiredHours > 0;
   const canSubmit = validation.canSubmit && desiredValid;
+
+  const minHours = props.position.minHours;
+  const maxHours = hourCap(props.international);
 
   const requirements: RequirementItem[] = [
     ...validation.checks.map((c) => ({
@@ -192,17 +198,33 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         )}
       </div>
 
-      <label style={{ display: "block", margin: "1.2rem 0" }}>
-        Desired weekly hours <span style={{ color: "#b00" }}>(required)</span>:{" "}
-        <input
-          type="number"
-          min={1}
-          required
-          value={desired}
-          onChange={(e) => setDesired(e.target.value)}
-          style={{ width: 70 }}
-        />
-      </label>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          margin: "1.2rem 0",
+        }}
+      >
+        <label>
+          Desired weekly hours <span style={{ color: "#b00" }}>(required)</span>:{" "}
+          <input
+            type="number"
+            min={1}
+            required
+            value={desired}
+            onChange={(e) => setDesired(e.target.value)}
+            style={{ width: 70 }}
+          />
+        </label>
+        <button type="button" onClick={() => setDesired(String(minHours))}>
+          Min ({minHours}h)
+        </button>
+        <button type="button" onClick={() => setDesired(String(maxHours))}>
+          Max ({maxHours}h)
+        </button>
+      </div>
 
       <ChecklistPanel
         summary={`${validation.capacity.weeklyAverageHours.toFixed(1)}h available · ${validation.daysCovered} day(s) selected`}

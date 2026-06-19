@@ -38,13 +38,16 @@ const position: Position = {
   weekendExempt: false,
 };
 
-function renderForm(opts: { preview?: boolean; blocks?: ShiftBlock[] } = {}) {
+function renderForm(
+  opts: { preview?: boolean; blocks?: ShiftBlock[]; international?: boolean } = {},
+) {
   const blocks = opts.blocks ?? defaultBlocks;
   return render(
     <AvailabilityForm
       position={position}
       blocks={blocks}
       gridModel={buildGridModel(blocks)}
+      international={opts.international ?? false}
       initialSelection={[]}
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
@@ -131,6 +134,21 @@ describe("AvailabilityForm", () => {
     expect(short).toHaveAttribute("title", expect.stringContaining("covered"));
     expect(short).toHaveTextContent("–");
     expect(short).toHaveAttribute("aria-pressed", "false"); // covered, not selected
+  });
+
+  it("fills desired hours from the Min/Max shortcuts (cap depends on intl status)", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderForm(); // domestic: cap 30
+    const input = () => screen.getByRole("spinbutton") as HTMLInputElement;
+
+    await user.click(screen.getByRole("button", { name: "Min (10h)" }));
+    expect(input().value).toBe("10");
+    await user.click(screen.getByRole("button", { name: "Max (30h)" }));
+    expect(input().value).toBe("30");
+    unmount();
+
+    renderForm({ international: true }); // cap 20
+    expect(screen.getByRole("button", { name: "Max (20h)" })).toBeInTheDocument();
   });
 
   it("in preview mode shows a banner and never persists", async () => {
