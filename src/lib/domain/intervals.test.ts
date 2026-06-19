@@ -46,4 +46,13 @@ describe("coveredMinutes", () => {
   it("credits both touching shifts in full", () => {
     expect(coveredMinutes([r("2p", "5p"), r("5p", "10p")])).toBe(180 + 300);
   });
+
+  it("extends the assigned block instead of double-counting the overlap", () => {
+    // A 2p–5p block + an overlapping 4p–8p shift extends to 2p–8p (6h), not 7h.
+    expect(coveredMinutes([r("2p", "5p"), r("4p", "8p")])).toBe(360);
+  });
+
+  it("counts a fully-nested shift only once", () => {
+    expect(coveredMinutes([r("2p", "8p"), r("4p", "6p")])).toBe(360);
+  });
 });

@@ -2,10 +2,9 @@
  * Cycle-averaged preference capacity (PLAN.md §7, §8, §10a).
  *
  * "Preference capacity" = the hours a student's selection *covers* (the union
- * of their selected blocks per day, overlaps counted once), averaged across the
- * two-week A/B cycle. Coverage rather than a strict non-overlapping packing,
- * because blocks stagger with small handoff overlaps yet are back-to-back from
- * the student's side — see ./intervals.
+ * of their selected blocks per day, overlapping shifts merged into one span with
+ * the shared time counted once), averaged across the two-week A/B cycle — see
+ * ./intervals.
  *
  * Weekday blocks happen every week (factor 1). Weekend blocks happen every
  * *other* week under A/B (factor 0.5), or every week with the opt-in (factor 1).

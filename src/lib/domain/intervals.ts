@@ -1,13 +1,12 @@
 /**
  * Interval-union helpers over time ranges (PLAN.md §5 #2, §8).
  *
- * Shift blocks are defined to *stagger with small handoff overlaps* (e.g. a
- * 6:30a–10:15a block followed by 10a–12:45p), and they are also genuinely
- * back-to-back from a student's point of view. So "how many hours can this
- * student work?" is the total time their selected blocks *cover* — the union of
- * the ranges, with any overlap counted once and contiguous/touching ranges
- * merged into one span. (A strict non-overlapping packing would wrongly drop a
- * whole shift just because of a 15-minute handoff.)
+ * Shifts are assigned into designated blocks; an overlapping shift *extends* the
+ * block rather than stacking on it. So "how many hours can this student work?"
+ * is the time their selected blocks *cover* — the union of the ranges, where
+ * overlapping or touching ranges merge into one continuous span and the shared
+ * time is counted **once** (never double-counted). A 2p–5p block plus an
+ * overlapping 4p–8p shift covers 2p–8p (6h), not 7h.
  */
 import type { TimeRange } from "./time";
 

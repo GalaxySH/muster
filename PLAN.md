@@ -239,11 +239,11 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
 - **Selection = preferences, not a schedule:** students mark every shift they'd be
   willing to work; selecting **more than** their hour cap is allowed and expected.
 - **Feasibility engine:** the only hard hours check is the **minimum** — the hours the
-  selected blocks **cover** (union per day, overlaps counted once; cycle-averaged) must
-  reach the position floor. Coverage, not strict non-overlapping packing, because blocks
-  stagger with small handoff overlaps yet are back-to-back for the student, so two
-  adjacent shifts must credit their full combined span. The cap (20/30) is **not**
-  enforced here; it's scheduler-side context
+  selected blocks **cover** (union per day; cycle-averaged) must reach the position floor.
+  Shifts assign into designated blocks and an overlapping shift **extends** the block:
+  overlapping/contiguous shifts merge into one continuous span and the shared time is
+  counted **once** (no double-count), so two adjacent shifts credit their full combined
+  length. The cap (20/30) is **not** enforced here; it's scheduler-side context
   (§10). An optional non-validated **`desiredHours`** hint can help the scheduler aim
   within the cap.
 - **High-demand indicator (red bar):** blocks the admin marks `highDemand` render a
