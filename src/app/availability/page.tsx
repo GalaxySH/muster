@@ -36,6 +36,9 @@ export default async function AvailabilityPage() {
 
   return (
     <main style={{ padding: "2rem" }}>
+      <p style={{ marginBottom: 12 }}>
+        <Link href="/evidence">Upload course schedule &amp; excusal evidence →</Link>
+      </p>
       <AvailabilityForm
         key={form.position.id}
         position={form.position}

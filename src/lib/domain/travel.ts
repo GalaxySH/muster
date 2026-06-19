@@ -11,3 +11,12 @@
 export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
   return createdAt.getTime() < cutoff.getTime();
 }
+
+/**
+ * The default semester-start cutoff: September 1 (00:00 UTC) of the year in
+ * which the form is being filled. A v1 default — a global config value can
+ * override this later (PLAN §13).
+ */
+export function defaultTravelCutoff(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), 8, 1)); // month 8 = September
+}

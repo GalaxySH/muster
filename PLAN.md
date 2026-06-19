@@ -8,9 +8,9 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Phase 1 done; Phase 2 built (evidence uploads await the Drive spike);
-  Phase 3 weekend auto-assign + flag persistence done
-- **Version:** 0.11
+- **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay);
+  Phase 3 done. Drive grant needs a live admin authorization + a Shared Drive folder id.
+- **Version:** 0.12
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -573,11 +573,12 @@ auth-method-agnostic.
    alias? (Affects lookup correctness — §11.)
 2. **Position ↔ title mapping** — map roster `Position Title` strings to the six
    Muster positions (and which titles map to Cashier vs. Stocker venues).
-3. **`drive.file` spike** — add it to the POC scope picker; confirm `files.create` +
-   inline read-back work under the per-file scope (the broader scope was tested, not
-   this one).
-4. **Shared Drive destination** — confirm a department-owned Shared Drive exists for
-   image storage (vs. personal My Drive) — §12.
+3. **`drive.file` spike** — ⏳ *built, awaiting live test.* The relay + admin grant flow
+   ship (§12); `/admin/drive` has a one-click "Test connection" that does
+   `files.create` + read-back + delete under the per-file scope. Needs a real admin
+   authorization to confirm end-to-end.
+4. **Shared Drive destination** — chosen as the target; set `DRIVE_FOLDER_ID` to the
+   department Shared Drive folder id (else uploads fall back to the admin's My Drive) — §12.
 5. **Email provider + domain auth** — pick a provider (Resend / SendGrid / SES) and set
    up SPF/DKIM/DMARC on hauge.rocks for M365 deliverability (§11).
 6. **Admin export format** — what exact layout do you want to read from while typing
@@ -608,14 +609,15 @@ under-18 test (deferred → fallback, §11).
 ## 18. Suggested Roadmap
 
 - **Phase 0 — Auth spike:** ✅ done (sign-in verified; Internal app; under-18 deferred
-  to fallback). Remaining spike: `drive.file` `files.create` + read-back.
+  to fallback). `drive.file` relay ✅ built (test via `/admin/drive`); awaits a live
+  admin grant.
 - **Phase 1 — Skeleton:** Next.js + MariaDB + Auth.js; roster import; position/block
   config; student stub.
-- **Phase 2 — Collection:** availability grid, weekend opt-in, evidence pages (course
-  schedule + extracurricular + travel via Drive relay), review/submit + edit window.
+- **Phase 2 — Collection:** ✅ availability grid, weekend opt-in, evidence pages (course
+  schedule + extracurricular + travel via Drive relay) built; review/submit + edit window.
+  (Edit-window enforcement still to wire.)
 - **Phase 3 — Validation:** feasibility engine + hard/soft rules ✅; weekend auto-assign
-  + flag persistence ✅; travel-cutoff flagging ⏳ (waits on the travel-evidence flow,
-  blocked on the Drive `drive.file` spike).
+  + flag persistence ✅; travel-cutoff flagging ✅ (`travel_late` flag on submit).
 - **Phase 4 — Admin:** dashboard, per-student grid, flags, non-response, export.
 - **Phase 5 — Ops:** Docker, reverse proxy/TLS, CI/CD, backups.
 - **Phase 6+ — Future:** SL weekend-close pickup (§18a); dynamic high-demand flags;
@@ -642,6 +644,18 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.12 (2026-06-19)** — **Google Drive evidence relay + evidence pages.** Built the
+  `drive.file` relay (§12): a separate admin-only OAuth grant (offline access, refresh
+  token AES-256-GCM **encrypted at rest**, never in a cookie) via `/admin/drive`
+  (connect / one-click self-cleaning test / disconnect), and the student `/evidence` page
+  for course schedule (required), extracurricular proof + notes, and repeatable travel
+  entries (proof + inclusive date range; `excused` computed against the 9/1 cutoff).
+  Uploads relay bytes straight to Drive — **no image bytes ever touch the app**; only the
+  returned `fileId` is stored. Images are served back through an authenticated proxy
+  (`/api/evidence/[fileId]`, admin-or-owner) since `drive.file` files aren't browsable.
+  Late-travel now raises a `travel_late` flag on submit (§8). Stack: `google-auth-library`
+  + fetch; destination = Shared Drive via `DRIVE_FOLDER_ID`. Resolves §16.3 (built; awaits
+  a live grant) and §16.4 (Shared Drive chosen).
 - **0.11 (2026-06-19)** — **Min-hours rule = covered union, not non-overlapping packing.**
   Fixed a feasibility-calc bug: because blocks stagger with small handoff overlaps (e.g.
   CA `6:30a–10:15a` then `10a–12:45p` overlap 10:00–10:15a), the old non-overlapping

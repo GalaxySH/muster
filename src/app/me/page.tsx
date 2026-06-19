@@ -37,6 +37,9 @@ export default async function MePage() {
               "Your position isn't set yet — onboarding to pick it is coming soon."
             )}
           </p>
+          <p>
+            <Link href="/evidence">Upload course schedule &amp; excusal evidence →</Link>
+          </p>
         </div>
       ) : (
         <p>

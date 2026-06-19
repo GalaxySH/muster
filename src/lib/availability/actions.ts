@@ -14,10 +14,10 @@
  * flags are submit-time only — a draft clears both.
  */
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { submissions, shiftSelections, flags } from "@/lib/db/schema";
+import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadPositionWithBlocks } from "./data";
@@ -163,13 +163,28 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 
     // Flags are recomputed from scratch on every save; only a submit raises them.
     await tx.delete(flags).where(eq(flags.submissionId, submissionId));
-    if (input.submit && autoAssigned) {
-      await tx.insert(flags).values({
-        id: randomUUID(),
-        submissionId,
-        type: "auto_assigned_weekend",
-        detail: `No weekend shift selected; auto-assigned ${autoAssigned.label}.`,
-      });
+    if (input.submit) {
+      if (autoAssigned) {
+        await tx.insert(flags).values({
+          id: randomUUID(),
+          submissionId,
+          type: "auto_assigned_weekend",
+          detail: `No weekend shift selected; auto-assigned ${autoAssigned.label}.`,
+        });
+      }
+      // Late travel (created after the 9/1 cutoff) → flag for the scheduler (§8).
+      const lateTravel = await tx
+        .select({ id: travelRequests.id })
+        .from(travelRequests)
+        .where(and(eq(travelRequests.submissionId, submissionId), eq(travelRequests.excused, false)));
+      if (lateTravel.length > 0) {
+        await tx.insert(flags).values({
+          id: randomUUID(),
+          submissionId,
+          type: "travel_late",
+          detail: `${lateTravel.length} travel entr${lateTravel.length === 1 ? "y" : "ies"} added after the 9/1 cutoff (not excused).`,
+        });
+      }
     }
   });
 

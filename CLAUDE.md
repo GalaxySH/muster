@@ -4,14 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Phase 1 done; Phase 2 built; Phase 3 underway: Next.js scaffold, full TDD toolchain, DB
+Phase 1 done; Phase 2 built; Phase 3 done: Next.js scaffold, full TDD toolchain, DB
 schema + migrations, the **pure-domain rules engine**, **Google sign-in (Auth.js
 v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
-validation, draft/submit with server-side re-validation), and **weekend auto-assign +
-flag persistence** (Phase 3). Still to build: evidence uploads/Drive relay (the
-remaining Phase 2 piece, blocked on the §16.3 `drive.file` spike) and travel-cutoff
-flag persistence (rides on that flow); the admin views (Phase 4).
+validation, draft/submit with server-side re-validation), **weekend auto-assign +
+flag persistence** + `travel_late` flagging (Phase 3), and the **Google Drive evidence
+relay** + student `/evidence` page (Phase 2). Still to build: the admin views (Phase 4),
+edit-window enforcement, and the magic-link fallback. The Drive relay needs a live admin
+grant (via `/admin/drive`) + a `DRIVE_FOLDER_ID` before uploads work.
+
+Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`): the admin grants
+`drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,
+distinct from student sign-in); the refresh token is stored **AES-256-GCM encrypted**
+(`crypto/secretbox.ts`) in `admin_google_grants` — never in a cookie. `drive/relay.ts` is
+the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST + a
+`google-auth-library` token from `drive/oauth.ts`). Student uploads go through
+`evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
+the app**. `drive.file` files aren't browsable, so they're served back through an
+authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`
+`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`.
 
 Availability form layering: `src/lib/availability/` has the pure grid view-model
 (`grid.ts`) + selection-key helpers (`selection.ts`), the server data loader
