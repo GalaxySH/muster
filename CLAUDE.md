@@ -94,10 +94,13 @@ These are non-obvious and pervade the data model — internalize them before edi
 
 - **Selection = preferences, not a schedule.** Students mark every block they'd
   accept. Over-selecting beyond their hour cap is expected and allowed.
-- **The only hard hours check is the minimum.** Feasibility = best *non-overlapping*
-  packing of selected blocks, **cycle-averaged**, must reach the position floor
-  (10h; Shift Lead 15h). The max cap (30h domestic / 20h international) is **never**
-  enforced at entry — it's scheduler-side context only.
+- **The only hard hours check is the minimum.** Feasibility = the **covered hours** of
+  the selected blocks (union per day, overlaps counted once, contiguous shifts merged —
+  `domain/intervals.ts`), **cycle-averaged**, must reach the position floor (10h; Shift
+  Lead 15h). Coverage, *not* non-overlapping packing: blocks stagger with small handoff
+  overlaps but are back-to-back for the student, so two adjacent shifts must credit their
+  full combined span. The max cap (30h domestic / 20h international) is **never** enforced
+  at entry — it's scheduler-side context only.
 - **Cycle-averaging:** weekday blocks count every week; weekend blocks count every
   *other* week under A/B rotation (×0.5), or every week if the every-weekend opt-in
   is set.
@@ -121,7 +124,7 @@ These are non-obvious and pervade the data model — internalize them before edi
 
 ## Code layout & conventions
 
-- `src/lib/domain/` — **pure** scheduling logic (time, blocks, packing, capacity,
+- `src/lib/domain/` — **pure** scheduling logic (time, blocks, intervals, capacity,
   validation, travel). No I/O, no env, no DB imports — this is the TDD core; every
   module has a co-located `*.test.ts`. The same `validateAvailability` runs on the
   client (live feedback) and server (authority). Keep it pure.

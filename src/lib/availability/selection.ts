@@ -3,33 +3,13 @@
  * the pair (blockId, day); the client tracks a Set of these keys.
  */
 import { dayTypeOf, type Day, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import { mergeRanges } from "@/lib/domain/intervals";
+import type { TimeRange } from "@/lib/domain/time";
 
 const SEP = "|";
 
 export function selectionKey(blockId: string, day: Day): string {
   return `${blockId}${SEP}${day}`;
-}
-
-interface Interval {
-  start: number;
-  end: number;
-}
-
-/** Merge overlapping or touching intervals into maximal spans (5p–end touches 5p–start). */
-function mergeIntervals(intervals: Interval[]): Interval[] {
-  if (intervals.length === 0) return [];
-  const sorted = [...intervals].sort((a, b) => a.start - b.start);
-  const merged: Interval[] = [{ ...sorted[0]! }];
-  for (let i = 1; i < sorted.length; i++) {
-    const cur = sorted[i]!;
-    const last = merged[merged.length - 1]!;
-    if (cur.start <= last.end) {
-      last.end = Math.max(last.end, cur.end);
-    } else {
-      merged.push({ ...cur });
-    }
-  }
-  return merged;
 }
 
 /**
@@ -44,7 +24,7 @@ export function computeCoveredKeys(
   blocks: readonly ShiftBlock[],
 ): Set<string> {
   const byId = new Map(blocks.map((b) => [b.id, b]));
-  const selectedByDay = new Map<Day, Interval[]>();
+  const selectedByDay = new Map<Day, TimeRange[]>();
   const selectedKeys = new Set<string>();
   for (const s of selection) {
     const block = byId.get(s.blockId);
@@ -58,7 +38,7 @@ export function computeCoveredKeys(
   const covered = new Set<string>();
   for (const [day, intervals] of selectedByDay) {
     const dayType = dayTypeOf(day);
-    const spans = mergeIntervals(intervals);
+    const spans = mergeRanges(intervals);
     for (const candidate of blocks) {
       if (candidate.dayType !== dayType) continue;
       const key = selectionKey(candidate.id, day);

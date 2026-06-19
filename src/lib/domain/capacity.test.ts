@@ -27,6 +27,7 @@ function we(id: string, start: string, end: string): ShiftBlock {
 // Culinary Assistant blocks (PLAN.md §6.3), a representative subset.
 const blocks: ShiftBlock[] = [
   wk("wd-open", "6:30a", "10:15a"), // 225m
+  wk("wd-late", "10a", "12:45p"), // 165m; staggers with wd-open (handoff 10:00–10:15a)
   wk("wd-mid", "12:30p", "2:30p"), // 120m
   we("we-open", "8:30a", "11a"), // 150m
   we("we-close", "7:45p", "11:30p"), // 225m
@@ -54,6 +55,15 @@ describe("computeCapacity", () => {
   it("counts weekend hours fully with the every-weekend opt-in", () => {
     const selection = [sel("we-open", "sat"), sel("we-close", "sun")];
     const c = computeCapacity(selection, blocks, { everyWeekendOptIn: true });
+    expect(c.weeklyAverageMinutes).toBe(375);
+  });
+
+  it("credits two adjacent staggered shifts as continuous coverage", () => {
+    // 6:30a–10:15a + 10a–12:45p overlap by a 15m handoff → 6:30a–12:45p = 375m,
+    // not max(225, 165) = 225 as strict non-overlapping packing would give.
+    const selection = [sel("wd-open", "mon"), sel("wd-late", "mon")];
+    const c = computeCapacity(selection, blocks, { everyWeekendOptIn: false });
+    expect(c.weekdayMinutes).toBe(375);
     expect(c.weeklyAverageMinutes).toBe(375);
   });
 

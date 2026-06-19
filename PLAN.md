@@ -10,7 +10,7 @@
 
 - **Status:** Phase 1 done; Phase 2 built (evidence uploads await the Drive spike);
   Phase 3 weekend auto-assign + flag persistence done
-- **Version:** 0.10
+- **Version:** 0.11
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -105,7 +105,7 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | # | Policy | Type | Parameters |
 |---|---|---|---|
 | 1 | Shifts cannot conflict with course schedule | (manual review for now — see §12) | course evidence required |
-| 2 | Selection must be able to reach **min hours** | **Hard** | best non-overlapping packing of selected shifts ≥ min (10h; SL 15h), cycle-averaged |
+| 2 | Selection must be able to reach **min hours** | **Hard** | covered hours of selected shifts (union per day; overlaps counted once) ≥ min (10h; SL 15h), cycle-averaged |
 | 3 | **Max hours** = scheduler-side cap, **not** an entry constraint | context | 30h domestic / 20h international; students may select **more** than their cap as preferences — over-selection is allowed; the cap is applied only when the schedule is written |
 | 4 | Honor shift preferences when availability allows | informational | — |
 | 5 | Must work a weekend shift; A/B rotation, cycle-averaged hours | **Soft** | missing → auto-assign + flag. **Barista exempt** (weekday-only) |
@@ -115,8 +115,8 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
-> many shifts as they want; the only hours hard-block is #2 (min reachable via
-> non-overlapping packing). #5 soft for v1 (auto-pick + flag); Barista exempt.
+> many shifts as they want; the only hours hard-block is #2 (min reachable via the
+> covered union of selected shifts). #5 soft for v1 (auto-pick + flag); Barista exempt.
 > #2/#6/#7 hard at entry. #8 travel cutoff = **9/1, all positions**.
 
 ---
@@ -238,9 +238,12 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
   permits requesting fewer weekday shifts.
 - **Selection = preferences, not a schedule:** students mark every shift they'd be
   willing to work; selecting **more than** their hour cap is allowed and expected.
-- **Feasibility engine:** the only hard hours check is the **minimum** — the best
-  **non-overlapping** packing of the selected blocks (cycle-averaged) must reach the
-  position floor. The cap (20/30) is **not** enforced here; it's scheduler-side context
+- **Feasibility engine:** the only hard hours check is the **minimum** — the hours the
+  selected blocks **cover** (union per day, overlaps counted once; cycle-averaged) must
+  reach the position floor. Coverage, not strict non-overlapping packing, because blocks
+  stagger with small handoff overlaps yet are back-to-back for the student, so two
+  adjacent shifts must credit their full combined span. The cap (20/30) is **not**
+  enforced here; it's scheduler-side context
   (§10). An optional non-validated **`desiredHours`** hint can help the scheduler aim
   within the cap.
 - **High-demand indicator (red bar):** blocks the admin marks `highDemand` render a
@@ -274,7 +277,7 @@ scheduler (not auto-parsed).
 
 | Rule | Type | Behavior |
 |---|---|---|
-| Best **non-overlapping** packing of selected shifts ≥ min hours (cycle avg) | **Hard** | block submit; prompt to select more / non-overlapping shifts |
+| Covered hours of selected shifts (union per day; cycle avg) ≥ min hours | **Hard** | block submit; prompt to select more shifts |
 | Max hours (20/30) | *not checked at entry* | over-selection allowed; cap applied scheduler-side (§5 #3, §10) |
 | ≥1 opening **or** ≥1 closing block selected | **Hard** | block submit |
 | Available across ≥2 days (≥3 for Shift Lead) | **Hard** | block submit |
@@ -328,8 +331,8 @@ columns from the roster.
 - **Response list:** all submissions, sortable/searchable, **fast prev/next
   navigation** between students and back to the full list (hard requirement).
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
-  selected preferences, **preference capacity** (max non-overlapping hours their
-  selection supports) vs. the floor, days covered, open/close coverage, A/B +
+  selected preferences, **preference capacity** (covered hours their selection
+  supports) vs. the floor, days covered, open/close coverage, A/B +
   every-weekend opt-in, flags. (Scheduler picks within [floor, cap] from preferences.)
 - **Flags window:** all soft-requirement violations (e.g. auto-assigned weekend).
 - **Non-response tracking:** roster (PC) − responders; rows for off-roster
@@ -343,7 +346,7 @@ The view the scheduler works from. Layout (see wireframe):
   **submitted/edited** status; a **"mark scheduled ✓" toggle** (mirrors the roster's
   "W2W schedule created" column — track progress across ~400 without leaving Muster).
 - **Hour summary cards:** hour **cap** (20/30 + intl), **requested** (`desiredHours`),
-  **preference capacity** (max non-overlapping hours) vs. floor, **days covered**.
+  **preference capacity** (covered hours) vs. floor, **days covered**.
 - **Flags & checks (auto-computed):** min reachable; which **open/close** was selected
   (or "none → auto-assign"); days span; **weekend** (or auto-assigned + which);
   **late travel** (post-9/1); **off-roster** banner if position/intl were self-reported.
@@ -587,7 +590,7 @@ premium; §11) · per-student admin view spec + wireframe (§10a) · max-hours m
 (preferences; over-selection allowed, only the floor is hard-checked) · Cashier/Stocker
 = one position each, two merged venues (§6.1) · travel cutoff = 9/1 global (§13) ·
 canonical shift blocks (§6.3) · Barista weekend exemption (§5) · min-hours rule
-(non-overlapping packing ≥ floor) · app verification/audit (Internal app, §11) · image
+(covered union of selected shifts ≥ floor) · app verification/audit (Internal app, §11) · image
 storage (`drive.file` relay, §12) · temporary links + "request new link" (§11) ·
 under-18 test (deferred → fallback, §11).
 
@@ -639,6 +642,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.11 (2026-06-19)** — **Min-hours rule = covered union, not non-overlapping packing.**
+  Fixed a feasibility-calc bug: because blocks stagger with small handoff overlaps (e.g.
+  CA `6:30a–10:15a` then `10a–12:45p` overlap 10:00–10:15a), the old non-overlapping
+  packing credited only one of two adjacent shifts — selecting the second added ~0h. The
+  hard min-hours check (§2/§5 #2, §8) now uses **covered hours** = the union of selected
+  blocks per day (overlaps counted once, contiguous shifts merged), cycle-averaged. Two
+  adjacent shifts now credit their full combined span (e.g. 6:30a–12:45p = 6.25h). New
+  pure `domain/intervals.ts` (`mergeRanges`/`coveredMinutes`) backs both `capacity.ts`
+  and the form's covered-cell hints; the unused `packing.ts` was removed.
 - **0.10 (2026-06-18)** — **Phase 3: weekend auto-assign + flag persistence.** On submit,
   a non-exempt student who picked no weekend shift now gets one auto-assigned (PLAN §5 #5):
   the pure `auto-assign` domain module enumerates weekend candidate cells and picks one

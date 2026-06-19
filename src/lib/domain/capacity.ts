@@ -1,8 +1,12 @@
 /**
  * Cycle-averaged preference capacity (PLAN.md §7, §8, §10a).
  *
- * "Preference capacity" = the maximum non-overlapping hours that could be
- * scheduled from a student's selection, averaged across the two-week A/B cycle.
+ * "Preference capacity" = the hours a student's selection *covers* (the union
+ * of their selected blocks per day, overlaps counted once), averaged across the
+ * two-week A/B cycle. Coverage rather than a strict non-overlapping packing,
+ * because blocks stagger with small handoff overlaps yet are back-to-back from
+ * the student's side — see ./intervals.
+ *
  * Weekday blocks happen every week (factor 1). Weekend blocks happen every
  * *other* week under A/B (factor 0.5), or every week with the opt-in (factor 1).
  *
@@ -10,7 +14,7 @@
  * factor — a student may be scheduled Saturday and Sunday on their on-weekend.
  */
 import { dayTypeOf, type Day, type SelectedShift, type ShiftBlock } from "./types";
-import { maxNonOverlappingMinutes } from "./packing";
+import { coveredMinutes } from "./intervals";
 import type { TimeRange } from "./time";
 
 /** A/B rotation averages a weekend day's hours to half a week. */
@@ -21,9 +25,9 @@ export interface CapacityOptions {
 }
 
 export interface CapacityResult {
-  /** sum of best per-day packing over Mon–Fri (minutes). */
+  /** sum of per-day covered minutes over Mon–Fri. */
   weekdayMinutes: number;
-  /** sum of best per-day packing over Sat+Sun, before the cycle factor (minutes). */
+  /** sum of per-day covered minutes over Sat+Sun, before the cycle factor. */
   weekendMinutesRaw: number;
   /** weekday + factor*weekend (minutes); the value compared to the hours floor. */
   weeklyAverageMinutes: number;
@@ -52,11 +56,11 @@ export function computeCapacity(
   let weekdayMinutes = 0;
   let weekendMinutesRaw = 0;
   for (const [day, ranges] of rangesByDay) {
-    const packed = maxNonOverlappingMinutes(ranges);
+    const covered = coveredMinutes(ranges);
     if (dayTypeOf(day) === "weekend") {
-      weekendMinutesRaw += packed;
+      weekendMinutesRaw += covered;
     } else {
-      weekdayMinutes += packed;
+      weekdayMinutes += covered;
     }
   }
 
