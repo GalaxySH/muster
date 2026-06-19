@@ -8,8 +8,8 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay);
-  Phase 3 done. Drive grant needs a live admin authorization + a Shared Drive folder id.
+- **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay,
+  grant + Shared Drive write confirmed live); Phase 3 done. Next: admin views (Phase 4).
 - **Version:** 0.12
 - **Last updated:** 2026-06-18
 - **Owner:** Student Supervisor (scheduler) @ GDEC
@@ -573,12 +573,11 @@ auth-method-agnostic.
    alias? (Affects lookup correctness — §11.)
 2. **Position ↔ title mapping** — map roster `Position Title` strings to the six
    Muster positions (and which titles map to Cashier vs. Stocker venues).
-3. **`drive.file` spike** — ⏳ *built, awaiting live test.* The relay + admin grant flow
-   ship (§12); `/admin/drive` has a one-click "Test connection" that does
-   `files.create` + read-back + delete under the per-file scope. Needs a real admin
-   authorization to confirm end-to-end.
-4. **Shared Drive destination** — chosen as the target; set `DRIVE_FOLDER_ID` to the
-   department Shared Drive folder id (else uploads fall back to the admin's My Drive) — §12.
+3. **`drive.file` spike** — ✅ *resolved (confirmed live).* `files.create` + read-back +
+   delete work under the per-file scope, **including writing into a pre-existing Shared
+   Drive folder by id** — so no app-creates-its-own-folder workaround is needed (§12).
+4. **Shared Drive destination** — ✅ confirmed: uploads land in the Shared Drive folder
+   set via `DRIVE_FOLDER_ID` (verified via `/admin/drive` Test connection) — §12.
 5. **Email provider + domain auth** — pick a provider (Resend / SendGrid / SES) and set
    up SPF/DKIM/DMARC on hauge.rocks for M365 deliverability (§11).
 6. **Admin export format** — what exact layout do you want to read from while typing
@@ -609,8 +608,8 @@ under-18 test (deferred → fallback, §11).
 ## 18. Suggested Roadmap
 
 - **Phase 0 — Auth spike:** ✅ done (sign-in verified; Internal app; under-18 deferred
-  to fallback). `drive.file` relay ✅ built (test via `/admin/drive`); awaits a live
-  admin grant.
+  to fallback). `drive.file` relay ✅ confirmed live (grant + Shared Drive write/read-back
+  verified via `/admin/drive`).
 - **Phase 1 — Skeleton:** Next.js + MariaDB + Auth.js; roster import; position/block
   config; student stub.
 - **Phase 2 — Collection:** ✅ availability grid, weekend opt-in, evidence pages (course
@@ -654,8 +653,8 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   returned `fileId` is stored. Images are served back through an authenticated proxy
   (`/api/evidence/[fileId]`, admin-or-owner) since `drive.file` files aren't browsable.
   Late-travel now raises a `travel_late` flag on submit (§8). Stack: `google-auth-library`
-  + fetch; destination = Shared Drive via `DRIVE_FOLDER_ID`. Resolves §16.3 (built; awaits
-  a live grant) and §16.4 (Shared Drive chosen).
+  + fetch; destination = Shared Drive via `DRIVE_FOLDER_ID`. Resolves §16.3 and §16.4 —
+  confirmed live: the grant + `files.create`/read-back into a Shared Drive folder by id work.
 - **0.11 (2026-06-19)** — **Min-hours rule = covered union, not non-overlapping packing.**
   Fixed a feasibility-calc bug: because blocks stagger with small handoff overlaps (e.g.
   CA `6:30a–10:15a` then `10a–12:45p` overlap 10:00–10:15a), the old non-overlapping

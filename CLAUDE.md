@@ -10,9 +10,10 @@ v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
 validation, draft/submit with server-side re-validation), **weekend auto-assign +
 flag persistence** + `travel_late` flagging (Phase 3), and the **Google Drive evidence
-relay** + student `/evidence` page (Phase 2). Still to build: the admin views (Phase 4),
-edit-window enforcement, and the magic-link fallback. The Drive relay needs a live admin
-grant (via `/admin/drive`) + a `DRIVE_FOLDER_ID` before uploads work.
+relay** + student `/evidence` page (Phase 2). The Drive relay is **confirmed live** — the
+admin grant + `drive.file` write/read-back into a Shared Drive folder (by `DRIVE_FOLDER_ID`)
+work end-to-end. Still to build: the admin views (Phase 4), edit-window enforcement, and
+the magic-link fallback.
 
 Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`): the admin grants
 `drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,
