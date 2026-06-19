@@ -22,6 +22,7 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/lib/db/seed.ts",
     "roster:import": "tsx src/scripts/import-roster.ts",
+    "dev:add-student": "tsx src/scripts/add-test-student.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
