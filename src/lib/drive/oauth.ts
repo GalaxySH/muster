@@ -36,7 +36,10 @@ export function getDriveAuthUrl(state: string): string {
     access_type: "offline",
     prompt: "consent", // ensure Google returns a refresh_token every time
     scope: GRANT_SCOPES,
-    include_granted_scopes: true,
+    // Deliberately NOT include_granted_scopes: this is a dedicated least-privilege
+    // grant. Merging prior grants would resurface the full `drive` scope this
+    // account granted during the Phase 0 spike (PLAN §11) — exactly drive.file only.
+    include_granted_scopes: false,
     state,
     hd: WISC_DOMAIN,
   });
