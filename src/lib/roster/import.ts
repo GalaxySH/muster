@@ -8,13 +8,15 @@
 import { randomUUID } from "node:crypto";
 import type { Database } from "@/lib/db/client";
 import { students, adminUsers, rosterImports } from "@/lib/db/schema";
-import { readPeopleComing } from "./read-workbook";
-import { parseRoster } from "./parse";
+import { readPeopleComing, readPeopleLeaving } from "./read-workbook";
+import { parseRoster, parseLeaving } from "./parse";
 
 export interface ImportSummary {
   importId: string;
   studentsUpserted: number;
   adminsUpserted: number;
+  /** People Leaving rows upserted as off-roster (onRoster: false). */
+  leftMarked: number;
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
@@ -33,6 +35,8 @@ export async function importRoster({
 }: ImportOptions): Promise<ImportSummary> {
   const rows = await readPeopleComing(filePath);
   const parsed = parseRoster(rows);
+  // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
+  const leaving = parseLeaving(await readPeopleLeaving(filePath));
   const importId = randomUUID();
 
   await db.transaction(async (tx) => {
@@ -54,6 +58,22 @@ export async function importRoster({
             onRoster: true,
           },
         });
+    }
+
+    // People Leaving AFTER People Coming, so if someone erroneously appears in
+    // both sheets, "leaving" wins (their onRoster ends up false). On an existing
+    // row we only flip onRoster — never clobber stored position/displayName.
+    for (const l of leaving) {
+      await tx
+        .insert(students)
+        .values({
+          email: l.email,
+          displayName: l.displayName,
+          positionId: null,
+          international: false,
+          onRoster: false,
+        })
+        .onDuplicateKeyUpdate({ set: { onRoster: false } });
     }
 
     for (const a of parsed.admins) {
@@ -80,6 +100,7 @@ export async function importRoster({
     importId,
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
+    leftMarked: leaving.length,
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

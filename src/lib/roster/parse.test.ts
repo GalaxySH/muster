@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseRoster, type RawRosterRow } from "./parse";
+import { parseRoster, parseLeaving, type RawRosterRow, type RawLeavingRow } from "./parse";
 
 const row = (over: Partial<RawRosterRow>): RawRosterRow => ({
   name: "Test Person",
@@ -84,5 +84,37 @@ describe("parseRoster", () => {
     ]);
     expect(students).toHaveLength(0);
     expect(skipped.map((s) => s.reason)).toEqual(["missing_email", "non_wisc_email"]);
+  });
+});
+
+const leaving = (over: Partial<RawLeavingRow>): RawLeavingRow => ({
+  name: "Gone Person",
+  email: "gone1@wisc.edu",
+  ...over,
+});
+
+describe("parseLeaving", () => {
+  it("normalizes email case/whitespace and trims the name", () => {
+    expect(parseLeaving([leaving({ name: "  Jo Park ", email: "  Stu@WISC.edu " })])).toEqual([
+      { email: "stu@wisc.edu", displayName: "Jo Park" },
+    ]);
+  });
+
+  it("drops empty and non-wisc emails", () => {
+    expect(parseLeaving([leaving({ email: "" }), leaving({ email: "someone@gmail.com" })])).toEqual(
+      [],
+    );
+  });
+
+  it("de-duplicates on normalized email, keeping the last occurrence", () => {
+    const result = parseLeaving([
+      leaving({ name: "First", email: "dup@wisc.edu" }),
+      leaving({ name: "Second", email: "DUP@wisc.edu " }),
+    ]);
+    expect(result).toEqual([{ email: "dup@wisc.edu", displayName: "Second" }]);
+  });
+
+  it("returns [] for no rows (older single-sheet workbooks)", () => {
+    expect(parseLeaving([])).toEqual([]);
   });
 });

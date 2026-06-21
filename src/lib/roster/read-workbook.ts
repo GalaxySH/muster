@@ -1,15 +1,19 @@
 /**
- * Reads the "People Coming" sheet of the PCPL workbook into raw rows.
+ * Reads the PCPL workbook sheets into raw rows.
  *
- * Only the four minimized fields are extracted (name, position title, email,
- * international); Campus ID, phone, and tracking columns are never read
- * (PLAN.md §9, §12). Columns are located by header text so column reordering
- * in the source workbook doesn't break the import.
+ * "People Coming" (active employees) → the four minimized fields (name, position
+ * title, email, international); Campus ID, phone, and tracking columns are never
+ * read (PLAN.md §9, §12). "People Leaving" (resigned/fired, moved out of People
+ * Coming) → just name + email, used to mark those students off-roster.
+ *
+ * Columns are located by header text so column reordering in the source workbook
+ * doesn't break the import.
  */
 import ExcelJS from "exceljs";
-import type { RawRosterRow } from "./parse";
+import type { RawRosterRow, RawLeavingRow } from "./parse";
 
-const SHEET_NAME = "People Coming";
+const COMING_SHEET_NAME = "People Coming";
+const LEAVING_SHEET_NAME = "People Leaving";
 
 function cellText(value: ExcelJS.CellValue): string {
   if (value == null) return "";
@@ -25,34 +29,53 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value);
 }
 
-export async function readPeopleComing(filePath: string): Promise<RawRosterRow[]> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(filePath);
-  const ws = wb.getWorksheet(SHEET_NAME);
-  if (!ws) {
-    const found = wb.worksheets.map((w) => `"${w.name}"`).join(", ");
-    throw new Error(`Sheet "${SHEET_NAME}" not found. Sheets present: ${found}`);
-  }
-
-  // Map header text → column index.
-  const headerRow = ws.getRow(1);
+/** Map header text (row 1) → 1-based column index, lowercased/trimmed. */
+function headerColumns(ws: ExcelJS.Worksheet): Map<string, number> {
   const headers = new Map<string, number>();
-  headerRow.eachCell((cell, col) => {
+  ws.getRow(1).eachCell((cell, col) => {
     const text = cellText(cell.value).trim().toLowerCase();
     if (text) headers.set(text, col);
   });
+  return headers;
+}
 
-  const findCol = (predicate: (header: string) => boolean, label: string): number => {
-    for (const [header, col] of headers) {
-      if (predicate(header)) return col;
-    }
-    throw new Error(`Could not find the ${label} column in "${SHEET_NAME}"`);
-  };
+/** Find the column whose header matches `predicate`, or throw with a clear message. */
+function findCol(
+  headers: Map<string, number>,
+  predicate: (header: string) => boolean,
+  label: string,
+  sheetName: string,
+): number {
+  for (const [header, col] of headers) {
+    if (predicate(header)) return col;
+  }
+  throw new Error(`Could not find the ${label} column in "${sheetName}"`);
+}
 
-  const nameCol = findCol((h) => h === "name", "Name");
-  const titleCol = findCol((h) => h.includes("position") || h.includes("title"), "Position Title");
-  const emailCol = findCol((h) => h.includes("email"), "Email");
-  const intlCol = findCol((h) => h.includes("international"), "International");
+export async function readPeopleComing(filePath: string): Promise<RawRosterRow[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(filePath);
+  const ws = wb.getWorksheet(COMING_SHEET_NAME);
+  if (!ws) {
+    const found = wb.worksheets.map((w) => `"${w.name}"`).join(", ");
+    throw new Error(`Sheet "${COMING_SHEET_NAME}" not found. Sheets present: ${found}`);
+  }
+
+  const headers = headerColumns(ws);
+  const nameCol = findCol(headers, (h) => h === "name", "Name", COMING_SHEET_NAME);
+  const titleCol = findCol(
+    headers,
+    (h) => h.includes("position") || h.includes("title"),
+    "Position Title",
+    COMING_SHEET_NAME,
+  );
+  const emailCol = findCol(headers, (h) => h.includes("email"), "Email", COMING_SHEET_NAME);
+  const intlCol = findCol(
+    headers,
+    (h) => h.includes("international"),
+    "International",
+    COMING_SHEET_NAME,
+  );
 
   const rows: RawRosterRow[] = [];
   for (let r = 2; r <= ws.actualRowCount; r++) {
@@ -67,6 +90,34 @@ export async function readPeopleComing(filePath: string): Promise<RawRosterRow[]
       positionTitle: cellText(row.getCell(titleCol).value).trim(),
       international: cellText(row.getCell(intlCol).value).trim(),
     });
+  }
+  return rows;
+}
+
+/**
+ * Reads the "People Leaving" sheet (name + email only). Tolerant by design:
+ * the sheet may lack position/international columns, and older single-sheet
+ * workbooks have no such sheet at all — in that case we return [] rather than
+ * throw, so they still import.
+ */
+export async function readPeopleLeaving(filePath: string): Promise<RawLeavingRow[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(filePath);
+  const ws = wb.getWorksheet(LEAVING_SHEET_NAME);
+  if (!ws) return [];
+
+  const headers = headerColumns(ws);
+  const nameCol = findCol(headers, (h) => h === "name", "Name", LEAVING_SHEET_NAME);
+  const emailCol = findCol(headers, (h) => h.includes("email"), "Email", LEAVING_SHEET_NAME);
+
+  const rows: RawLeavingRow[] = [];
+  for (let r = 2; r <= ws.actualRowCount; r++) {
+    const row = ws.getRow(r);
+    const name = cellText(row.getCell(nameCol).value).trim();
+    const email = cellText(row.getCell(emailCol).value).trim();
+    // Skip fully blank trailing rows.
+    if (!name && !email) continue;
+    rows.push({ name, email });
   }
   return rows;
 }

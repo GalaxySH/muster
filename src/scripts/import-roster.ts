@@ -1,5 +1,6 @@
 /**
- * CLI: import a PCPL workbook's "People Coming" sheet into the database.
+ * CLI: import a PCPL workbook into the database. Reads "People Coming" (active
+ * employees) and, if present, "People Leaving" (marked off-roster).
  *
  *   npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu
  *
@@ -36,6 +37,7 @@ async function main() {
     console.log(`\nRoster import ${summary.importId} complete.`);
     console.log(`  students upserted: ${summary.studentsUpserted}`);
     console.log(`  admins upserted:   ${summary.adminsUpserted}`);
+    console.log(`  left marked off:   ${summary.leftMarked}`);
     console.log(`  rows skipped:      ${summary.skipped.length}`);
     console.log("\n  by position:");
     for (const [pos, n] of Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1])) {

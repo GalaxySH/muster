@@ -17,6 +17,18 @@ export interface RawRosterRow {
   international: string;
 }
 
+/** A name+email pair from the "People Leaving" sheet (cell values stringified). */
+export interface RawLeavingRow {
+  name: string;
+  email: string;
+}
+
+/** A leaving person to mark off-roster (email normalized, name trimmed). */
+export interface LeavingStudent {
+  email: string;
+  displayName: string;
+}
+
 export interface RosterStudent {
   email: string;
   displayName: string;
@@ -90,4 +102,20 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
   }
 
   return result;
+}
+
+/**
+ * Pure classification of "People Leaving" rows into the students to mark
+ * off-roster. Mirrors parseRoster's email handling: normalize, then drop empty
+ * / non-wisc emails (they could never have matched a roster/sign-in identity).
+ * De-duplicates on email so a person listed twice is marked once.
+ */
+export function parseLeaving(rows: readonly RawLeavingRow[]): LeavingStudent[] {
+  const byEmail = new Map<string, LeavingStudent>();
+  for (const row of rows) {
+    const email = normalizeEmail(row.email ?? "");
+    if (!email || !isWiscEmail(email)) continue;
+    byEmail.set(email, { email, displayName: (row.name ?? "").trim() });
+  }
+  return [...byEmail.values()];
 }
