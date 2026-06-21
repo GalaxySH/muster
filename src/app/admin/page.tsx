@@ -16,6 +16,9 @@ export default async function AdminPage() {
         <Link href="/admin/responses">View responses →</Link>
       </p>
       <p>
+        <Link href="/admin/non-responses">Non-response tracking →</Link>
+      </p>
+      <p>
         <Link href="/admin/preview">Preview the student availability form →</Link>
       </p>
       <p>

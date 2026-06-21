@@ -23,6 +23,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadPositionWithBlocks } from "./data";
 import { validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
+import { trySyncResponsesSheet } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
 import type { Day, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
@@ -187,6 +188,12 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
       }
     }
   });
+
+  // Keep the running Drive spreadsheet fresh (rate-limited, best-effort — a
+  // sync failure must never fail the student's submit). Drafts don't trigger it.
+  if (input.submit) {
+    await trySyncResponsesSheet();
+  }
 
   revalidatePath("/availability");
   return { ok: true, status, autoAssigned, errors: [] };

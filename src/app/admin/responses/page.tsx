@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { listResponses } from "@/lib/admin/data";
+import { getResponsesSheetUrl, getLastSheetSync } from "@/lib/admin/sheet-sync";
 import { ResponseList } from "@/components/admin/ResponseList";
+import { ResponsesToolbar } from "@/components/admin/ResponsesToolbar";
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
@@ -13,14 +15,20 @@ export default async function ResponsesPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/responses");
   if (!session.isAdmin) redirect("/me");
 
-  const rows = await listResponses();
+  const [rows, sheetUrl, lastSync] = await Promise.all([
+    listResponses(),
+    getResponsesSheetUrl(),
+    getLastSheetSync(),
+  ]);
 
   return (
     <main style={{ padding: "1.5rem", maxWidth: 980, margin: "0 auto", color: "var(--color-text-primary)" }}>
       <p style={{ marginBottom: 8 }}>
-        <Link href="/admin">← Admin</Link>
+        <Link href="/admin">← Admin</Link> &nbsp;·&nbsp;{" "}
+        <Link href="/admin/non-responses">Non-responses →</Link>
       </p>
       <h1 style={{ marginTop: 0 }}>Responses</h1>
+      <ResponsesToolbar sheetUrl={sheetUrl} lastSyncedAtMs={lastSync ? lastSync.getTime() : null} />
       {rows.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>No submissions yet.</p>
       ) : (

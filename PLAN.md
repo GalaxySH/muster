@@ -8,11 +8,12 @@
 > integrate with WhenToWork (W2W). It replaces the *availability/preference
 > collection* step only. The human scheduler still writes schedules in W2W.
 
-- **Status:** Phase 1 done; Phase 2 built (incl. evidence uploads via the Drive relay,
-  grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 built (response list
-  + per-student admin view, §10a). Next: edit-window enforcement, magic-link fallback, ops.
-- **Version:** 0.14
-- **Last updated:** 2026-06-19
+- **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
+  grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
+  per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Next:
+  edit-window enforcement, magic-link fallback, ops.
+- **Version:** 0.15
+- **Last updated:** 2026-06-21
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -338,8 +339,10 @@ columns from the roster.
 - **Flags window:** all soft-requirement violations (e.g. auto-assigned weekend).
 - **Non-response tracking:** roster (PC) − responders; rows for off-roster
   responders shown with gaps/missing fields noted.
-- **Export:** a clean per-student view to read while hand-entering into W2W
-  (format TBD — see §16).
+- **Export:** ✅ one comprehensive row per submission, available as an **in-app CSV
+  download** and as the **running `Muster Responses` Google Sheet** in the Drive folder
+  (§12) — the latter readable by folder members without the app and serving as a
+  recovery copy. Both come from the same export matrix.
 
 ### 10a. Per-student view (the primary admin surface)
 The view the scheduler works from. Layout (see wireframe):
@@ -518,8 +521,21 @@ auth-method-agnostic.
     rule).
   - **Destination = a department-owned Shared Drive** folder if possible, so the
     pipeline survives staff turnover instead of dying with the admin's account.
-  - **Naming:** `{position}/{studentEmail}/{n}.png` inside a Muster folder; store
-    `fileId` on the `Submission`. Admin view renders inline via the same grant.
+  - **Folder layout (`DRIVE_FOLDER_ID` = root):** the **root holds the running
+    responses spreadsheet** (below); **all proof files live in a single `proofs/`
+    subfolder**, named `{studentEmail}__{kind}__{timestamp}.{ext}`. The app stores
+    only the `fileId`; the admin view renders inline via the same grant. (The
+    `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
+  - **Running responses spreadsheet (recovery + non-admin view):** a single
+    **`Muster Responses` Google Sheet** in the root, rebuilt from the same export
+    matrix the in-app CSV uses (one comprehensive row per submission, proof columns
+    as `drive.google.com/file/d/<id>/view` links). It lets **folder members read all
+    responses without the app**, and **duplicates the data so it survives app
+    failure/retirement**. Built purely via the **Drive API's CSV→Sheet conversion**
+    (`files.create`/`files.update` with a `text/csv` body and the spreadsheet
+    mimeType) so the **Sheets API need not be enabled** — still within `drive.file`.
+    Rebuilt best-effort after each submit **and** by an admin button, **rate-limited
+    to ≥10 min between rebuilds**. The sheet id + last-sync time live in `app_settings`.
   - **Retention:** purge images after schedules are written.
 - **Alternative (fallback):** if the Drive relay is unavailable, app-side storage with
   isolated, access-controlled, encrypted-at-rest blobs and a short retention window.
@@ -627,8 +643,9 @@ under-18 test (deferred → fallback, §11).
   + flag persistence ✅; travel-cutoff flagging ✅ (`travel_late` flag on submit).
 - **Phase 4 — Admin:** ✅ response dashboard (search/sort, fast prev/next) + per-student
   view (identity header with "mark scheduled" toggle, hour cards, auto-computed flags,
-  weekday/weekend preferences grid with the auto-assigned cell marked, evidence
-  thumbnails → lightbox, scheduler notes). Still to do: non-response tracking, export.
+  weekday/weekend preferences grid with the auto-assigned cell marked, proof
+  thumbnails → lightbox, scheduler notes) + non-response tracking + export (CSV download
+  and the running Drive responses spreadsheet, §10/§12).
 - **Phase 5 — Ops:** Docker, reverse proxy/TLS, CI/CD, backups.
 - **Phase 6+ — Future:** SL weekend-close pickup (§18a); dynamic high-demand flags;
   position consolidation.
@@ -654,6 +671,22 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.15 (2026-06-21)** — **Phase 4 finish: non-response tracking + export + running
+  Drive sheet.** Added `/admin/non-responses` (roster − responders, split into
+  never-started vs. draft-only, plus off-roster responders). Added a **responses export**
+  — one comprehensive row per submission (identity, status, capacity, days, selections,
+  auto-assigned weekend, flags, scheduler notes, and proof files as Drive web links) — as
+  both an **in-app CSV download** (`/admin/responses/export`) and a **running
+  `Muster Responses` Google Sheet** in the Drive root, so folder members can read all
+  responses without the app and the data survives app retirement (§10, §12). The sheet is
+  built via the **Drive API's CSV→Sheet conversion** (no Sheets API needed — confirmed
+  live with the existing `drive.file` grant), rebuilt best-effort after each submit and via
+  an admin button, **rate-limited to ≥10 min between rebuilds**. **Drive folder layout
+  reorganized:** the root now holds only the spreadsheet; **all proof files move to a single
+  `proofs/` subfolder**. New pure `admin/export.ts` (matrix + CSV, test-first) + server
+  `export-data.ts` (bulk loader) + `sheet-sync.ts` (rate-limited orchestration) +
+  `lib/settings.ts` (app_settings k/v: proofs-folder id, sheet id, last-sync). **UI text:
+  "evidence" → "proof"** (routes/code/DB names unchanged).
 - **0.14 (2026-06-19)** — **Phase 4: admin views.** Built the response dashboard
   (`/admin/responses`): a searchable/sortable list of every submission (name, position,
   status, requested hours, flag count, scheduled marker) that links into the per-student

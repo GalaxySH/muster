@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { syncResponsesSheet, type SheetSyncResult } from "./sheet-sync";
 
 export interface AdminActionResult {
   ok: boolean;
@@ -63,4 +64,25 @@ export async function saveSchedulerNotes(
 ): Promise<AdminActionResult> {
   const trimmed = notes.trim();
   return updateSubmission(studentEmail, { schedulerNotes: trimmed.length ? trimmed : null });
+}
+
+export interface RebuildSheetResult extends AdminActionResult {
+  sync?: SheetSyncResult;
+}
+
+/**
+ * Admin: rebuild the running responses spreadsheet in Drive (PLAN §10, §12).
+ * Obeys the 10-minute cooldown; returns the cooldown info so the UI can say
+ * when the next rebuild is allowed.
+ */
+export async function rebuildResponsesSheet(): Promise<RebuildSheetResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  try {
+    const sync = await syncResponsesSheet();
+    revalidatePath("/admin/responses");
+    return { ok: true, sync };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Sheet sync failed." };
+  }
 }

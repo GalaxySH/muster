@@ -1,0 +1,152 @@
+/**
+ * Server-side bulk loader for the responses export (PLAN.md §10). Pulls every
+ * submission plus its selections, flags, travel, and extracurricular proofs in
+ * a handful of `IN` queries (response volume ~400), then hands plain
+ * `ExportAggregate`s to the pure builders in `export.ts`. Order matches the
+ * response list (by display name) for a stable sheet/CSV.
+ */
+import "server-only";
+import { asc, eq, inArray } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import {
+  positions,
+  shiftBlocks,
+  students,
+  submissions,
+  shiftSelections,
+  flags,
+  travelRequests,
+  extracurricularFiles,
+} from "@/lib/db/schema";
+import { toDomainBlock } from "@/lib/db/mappers";
+import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+import type { ExportAggregate, ExportTravel } from "./export";
+
+const toIsoDate = (d: Date | string): string =>
+  typeof d === "string" ? d : d.toISOString().slice(0, 10);
+
+export async function loadExportData(): Promise<ExportAggregate[]> {
+  const db = getDb();
+
+  const base = await db
+    .select({
+      submissionId: submissions.id,
+      status: submissions.status,
+      scheduled: submissions.scheduled,
+      desiredHours: submissions.desiredHours,
+      everyWeekendOptIn: submissions.everyWeekendOptIn,
+      submittedAt: submissions.submittedAt,
+      updatedAt: submissions.updatedAt,
+      schedulerNotes: submissions.schedulerNotes,
+      courseScheduleFileId: submissions.courseScheduleFileId,
+      extracurricularNotes: submissions.extracurricularNotes,
+      email: students.email,
+      displayName: students.displayName,
+      international: students.international,
+      onRoster: students.onRoster,
+      positionId: students.positionId,
+      positionName: positions.name,
+      minHours: positions.minHours,
+      minDays: positions.minDays,
+      weekendExempt: positions.weekendExempt,
+    })
+    .from(submissions)
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .leftJoin(positions, eq(students.positionId, positions.id))
+    .orderBy(asc(students.displayName), asc(submissions.studentEmail));
+
+  if (base.length === 0) return [];
+
+  const subIds = base.map((b) => b.submissionId);
+  const positionIds = [...new Set(base.map((b) => b.positionId).filter((p): p is string => !!p))];
+
+  const [blockRows, selRows, flagRows, travelRows, ecRows] = await Promise.all([
+    positionIds.length
+      ? db.select().from(shiftBlocks).where(inArray(shiftBlocks.positionId, positionIds))
+      : Promise.resolve([]),
+    db.select().from(shiftSelections).where(inArray(shiftSelections.submissionId, subIds)),
+    db.select().from(flags).where(inArray(flags.submissionId, subIds)),
+    db.select().from(travelRequests).where(inArray(travelRequests.submissionId, subIds)),
+    db.select().from(extracurricularFiles).where(inArray(extracurricularFiles.submissionId, subIds)),
+  ]);
+
+  const blocksByPosition = new Map<string, ShiftBlock[]>();
+  for (const row of blockRows) {
+    const list = blocksByPosition.get(row.positionId) ?? [];
+    list.push(toDomainBlock(row));
+    blocksByPosition.set(row.positionId, list);
+  }
+
+  const selectionBySub = new Map<string, SelectedShift[]>();
+  const autoBySub = new Map<string, SelectedShift[]>();
+  for (const s of selRows) {
+    const target = s.autoAssigned ? autoBySub : selectionBySub;
+    const list = target.get(s.submissionId) ?? [];
+    list.push({ blockId: s.shiftBlockId, day: s.day });
+    target.set(s.submissionId, list);
+  }
+
+  const flagsBySub = new Map<string, { type: string; detail: string }[]>();
+  for (const f of flagRows) {
+    const list = flagsBySub.get(f.submissionId) ?? [];
+    list.push({ type: f.type, detail: f.detail ?? "" });
+    flagsBySub.set(f.submissionId, list);
+  }
+
+  const travelBySub = new Map<string, ExportTravel[]>();
+  for (const t of travelRows) {
+    const list = travelBySub.get(t.submissionId) ?? [];
+    list.push({
+      startDate: toIsoDate(t.startDate),
+      endDate: toIsoDate(t.endDate),
+      excused: t.excused,
+      note: t.note ?? null,
+      proofFileId: t.proofFileId,
+    });
+    travelBySub.set(t.submissionId, list);
+  }
+
+  const ecBySub = new Map<string, string[]>();
+  for (const e of ecRows) {
+    const list = ecBySub.get(e.submissionId) ?? [];
+    list.push(e.fileId);
+    ecBySub.set(e.submissionId, list);
+  }
+
+  return base.map((b) => {
+    const position: Position | null =
+      b.positionId && b.minHours != null && b.minDays != null
+        ? {
+            id: b.positionId,
+            name: b.positionName ?? b.positionId,
+            minHours: b.minHours,
+            minDays: b.minDays,
+            weekendExempt: b.weekendExempt ?? false,
+          }
+        : null;
+
+    return {
+      email: b.email,
+      displayName: b.displayName,
+      international: b.international,
+      onRoster: b.onRoster,
+      positionName: b.positionName ?? null,
+      position,
+      blocks: b.positionId ? (blocksByPosition.get(b.positionId) ?? []) : [],
+      status: b.status,
+      scheduled: b.scheduled,
+      desiredHours: b.desiredHours,
+      everyWeekendOptIn: b.everyWeekendOptIn,
+      submittedAt: b.submittedAt,
+      updatedAt: b.updatedAt,
+      schedulerNotes: b.schedulerNotes ?? "",
+      selection: selectionBySub.get(b.submissionId) ?? [],
+      autoAssigned: autoBySub.get(b.submissionId) ?? [],
+      flags: flagsBySub.get(b.submissionId) ?? [],
+      courseScheduleFileId: b.courseScheduleFileId ?? null,
+      extracurricularNotes: b.extracurricularNotes ?? "",
+      extracurricularFileIds: ecBySub.get(b.submissionId) ?? [],
+      travel: travelBySub.get(b.submissionId) ?? [],
+    } satisfies ExportAggregate;
+  });
+}

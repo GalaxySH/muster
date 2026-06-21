@@ -208,6 +208,67 @@ export async function listResponses(): Promise<ResponseRow[]> {
   }));
 }
 
+export interface RosterPerson {
+  email: string;
+  displayName: string;
+  positionName: string | null;
+}
+
+export interface NonResponseReport {
+  rosterTotal: number;
+  respondedCount: number;
+  /** Roster students with no submission at all. */
+  noResponse: RosterPerson[];
+  /** Roster students who started but haven't submitted. */
+  draftOnly: RosterPerson[];
+  /** Responders not on the current roster (gaps to note). */
+  offRoster: RosterPerson[];
+}
+
+/**
+ * Non-response tracking (PLAN §10): roster − responders, split into never-started
+ * vs. draft-only, plus off-roster responders flagged separately.
+ */
+export async function listNonResponses(): Promise<NonResponseReport> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      email: students.email,
+      displayName: students.displayName,
+      onRoster: students.onRoster,
+      positionName: positions.name,
+      status: submissions.status,
+    })
+    .from(students)
+    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(positions, eq(students.positionId, positions.id))
+    .orderBy(asc(students.displayName), asc(students.email));
+
+  const noResponse: RosterPerson[] = [];
+  const draftOnly: RosterPerson[] = [];
+  const offRoster: RosterPerson[] = [];
+  let rosterTotal = 0;
+  let respondedCount = 0;
+
+  for (const r of rows) {
+    const person: RosterPerson = {
+      email: r.email,
+      displayName: r.displayName,
+      positionName: r.positionName ?? null,
+    };
+    if (r.onRoster) {
+      rosterTotal += 1;
+      if (r.status === "submitted") respondedCount += 1;
+      else if (r.status === "draft") draftOnly.push(person);
+      else noResponse.push(person);
+    } else if (r.status != null) {
+      offRoster.push(person);
+    }
+  }
+
+  return { rosterTotal, respondedCount, noResponse, draftOnly, offRoster };
+}
+
 export interface ResponseNeighbors {
   /** 1-based position in the response list, or 0 if the email isn't a responder. */
   index: number;
