@@ -14,25 +14,28 @@ relay** + student `/evidence` page (Phase 2), and the **admin views** (Phase 4):
 response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
-Sheet** in the Drive folder. The Drive relay + the running sheet are **confirmed live** —
-the admin grant + `drive.file` write/read-back into a Shared Drive folder (by
-`DRIVE_FOLDER_ID`) and the CSV→Sheet conversion both work end-to-end. Still to build:
-edit-window enforcement and the magic-link fallback.
+Sheet** in the Drive folder. The roster import handles the PCPL workbook's two sheets
+(**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
+`onRoster: false`), and the active surfaces (response list, export, non-response tracking)
+filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
+The Drive relay + the running sheet are **confirmed live**. Still to build: edit-window
+enforcement and the magic-link fallback.
 
 Drive folder layout (PLAN §12): the configured root (`DRIVE_FOLDER_ID`) holds the running
 `Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**
 (named `{email}__{kind}__{timestamp}.{ext}`). Both the proofs-folder id and the sheet id
 are discovered/created lazily and cached in `app_settings` via `src/lib/settings.ts`. The
-sheet is written through the **Drive API's CSV→Sheet conversion** (`drive/api.ts`
-`createSpreadsheetFromCsv`/`updateSpreadsheetFromCsv`) — the **Sheets API is intentionally
-not used** (it isn't enabled on the Cloud project, and CSV-conversion stays within the
-`drive.file` grant). The export matrix is pure (`admin/export.ts`, test-first) and shared
-by the CSV route (`/admin/responses/export`) and the Drive sheet; `admin/export-data.ts`
-bulk-loads it; `admin/sheet-sync.ts` orchestrates the rebuild with a **hard 10-minute
-cooldown** (applies to both the admin "Rebuild" button and the best-effort resync after a
-student submit). Proof columns in the export are public Drive web links so folder members
-can open them straight from the sheet. Note: user-facing copy says **"proof"** (the
-`/evidence` route, `evidence/` modules, and DB columns keep the old name).
+sheet is written via the **Google Sheets API v4** (`drive/api.ts` `createSpreadsheet`
+[empty native sheet via Drive] + `writeSheetValues` [read title → clear → RAW values →
+freeze/bold header]) — within the `drive.file` grant (the Sheets API is now enabled on the
+Cloud project). The export matrix is pure (`admin/export.ts`, test-first) and shared by the
+CSV route (`/admin/responses/export`) and the Drive sheet; `admin/export-data.ts`
+bulk-loads it; `admin/sheet-sync.ts` orchestrates the rebuild behind a **split rate limit**
+(pure `cooldownRemainingMs`): a **30-second** cooldown for the admin "Rebuild" button vs. a
+**10-minute** cooldown for the best-effort resync after a student submit. Timestamp columns
+(Submitted/Last edited) render full UTC `h:m:s`; proof columns are public Drive web links so
+folder members can open them straight from the sheet. Note: user-facing copy says **"proof"**
+(the `/evidence` route, `evidence/` modules, and DB columns keep the old name).
 
 Admin-views layering (`src/lib/admin/` + `src/components/admin/`): `summary.ts` is the
 **pure** presenter (`hourCap`, `buildAdminGrid` — overlays the saved selection +

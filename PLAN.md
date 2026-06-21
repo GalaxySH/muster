@@ -10,9 +10,10 @@
 
 - **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
-  per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Next:
-  edit-window enforcement, magic-link fallback, ops.
-- **Version:** 0.15
+  per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
+  now handles the People Coming / People Leaving split; student schedule-notes field added.
+  Next: edit-window enforcement, magic-link fallback, ops.
+- **Version:** 0.16
 - **Last updated:** 2026-06-21
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -89,7 +90,10 @@ blocks, and form windows are configuration, not hardcoded), and privacy-minimizi
     a finite pool (§18a).
 
 ### 4.2 Admin flow
-- **Roster import** — upload the PCPL workbook; parse sheet PC; upsert students.
+- **Roster import** — upload the PCPL workbook; parse **People Coming** (active →
+  `onRoster: true`) and **People Leaving** (resigned/fired → `onRoster: false`); upsert
+  students. People moved to People Leaving drop out of listed/required responses; their
+  submission is retained in the DB.
 - **Response dashboard** — full response list, fast navigation, search/sort.
 - **Per-student detail** — expanded view + computed stats (§10).
 - **Flags window** — soft-requirement violations (e.g. auto-assigned weekend).
@@ -528,14 +532,16 @@ auth-method-agnostic.
     `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
   - **Running responses spreadsheet (recovery + non-admin view):** a single
     **`Muster Responses` Google Sheet** in the root, rebuilt from the same export
-    matrix the in-app CSV uses (one comprehensive row per submission, proof columns
-    as `drive.google.com/file/d/<id>/view` links). It lets **folder members read all
-    responses without the app**, and **duplicates the data so it survives app
-    failure/retirement**. Built purely via the **Drive API's CSV→Sheet conversion**
-    (`files.create`/`files.update` with a `text/csv` body and the spreadsheet
-    mimeType) so the **Sheets API need not be enabled** — still within `drive.file`.
-    Rebuilt best-effort after each submit **and** by an admin button, **rate-limited
-    to ≥10 min between rebuilds**. The sheet id + last-sync time live in `app_settings`.
+    matrix the in-app CSV uses (one comprehensive row per submission; timestamp
+    columns show full `h:m:s`; proof columns are `drive.google.com/file/d/<id>/view`
+    links). It lets **folder members read all responses without the app**, and
+    **duplicates the data so it survives app failure/retirement**. Written via the
+    **Google Sheets API v4** (clear → RAW values → freeze/bold header) within the
+    `drive.file` grant (the Sheets API is enabled on the Cloud project). Only
+    `onRoster` students are included (People Leaving drop out). Rebuilt best-effort
+    after each submit **and** by an admin button, behind a **split cooldown: 30 s for
+    the manual rebuild, 10 min for the automatic post-submit resync**. The sheet id +
+    last-sync time live in `app_settings`.
   - **Retention:** purge images after schedules are written.
 - **Alternative (fallback):** if the Drive relay is unavailable, app-side storage with
   isolated, access-controlled, encrypted-at-rest blobs and a short retention window.
@@ -671,6 +677,19 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.16 (2026-06-21)** — **Roster two-sheet split, student notes, sheet/export polish.**
+  Roster import now reads both PCPL sheets — **People Coming** (active → `onRoster: true`)
+  and **People Leaving** (resigned/fired → `onRoster: false`); the response list, export,
+  and running sheet filter to `onRoster: true`, so people who left drop out of listed/
+  required responses (submission retained). Added a **student schedule-notes** free-text
+  field to the availability form (`submissions.student_notes`, migration `0004`), shown on
+  the per-student view and added as a column to the export. Switched the running sheet from
+  the Drive CSV→Sheet conversion to the **Google Sheets API v4** (now enabled on the Cloud
+  project) for proper cell control (RAW values + frozen/bold header), still within
+  `drive.file`. **Split the rebuild rate limit** — 30 s for the admin manual rebuild vs.
+  10 min for the automatic post-submit resync (pure `cooldownRemainingMs`). Timestamp
+  columns (Submitted / Last edited) now show full `h:m:s`. Removed the "conflicts aren't
+  auto-detected" disclaimer under the course schedule on the per-student view.
 - **0.15 (2026-06-21)** — **Phase 4 finish: non-response tracking + export + running
   Drive sheet.** Added `/admin/non-responses` (roster − responders, split into
   never-started vs. draft-only, plus off-roster responders). Added a **responses export**
