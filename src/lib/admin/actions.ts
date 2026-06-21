@@ -12,7 +12,11 @@ import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { normalizeEmail } from "@/lib/auth/policy";
-import { syncResponsesSheet, type SheetSyncResult } from "./sheet-sync";
+import {
+  syncResponsesSheet,
+  RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
+  type SheetSyncResult,
+} from "./sheet-sync";
 
 export interface AdminActionResult {
   ok: boolean;
@@ -72,14 +76,14 @@ export interface RebuildSheetResult extends AdminActionResult {
 
 /**
  * Admin: rebuild the running responses spreadsheet in Drive (PLAN §10, §12).
- * Obeys the 10-minute cooldown; returns the cooldown info so the UI can say
- * when the next rebuild is allowed.
+ * Obeys the short 30-second manual cooldown; returns the cooldown info so the UI
+ * can say when the next rebuild is allowed.
  */
 export async function rebuildResponsesSheet(): Promise<RebuildSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncResponsesSheet();
+    const sync = await syncResponsesSheet({ cooldownMs: RESPONSES_SHEET_MANUAL_COOLDOWN_MS });
     revalidatePath("/admin/responses");
     return { ok: true, sync };
   } catch (e) {

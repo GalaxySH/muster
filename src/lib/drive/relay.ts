@@ -22,9 +22,9 @@ import {
   deleteFile,
   findChildByName,
   createFolder,
-  createSpreadsheetFromCsv,
-  updateSpreadsheetFromCsv,
-  DriveMediaError,
+  createSpreadsheet,
+  writeSheetValues,
+  SheetWriteError,
   FOLDER_MIME,
   SPREADSHEET_MIME,
   type DownloadResult,
@@ -110,13 +110,14 @@ export interface ResponsesSheetResult {
 }
 
 /**
- * Write the running responses spreadsheet in the Drive root from CSV content
+ * Write the running responses spreadsheet in the Drive root from a values matrix
  * (find-or-create by cached id, then name). The sheet duplicates the response
  * data so folder members can read it without the app, and survives app
- * retirement (PLAN §10, §12). Built via the Drive API's CSV→Sheet conversion so
- * the Sheets API need not be enabled. Recovers if the cached sheet was deleted.
+ * retirement (PLAN §10, §12). Written via the Sheets API (proper cell control —
+ * clear, RAW values, frozen/bold header) within the `drive.file` grant. Recovers
+ * if the cached sheet was deleted out from under us (404 → recreate + retry once).
  */
-export async function upsertResponsesSheet(csv: string): Promise<ResponsesSheetResult> {
+export async function upsertResponsesSheet(values: string[][]): Promise<ResponsesSheetResult> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
   const accessToken = await getAccessToken(grant.refreshToken);
@@ -129,30 +130,18 @@ export async function upsertResponsesSheet(csv: string): Promise<ResponsesSheetR
       parentId: root,
       name: RESPONSES_SHEET_NAME,
       mimeType: SPREADSHEET_MIME,
-    }));
+    })) ??
+    (await createSpreadsheet({ accessToken, name: RESPONSES_SHEET_NAME, parentId: root }));
 
-  if (!sheetId) {
-    sheetId = await createSpreadsheetFromCsv({
-      accessToken,
-      name: RESPONSES_SHEET_NAME,
-      parentId: root,
-      csv,
-    });
-  } else {
-    try {
-      await updateSpreadsheetFromCsv({ accessToken, fileId: sheetId, csv });
-    } catch (e) {
-      // The cached sheet was deleted out from under us — recreate once.
-      if (e instanceof DriveMediaError && e.status === 404) {
-        sheetId = await createSpreadsheetFromCsv({
-          accessToken,
-          name: RESPONSES_SHEET_NAME,
-          parentId: root,
-          csv,
-        });
-      } else {
-        throw e;
-      }
+  try {
+    await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
+  } catch (e) {
+    // The cached/found sheet was deleted out from under us — recreate once.
+    if (e instanceof SheetWriteError && e.status === 404) {
+      sheetId = await createSpreadsheet({ accessToken, name: RESPONSES_SHEET_NAME, parentId: root });
+      await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
+    } else {
+      throw e;
     }
   }
 

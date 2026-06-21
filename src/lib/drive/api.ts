@@ -1,8 +1,9 @@
 /**
- * Thin Google Drive v3 REST calls over fetch (PLAN.md §12).
+ * Thin Google Drive v3 + Sheets v4 REST calls over fetch (PLAN.md §12).
  *
- * Only what the relay needs: multipart create (upload) and media get
- * (download). `supportsAllDrives` is set so a Shared Drive folder works as the
+ * What the relay needs: multipart create (upload) and media get (download) for
+ * proof files, plus native-Sheet create + cell writes for the running responses
+ * spreadsheet. `supportsAllDrives` is set so a Shared Drive folder works as the
  * destination. Bytes are passed through in memory — nothing is written to disk.
  */
 import "server-only";
@@ -11,11 +12,10 @@ import { randomUUID } from "node:crypto";
 const UPLOAD_URL =
   "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id";
 const FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const UPDATE_MEDIA_URL = "https://www.googleapis.com/upload/drive/v3/files";
+const SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
 export const SPREADSHEET_MIME = "application/vnd.google-apps.spreadsheet";
-const CSV_MIME = "text/csv";
 
 export interface UploadParams {
   accessToken: string;
@@ -119,84 +119,111 @@ export function createFolder(p: {
 }
 
 /**
- * Create a Google Sheet from CSV content (Drive import conversion): the metadata
- * targets the native spreadsheet mimeType while the media part is `text/csv`, so
- * Drive converts on upload. Uses ONLY the Drive API (the Sheets API need not be
- * enabled on the Cloud project), staying within the `drive.file` grant.
+ * Create an EMPTY native Google Sheet via Drive `files.create` (metadata only),
+ * returning its spreadsheet id. The cells are then filled via the Sheets API
+ * (`writeSheetValues`). `drive.file` covers app-created spreadsheets, so no
+ * broader scope is needed.
  */
-export async function createSpreadsheetFromCsv(p: {
+export function createSpreadsheet(p: {
   accessToken: string;
   name: string;
   parentId: string | null;
-  csv: string;
 }): Promise<string> {
-  const metadata: Record<string, unknown> = { name: p.name, mimeType: SPREADSHEET_MIME };
-  if (p.parentId) metadata.parents = [p.parentId];
-
-  const boundary = `muster-${randomUUID()}`;
-  const head =
-    `--${boundary}\r\n` +
-    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-    `${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\n` +
-    `Content-Type: ${CSV_MIME}; charset=UTF-8\r\n\r\n`;
-  const tail = `\r\n--${boundary}--`;
-  const body = Buffer.concat([
-    Buffer.from(head, "utf8"),
-    Buffer.from(p.csv, "utf8"),
-    Buffer.from(tail, "utf8"),
-  ]);
-
-  const res = await fetch(UPLOAD_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${p.accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
-  if (!res.ok) {
-    throw new DriveMediaError(res.status, `Sheet create failed: ${await safeText(res)}`);
-  }
-  const json = (await res.json()) as { id?: string };
-  if (!json.id) throw new Error("Sheet create returned no id.");
-  return json.id;
+  return createMetaFile({ ...p, mimeType: SPREADSHEET_MIME });
 }
 
 /**
- * Replace an existing Google Sheet's content by uploading new CSV (Drive media
- * update with conversion). Throws a typed error so the caller can recreate on a
- * 404 (sheet was deleted).
+ * Overwrite the first sheet of a spreadsheet with `values` via the Sheets API
+ * v4: read the first sheet's title + numeric id, clear stale content, write the
+ * new values RAW, then bold + freeze the header row. The values write (clear +
+ * update) is the must-have; the header formatting is best-effort styling layered
+ * on top — if `batchUpdate` fails it throws, but the values are already written
+ * (it does not roll them back). Throws `SheetWriteError` carrying the HTTP status
+ * so the caller can recreate on a 404 (sheet deleted).
  */
-export async function updateSpreadsheetFromCsv(p: {
+export async function writeSheetValues(p: {
   accessToken: string;
-  fileId: string;
-  csv: string;
+  spreadsheetId: string;
+  values: string[][];
 }): Promise<void> {
-  const res = await fetch(
-    `${UPDATE_MEDIA_URL}/${encodeURIComponent(p.fileId)}?uploadType=media&supportsAllDrives=true`,
+  const id = encodeURIComponent(p.spreadsheetId);
+  const auth = { Authorization: `Bearer ${p.accessToken}` };
+
+  // a. Read the first sheet's title + numeric sheetId (needed for clear/format).
+  const metaRes = await fetch(`${SHEETS_URL}/${id}?fields=sheets(properties(sheetId,title))`, {
+    headers: auth,
+  });
+  if (!metaRes.ok) {
+    throw new SheetWriteError(metaRes.status, `Sheet read failed: ${await safeText(metaRes)}`);
+  }
+  const meta = (await metaRes.json()) as {
+    sheets?: { properties?: { sheetId?: number; title?: string } }[];
+  };
+  const first = meta.sheets?.[0]?.properties;
+  const title = first?.title;
+  const sheetId = first?.sheetId;
+  if (title === undefined || sheetId === undefined) {
+    throw new SheetWriteError(metaRes.status, "Sheet metadata missing first-sheet title/id.");
+  }
+
+  // b. Clear stale content so a shorter rebuild doesn't leave orphan rows.
+  const clearRes = await fetch(`${SHEETS_URL}/${id}/values/${encodeURIComponent(title)}:clear`, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!clearRes.ok) {
+    throw new SheetWriteError(clearRes.status, `Sheet clear failed: ${await safeText(clearRes)}`);
+  }
+
+  // c. Write the new values RAW (no formula/number coercion).
+  const updateRes = await fetch(
+    `${SHEETS_URL}/${id}/values/${encodeURIComponent(`${title}!A1`)}?valueInputOption=RAW`,
     {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${p.accessToken}`,
-        "Content-Type": `${CSV_MIME}; charset=UTF-8`,
-      },
-      body: Buffer.from(p.csv, "utf8"),
+      method: "PUT",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: p.values }),
     },
   );
-  if (!res.ok) {
-    throw new DriveMediaError(res.status, `Sheet update failed: ${await safeText(res)}`);
+  if (!updateRes.ok) {
+    throw new SheetWriteError(updateRes.status, `Sheet write failed: ${await safeText(updateRes)}`);
+  }
+
+  // d. Freeze + bold the header row (modest styling; best-effort after values).
+  const batchRes = await fetch(`${SHEETS_URL}/${id}:batchUpdate`, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [
+        {
+          updateSheetProperties: {
+            properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+            fields: "gridProperties.frozenRowCount",
+          },
+        },
+        {
+          repeatCell: {
+            range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: "userEnteredFormat.textFormat.bold",
+          },
+        },
+      ],
+    }),
+  });
+  if (!batchRes.ok) {
+    throw new SheetWriteError(batchRes.status, `Sheet format failed: ${await safeText(batchRes)}`);
   }
 }
 
-/** Carries the HTTP status so callers can recover from a 404 (file deleted). */
-export class DriveMediaError extends Error {
+/** Carries the HTTP status so callers can recover from a 404 (sheet deleted). */
+export class SheetWriteError extends Error {
   constructor(
     readonly status: number,
     message: string,
   ) {
     super(message);
-    this.name = "DriveMediaError";
+    this.name = "SheetWriteError";
   }
 }
 
