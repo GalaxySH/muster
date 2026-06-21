@@ -67,6 +67,7 @@ export default async function AvailabilityPreviewPage({
           initialAutoAssigned={[]}
           initialEveryWeekendOptIn={false}
           initialDesiredHours={null}
+          initialNotes=""
           initialStatus={null}
           preview
         />

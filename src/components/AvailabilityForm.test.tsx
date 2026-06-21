@@ -52,6 +52,7 @@ function renderForm(
       initialAutoAssigned={[]}
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
+      initialNotes=""
       initialStatus={null}
       preview={opts.preview}
     />,

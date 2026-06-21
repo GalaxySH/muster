@@ -31,6 +31,8 @@ export interface SaveAvailabilityInput {
   selection: SelectedShift[];
   everyWeekendOptIn: boolean;
   desiredHours: number | null;
+  /** Free-text note the student adds about their requested schedule (PLAN §7). */
+  notes: string;
   submit: boolean;
 }
 
@@ -85,6 +87,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
   });
 
   const desiredHours = input.desiredHours && input.desiredHours > 0 ? input.desiredHours : null;
+  const studentNotes = input.notes.trim() || null;
 
   if (input.submit) {
     const errors = result.checks
@@ -116,6 +119,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
           status,
           everyWeekendOptIn: input.everyWeekendOptIn,
           desiredHours,
+          studentNotes,
           submittedAt: input.submit ? new Date() : existing.submittedAt,
         })
         .where(eq(submissions.id, submissionId));
@@ -127,6 +131,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
         status,
         everyWeekendOptIn: input.everyWeekendOptIn,
         desiredHours,
+        studentNotes,
         submittedAt: input.submit ? new Date() : null,
       });
     }

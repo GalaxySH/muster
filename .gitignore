@@ -49,3 +49,6 @@ yarn-error.log*
 
 # Playwright MCP scratch (snapshots/screenshots)
 .playwright-mcp/
+
+# Claude Code agent worktrees (temporary, auto-cleaned)
+.claude/worktrees/

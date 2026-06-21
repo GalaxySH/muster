@@ -35,6 +35,7 @@ export interface ExportAggregate {
   everyWeekendOptIn: boolean;
   submittedAt: Date | null;
   updatedAt: Date;
+  studentNotes: string;
   schedulerNotes: string;
   selection: SelectedShift[];
   autoAssigned: SelectedShift[];
@@ -63,6 +64,7 @@ export const EXPORT_HEADERS = [
   "Selections",
   "Auto-assigned weekend",
   "Flags",
+  "Student notes",
   "Scheduler notes",
   "Course schedule",
   "Extracurricular notes",
@@ -83,7 +85,9 @@ const DAY_INDEX = new Map<Day, number>(ALL_DAYS.map((d, i) => [d, i]));
 
 const driveLink = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
 const yesNo = (b: boolean) => (b ? "yes" : "no");
-const isoDate = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+// Full UTC timestamp (date + h:m:s) for timestamp columns, e.g. "2026-08-12 10:00:00".
+const fmtTimestamp = (d: Date | null) =>
+  d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : "";
 const round1 = (n: number) => (Math.round(n * 10) / 10).toString();
 
 function describeCells(cells: readonly SelectedShift[], blocks: readonly ShiftBlock[]): string {
@@ -123,8 +127,8 @@ export function buildExportMatrix(rows: readonly ExportAggregate[]): string[][] 
       yesNo(r.international),
       r.status,
       yesNo(r.scheduled),
-      isoDate(r.submittedAt),
-      isoDate(r.updatedAt),
+      fmtTimestamp(r.submittedAt),
+      fmtTimestamp(r.updatedAt),
       r.desiredHours != null ? String(r.desiredHours) : "",
       yesNo(r.everyWeekendOptIn),
       round1(capacity),
@@ -134,6 +138,7 @@ export function buildExportMatrix(rows: readonly ExportAggregate[]): string[][] 
       describeCells(r.selection, r.blocks),
       describeCells(r.autoAssigned, r.blocks),
       r.flags.map((f) => f.detail || f.type).join(" | "),
+      r.studentNotes,
       r.schedulerNotes,
       r.courseScheduleFileId ? driveLink(r.courseScheduleFileId) : "",
       r.extracurricularNotes,

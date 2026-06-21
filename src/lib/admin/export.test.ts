@@ -46,6 +46,7 @@ function aggregate(over: Partial<ExportAggregate> = {}): ExportAggregate {
     everyWeekendOptIn: false,
     submittedAt: new Date("2026-08-12T10:00:00Z"),
     updatedAt: new Date("2026-08-13T10:00:00Z"),
+    studentNotes: "Prefer mornings",
     schedulerNotes: "",
     selection: [{ blockId: "wd-open", day: "mon" }],
     autoAssigned: [{ blockId: "we", day: "sun" }],
@@ -74,7 +75,9 @@ describe("buildExportMatrix", () => {
     expect(cell("Name")).toBe("Park, Jordan");
     expect(cell("International")).toBe("no");
     expect(cell("Status")).toBe("submitted");
-    expect(cell("Submitted")).toBe("2026-08-12");
+    expect(cell("Submitted")).toBe("2026-08-12 10:00:00");
+    expect(cell("Last edited")).toBe("2026-08-13 10:00:00");
+    expect(cell("Student notes")).toBe("Prefer mornings");
     expect(cell("Selections")).toBe("Mon 6:30a–10:15a");
     expect(cell("Auto-assigned weekend")).toBe("Sun 5p–8p");
     // Capacity is selection-only (the weekend cell here is auto-assigned, not a

@@ -196,6 +196,16 @@ export default async function StudentDetailPage({
             </div>
           </div>
 
+          {/* Student's own note about their requested schedule */}
+          {submission.studentNotes && (
+            <div style={{ ...card, ...block, marginTop: 12 }}>
+              <SectionLabel>student notes</SectionLabel>
+              <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
+                {submission.studentNotes}
+              </p>
+            </div>
+          )}
+
           {/* Preferences grid + course schedule */}
           <div style={gridAndSchedule}>
             <div style={{ ...card, ...block }}>
@@ -228,11 +238,6 @@ export default async function StudentDetailPage({
                   No course schedule uploaded.
                 </p>
               )}
-              <div
-                style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 8 }}
-              >
-                Eyeball against the grid — conflicts aren&apos;t auto-detected (image only).
-              </div>
             </div>
           </div>
 

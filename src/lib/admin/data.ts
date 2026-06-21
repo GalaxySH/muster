@@ -38,6 +38,7 @@ export interface StudentDetail {
     status: "draft" | "submitted";
     everyWeekendOptIn: boolean;
     desiredHours: number | null;
+    studentNotes: string;
     submittedAt: Date | null;
     updatedAt: Date;
     scheduled: boolean;
@@ -94,6 +95,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       status: subRow.status,
       everyWeekendOptIn: subRow.everyWeekendOptIn,
       desiredHours: subRow.desiredHours,
+      studentNotes: subRow.studentNotes ?? "",
       submittedAt: subRow.submittedAt,
       updatedAt: subRow.updatedAt,
       scheduled: subRow.scheduled,
@@ -170,6 +172,9 @@ export async function listResponses(): Promise<ResponseRow[]> {
     .from(submissions)
     .innerJoin(students, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
+    // Hide responders who have since moved to "People Leaving" (PLAN §4.2):
+    // their submission is retained but no longer listed as an active response.
+    .where(eq(students.onRoster, true))
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 
   // One follow-up query for flag counts keyed by submission, avoiding a GROUP BY

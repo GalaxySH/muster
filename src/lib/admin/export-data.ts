@@ -37,6 +37,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       everyWeekendOptIn: submissions.everyWeekendOptIn,
       submittedAt: submissions.submittedAt,
       updatedAt: submissions.updatedAt,
+      studentNotes: submissions.studentNotes,
       schedulerNotes: submissions.schedulerNotes,
       courseScheduleFileId: submissions.courseScheduleFileId,
       extracurricularNotes: submissions.extracurricularNotes,
@@ -53,6 +54,9 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
     .from(submissions)
     .innerJoin(students, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
+    // Exclude people moved to "People Leaving" from the export/running sheet
+    // (PLAN §4.2) — their submission stays in the DB but isn't a live response.
+    .where(eq(students.onRoster, true))
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 
   if (base.length === 0) return [];
@@ -139,6 +143,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       everyWeekendOptIn: b.everyWeekendOptIn,
       submittedAt: b.submittedAt,
       updatedAt: b.updatedAt,
+      studentNotes: b.studentNotes ?? "",
       schedulerNotes: b.schedulerNotes ?? "",
       selection: selectionBySub.get(b.submissionId) ?? [],
       autoAssigned: autoBySub.get(b.submissionId) ?? [],

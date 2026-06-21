@@ -69,6 +69,9 @@ export const submissions = mysqlTable("submissions", {
   status: mysqlEnum("status", submissionStatusEnum).notNull().default("draft"),
   everyWeekendOptIn: boolean("every_weekend_opt_in").notNull().default(false),
   desiredHours: int("desired_hours"),
+  // Free-text the student adds on the availability form about their requested
+  // schedule (PLAN §7). Distinct from extracurricular_notes and scheduler_notes.
+  studentNotes: text("student_notes"),
   courseScheduleFileId: varchar("course_schedule_file_id", { length: 255 }),
   extracurricularNotes: text("extracurricular_notes"),
   // Admin-side progress tracking (PLAN §10a): the "mark scheduled ✓" toggle that

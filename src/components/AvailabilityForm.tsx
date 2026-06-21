@@ -41,6 +41,7 @@ export interface AvailabilityFormProps {
   initialAutoAssigned: SelectedShift[];
   initialEveryWeekendOptIn: boolean;
   initialDesiredHours: number | null;
+  initialNotes: string;
   initialStatus: "draft" | "submitted" | null;
   /** Admin inspection mode: live validation works, but nothing is persisted. */
   preview?: boolean;
@@ -55,6 +56,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   );
   const [optIn, setOptIn] = useState(props.initialEveryWeekendOptIn);
   const [desired, setDesired] = useState(props.initialDesiredHours?.toString() ?? "");
+  const [notes, setNotes] = useState(props.initialNotes);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -124,6 +126,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         selection,
         everyWeekendOptIn: optIn,
         desiredHours,
+        notes,
         submit,
       });
       if (res.ok) {
@@ -241,6 +244,24 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         <button type="button" onClick={() => setDesired(String(maxHours))}>
           Max ({maxHours}h)
         </button>
+      </div>
+
+      <div style={{ margin: "1.2rem 0" }}>
+        <label htmlFor="schedule-notes" style={{ display: "block", color: "#555", marginBottom: 6 }}>
+          Anything else about your requested schedule?{" "}
+          <span style={{ color: "#888" }}>(optional)</span>
+        </label>
+        <textarea
+          id="schedule-notes"
+          value={notes}
+          onChange={(e) => {
+            setNotes(e.target.value);
+            setMessage(null);
+          }}
+          rows={3}
+          placeholder="e.g. I prefer mornings; I have a standing commitment Tue afternoons; happy to close on Fridays…"
+          style={{ width: "100%", maxWidth: 640, boxSizing: "border-box", padding: 8 }}
+        />
       </div>
 
       <ChecklistPanel

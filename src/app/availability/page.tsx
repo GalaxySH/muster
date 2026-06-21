@@ -49,6 +49,7 @@ export default async function AvailabilityPage() {
         initialAutoAssigned={form.autoAssigned}
         initialEveryWeekendOptIn={form.submission?.everyWeekendOptIn ?? false}
         initialDesiredHours={form.submission?.desiredHours ?? null}
+        initialNotes={form.submission?.studentNotes ?? ""}
         initialStatus={form.submission?.status ?? null}
       />
     </main>

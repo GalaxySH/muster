@@ -34,6 +34,7 @@ export interface ExistingSubmission {
   status: "draft" | "submitted";
   everyWeekendOptIn: boolean;
   desiredHours: number | null;
+  studentNotes: string;
   submittedAt: Date | null;
 }
 
@@ -85,6 +86,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
       status: subRow.status,
       everyWeekendOptIn: subRow.everyWeekendOptIn,
       desiredHours: subRow.desiredHours,
+      studentNotes: subRow.studentNotes ?? "",
       submittedAt: subRow.submittedAt,
     };
     const selRows = await db

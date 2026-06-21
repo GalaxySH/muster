@@ -1,0 +1,1 @@
+ALTER TABLE `submissions` ADD `student_notes` text;
