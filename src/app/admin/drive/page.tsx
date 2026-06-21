@@ -9,7 +9,7 @@ import { DriveControls } from "@/components/DriveControls";
 const ERROR_TEXT: Record<string, string> = {
   state: "The sign-in state didn't match (possible expired link). Please try connecting again.",
   exchange: "Google didn't return the expected grant. Try again; if it persists, revoke the app's access in your Google account and reconnect.",
-  access_denied: "You declined the permission. Drive access is required to relay evidence uploads.",
+  access_denied: "You declined the permission. Drive access is required to relay proof uploads.",
 };
 
 export default async function AdminDrivePage({
@@ -32,7 +32,7 @@ export default async function AdminDrivePage({
       </p>
       <h1>Google Drive connection</h1>
       <p style={{ color: "#555" }}>
-        Evidence images (course schedules, extracurricular proof, travel proof) are relayed into
+        Proof files (course schedules, extracurricular proof, travel proof) are relayed into
         UW-managed Google Drive using an admin grant. The app stores only the Drive file id, never
         the image bytes.
       </p>

@@ -14,7 +14,7 @@ export default async function EvidencePage() {
   if (!student) {
     return (
       <main style={{ padding: "2rem", maxWidth: 640 }}>
-        <h1>Evidence &amp; excusals</h1>
+        <h1>Proof &amp; excusals</h1>
         <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
         <Link href="/me">← Back</Link>
       </main>

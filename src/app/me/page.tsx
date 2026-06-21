@@ -38,7 +38,7 @@ export default async function MePage() {
             )}
           </p>
           <p>
-            <Link href="/evidence">Upload course schedule &amp; excusal evidence →</Link>
+            <Link href="/evidence">Upload course schedule &amp; excusal proof →</Link>
           </p>
         </div>
       ) : (

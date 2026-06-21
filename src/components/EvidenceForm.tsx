@@ -55,7 +55,7 @@ export function EvidenceForm({
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <h1>Evidence &amp; excusals</h1>
+      <h1>Proof &amp; excusals</h1>
       <p style={{ color: "#555" }}>
         Upload images or PDFs. These are shown to your scheduler for manual review — they are not
         read automatically. Your course schedule is required; the rest are optional.
