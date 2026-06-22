@@ -32,6 +32,6 @@ export async function getAppSession(): Promise<AppSession | null> {
     email: normalized,
     name: session.user?.name ?? null,
     isAdmin,
-    method: "google",
+    method: session.user?.method === "magic-link" ? "magic-link" : "google",
   };
 }

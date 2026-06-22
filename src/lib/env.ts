@@ -21,7 +21,7 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
-  EMAIL_FROM: z.string().default("GDEC Scheduling <sched@hauge.rocks>"),
+  EMAIL_FROM: z.string().default("GDEC Scheduling <no-reply@re.hauge.rocks>"),
   ADMIN_EMAILS: z.string().default(""),
   // Base64 256-bit key for encrypting secrets at rest (the Drive refresh token).
   ENCRYPTION_KEY: z

@@ -19,8 +19,8 @@ Sheet** in the Drive folder. The roster import handles the PCPL workbook's two s
 (**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
 `onRoster: false`), and the active surfaces (response list, export, non-response tracking)
 filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
-The Drive relay + the running sheet are **confirmed live**. Still to build: the magic-link
-fallback and ops/Docker hardening.
+The Drive relay + the running sheet are **confirmed live**. The **magic-link fallback**
+(auth for users Google rejects) is built (PLAN §11). Still to build: ops/Docker hardening.
 
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
 student groups** with open/close windows — two gates: (1) **membership** — a student must
@@ -111,12 +111,24 @@ owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPa
 cross the client/server boundary as **ISO instants** (client converts its local
 `datetime-local` input to ISO before sending) so they're timezone-unambiguous.
 
-Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`.
-Google OAuth client must list the redirect URI `<base>/api/auth/callback/google`
-(localhost and `https://muster.hauge.rocks`). JWT sessions (no DB adapter) resolve
-through `getAppSession()` in `src/lib/auth/session.ts` — the method-agnostic seam
-the magic-link fallback will plug into. **Admin = `ADMIN_EMAILS` env allowlist OR
-the roster-imported `admin_users` table** (computed in `getAppSession`).
+Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`,
+plus the **magic-link** `/magic/redeem`. Google OAuth client must list the redirect URI
+`<base>/api/auth/callback/google` (localhost and `https://muster.hauge.rocks`). JWT
+sessions (no DB adapter) resolve through `getAppSession()` in `src/lib/auth/session.ts` —
+the method-agnostic seam **both** Google and magic-link plug into (`method` is carried on
+the JWT). **Admin = `ADMIN_EMAILS` env allowlist OR the roster-imported `admin_users`
+table** (computed in `getAppSession`).
+
+Magic-link fallback (PLAN §11) — auth only, for users Google rejects: pure token/validity/
+cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redeem in
+`magic-link-store.ts` (only the SHA-256 hash stored; redemption is one atomic single-use
+`UPDATE`); delivery via `src/lib/email/resend.ts` (verified domain `re.hauge.rocks`;
+**no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). Server
+actions in `magic-link-actions.ts`: `requestMagicLink` (eligibility = known student/admin
+only; 60 s/email cooldown; **always-neutral** redirect to `/signin?sent=1` — no
+enumeration) and `redeemAndSignIn` (hands token+email to the `magic-link` Credentials
+provider in `config.ts`). Access still requires the roster + group gates (§13); non-roster
+self-add stays deferred (the dormant `applyDefaultGroupOnSelfAdd` hook).
 
 For local testing (incl. Playwright MCP), a **dev-login bypass** at `/dev-login`
 signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated by
@@ -255,11 +267,13 @@ email) — keep the rest of the app auth-method-agnostic:
 
 1. **Google OAuth, sign-in scopes only** (`openid email profile`), `hd=wisc.edu`
    enforced via an Auth.js domain-check callback. This is the student path.
-2. **Self-service magic link** fallback for users Google rejects (mainly under-18):
-   app generates + owns a high-entropy token (stored **hashed**), a transactional
-   email provider only delivers it; redemption sets a **form-window-scoped** session
-   cookie. Responses are always neutral ("if eligible, we've sent a link") and
-   rate-limited to avoid roster probing.
+2. **Self-service magic link** (built, auth-only — PLAN §11) for users Google rejects
+   (mainly under-18): the app generates + owns a high-entropy token (stored **hashed**,
+   single-use, 30-min), Resend delivers it (from `re.hauge.rocks`); redemption via the
+   `magic-link` Credentials provider sets the same JWT session (`method: "magic-link"`).
+   Responses are always neutral ("if eligible, we've sent a link"), issued only to known
+   students/admins, and rate-limited to avoid roster probing. (Session is a standard JWT
+   for now; the form-window-scoped cookie in §11 is a noted refinement.)
 
 The admin path additionally holds the `drive.file` grant for the image relay.
 

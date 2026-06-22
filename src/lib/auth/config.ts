@@ -18,9 +18,18 @@ import {
   isWiscEmail,
   normalizeEmail,
 } from "./policy";
+import { redeemMagicLink } from "./magic-link-store";
 
 /** DEV-LOGIN provider id, referenced by the dev sign-in action. */
 export const DEV_LOGIN_PROVIDER = "dev-login";
+/** Magic-link provider id, referenced by the redemption action (PLAN §11). */
+export const MAGIC_LINK_PROVIDER = "magic-link";
+
+/** Best-effort client IP from proxy headers (audited on redemption). */
+function ipFromRequest(request: Request | undefined): string | null {
+  const xff = request?.headers.get("x-forwarded-for");
+  return xff ? (xff.split(",")[0]?.trim() ?? null) : null;
+}
 
 const providers: Provider[] = [
   Google({
@@ -29,6 +38,20 @@ const providers: Provider[] = [
     // hd pre-filters the Google account chooser to the org; the signIn
     // callback is the actual gate.
     authorization: { params: { hd: WISC_DOMAIN, prompt: "select_account" } },
+  }),
+  // Magic-link fallback (PLAN §11): the token is verified + atomically consumed
+  // in redeemMagicLink; authorize returns the bound email on success.
+  Credentials({
+    id: MAGIC_LINK_PROVIDER,
+    name: "Email link",
+    credentials: { token: {}, email: {} },
+    async authorize(creds, request) {
+      const token = typeof creds?.token === "string" ? creds.token : "";
+      const email = typeof creds?.email === "string" ? creds.email : "";
+      if (!token || !email) return null;
+      const redeemed = await redeemMagicLink({ token, email, ip: ipFromRequest(request) });
+      return redeemed ? { id: redeemed, email: redeemed } : null;
+    },
   }),
 ];
 
@@ -59,21 +82,26 @@ export const authConfig: NextAuthConfig = {
   providers,
   callbacks: {
     signIn({ account, profile }) {
-      // The dev-login provider gates itself in authorize(); allow it through.
+      // The dev-login + magic-link providers gate themselves in authorize().
       if (account?.provider === DEV_LOGIN_PROVIDER) return devLoginEnabled;
+      if (account?.provider === MAGIC_LINK_PROVIDER) return true;
       return isAllowedGoogleSignIn({
         email: profile?.email,
         emailVerified: profile?.email_verified,
         hd: typeof profile?.hd === "string" ? profile.hd : null,
       });
     },
-    jwt({ token }) {
+    jwt({ token, account }) {
+      // `account` is present only on initial sign-in; persist the method after.
+      if (account?.provider === MAGIC_LINK_PROVIDER) token.method = "magic-link";
+      else if (account?.provider) token.method = "google";
       token.isAdmin = token.email ? isAdminEmail(token.email, adminEmails) : false;
       return token;
     },
     session({ session, token }) {
       if (session.user) {
         session.user.isAdmin = Boolean(token.isAdmin);
+        session.user.method = token.method === "magic-link" ? "magic-link" : "google";
       }
       return session;
     },

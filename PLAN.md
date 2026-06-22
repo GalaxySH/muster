@@ -13,8 +13,8 @@
   per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
   now handles the People Coming / People Leaving split; student schedule-notes field added.
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
-  Next: magic-link fallback, ops.
-- **Version:** 0.17
+  **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). Next: ops.
+- **Version:** 0.18
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -429,11 +429,25 @@ The view the scheduler works from. Layout (see wireframe):
 - POC note: it stashed the raw token in the session cookie for convenience — **not a
   v1 pattern; keep tokens server-side.**
 
-### Fallback auth — self-service magic link (proposed)
+### Fallback auth — self-service magic link (✅ implemented, v0.18)
 
 For users the Google flow rejects (predominantly under-18). **Self-service**, no DoIT
 allowlist, no manual admin step. Identity proof = the link is only ever delivered to
 the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
+
+> **As built (auth-only):** `/signin` has a "Email me a sign-in link" disclosure →
+> `requestMagicLink` issues a hashed, single-use, 30-min token (`magic_links` table) and
+> sends it via **Resend** (verified domain `re.hauge.rocks`; no `RESEND_API_KEY` ⇒ the link
+> is logged to the server console for local dev). **Eligibility = the email is already a
+> known student or admin** (neutral "if eligible, we've sent a link" either way — no
+> enumeration), **rate-limited** 60 s/email. Redemption (`/magic/redeem`) re-asks for the
+> email (anti-preview), then a **`magic-link` Credentials provider** atomically consumes the
+> token (single `UPDATE … WHERE redeemed_at IS NULL AND not expired/revoked AND email
+> matches`) and establishes the same `AppSession` (`method: "magic-link"`). **Access still
+> requires the roster + group gates (§13)** — magic-link only authenticates; creating a
+> `students` row for a brand-new non-roster person (self-add) remains deferred. Deferred
+> too: window-scoped/short session cookies, an admin link-revoke UI (the `revokedAt` column
+> is honored on redeem), and per-IP rate limiting.
 
 **Flow:**
 1. Landing page: **"Sign in with wisc.edu email"** button. Below it: *"Didn't work?
@@ -716,6 +730,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.18 (2026-06-22)** — **Magic-link fallback auth (§11), auth-only.** Self-service
+  email sign-in for users Google rejects (under-18): `/signin` "Email me a sign-in link"
+  disclosure → `requestMagicLink` issues a high-entropy, **hashed**, single-use, 30-min
+  token (existing `magic_links` table — no migration) and sends it via **Resend** on the
+  verified `re.hauge.rocks` domain (console-log fallback when no key). Eligibility =
+  known student/admin only; always-neutral response; 60 s/email rate limit. Redemption
+  at `/magic/redeem` (re-enter email → anti-preview) hands token+email to a new
+  **`magic-link` Credentials provider** that atomically consumes the token and resolves to
+  the same `AppSession` (`method` now tracked on the JWT). Downstream **roster + group
+  gates (§13) unchanged**; non-roster self-add still deferred. Pure token/validity/cooldown
+  logic in `auth/magic-link.ts` (+8 tests; 145 pass). `EMAIL_FROM` moved to `re.hauge.rocks`.
 - **0.17 (2026-06-22)** — **Edit-window enforcement via admin-configured student groups
   (§13).** Replaced the unused per-position `FormWindow` with a first-class **Group**
   (`groups` table; `students.groupId` + sticky `groupAssignedAuto`; migration `0005`,
