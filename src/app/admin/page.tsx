@@ -13,19 +13,19 @@ export default async function AdminPage() {
       <h1>Admin dashboard</h1>
       <p>Signed in as {session.email} (admin).</p>
       <p>
-        <Link href="/admin/responses">View responses →</Link>
+        <Link href="/admin/responses">Response viewer</Link>
       </p>
       <p>
-        <Link href="/admin/non-responses">Non-response tracking →</Link>
+        <Link href="/admin/non-responses">Missing responses list</Link>
       </p>
       <p>
-        <Link href="/admin/groups">Groups &amp; form windows →</Link>
+        <Link href="/admin/groups">Who can respond and when</Link>
       </p>
       <p>
-        <Link href="/admin/preview">Preview the student availability form →</Link>
+        <Link href="/admin/preview">Preview the student availability form</Link>
       </p>
       <p>
-        <Link href="/admin/drive">Manage the Google Drive connection →</Link>
+        <Link href="/admin/drive">Manage the Google Drive connection</Link>
       </p>
       <SignOutButton />
     </main>
