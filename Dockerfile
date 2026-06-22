@@ -3,8 +3,14 @@
 # --- deps: install all dependencies (incl. dev, needed to build/migrate) ---
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+# .npmrc maps the Font Awesome scopes to the private registry and reads the auth
+# token from FONTAWESOME_PACKAGE_TOKEN. The token is mounted as a BuildKit secret
+# for this RUN only, so it never persists in an image layer (verify with
+# `docker history`). Build needs BuildKit (the `# syntax` line above enables it);
+# compose passes the secret via the top-level `secrets:` block.
+COPY package.json package-lock.json .npmrc ./
+RUN --mount=type=secret,id=fa_token \
+    FONTAWESOME_PACKAGE_TOKEN="$(cat /run/secrets/fa_token)" npm ci
 
 # --- builder: compile the Next.js standalone bundle ---
 # This stage retains the full source + deps, so it doubles as the "migrator"

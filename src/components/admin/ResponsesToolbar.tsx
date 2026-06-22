@@ -2,6 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+// Tree-shakeable per-icon imports from the kit's regular (far) style. Importing
+// `byPrefixAndName` instead would pull the ENTIRE icon library into the bundle.
+import {
+  faDownload,
+  faArrowUpRightFromSquare,
+  faArrowsRotate,
+} from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 import { rebuildResponsesSheet } from "@/lib/admin/actions";
 
 /**
@@ -45,11 +53,11 @@ export function ResponsesToolbar({
     <div style={{ margin: "0 0 14px" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <a href="/admin/responses/export" style={btnLink} download>
-          ↓ Download CSV
+          Download CSV <FontAwesomeIcon icon={faDownload} />
         </a>
         {sheetUrl ? (
           <a href={sheetUrl} target="_blank" rel="noreferrer" style={btnLink}>
-            Open responses sheet ↗
+            Open Google Sheet <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
           </a>
         ) : (
           <span style={{ fontSize: 13, color: "var(--color-text-tertiary)" }}>
@@ -57,7 +65,7 @@ export function ResponsesToolbar({
           </span>
         )}
         <button type="button" onClick={rebuild} disabled={pending} style={btn}>
-          {pending ? "Rebuilding…" : "Rebuild responses sheet"}
+          {pending ? "Rebuilding…" : "Rebuild Google Sheet"} <FontAwesomeIcon icon={faArrowsRotate} />
         </button>
         <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
           Last synced: {lastSyncedAtMs ? fmtTime(lastSyncedAtMs) : "never"}

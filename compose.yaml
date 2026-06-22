@@ -24,6 +24,8 @@ services:
     build:
       context: .
       target: builder
+      secrets:
+        - fa_token
     command: npx drizzle-kit migrate
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -36,6 +38,8 @@ services:
     build:
       context: .
       target: runner
+      secrets:
+        - fa_token
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -64,6 +68,14 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+
+# Build-time secret: the Font Awesome Pro Kit install token. Its value is read
+# from FONTAWESOME_PACKAGE_TOKEN in the .env beside this file and mounted into the
+# `deps` stage's `npm ci` (see Dockerfile). It is NOT passed to any running
+# container — install-time only.
+secrets:
+  fa_token:
+    environment: FONTAWESOME_PACKAGE_TOKEN
 
 volumes:
   db_data:

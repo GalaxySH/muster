@@ -193,6 +193,15 @@ Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are neti
 - **Magic-link email:** Resend (abstract behind an interface until Phase 2/3).
 - **Weekend cycle-averaging:** both weekend days are summed, then ×0.5 under A/B
   (×1.0 with the every-weekend opt-in). See `src/lib/domain/capacity.ts`.
+- **Icons:** Font Awesome **Pro Kit** as an npm package (`@awesome.me/kit-925f6dce39`,
+  with `@fortawesome/react-fontawesome` + `fontawesome-svg-core`). **Import icons by
+  name from a style subpath** (e.g. `@awesome.me/kit-925f6dce39/icons/classic/regular`
+  → `faDownload`) — **never** `byPrefixAndName`, which bundles the *entire* icon library
+  and stalls the build. The private registry + scopes live in the committed `.npmrc`,
+  which reads the **install-time-only** token from `FONTAWESOME_PACKAGE_TOKEN` (an env
+  var locally; a **BuildKit secret** mounted into the Docker `deps` stage via compose
+  `secrets.fa_token` — never baked into an image or needed at runtime). `app/layout.tsx`
+  sets `config.autoAddCss = false` + imports the FA core CSS (SSR anti-flash).
 
 ## Commands
 
