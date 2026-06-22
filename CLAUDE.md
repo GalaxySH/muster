@@ -166,6 +166,11 @@ For local testing (incl. Playwright MCP), a **dev-login bypass** at `/dev-login`
 signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated by
 `DEV_LOGIN_ENABLED` and **never** honored when `NODE_ENV=production`
 (`isDevLoginEnabled` in `auth/policy.ts`). Run `DEV_LOGIN_ENABLED=1 npm run dev`.
+The same page hosts a **throwaway test-account manager** (`src/lib/dev/`, also
+`DEV_LOGIN_ENABLED`-gated): create a student (off-roster, dropped into an
+always-open `dev-test` group so the full flow is walkable), one-click sign-in,
+and delete (cascades the submission; only ever removes `dev-test` members). This
+replaces the old `/admin/preview` form-preview page (removed).
 
 Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
 `students` (minimized fields only) + `admin_users`, idempotently. Title→position

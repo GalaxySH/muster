@@ -22,9 +22,6 @@ export default async function AdminPage() {
         <Link href="/admin/groups">Who can respond and when</Link>
       </p>
       <p>
-        <Link href="/admin/preview">Preview the student availability form</Link>
-      </p>
-      <p>
         <Link href="/admin/drive">Manage the Google Drive connection</Link>
       </p>
       <SignOutButton />

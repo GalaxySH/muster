@@ -15,8 +15,10 @@
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
   **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). **Guided student
   form-flow done** (§4.1): `/me` hub → intro → course-schedule → availability → travel →
-  exit; status flips to submitted only at the exit step (§13.1). Next: ops.
-- **Version:** 0.20
+  exit; status flips to submitted only at the exit step (§13.1). `/dev-login` now manages
+  throwaway test accounts (the old `/admin/preview` is removed); `/admin/non-responses` can
+  copy outstanding emails. Next: ops.
+- **Version:** 0.21
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -761,13 +763,24 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   (intro → course schedule → availability → travel → exit) with `/me` as the hub:
   confirm-your-info for new students, "continue where you left off" mid-flow, and review
   links once submitted. Status flips to submitted only at the exit step (§13.1).
-- **Non-response: copy emails to clipboard.** A button on `/admin/non-responses` that
-  copies all non-responders' emails (comma/newline-delimited) to the clipboard for a
-  quick reminder mail-merge.
+- **Non-response: copy emails to clipboard — DONE.** A button on `/admin/non-responses`
+  copies all outstanding (no-response + draft-only) emails, comma-separated, to the
+  clipboard for a quick reminder mail-merge.
+- **Dev test-account manager — DONE.** `/dev-login` (dev-only) can create/sign-in-as/delete
+  throwaway students in an always-open dev group, replacing the removed `/admin/preview`
+  form-preview page.
 
 ---
 
 ## Changelog
+- **0.21 (2026-06-22)** — **Dev test-account manager + non-responder copy button; preview
+  page removed (§18b).** `/admin/preview` (the admin form-preview) is gone — previewing the
+  student experience now goes through `/dev-login`, which gained a **dev-only test-account
+  manager** (`src/lib/dev/`): create a throwaway student (off-roster, in an always-open
+  `dev-test` group), one-click sign-in, and delete (cascades the submission; only removes
+  `dev-test` members). `/admin/non-responses` gained a **Copy outstanding emails** button
+  (`CopyEmailsButton`) that copies all no-response + draft-only emails comma-separated for a
+  reminder mail-merge. All dev-account actions are `DEV_LOGIN_ENABLED`-gated (never prod).
 - **0.20 (2026-06-22)** — **Guided student form-flow (§4.1, §13.1).** The disconnected
   student pages are now a Google-Forms-style wizard with `/me` as the hub:
   intro → course-schedule (Next gated on upload) → availability (Save draft / Save and

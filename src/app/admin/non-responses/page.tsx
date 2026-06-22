@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { listNonResponses, type RosterPerson } from "@/lib/admin/data";
+import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
 
 /**
  * Non-response tracking (PLAN §10): who on the roster still owes a submission,
@@ -13,7 +14,9 @@ export default async function NonResponsesPage() {
   if (!session.isAdmin) redirect("/me");
 
   const report = await listNonResponses();
-  const outstanding = report.noResponse.length + report.draftOnly.length;
+  const outstandingPeople = [...report.noResponse, ...report.draftOnly];
+  const outstanding = outstandingPeople.length;
+  const outstandingEmails = outstandingPeople.map((p) => p.email);
   const pct =
     report.rosterTotal > 0 ? Math.round((report.respondedCount / report.rosterTotal) * 100) : 0;
 
@@ -27,6 +30,14 @@ export default async function NonResponsesPage() {
         <strong>{report.respondedCount}</strong> of <strong>{report.rosterTotal}</strong> roster
         students submitted ({pct}%). <strong>{outstanding}</strong> outstanding.
       </p>
+      {outstanding > 0 && (
+        <p>
+          <CopyEmailsButton
+            emails={outstandingEmails}
+            label={`Copy ${outstanding} outstanding email${outstanding === 1 ? "" : "s"}`}
+          />
+        </p>
+      )}
 
       <Group
         title={`No response (${report.noResponse.length})`}
