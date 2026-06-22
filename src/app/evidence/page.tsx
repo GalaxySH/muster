@@ -1,53 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { getAppSession } from "@/lib/auth/session";
-import { findStudentByEmail } from "@/lib/roster/lookup";
-import { loadEvidence } from "@/lib/evidence/data";
-import { getDriveGrantStatus } from "@/lib/drive/grants";
-import { resolveStudentAccess } from "@/lib/groups/data";
-import { EvidenceForm } from "@/components/EvidenceForm";
-import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 
-export default async function EvidencePage() {
-  const session = await getAppSession();
-  if (!session) redirect("/signin?callbackUrl=/evidence");
-
-  const student = await findStudentByEmail(session.email);
-  if (!student) {
-    return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
-        <h1>Proof &amp; excusals</h1>
-        <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
-        <Link href="/me">← Back</Link>
-      </main>
-    );
-  }
-
-  const [evidence, drive, access] = await Promise.all([
-    loadEvidence(student.email),
-    getDriveGrantStatus(),
-    resolveStudentAccess(student.email),
-  ]);
-
-  if (access.access === "no-group") {
-    return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
-        <h1>Proof &amp; excusals</h1>
-        <NoGroupNotice />
-        <Link href="/me">← Back</Link>
-      </main>
-    );
-  }
-
-  const editable = access.state === "open";
-
-  return (
-    <main style={{ padding: "2rem" }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/availability">← Availability</Link>
-      </p>
-      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
-      <EvidenceForm initial={evidence} driveConnected={drive.connected} editable={editable} />
-    </main>
-  );
+/**
+ * The old combined proof/excusals page has been split into /course-schedule
+ * (course schedule + activities) and /travel. Keep this route as a redirect so
+ * any stale links/bookmarks still land somewhere sensible.
+ */
+export default function EvidencePage() {
+  redirect("/course-schedule");
 }

@@ -13,8 +13,10 @@
   per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
   now handles the People Coming / People Leaving split; student schedule-notes field added.
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
-  **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). Next: ops.
-- **Version:** 0.18
+  **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). Student evidence
+  page split into `/course-schedule` (course + activities) and `/travel` — first step of
+  the guided form-flow (§18b). Next: finish the guided flow, then ops.
+- **Version:** 0.19
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -723,10 +725,13 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   leads on specific dated shifts, so it's called out explicitly.
 
 ### 18b. Backlog (smaller enhancements)
-- **Form-flow refinement:** make the student form a single guided progression through
-  **tabs/steps** (availability → evidence → review/submit) rather than the current
-  disconnected pages (`/availability`, `/evidence`). Shared window-gate banner, one
-  "where am I" affordance, next/back between steps.
+- **Form-flow refinement (in progress):** make the student form a single guided
+  progression through **steps** (intro → course schedule → availability → travel → exit)
+  rather than disconnected pages, with next/back between steps, a "continue where you left
+  off" affordance on `/me`, and a shared window-gate banner. **Step 1 done:** the old
+  combined `/evidence` page was split into `/course-schedule` (course schedule +
+  activities) and `/travel` (`/evidence` now redirects to `/course-schedule`). Remaining:
+  the intro + exit pages, the `/me` confirm-roster-info gate, and the next/continue wiring.
 - **Non-response: copy emails to clipboard.** A button on `/admin/non-responses` that
   copies all non-responders' emails (comma/newline-delimited) to the clipboard for a
   quick reminder mail-merge.
@@ -734,6 +739,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.19 (2026-06-22)** — **Student evidence page split (§18b, form-flow step 1).** The
+  combined `/evidence` page (course schedule + activities + travel) is now two focused
+  pages: **`/course-schedule`** (required course schedule + optional mandatory
+  extracurriculars) and **`/travel`** (travel excusals). `/evidence` redirects to
+  `/course-schedule`; in-app links (`/me`, `/availability`) updated. The single
+  `EvidenceForm` became `CourseScheduleForm` + `TravelForm` over a shared
+  `components/evidence/shared.tsx` (the upload-runner hook, thumbnails, styling); the
+  `evidence/` lib modules + `/api/evidence/[fileId]` proxy keep their names. First step
+  toward the guided form-flow; 145 tests pass.
 - **0.18 (2026-06-22)** — **Magic-link fallback auth (§11), auth-only.** Self-service
   email sign-in for users Google rejects (under-18): `/signin` "Email me a sign-in link"
   disclosure → `requestMagicLink` issues a high-entropy, **hashed**, single-use, 30-min

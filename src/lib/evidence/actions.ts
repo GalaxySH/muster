@@ -84,7 +84,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
       .set({ courseScheduleFileId: fileId })
       .where(eq(submissions.id, submissionId));
     if (prev?.courseScheduleFileId) await relayDelete(prev.courseScheduleFileId);
-    revalidatePath("/evidence");
+    revalidatePath("/course-schedule");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -106,7 +106,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
     const db = getDb();
     const submissionId = await ensureSubmissionId(who.email);
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
-    revalidatePath("/evidence");
+    revalidatePath("/course-schedule");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -128,7 +128,7 @@ export async function removeExtracurricularFile(rowId: string): Promise<ActionRe
 
   await db.delete(extracurricularFiles).where(eq(extracurricularFiles.id, rowId));
   await relayDelete(row.fileId);
-  revalidatePath("/evidence");
+  revalidatePath("/course-schedule");
   return { ok: true };
 }
 
@@ -142,7 +142,7 @@ export async function saveExtracurricularNotes(notes: string): Promise<ActionRes
     .update(submissions)
     .set({ extracurricularNotes: notes.slice(0, 2000) })
     .where(eq(submissions.id, submissionId));
-  revalidatePath("/evidence");
+  revalidatePath("/course-schedule");
   return { ok: true };
 }
 
@@ -174,7 +174,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       note,
       excused,
     });
-    revalidatePath("/evidence");
+    revalidatePath("/travel");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -196,6 +196,6 @@ export async function removeTravelRequest(id: string): Promise<ActionResult> {
 
   await db.delete(travelRequests).where(eq(travelRequests.id, id));
   await relayDelete(row.proofFileId);
-  revalidatePath("/evidence");
+  revalidatePath("/travel");
   return { ok: true };
 }

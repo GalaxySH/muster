@@ -11,7 +11,9 @@ toolchain, DB schema + migrations, the **pure-domain rules engine**, **Google si
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
 validation, draft/submit with server-side re-validation), **weekend auto-assign +
 flag persistence** + `travel_late` flagging (Phase 3), the **Google Drive proof
-relay** + student `/evidence` page (Phase 2), and the **admin views** (Phase 4): the
+relay** + the student evidence pages — now **split** into `/course-schedule` (course
+schedule + mandatory extracurriculars) and `/travel` (travel excusals); `/evidence`
+redirects to `/course-schedule` (Phase 2), and the **admin views** (Phase 4): the
 response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
@@ -53,7 +55,8 @@ bulk-loads it; `admin/sheet-sync.ts` orchestrates the rebuild behind a **split r
 **10-minute** cooldown for the best-effort resync after a student submit. Timestamp columns
 (Submitted/Last edited) render full UTC `h:m:s`; proof columns are public Drive web links so
 folder members can open them straight from the sheet. Note: user-facing copy says **"proof"**
-(the `/evidence` route, `evidence/` modules, and DB columns keep the old name).
+(the `evidence/` lib modules, the `/api/evidence/[fileId]` proxy, and DB columns keep the
+old name; the student-facing pages are now `/course-schedule` + `/travel`).
 
 Admin-views layering (`src/lib/admin/` + `src/components/admin/`): `summary.ts` is the
 **pure** presenter (`hourCap`, `buildAdminGrid` — overlays the saved selection +
@@ -79,7 +82,11 @@ the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST
 `evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
 the app**. `drive.file` files aren't browsable, so they're served back through an
 authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`
-`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`.
+`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`. The
+student UI is split into two client forms — `components/evidence/CourseScheduleForm.tsx`
+(course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
+`components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
+styles). They render on the `/course-schedule` and `/travel` server pages.
 
 Availability form layering: `src/lib/availability/` has the pure grid view-model
 (`grid.ts`) + selection-key helpers (`selection.ts`), the server data loader

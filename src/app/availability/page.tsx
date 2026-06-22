@@ -55,7 +55,7 @@ export default async function AvailabilityPage() {
     <main style={{ padding: "2rem" }}>
       <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       <p style={{ marginBottom: 12 }}>
-        <Link href="/evidence">Upload course schedule &amp; excusal proof →</Link>
+        <Link href="/course-schedule">Upload course schedule &amp; activities →</Link>
       </p>
       <AvailabilityForm
         key={form.position.id}

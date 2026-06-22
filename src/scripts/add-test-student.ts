@@ -1,6 +1,6 @@
 /**
  * DEV ONLY: add (or update) a single test student so an admin can exercise the
- * real student flows (/availability, /evidence) with their own wisc.edu account.
+ * real student flows (/availability, /course-schedule, /travel) with their own wisc.edu account.
  *
  *   npm run dev:add-student -- you@wisc.edu
  *   npm run dev:add-student -- you@wisc.edu --position shift-lead --name "Test SL" --intl
@@ -65,7 +65,7 @@ async function main() {
         international ? " (international)" : ""
       }`,
     );
-    console.log("  Sign in with this account and open /availability or /evidence.");
+    console.log("  Sign in with this account and open /availability, /course-schedule, or /travel.");
   } finally {
     await pool.end();
   }
