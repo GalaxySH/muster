@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { GridModel, SubGrid } from "@/lib/availability/grid";
 import {
   selectionKey,
@@ -61,7 +62,11 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const [notes, setNotes] = useState(props.initialNotes);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
   const editable = props.editable ?? true;
+  // A submitted form is edited in place ("Save changes"); an unsubmitted one is
+  // the wizard step ("Save draft" + "Save and continue → /travel").
+  const editMode = props.initialStatus === "submitted";
 
   // Only consider cells that belong to this position's blocks, so stale state
   // (e.g. switching previews) can never reference an unknown block.
@@ -117,11 +122,13 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
     });
   }
 
-  function save(submit: boolean) {
+  function run(mode: "draft" | "continue", advanceTo?: string) {
     if (props.preview) {
       setMessage({
         ok: true,
-        text: `Preview mode: nothing saved (would ${submit ? "submit" : "save a draft"}).`,
+        text: `Preview mode: nothing saved (would ${
+          mode === "continue" ? "save and continue" : "save a draft"
+        }).`,
       });
       return;
     }
@@ -131,7 +138,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         everyWeekendOptIn: optIn,
         desiredHours,
         notes,
-        submit,
+        mode,
       });
       if (res.ok) {
         // The server owns auto-assignment; mirror its decision in the grid.
@@ -140,15 +147,19 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
             ? new Set([selectionKey(res.autoAssigned.blockId, res.autoAssigned.day)])
             : new Set(),
         );
+        if (advanceTo) {
+          router.push(advanceTo);
+          return; // leaving the page — no need to set a message
+        }
       }
       setMessage({
         ok: res.ok,
         text: res.ok
-          ? submit
-            ? res.autoAssigned
-              ? `Submitted. You didn't pick a weekend shift, so we chose one for you: ${res.autoAssigned.label}. You can keep editing until your window closes.`
-              : "Submitted. You can keep editing until your window closes."
-            : "Draft saved."
+          ? mode === "draft"
+            ? "Draft saved."
+            : res.autoAssigned
+              ? `Saved. You didn't pick a weekend shift, so we kept one for you: ${res.autoAssigned.label}.`
+              : "Saved."
           : res.errors.join(" · "),
       });
     });
@@ -283,15 +294,24 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       />
 
       <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
-        {editable && (
+        {editable && !editMode && (
           <>
-            <button type="button" onClick={() => save(false)} disabled={pending}>
+            <button type="button" onClick={() => run("draft")} disabled={pending}>
               Save draft
             </button>
-            <button type="button" onClick={() => save(true)} disabled={pending || !canSubmit}>
-              Submit
+            <button
+              type="button"
+              onClick={() => run("continue", "/travel")}
+              disabled={pending || !canSubmit}
+            >
+              Save and continue →
             </button>
           </>
+        )}
+        {editable && editMode && (
+          <button type="button" onClick={() => run("continue")} disabled={pending || !canSubmit}>
+            Save changes
+          </button>
         )}
         {props.initialStatus === "submitted" && (
           <span style={{ color: "#196127" }}>✓ submitted</span>

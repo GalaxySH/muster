@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current state
 
 Phase 1 done; Phase 2 built; Phase 3 done; Phase 4 built; **edit-window enforcement
-done**: Next.js scaffold, full TDD
+done**; **guided student form-flow done** (a Google-Forms-style wizard with `/me` as the
+hub — intro → course-schedule → availability → travel → exit; status flips to submitted
+only at the exit step; see the form-flow layering note below): Next.js scaffold, full TDD
 toolchain, DB schema + migrations, the **pure-domain rules engine**, **Google sign-in
 (Auth.js v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
@@ -90,16 +92,35 @@ styles). They render on the `/course-schedule` and `/travel` server pages.
 
 Availability form layering: `src/lib/availability/` has the pure grid view-model
 (`grid.ts`) + selection-key helpers (`selection.ts`), the server data loader
-(`data.ts`, server-only), and the save action (`actions.ts`) which is the authority
-— it reloads blocks, drops cells outside the position, re-runs `validateAvailability`,
-refuses to submit on a hard-rule failure, and on submit **auto-assigns a weekend shift**
-for non-exempt students who picked none (pure `domain/auto-assign.ts`), persisting it as
-an `auto_assigned` `shift_selections` row + an `auto_assigned_weekend` `flags` row
-(both submit-time only; cleared on draft). The client form
-(`components/AvailabilityForm.tsx`) runs the same validator live for feedback and renders
-the server's auto-assigned cell distinctly (★, read-only overlay — never re-sent as a
-manual pick). The form also takes an `editable` prop: when a window isn't open it renders
-read-only (disabled inputs, hidden Save/Submit).
+(`data.ts`, server-only), and `actions.ts` (the authority). `saveAvailability({ mode })`
+reloads blocks, drops cells outside the position, re-runs `validateAvailability`, and
+**never promotes status** (`mode: "draft"` saves freely; `"continue"` is a validated gate
+that refuses to advance on a hard-rule/desired-hours failure). The status flip to
+**submitted** lives in **`finalizeSubmission`** (the `/exit` Submit, §13.1): it
+re-validates, **requires the course schedule**, **auto-assigns a weekend shift** for
+non-exempt students who picked none (pure `domain/auto-assign.ts`) as an `auto_assigned`
+`shift_selections` row + an `auto_assigned_weekend` `flags` row, raises `travel_late`, and
+resyncs the Drive sheet. Both actions share a private `writeSelectionAndFlags` (auto-assign
++ flags run only when the effective status is `submitted`, so an already-submitted form
+stays consistent when edited). The client form (`components/AvailabilityForm.tsx`) runs the
+same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
+continue →** (the latter routes to `/travel` on success), and for an already-submitted form
+it shows **Save changes** (edit-in-place, no downgrade). It renders the server's
+auto-assigned cell distinctly (★, never re-sent as a manual pick) and takes an `editable`
+prop (read-only when the window isn't open).
+
+Form-flow layering (`src/lib/flow/` + wizard pages): `steps.ts` is **pure** (TDD) —
+`WIZARD_STEPS` + `prevHref`/`nextHref` and `flowStatus(inputs)` → `done | not-started |
+continue(href)` (resume step inferred from data, **no progress column**). `data.ts`
+(server-only) `loadFlowState(email)` resolves the two access gates + the flow inputs
+(`submitted`, `hasSubmissionRow`, `hasCourseSchedule`, `availabilityComplete` via
+`validateAvailability`). `actions.ts` `confirmRosterInfo()` records a draft row
+(`ensureSubmissionId`) so `/me` resumes, then redirects to `/intro`. Pages:
+`/me` (hub: confirm-info box / continue / review links), `/intro`, the three data steps
+(`/course-schedule`, `/availability`, `/travel` — each with `components/WizardSteps.tsx`
+progress + gated forward), and `/exit` (`components/FinishButton.tsx` → `finalizeSubmission`).
+The travel→exit gate is `components/evidence/TravelContinue.tsx` (an acknowledgement
+checkbox, since travel is optional).
 
 Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`): the pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both

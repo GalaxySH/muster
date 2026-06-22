@@ -6,6 +6,7 @@ import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { WizardSteps } from "@/components/WizardSteps";
 
 export default async function AvailabilityPage() {
   const session = await getAppSession();
@@ -53,10 +54,13 @@ export default async function AvailabilityPage() {
 
   return (
     <main style={{ padding: "2rem" }}>
-      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      <WizardSteps current="availability" />
       <p style={{ marginBottom: 12 }}>
-        <Link href="/course-schedule">Upload course schedule &amp; activities →</Link>
+        <Link href="/me">← Your page</Link>
+        <span style={{ color: "#ccc", margin: "0 8px" }}>·</span>
+        <Link href="/course-schedule">← Course schedule</Link>
       </p>
+      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       <AvailabilityForm
         key={form.position.id}
         position={form.position}

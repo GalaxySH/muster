@@ -7,6 +7,7 @@ import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { WizardSteps } from "@/components/WizardSteps";
 
 export default async function CourseSchedulePage() {
   const session = await getAppSession();
@@ -43,14 +44,35 @@ export default async function CourseSchedulePage() {
 
   return (
     <main style={{ padding: "2rem" }}>
+      <WizardSteps current="course-schedule" />
       <p style={{ marginBottom: 8 }}>
-        <Link href="/me">← Back</Link>
+        <Link href="/me">← Your page</Link>
       </p>
       <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       <CourseScheduleForm initial={evidence} driveConnected={drive.connected} editable={editable} />
-      <p style={{ marginTop: 16 }}>
-        <Link href="/travel">Travel excusals →</Link>
-      </p>
+      {editable && (
+        <p style={{ marginTop: 16 }}>
+          {evidence.courseScheduleFileId ? (
+            <Link href="/availability" style={primaryLink}>
+              Next: availability →
+            </Link>
+          ) : (
+            <span style={{ color: "#777", fontSize: 14 }}>
+              Upload your course schedule to continue.
+            </span>
+          )}
+        </p>
+      )}
     </main>
   );
 }
+
+const primaryLink: React.CSSProperties = {
+  display: "inline-block",
+  background: "#1a66cc",
+  color: "#fff",
+  borderRadius: 6,
+  padding: "0.55rem 1.1rem",
+  fontSize: 15,
+  textDecoration: "none",
+};

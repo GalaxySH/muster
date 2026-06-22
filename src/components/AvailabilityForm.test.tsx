@@ -4,8 +4,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@/lib/availability/actions", () => ({
-  saveAvailability: vi.fn(async () => ({ ok: true, status: "submitted", errors: [] })),
+  saveAvailability: vi.fn(async () => ({ ok: true, errors: [] })),
 }));
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 import { AvailabilityForm } from "./AvailabilityForm";
 import { saveAvailability } from "@/lib/availability/actions";
@@ -39,7 +42,12 @@ const position: Position = {
 };
 
 function renderForm(
-  opts: { preview?: boolean; blocks?: ShiftBlock[]; international?: boolean } = {},
+  opts: {
+    preview?: boolean;
+    blocks?: ShiftBlock[];
+    international?: boolean;
+    status?: "draft" | "submitted" | null;
+  } = {},
 ) {
   const blocks = opts.blocks ?? defaultBlocks;
   return render(
@@ -53,7 +61,7 @@ function renderForm(
       initialEveryWeekendOptIn={false}
       initialDesiredHours={null}
       initialNotes=""
-      initialStatus={null}
+      initialStatus={opts.status ?? null}
       preview={opts.preview}
     />,
   );
@@ -81,11 +89,11 @@ describe("AvailabilityForm", () => {
     expect(cell).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("requires both passing rules and desired hours before submit", async () => {
+  it("requires both passing rules and desired hours before continuing", async () => {
     const user = userEvent.setup();
     renderForm();
-    const submit = screen.getByRole("button", { name: "Submit" });
-    expect(submit).toBeDisabled();
+    const cont = screen.getByRole("button", { name: "Save and continue →" });
+    expect(cont).toBeDisabled();
 
     // Satisfy the availability hard rules.
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
@@ -94,17 +102,19 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "8:30a–11a Sat" }));
 
     // Still blocked: desired hours is required.
-    expect(submit).toBeDisabled();
+    expect(cont).toBeDisabled();
     expect(screen.getByText(/enter your desired weekly hours/i)).toBeInTheDocument();
 
     await user.type(screen.getByRole("spinbutton"), "14");
-    expect(submit).toBeEnabled();
+    expect(cont).toBeEnabled();
 
-    await user.click(submit);
+    await user.click(cont);
     expect(saveAvailability).toHaveBeenCalledTimes(1);
     expect(saveAvailability).toHaveBeenCalledWith(
-      expect.objectContaining({ submit: true, desiredHours: 14 }),
+      expect.objectContaining({ mode: "continue", desiredHours: 14 }),
     );
+    // Successful "continue" advances to the travel step.
+    expect(push).toHaveBeenCalledWith("/travel");
   });
 
   it("treats a missing weekend shift as a soft warning, not a hard block", async () => {
@@ -115,7 +125,7 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
     await user.type(screen.getByRole("spinbutton"), "12");
 
-    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save and continue →" })).toBeEnabled();
     expect(screen.getByText(/no weekend shift/i)).toBeInTheDocument();
   });
 
@@ -153,28 +163,27 @@ describe("AvailabilityForm", () => {
     expect(screen.getByRole("button", { name: "Max (20h)" })).toBeInTheDocument();
   });
 
-  it("reflects a server-side weekend auto-assignment after submit", async () => {
+  it("reflects a server-side weekend auto-assignment when saving an already-submitted form", async () => {
     const user = userEvent.setup();
     vi.mocked(saveAvailability).mockResolvedValueOnce({
       ok: true,
-      status: "submitted",
       autoAssigned: { blockId: "we-open", day: "sat", label: "Sat 8:30a–11a" },
       errors: [],
     });
-    renderForm();
+    renderForm({ status: "submitted" }); // edit mode → "Save changes", stays on page
 
-    // A valid submit with no weekend cell chosen.
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Tue" }));
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
     await user.type(screen.getByRole("spinbutton"), "12");
-    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(await screen.findByText(/we chose one for you/i)).toBeInTheDocument();
+    expect(await screen.findByText(/we kept one for you/i)).toBeInTheDocument();
     const autoCell = screen.getByRole("button", { name: "8:30a–11a Sat" });
     expect(autoCell).toHaveTextContent("★");
     expect(autoCell).toHaveAttribute("title", expect.stringContaining("auto-assigned"));
     expect(autoCell).toHaveAttribute("aria-pressed", "false"); // server-owned, not a manual pick
+    expect(push).not.toHaveBeenCalled(); // editing in place — no wizard advance
   });
 
   it("in preview mode shows a banner and never persists", async () => {

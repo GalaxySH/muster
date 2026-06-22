@@ -13,10 +13,10 @@
   per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
   now handles the People Coming / People Leaving split; student schedule-notes field added.
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
-  **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). Student evidence
-  page split into `/course-schedule` (course + activities) and `/travel` — first step of
-  the guided form-flow (§18b). Next: finish the guided flow, then ops.
-- **Version:** 0.19
+  **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). **Guided student
+  form-flow done** (§4.1): `/me` hub → intro → course-schedule → availability → travel →
+  exit; status flips to submitted only at the exit step (§13.1). Next: ops.
+- **Version:** 0.20
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -71,26 +71,41 @@ blocks, and form windows are configuration, not hardcoded), and privacy-minimizi
 ## 4. Core Flows
 
 ### 4.1 Student onboarding flow
-1. **Sign in** with Google (`@wisc.edu` enforced).
-2. **Roster lookup** by email:
-   - **Hit** → show a quick confirmation of name + position (skip position select).
-   - **Miss** → "Select your position" screen + self-report international status.
-3. **Position-specific info screens** — walk through how to enter availability and
-   how to upload a course-schedule screenshot (see §12 for handling).
-4. **Course schedule evidence** — upload a screenshot or PDF (photo evidence
-   required; students are *not* trusted to self-transcribe times). Drive relay, §7b/§12.
-5. **Extracurriculars (optional)** — evidence upload(s) + details box; only *mandatory*
-   activities are excused (§7b).
-6. **Travel excusal (optional, repeatable)** — one entry per trip: proof upload +
-   inclusive date range; excused only if before the semester-start cutoff (§7b, #8).
-7. **Availability grid** — binary yes/no per shift block × per day (§7).
-8. **Weekend education + opt-in** — inform the student they'll be on an A/B rotation
-   (no A/B choice given; Barista exempt); offer the every-weekend opt-in.
-9. **Live validation** (§8) — hard requirements block submission; the missing-weekend
-   soft case auto-assigns and warns.
-10. **Review & submit** — student can review and edit until their window closes.
-11. *(Future, Shift Lead only)* **Weekend-close pickup** — claim 3 Fri/Sat closes from
-    a finite pool (§18a).
+
+**Built as a guided, Google-Forms-style wizard** with `/me` as the hub. Each step is its
+own page; `/me` always knows where the student is and offers a single "continue where you
+left off" (resume is **inferred from persisted data** — no progress column). The status
+flip to **submitted** happens exactly once, at the final exit step (§13).
+
+1. **Sign in** with Google (`@wisc.edu` enforced) → redirected to **`/me`**.
+2. **`/me` hub** branches on the two access gates (§13) then on flow state:
+   - **Not on roster / no group** → access notice (no flow).
+   - **Done** (status submitted) → review links to every step (editable until the window
+     closes).
+   - **In progress** → "Pick up where you left off" → deep-links to the first incomplete
+     step.
+   - **Not started** → a highlighted box showing the roster info we have (name, position),
+     with a **Confirm** *button* (not a link). Confirming records a draft submission row
+     (so `/me` resumes the flow next time) and sends them to the intro.
+3. **`/intro`** — concise, bullet-pointed scheduling-policy reminders + what they'll fill
+   out. "Get started →".
+4. **`/course-schedule`** — upload course schedule (required; photo/PDF — students are
+   *not* trusted to self-transcribe) + optional mandatory extracurriculars. Drive relay
+   (§7b/§12). **Next is gated on the course-schedule upload.**
+5. **`/availability`** — binary yes/no per shift block × per day (§7) + every-weekend
+   opt-in (A/B education; Barista exempt) + desired hours, with live validation (§8).
+   **Save draft** persists without gating; **Save and continue →** re-validates (hard
+   rules + desired hours) and, on success, advances to travel as a **draft** (no status
+   change yet).
+6. **`/travel`** — optional, repeatable travel entries (proof + date range; excused only
+   before the 9/1 cutoff, §7b #8). Since travel is optional, **Next is gated on an explicit
+   acknowledgement** ("I've added all my travel, or I have none").
+7. **`/exit`** — sets expectations (these are *preferences*, not a schedule; expect the
+   schedule in a couple of weeks, by end of August) and holds the single **Submit** that
+   **finalizes** (§13): re-validate as authority, require the course schedule, flip to
+   submitted, weekend auto-assign, raise flags, refresh the Drive sheet → back to `/me`.
+8. *(Future, Shift Lead only)* **Weekend-close pickup** — claim 3 Fri/Sat closes from a
+   finite pool (§18a).
 
 ### 4.2 Admin flow
 - **Roster import** — upload the PCPL workbook; parse **People Coming** (active →
@@ -611,6 +626,23 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
   a form open after 9/1 still flags new travel entries as late. Its own config value.
 - **Non-response:** computed from roster PC at any time.
 
+### 13.1 Submission status & the single finalize
+
+A submission is **`draft`** until the student clicks **Submit** on the final wizard step
+(`/exit`), which is the **one and only** place it flips to **`submitted`** — the completion
+signal `/me`, the admin dashboard, and non-response tracking all key off. Concretely:
+
+- **`saveAvailability({ mode })`** never promotes status. `"draft"` saves without gating;
+  `"continue"` re-validates (hard rules + desired hours) and refuses to advance on failure,
+  but still saves as a draft. A submission that is **already** `submitted` (a student
+  editing after finishing) stays submitted and has its finalize artifacts re-applied on
+  each save, so the scheduler's view never goes stale.
+- **`finalizeSubmission()`** (the exit Submit) is the authority: it re-validates the saved
+  availability, **requires the course schedule**, then flips to `submitted`, performs the
+  weekend auto-assign (§5 #5), raises the soft-rule flags (§8), stamps `submittedAt`, and
+  refreshes the running Drive sheet. A student who fills availability but never reaches the
+  exit step is therefore (correctly) still a **non-responder** until they finish.
+
 ---
 
 ## 14. Tech Stack & Architecture (proposed)
@@ -725,13 +757,10 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   leads on specific dated shifts, so it's called out explicitly.
 
 ### 18b. Backlog (smaller enhancements)
-- **Form-flow refinement (in progress):** make the student form a single guided
-  progression through **steps** (intro → course schedule → availability → travel → exit)
-  rather than disconnected pages, with next/back between steps, a "continue where you left
-  off" affordance on `/me`, and a shared window-gate banner. **Step 1 done:** the old
-  combined `/evidence` page was split into `/course-schedule` (course schedule +
-  activities) and `/travel` (`/evidence` now redirects to `/course-schedule`). Remaining:
-  the intro + exit pages, the `/me` confirm-roster-info gate, and the next/continue wiring.
+- **Form-flow refinement — DONE (§4.1).** The student form is now a guided wizard
+  (intro → course schedule → availability → travel → exit) with `/me` as the hub:
+  confirm-your-info for new students, "continue where you left off" mid-flow, and review
+  links once submitted. Status flips to submitted only at the exit step (§13.1).
 - **Non-response: copy emails to clipboard.** A button on `/admin/non-responses` that
   copies all non-responders' emails (comma/newline-delimited) to the clipboard for a
   quick reminder mail-merge.
@@ -739,6 +768,18 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.20 (2026-06-22)** — **Guided student form-flow (§4.1, §13.1).** The disconnected
+  student pages are now a Google-Forms-style wizard with `/me` as the hub:
+  intro → course-schedule (Next gated on upload) → availability (Save draft / Save and
+  continue) → travel (Next gated on an explicit acknowledgement) → exit (the single
+  Submit). `/me` shows a **confirm-your-info** box for new students (a button that records
+  a draft row + opens the intro), **"continue where you left off"** mid-flow (resume step
+  inferred from data — no progress column), and **review links** once submitted.
+  **Status now flips to `submitted` only at the exit step**: `saveAvailability` gained a
+  `mode: "draft" | "continue"` (never promotes; "continue" is a validated gate), and a new
+  `finalizeSubmission` is the single authority that validates, requires the course
+  schedule, auto-assigns the weekend, raises flags, and refreshes the Drive sheet. Pure
+  `lib/flow/steps.ts` (`flowStatus`, step nav) is TDD-tested (+9); 154 tests pass.
 - **0.19 (2026-06-22)** — **Student evidence page split (§18b, form-flow step 1).** The
   combined `/evidence` page (course schedule + activities + travel) is now two focused
   pages: **`/course-schedule`** (required course schedule + optional mandatory

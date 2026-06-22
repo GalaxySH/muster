@@ -6,7 +6,9 @@ import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { TravelForm } from "@/components/evidence/TravelForm";
+import { TravelContinue } from "@/components/evidence/TravelContinue";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { WizardSteps } from "@/components/WizardSteps";
 
 export default async function TravelPage() {
   const session = await getAppSession();
@@ -43,14 +45,21 @@ export default async function TravelPage() {
 
   return (
     <main style={{ padding: "2rem" }}>
+      <WizardSteps current="travel" />
       <p style={{ marginBottom: 8 }}>
-        <Link href="/course-schedule">← Course schedule &amp; activities</Link>
+        <Link href="/me">← Your page</Link>
+        <span style={{ color: "#ccc", margin: "0 8px" }}>·</span>
+        <Link href="/availability">← Availability</Link>
       </p>
       <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       <TravelForm initial={evidence} driveConnected={drive.connected} editable={editable} />
-      <p style={{ marginTop: 16 }}>
-        <Link href="/me">← Back</Link>
-      </p>
+      {editable ? (
+        <TravelContinue />
+      ) : (
+        <p style={{ marginTop: 16 }}>
+          <Link href="/me">← Your page</Link>
+        </p>
+      )}
     </main>
   );
 }
