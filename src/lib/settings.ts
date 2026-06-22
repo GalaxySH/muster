@@ -11,6 +11,8 @@ import { appSettings } from "@/lib/db/schema";
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
 export const SETTING_RESPONSES_SHEET_SYNCED_AT = "responses_sheet_synced_at";
+/** "1"/"0": whether ungrouped students get swept into the default group (PLAN §13). Absent ⇒ off. */
+export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()

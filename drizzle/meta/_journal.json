@@ -36,6 +36,20 @@
       "when": 1782084375531,
       "tag": "0004_lovely_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1782104726860,
+      "tag": "0005_nappy_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1782104737653,
+      "tag": "0006_striped_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

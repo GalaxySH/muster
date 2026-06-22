@@ -4,7 +4,9 @@ import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
+import { resolveStudentAccess } from "@/lib/groups/data";
 import { EvidenceForm } from "@/components/EvidenceForm";
+import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 
 export default async function EvidencePage() {
   const session = await getAppSession();
@@ -21,17 +23,31 @@ export default async function EvidencePage() {
     );
   }
 
-  const [evidence, drive] = await Promise.all([
+  const [evidence, drive, access] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
+    resolveStudentAccess(student.email),
   ]);
+
+  if (access.access === "no-group") {
+    return (
+      <main style={{ padding: "2rem", maxWidth: 640 }}>
+        <h1>Proof &amp; excusals</h1>
+        <NoGroupNotice />
+        <Link href="/me">← Back</Link>
+      </main>
+    );
+  }
+
+  const editable = access.state === "open";
 
   return (
     <main style={{ padding: "2rem" }}>
       <p style={{ marginBottom: 8 }}>
         <Link href="/availability">← Availability</Link>
       </p>
-      <EvidenceForm initial={evidence} driveConnected={drive.connected} />
+      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      <EvidenceForm initial={evidence} driveConnected={drive.connected} editable={editable} />
     </main>
   );
 }

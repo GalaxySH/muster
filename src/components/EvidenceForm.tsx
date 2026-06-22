@@ -16,12 +16,17 @@ import type { EvidenceView } from "@/lib/evidence/data";
 export function EvidenceForm({
   initial,
   driveConnected,
+  editable = true,
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
+  /** When false, all uploads/edits are disabled (form window not open — PLAN §13). */
+  editable?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Uploads need both an active Drive grant and an open form window.
+  const canUpload = driveConnected && editable;
   const [notes, setNotes] = useState(initial.extracurricularNotes);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; where: string } | null>(null);
 
@@ -76,8 +81,8 @@ export function EvidenceForm({
           <p style={{ color: "#946c00", fontSize: 14 }}>No course schedule uploaded yet.</p>
         )}
         <form onSubmit={onUpload("course", uploadCourseSchedule)} style={uploadRow}>
-          <input type="file" name="file" accept={ACCEPT} required disabled={!driveConnected} />
-          <button type="submit" disabled={pending || !driveConnected}>
+          <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
+          <button type="submit" disabled={pending || !canUpload}>
             {initial.courseScheduleFileId ? "Replace" : "Upload"}
           </button>
           <span style={fmtHint}>{FORMAT_HINT}</span>
@@ -89,6 +94,7 @@ export function EvidenceForm({
       <Section title="Mandatory extracurriculars" hint="Only mandatory activities are excused. Add proof and details.">
         <textarea
           value={notes}
+          readOnly={!editable}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="Describe the mandatory activity and its times…"
@@ -97,7 +103,7 @@ export function EvidenceForm({
         <div style={{ marginTop: 6 }}>
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || !editable}
             onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes))}
           >
             Save notes
@@ -113,14 +119,14 @@ export function EvidenceForm({
                 fileId={f.fileId}
                 label="Extracurricular proof"
                 onRemove={() => run("ec", () => removeExtracurricularFile(f.id))}
-                removeDisabled={pending}
+                removeDisabled={pending || !editable}
               />
             ))}
           </div>
         )}
         <form onSubmit={onUpload("ec", addExtracurricularFile)} style={uploadRow}>
-          <input type="file" name="file" accept={ACCEPT} required disabled={!driveConnected} />
-          <button type="submit" disabled={pending || !driveConnected}>
+          <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
+          <button type="submit" disabled={pending || !canUpload}>
             Add proof
           </button>
           <span style={fmtHint}>{FORMAT_HINT}</span>
@@ -146,7 +152,7 @@ export function EvidenceForm({
                 </div>
                 <button
                   type="button"
-                  disabled={pending}
+                  disabled={pending || !editable}
                   onClick={() => run("travel", () => removeTravelRequest(t.id))}
                   style={{ color: "#b00" }}
                 >
@@ -167,8 +173,8 @@ export function EvidenceForm({
           </div>
           <input type="text" name="note" placeholder="Optional note" style={{ padding: 6 }} />
           <div style={uploadRow}>
-            <input type="file" name="file" accept={ACCEPT} required disabled={!driveConnected} />
-            <button type="submit" disabled={pending || !driveConnected}>
+            <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
+            <button type="submit" disabled={pending || !canUpload}>
               Add travel entry
             </button>
             <span style={fmtHint}>{FORMAT_HINT}</span>

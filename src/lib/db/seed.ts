@@ -3,8 +3,9 @@
  * Idempotent upsert — safe to re-run. Invoked via `npm run db:seed`.
  */
 import { createDb } from "./client";
-import { positions, shiftBlocks } from "./schema";
+import { positions, shiftBlocks, groups } from "./schema";
 import { POSITION_CONFIGS } from "../config/positions";
+import { DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME } from "../groups/constants";
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -50,9 +51,19 @@ async function main() {
           });
       }
     }
+    // The non-deletable default group (PLAN §13). Window left unconfigured (null)
+    // so the form stays locked until an admin schedules it. Only set isDefault +
+    // name on conflict — never clobber an admin-configured window.
+    await db
+      .insert(groups)
+      .values({ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME, isDefault: true })
+      .onDuplicateKeyUpdate({ set: { isDefault: true, name: DEFAULT_GROUP_NAME } });
+
     const positionCount = POSITION_CONFIGS.length;
     const blockCount = POSITION_CONFIGS.reduce((n, c) => n + c.blocks.length, 0);
-    console.log(`Seeded ${positionCount} positions and ${blockCount} shift blocks.`);
+    console.log(
+      `Seeded ${positionCount} positions, ${blockCount} shift blocks, and the "${DEFAULT_GROUP_NAME}" default group.`,
+    );
   } finally {
     await pool.end();
   }

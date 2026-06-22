@@ -20,6 +20,9 @@ import { getDb } from "@/lib/db";
 import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { resolveStudentAccess } from "@/lib/groups/data";
+import { canEditInWindow } from "@/lib/domain/window";
+import { NO_GROUP_MESSAGE, lockedReasonLine } from "@/lib/groups/window-message";
 import { loadPositionWithBlocks } from "./data";
 import { validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
@@ -71,6 +74,17 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 
   const student = await findStudentByEmail(session.email);
   if (!student) return { ok: false, errors: ["You are not on the roster."] };
+
+  // Form-access gate (PLAN §13): no group ⇒ denied; group window must be open.
+  const access = await resolveStudentAccess(student.email);
+  if (access.access === "no-group") return { ok: false, errors: [NO_GROUP_MESSAGE] };
+  if (!canEditInWindow(access.state)) {
+    return {
+      ok: false,
+      errors: [lockedReasonLine(access.state, access.opensAt, access.closesAt)],
+    };
+  }
+
   if (!student.positionId)
     return { ok: false, errors: ["No position is set for your account yet."] };
 

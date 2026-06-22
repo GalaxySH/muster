@@ -12,9 +12,10 @@
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
   per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
   now handles the People Coming / People Leaving split; student schedule-notes field added.
-  Next: edit-window enforcement, magic-link fallback, ops.
-- **Version:** 0.16
-- **Last updated:** 2026-06-21
+  **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
+  Next: magic-link fallback, ops.
+- **Version:** 0.17
+- **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -303,7 +304,9 @@ columns from the roster.
 
 - **Student**: `email` (PK / lookup key — must equal Google sign-in email),
   `displayName`, `positionId?` (from roster), `international` (from roster or
-  self-report), `onRoster: bool`.
+  self-report), `onRoster: bool`, `groupId?` (form-window group — §13; null = no
+  access), `groupAssignedAuto: bool` (sticky: set by the default-assignment sweep /
+  self-add hook vs. a manual admin assignment).
 - **Position**: `id`, `name`, `minHours`, `minDays`, `weekendExempt: bool` (Barista),
   `active`, `mergedIntoId?`.
 - **ShiftBlock**: `id`, `positionId`, `dayType` (`weekday`|`weekend`), `start`,
@@ -319,8 +322,11 @@ columns from the roster.
   cutoff → "not excused (late)").
 - **Flag**: `submissionId`, `type` (e.g. `auto_assigned_weekend`, `travel_late`),
   `detail`.
-- **FormWindow**: `positionId`, `opensAt`, `closesAt`. (Global config also holds the
-  **travel-excusal cutoff = 9/1**, all positions — its own value, not window-derived.)
+- **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
+  `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
+  `isDefault: bool` (exactly one — the non-deletable "New Student" group). Students join
+  via `students.groupId`. (The **travel-excusal cutoff = 9/1** is separate global config,
+  not window-derived.)
 - **AdminUser**: `email`, allowlist.
 - **AdminGoogleGrant**: `drive.file` refresh token (encrypted) for the image relay
   (§12) — admin-only; one row.
@@ -554,11 +560,35 @@ auth-method-agnostic.
 
 ## 13. Form Lifecycle / Windows
 
-- **Per-position open dates** (e.g. Shift Leads earlier, others later) via `FormWindow`.
-- **Editing:** students can edit until their window closes.
-- **Travel-excusal cutoff:** a **single global date (9/1)**, independent of the
-  per-position windows — a form open after 9/1 (e.g. via the edit window) still flags
-  new travel entries as late. Keep it as its own config value, not derived from a window.
+Windows are **admin-configured** and attach to **student groups**, not positions
+(groups can mirror roles, but also cut across them — "returning staff", staggered
+cohorts). Two gates decide a student's form access (availability **and** evidence):
+
+1. **Membership gate (security):** a student must have a *persisted* `groupId`.
+   **No group ⇒ denied** the form entirely. Nothing is inferred at read time.
+2. **Window gate:** their group's window must be **open now** to edit. Otherwise the
+   form is read-only with a banner. States (pure `domain/window.ts`):
+   `before` (opens later), `open` (editable), `closed`, `unconfigured` (no dates set).
+   **Only `open` permits edits**; `unconfigured` is **locked** (the secure default — a
+   freshly-seeded group isn't open by accident).
+
+- **Default group "New Student":** seeded, single, non-deletable. Catches ungrouped
+  and **non-roster self-added** students *when the default-assignment toggle is on*.
+- **Default-assignment toggle** (admin, in the groups surface): controls *only* default
+  auto-assignment. **OFF ⇒** ungrouped roster students + self-adds get no group ⇒ denied.
+  **ON ⇒** they get the default group. Assignment is written to the DB (never at roster
+  ingest): on the admin **Save sweep** (a batch that assigns the default group to every
+  `groupId IS NULL AND groupAssignedAuto = false` student, marking them auto — sticky, so
+  already-auto-assigned students are skipped and an admin's later unassign isn't undone),
+  and on **self-add** (a dormant hook, `applyDefaultGroupOnSelfAdd`, assigns immediately
+  when the toggle is on — the magic-link/self-add flow isn't built yet). Turning the
+  toggle off never un-assigns anyone.
+- **Assignment surfaces:** a filterable picker (position / roster / group / name) with
+  multi-select, plus a **paste-delimited-emails** path (reports matched vs. unknown).
+  *(Deferred: a hire-date filter — we don't ingest hire date; it conflicts with the
+  data-minimization invariant. Revisit if/when that field is added.)*
+- **Travel-excusal cutoff:** a **single global date (9/1)**, independent of windows —
+  a form open after 9/1 still flags new travel entries as late. Its own config value.
 - **Non-response:** computed from roster PC at any time.
 
 ---
@@ -644,7 +674,7 @@ under-18 test (deferred → fallback, §11).
   config; student stub.
 - **Phase 2 — Collection:** ✅ availability grid, weekend opt-in, evidence pages (course
   schedule + extracurricular + travel via Drive relay) built; review/submit + edit window.
-  (Edit-window enforcement still to wire.)
+  **Edit-window enforcement ✅** (group-based windows + two-gate access — §13).
 - **Phase 3 — Validation:** feasibility engine + hard/soft rules ✅; weekend auto-assign
   + flag persistence ✅; travel-cutoff flagging ✅ (`travel_late` flag on submit).
 - **Phase 4 — Admin:** ✅ response dashboard (search/sort, fast prev/next) + per-student
@@ -677,6 +707,21 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.17 (2026-06-22)** — **Edit-window enforcement via admin-configured student groups
+  (§13).** Replaced the unused per-position `FormWindow` with a first-class **Group**
+  (`groups` table; `students.groupId` + sticky `groupAssignedAuto`; migration `0005`,
+  `form_windows` dropped in `0006`). Form access is now **two-gated**: a student must be
+  in a group (else **denied**), and that group's window must be **open** to edit
+  (otherwise read-only — pure `domain/window.ts` `windowState`/`canEditInWindow`, shared
+  by server + UI). A seeded non-deletable **"New Student"** default group catches
+  ungrouped/self-added students when an admin enables the **default-assignment toggle**;
+  the batch **Save sweep** assigns it to never-auto-assigned ungrouped students (sticky),
+  and a dormant `applyDefaultGroupOnSelfAdd` hook covers the future self-add flow.
+  New **/admin/groups** surface: group CRUD + window scheduling, a filterable assignment
+  picker, and a **paste-delimited-emails** path (reports matched/unknown). Gates wired
+  into `saveAvailability` + all evidence actions; banners/denied screens on `/availability`
+  + `/evidence`. Hire-date picker filter **deferred** (data minimization). +9 tests
+  (`window`, `parse-emails`); 137 pass.
 - **0.16 (2026-06-21)** — **Roster two-sheet split, student notes, sheet/export polish.**
   Roster import now reads both PCPL sheets — **People Coming** (active → `onRoster: true`)
   and **People Leaving** (resigned/fired → `onRoster: false`); the response list, export,

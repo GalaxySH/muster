@@ -13,6 +13,9 @@ import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { resolveStudentAccess } from "@/lib/groups/data";
+import { canEditInWindow } from "@/lib/domain/window";
+import { NO_GROUP_MESSAGE, lockedReasonLine } from "@/lib/groups/window-message";
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
@@ -23,11 +26,21 @@ export interface ActionResult {
   error?: string;
 }
 
+// Gates every mutating evidence action on the same two checks as the
+// availability form (PLAN §13): the student must be on the roster, have a group,
+// and be inside that group's open window. Uploading/removing evidence is part of
+// editing the submission, so it locks with the form.
 async function requireStudent(): Promise<{ email: string } | { error: string }> {
   const session = await getAppSession();
   if (!session) return { error: "You are not signed in." };
   const student = await findStudentByEmail(session.email);
   if (!student) return { error: "You are not on the roster." };
+
+  const access = await resolveStudentAccess(student.email);
+  if (access.access === "no-group") return { error: NO_GROUP_MESSAGE };
+  if (!canEditInWindow(access.state)) {
+    return { error: lockedReasonLine(access.state, access.opensAt, access.closesAt) };
+  }
   return { email: student.email };
 }
 

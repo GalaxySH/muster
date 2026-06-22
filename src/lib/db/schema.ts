@@ -49,6 +49,21 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
   highDemand: boolean("high_demand").notNull().default(false),
 });
 
+/**
+ * Admin-defined student group carrying a form open/close window (PLAN.md §13).
+ * A student's window is resolved through their group; exactly one group is the
+ * non-deletable default ("New Student") that catches auto-assigned students.
+ * A null window (either bound) is "unconfigured" → the form stays locked.
+ */
+export const groups = mysqlTable("groups", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 128 }).notNull().unique(),
+  opensAt: datetime("opens_at", { mode: "date" }),
+  closesAt: datetime("closes_at", { mode: "date" }),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 /** A roster/sign-in person (PLAN.md §9). Email = Google sign-in identity (PK). */
 export const students = mysqlTable("students", {
   email: varchar("email", { length: 255 }).primaryKey(),
@@ -56,6 +71,15 @@ export const students = mysqlTable("students", {
   positionId: varchar("position_id", { length: 64 }).references(() => positions.id),
   international: boolean("international").notNull().default(false),
   onRoster: boolean("on_roster").notNull().default(false),
+  // Form-window group membership (PLAN.md §13). No group → no form access.
+  // Written on admin assignment / self-add, never at roster ingest.
+  groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
+    onDelete: "set null",
+  }),
+  // Sticky marker: true when the group was set by the default-assignment sweep /
+  // self-add hook (vs. a manual admin assignment). The sweep skips rows already
+  // flagged, so an admin's later manual change isn't undone.
+  groupAssignedAuto: boolean("group_assigned_auto").notNull().default(false),
 });
 
 /** One student's availability submission (PLAN.md §9). No image bytes — Drive fileIds only. */
@@ -134,15 +158,6 @@ export const flags = mysqlTable("flags", {
   detail: text("detail"),
 });
 
-/** Per-position form open/close window (PLAN.md §13). */
-export const formWindows = mysqlTable("form_windows", {
-  positionId: varchar("position_id", { length: 64 })
-    .primaryKey()
-    .references(() => positions.id),
-  opensAt: datetime("opens_at").notNull(),
-  closesAt: datetime("closes_at").notNull(),
-});
-
 /** Admin allowlist (PLAN.md §3, §9). */
 export const adminUsers = mysqlTable("admin_users", {
   email: varchar("email", { length: 255 }).primaryKey(),
@@ -185,6 +200,10 @@ export const appSettings = mysqlTable("app_settings", {
 
 export const positionsRelations = relations(positions, ({ many }) => ({
   shiftBlocks: many(shiftBlocks),
+  students: many(students),
+}));
+
+export const groupsRelations = relations(groups, ({ many }) => ({
   students: many(students),
 }));
 

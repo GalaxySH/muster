@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Phase 1 done; Phase 2 built; Phase 3 done; Phase 4 built: Next.js scaffold, full TDD
+Phase 1 done; Phase 2 built; Phase 3 done; Phase 4 built; **edit-window enforcement
+done**: Next.js scaffold, full TDD
 toolchain, DB schema + migrations, the **pure-domain rules engine**, **Google sign-in
 (Auth.js v5)**, **roster import + sign-in linking**, the **student availability form**
 (`/availability`: weekday/weekend grid, every-weekend opt-in, desired-hours, live
@@ -18,8 +19,25 @@ Sheet** in the Drive folder. The roster import handles the PCPL workbook's two s
 (**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
 `onRoster: false`), and the active surfaces (response list, export, non-response tracking)
 filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
-The Drive relay + the running sheet are **confirmed live**. Still to build: edit-window
-enforcement and the magic-link fallback.
+The Drive relay + the running sheet are **confirmed live**. Still to build: the magic-link
+fallback and ops/Docker hardening.
+
+**Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
+student groups** with open/close windows — two gates: (1) **membership** — a student must
+have a persisted `students.groupId` or they're **denied** the form (no inferred fallback);
+(2) **window** — their group's window must be **open** to edit, else read-only. The pure
+state machine is `src/lib/domain/window.ts` (`windowState` → `before|open|closed|
+unconfigured`; `canEditInWindow` = open only; `unconfigured` locks — the secure default),
+shared by the server gate and the UI. A seeded, single, non-deletable **"New Student"**
+default group (`groups.isDefault`, id `default`) catches ungrouped/self-added students
+**only when** the admin's default-assignment toggle is on; the batch **Save sweep**
+(`runDefaultAssignmentSweep`) assigns it to `groupId IS NULL AND groupAssignedAuto = false`
+students and marks them auto (sticky `students.groupAssignedAuto`, so a later manual
+unassign isn't re-grabbed). Group assignment is **persisted, never at roster ingest** —
+written by the admin (picker / pasted emails) or the dormant `applyDefaultGroupOnSelfAdd`
+hook (future magic-link self-add). Migration `0005` adds `groups` + the two student
+columns; `0006` drops the old unused `form_windows` table (superseded). The seed upserts
+the default group.
 
 Drive folder layout (PLAN §12): the configured root (`DRIVE_FOLDER_ID`) holds the running
 `Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**
@@ -73,7 +91,25 @@ an `auto_assigned` `shift_selections` row + an `auto_assigned_weekend` `flags` r
 (both submit-time only; cleared on draft). The client form
 (`components/AvailabilityForm.tsx`) runs the same validator live for feedback and renders
 the server's auto-assigned cell distinctly (★, read-only overlay — never re-sent as a
-manual pick).
+manual pick). The form also takes an `editable` prop: when a window isn't open it renders
+read-only (disabled inputs, hidden Save/Submit).
+
+Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`): the pure
+seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both
+TDD-tested). `groups/data.ts` (server-only) has `resolveStudentAccess(email)` (the two-gate
+decision used by every gate), `listGroups`/`getDefaultGroup`/`getDefaultAutoAssignEnabled`,
+and `listStudentsForPicker(filters)`. `groups/actions.ts` ("use server", **admin-gated**)
+owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPaste`/
+`unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
+`searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;
+`groups/window-message.ts` is the shared (pure) banner/error copy. Enforcement lives in
+`availability/actions.ts` `saveAvailability` and the shared `requireStudent` guard in
+`evidence/actions.ts` (gates all six evidence mutations). The admin UI is
+`/admin/groups` (server page) with client islands `GroupWindowsTable`,
+`DefaultAssignmentPanel`, `StudentAssigner`; the student pages render
+`components/FormWindowBanner.tsx` (`NoGroupNotice` + `FormWindowBanner`). Window bounds
+cross the client/server boundary as **ISO instants** (client converts its local
+`datetime-local` input to ISO before sending) so they're timezone-unambiguous.
 
 Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`.
 Google OAuth client must list the redirect URI `<base>/api/auth/callback/google`

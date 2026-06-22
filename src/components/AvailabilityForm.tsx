@@ -45,6 +45,8 @@ export interface AvailabilityFormProps {
   initialStatus: "draft" | "submitted" | null;
   /** Admin inspection mode: live validation works, but nothing is persisted. */
   preview?: boolean;
+  /** When false, the form is read-only (window closed/not-yet-open — PLAN §13). */
+  editable?: boolean;
 }
 
 export function AvailabilityForm(props: AvailabilityFormProps) {
@@ -59,6 +61,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const [notes, setNotes] = useState(props.initialNotes);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const editable = props.editable ?? true;
 
   // Only consider cells that belong to this position's blocks, so stale state
   // (e.g. switching previews) can never reference an unknown block.
@@ -103,6 +106,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   ];
 
   function toggle(blockId: string, day: Day) {
+    if (!editable) return;
     setMessage(null);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -182,6 +186,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
           covered={coveredKeys}
           autoAssigned={autoAssigned}
           onToggle={toggle}
+          editable={editable}
         />
 
         {props.gridModel.weekend && (
@@ -192,6 +197,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
               covered={coveredKeys}
               autoAssigned={autoAssigned}
               onToggle={toggle}
+              editable={editable}
             />
             <p
               style={{
@@ -208,6 +214,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
                 <input
                   type="checkbox"
                   checked={optIn}
+                  disabled={!editable}
                   onChange={(e) => setOptIn(e.target.checked)}
                 />{" "}
                 I&apos;d rather work <strong>every</strong> weekend (in exchange for fewer weekday
@@ -234,16 +241,21 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
             min={1}
             required
             value={desired}
+            disabled={!editable}
             onChange={(e) => setDesired(e.target.value)}
             style={{ width: 70 }}
           />
         </label>
-        <button type="button" onClick={() => setDesired(String(minHours))}>
-          Min ({minHours}h)
-        </button>
-        <button type="button" onClick={() => setDesired(String(maxHours))}>
-          Max ({maxHours}h)
-        </button>
+        {editable && (
+          <>
+            <button type="button" onClick={() => setDesired(String(minHours))}>
+              Min ({minHours}h)
+            </button>
+            <button type="button" onClick={() => setDesired(String(maxHours))}>
+              Max ({maxHours}h)
+            </button>
+          </>
+        )}
       </div>
 
       <div style={{ margin: "1.2rem 0" }}>
@@ -254,6 +266,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         <textarea
           id="schedule-notes"
           value={notes}
+          readOnly={!editable}
           onChange={(e) => {
             setNotes(e.target.value);
             setMessage(null);
@@ -270,14 +283,23 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       />
 
       <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
-        <button type="button" onClick={() => save(false)} disabled={pending}>
-          Save draft
-        </button>
-        <button type="button" onClick={() => save(true)} disabled={pending || !canSubmit}>
-          Submit
-        </button>
+        {editable && (
+          <>
+            <button type="button" onClick={() => save(false)} disabled={pending}>
+              Save draft
+            </button>
+            <button type="button" onClick={() => save(true)} disabled={pending || !canSubmit}>
+              Submit
+            </button>
+          </>
+        )}
         {props.initialStatus === "submitted" && (
           <span style={{ color: "#196127" }}>✓ submitted</span>
+        )}
+        {!editable && (
+          <span style={{ color: "#777" }}>
+            Read-only — your form window isn&apos;t open for edits right now.
+          </span>
         )}
       </div>
 
@@ -296,12 +318,14 @@ function Grid({
   covered,
   autoAssigned,
   onToggle,
+  editable,
 }: {
   sub: SubGrid;
   selected: Set<string>;
   covered: Set<string>;
   autoAssigned: Set<string>;
   onToggle: (blockId: string, day: Day) => void;
+  editable: boolean;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
   return (
@@ -390,7 +414,7 @@ function Grid({
                             : isCovered
                               ? "#8a7400"
                               : "transparent",
-                        cursor: "pointer",
+                        cursor: editable ? "pointer" : "default",
                       }}
                     >
                       {on ? "✓" : isAuto ? "★" : isCovered ? "–" : "✓"}
