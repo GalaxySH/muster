@@ -704,6 +704,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   **not** the scheduler writing schedules (§17), but it is the one feature that places
   leads on specific dated shifts, so it's called out explicitly.
 
+### 18b. Backlog (smaller enhancements)
+- **Form-flow refinement:** make the student form a single guided progression through
+  **tabs/steps** (availability → evidence → review/submit) rather than the current
+  disconnected pages (`/availability`, `/evidence`). Shared window-gate banner, one
+  "where am I" affordance, next/back between steps.
+- **Non-response: copy emails to clipboard.** A button on `/admin/non-responses` that
+  copies all non-responders' emails (comma/newline-delimited) to the clipboard for a
+  quick reminder mail-merge.
+
 ---
 
 ## Changelog
