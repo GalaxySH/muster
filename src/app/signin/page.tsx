@@ -53,11 +53,10 @@ export default async function SignInPage({
           Didn&apos;t work? Email me a sign-in link
         </summary>
         <p style={{ fontSize: 13, color: "#555", margin: "8px 0" }}>
-          For under-18 or non-Google <code>@wisc.edu</code> users. We&apos;ll email a one-time link
+          If we recognize you, we&apos;ll email a one-time link
           to your wisc.edu address.
         </p>
         <form action={requestMagicLink} style={{ display: "grid", gap: 8, maxWidth: 360 }}>
-          <input type="text" name="name" placeholder="Your name (optional)" style={field} />
           <input type="email" name="email" placeholder="you@wisc.edu" required style={field} />
           <button type="submit">Send sign-in link</button>
         </form>

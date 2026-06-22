@@ -440,7 +440,10 @@ the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
 > sends it via **Resend** (verified domain `re.hauge.rocks`; no `RESEND_API_KEY` ⇒ the link
 > is logged to the server console for local dev). **Eligibility = the email is already a
 > known student or admin** (neutral "if eligible, we've sent a link" either way — no
-> enumeration), **rate-limited** 60 s/email. Redemption (`/magic/redeem`) re-asks for the
+> enumeration), **rate-limited** 60 s/email. The form collects **only the email**; the
+> recipient's name is **inferred from the roster** (`inferRosterName`), kept as a separate
+> function from `isEligibleForMagicLink` so a future self-add can broaden eligibility
+> without coupling to name resolution. Redemption (`/magic/redeem`) re-asks for the
 > email (anti-preview), then a **`magic-link` Credentials provider** atomically consumes the
 > token (single `UPDATE … WHERE redeemed_at IS NULL AND not expired/revoked AND email
 > matches`) and establishes the same `AppSession` (`method: "magic-link"`). **Access still
@@ -452,7 +455,8 @@ the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
 **Flow:**
 1. Landing page: **"Sign in with wisc.edu email"** button. Below it: *"Didn't work?
    Click here ▾"* → a link-request form.
-2. User enters **name + wisc email** → "Send link."
+2. User enters **their wisc email** → "Send link." (Name is **inferred from the roster**,
+   not collected — see "As built".)
 3. The **app** generates a unique link bound to that email, stores it (hashed), and
    **sends it via a transactional email provider** (see "Email transport" below).
    *App owns the token; the provider is only the courier.*

@@ -12,26 +12,32 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "./index";
 import { normalizeEmail, isWiscEmail } from "./policy";
-import { findStudentByEmail, isAdminInDb } from "@/lib/roster/lookup";
-import { issueMagicLink, requestCooldownMs } from "./magic-link-store";
+import {
+  issueMagicLink,
+  requestCooldownMs,
+  isEligibleForMagicLink,
+  inferRosterName,
+} from "./magic-link-store";
 import { sendMagicLinkEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 import { MAGIC_LINK_PROVIDER } from "./config";
 
 export async function requestMagicLink(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
-  const name = String(formData.get("name") ?? "").trim().slice(0, 120) || undefined;
 
-  // Best-effort: only ever issue to a known student/admin, once per cooldown.
-  // Any failure is swallowed — the response below is identical regardless.
+  // Best-effort: only ever issue to an eligible address, once per cooldown. The
+  // recipient's name is inferred from the roster (not collected). Any failure is
+  // swallowed — the response below is identical regardless.
   try {
-    if (isWiscEmail(email)) {
-      const known = (await findStudentByEmail(email)) !== null || (await isAdminInDb(email));
-      if (known && (await requestCooldownMs(email)) === 0) {
-        const token = await issueMagicLink(email);
-        const url = `${env.NEXTAUTH_URL}/magic/redeem?token=${encodeURIComponent(token)}`;
-        await sendMagicLinkEmail({ to: email, url, name });
-      }
+    if (
+      isWiscEmail(email) &&
+      (await isEligibleForMagicLink(email)) &&
+      (await requestCooldownMs(email)) === 0
+    ) {
+      const name = (await inferRosterName(email)) ?? undefined;
+      const token = await issueMagicLink(email);
+      const url = `${env.NEXTAUTH_URL}/magic/redeem?token=${encodeURIComponent(token)}`;
+      await sendMagicLinkEmail({ to: email, url, name });
     }
   } catch (e) {
     console.error("Magic-link request failed (non-fatal):", e);

@@ -124,11 +124,15 @@ cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redee
 `magic-link-store.ts` (only the SHA-256 hash stored; redemption is one atomic single-use
 `UPDATE`); delivery via `src/lib/email/resend.ts` (verified domain `re.hauge.rocks`;
 **no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). Server
-actions in `magic-link-actions.ts`: `requestMagicLink` (eligibility = known student/admin
-only; 60 s/email cooldown; **always-neutral** redirect to `/signin?sent=1` — no
-enumeration) and `redeemAndSignIn` (hands token+email to the `magic-link` Credentials
-provider in `config.ts`). Access still requires the roster + group gates (§13); non-roster
-self-add stays deferred (the dormant `applyDefaultGroupOnSelfAdd` hook).
+actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
+eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
+`/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the
+`magic-link` Credentials
+provider in `config.ts`). The recipient's name is inferred from the roster via
+`inferRosterName`, kept separate from `isEligibleForMagicLink` (both in `magic-link-store.ts`)
+so a future self-add can broaden eligibility without coupling to name resolution. Access
+still requires the roster + group gates (§13); non-roster self-add stays deferred (the
+dormant `applyDefaultGroupOnSelfAdd` hook).
 
 For local testing (incl. Playwright MCP), a **dev-login bypass** at `/dev-login`
 signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated by

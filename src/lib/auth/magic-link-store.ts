@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { magicLinks } from "@/lib/db/schema";
+import { findStudentByEmail, isAdminInDb } from "@/lib/roster/lookup";
 import { normalizeEmail } from "./policy";
 import {
   generateToken,
@@ -16,6 +17,27 @@ import {
   cooldownRemainingMs,
   MAGIC_LINK_TTL_MS,
 } from "./magic-link";
+
+/**
+ * Eligibility policy for issuing a magic link (PLAN §11): today, a known roster
+ * student or admin. Kept DELIBERATELY separate from name resolution below so a
+ * future self-add path can broaden who's eligible without touching how the name
+ * is sourced (a self-added user simply has no roster name yet).
+ */
+export async function isEligibleForMagicLink(emailRaw: string): Promise<boolean> {
+  const email = normalizeEmail(emailRaw);
+  if (await findStudentByEmail(email)) return true;
+  return isAdminInDb(email);
+}
+
+/**
+ * Best-effort display name from the roster, or null. Independent of eligibility:
+ * resolving a name and deciding who may sign in are different concerns.
+ */
+export async function inferRosterName(emailRaw: string): Promise<string | null> {
+  const student = await findStudentByEmail(normalizeEmail(emailRaw));
+  return student?.displayName ?? null;
+}
 
 /** Issue a token for an (already eligibility-checked) email; returns the raw token. */
 export async function issueMagicLink(emailRaw: string): Promise<string> {
