@@ -5,6 +5,7 @@ import { listResponses } from "@/lib/admin/data";
 import { getResponsesSheetUrl, getLastSheetSync } from "@/lib/admin/sheet-sync";
 import { ResponseList } from "@/components/admin/ResponseList";
 import { ResponsesToolbar } from "@/components/admin/ResponsesToolbar";
+import { Page } from "@/components/ui";
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
@@ -22,7 +23,7 @@ export default async function ResponsesPage() {
   ]);
 
   return (
-    <main style={{ padding: "1.5rem", maxWidth: 980, margin: "0 auto", color: "var(--color-text-primary)" }}>
+    <Page width="wide">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/non-responses" label="Non-responses" />
@@ -34,6 +35,6 @@ export default async function ResponsesPage() {
       ) : (
         <ResponseList rows={rows} />
       )}
-    </main>
+    </Page>
   );
 }

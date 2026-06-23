@@ -6,6 +6,7 @@ import { POSITIONS } from "@/lib/config/positions";
 import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
 import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPanel";
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
+import { Page } from "@/components/ui";
 
 /**
  * Admin: groups & form windows (PLAN §13). Define groups, schedule their
@@ -36,7 +37,7 @@ export default async function AdminGroupsPage() {
   const positions = POSITIONS.map((p) => ({ id: p.id, name: p.name }));
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 1000 }}>
+    <Page width="wide">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
       </AppHeader>
@@ -51,6 +52,6 @@ export default async function AdminGroupsPage() {
       <GroupWindowsTable groups={groupViews} />
       <DefaultAssignmentPanel initialEnabled={autoAssignEnabled} />
       <StudentAssigner groups={groupOptions} positions={positions} />
-    </main>
+    </Page>
   );
 }

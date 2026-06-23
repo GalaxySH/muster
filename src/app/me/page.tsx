@@ -5,7 +5,7 @@ import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
-import { PrimaryLink } from "@/components/ui";
+import { Page, PrimaryLink } from "@/components/ui";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
@@ -16,7 +16,7 @@ export default async function MePage() {
   const flow = await loadFlowState(session.email);
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 640 }}>
+    <Page>
       <AppHeader isHome />
       <h1>Profile</h1>
       <p style={{ color: "#555" }}>
@@ -111,7 +111,7 @@ export default async function MePage() {
         </p>
       )}
       <SignOutButton />
-    </main>
+    </Page>
   );
 }
 

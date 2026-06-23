@@ -67,7 +67,7 @@ export function ResponseList({ rows }: { rows: ResponseRow[] }) {
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
               <Th onClick={() => toggleSort("name")}>Name{arrow("name")}</Th>

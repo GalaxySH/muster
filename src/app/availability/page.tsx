@@ -9,6 +9,7 @@ import { AvailabilityForm } from "@/components/AvailabilityForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
+import { Page } from "@/components/ui";
 
 export default async function AvailabilityPage() {
   const session = await getAppSession();
@@ -18,11 +19,11 @@ export default async function AvailabilityPage() {
 
   if (!form) {
     return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <Page>
         <h1>Availability</h1>
         <p>You&apos;re not on the current roster, so there&apos;s no form to fill out yet.</p>
         <Link href="/me">Back</Link>
-      </main>
+      </Page>
     );
   }
 
@@ -30,24 +31,24 @@ export default async function AvailabilityPage() {
   const access = await resolveStudentAccess(form.student.email);
   if (access.access === "no-group") {
     return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <Page>
         <h1>Availability</h1>
         <NoGroupNotice />
         <Link href="/me">Back</Link>
-      </main>
+      </Page>
     );
   }
 
   if (!form.position) {
     return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <Page>
         <h1>Availability</h1>
         <p>
           Your position isn&apos;t set yet. Choosing your position during onboarding is coming soon;
           ask your supervisor if this looks wrong.
         </p>
         <Link href="/me">Back</Link>
-      </main>
+      </Page>
     );
   }
 
@@ -57,7 +58,7 @@ export default async function AvailabilityPage() {
   const reachable = await loadReachableSteps(form.student.email);
 
   return (
-    <main style={{ padding: "2rem" }}>
+    <Page width="wide">
       <AppHeader>
         <WizardSteps current="availability" reachable={reachable} />
       </AppHeader>
@@ -80,6 +81,6 @@ export default async function AvailabilityPage() {
         initialStatus={form.submission?.status ?? null}
         editable={editable}
       />
-    </main>
+    </Page>
   );
 }

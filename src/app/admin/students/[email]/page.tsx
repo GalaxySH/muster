@@ -11,6 +11,7 @@ import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
+import { Page } from "@/components/ui";
 
 const DAY_LABEL: Record<Day, string> = {
   mon: "Mon",
@@ -59,13 +60,13 @@ export default async function StudentDetailPage({
 
   if (!detail) {
     return (
-      <main style={page}>
+      <Page width="wide">
         <AppHeader>
           <Crumb href="/admin" label="Admin" />
           <Crumb href="/admin/responses" label="Responses" />
         </AppHeader>
         <p>No student found for &quot;{email}&quot;.</p>
-      </main>
+      </Page>
     );
   }
 
@@ -86,7 +87,7 @@ export default async function StudentDetailPage({
   const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}`;
 
   return (
-    <main style={page}>
+    <Page width="wide">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/responses" label="Responses" />
@@ -320,7 +321,7 @@ export default async function StudentDetailPage({
           </div>
         </>
       )}
-    </main>
+    </Page>
   );
 }
 
@@ -504,12 +505,6 @@ function Legend() {
 
 // --- styles ---
 
-const page: React.CSSProperties = {
-  padding: "1.5rem",
-  maxWidth: 980,
-  margin: "0 auto",
-  color: "var(--color-text-primary)",
-};
 const card: React.CSSProperties = {
   background: "var(--color-background-primary)",
   border: "0.5px solid var(--color-border-tertiary)",

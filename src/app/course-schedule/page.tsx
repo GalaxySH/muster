@@ -10,7 +10,7 @@ import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
-import { PrimaryLink } from "@/components/ui";
+import { Page, PrimaryLink } from "@/components/ui";
 
 export default async function CourseSchedulePage() {
   const session = await getAppSession();
@@ -19,11 +19,11 @@ export default async function CourseSchedulePage() {
   const student = await findStudentByEmail(session.email);
   if (!student) {
     return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <Page>
         <h1>Course schedule &amp; activities</h1>
         <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
         <Link href="/me">Back</Link>
-      </main>
+      </Page>
     );
   }
 
@@ -36,18 +36,18 @@ export default async function CourseSchedulePage() {
 
   if (access.access === "no-group") {
     return (
-      <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <Page>
         <h1>Course schedule &amp; activities</h1>
         <NoGroupNotice />
         <Link href="/me">Back</Link>
-      </main>
+      </Page>
     );
   }
 
   const editable = access.canEdit;
 
   return (
-    <main style={{ padding: "2rem" }}>
+    <Page>
       <AppHeader>
         <WizardSteps current="course-schedule" reachable={reachable} />
       </AppHeader>
@@ -68,6 +68,6 @@ export default async function CourseSchedulePage() {
           )}
         </p>
       )}
-    </main>
+    </Page>
   );
 }

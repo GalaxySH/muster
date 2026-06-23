@@ -6,6 +6,30 @@
  */
 import Link from "next/link";
 
+/**
+ * The standard page shell: a left-aligned `<main>` with one of three comfortable,
+ * mobile-aware content widths (see `.page` in globals.css). Use this for every
+ * top-level page so width, alignment, and padding stay consistent.
+ *   - `narrow` (480) — auth / single-form pages
+ *   - `default` (720) — reading + the student form flow
+ *   - `wide` (1000) — admin tables and the availability grid
+ */
+export function Page({
+  width = "default",
+  style,
+  children,
+}: {
+  width?: "narrow" | "default" | "wide";
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <main className={`page page--${width}`} style={style}>
+      {children}
+    </main>
+  );
+}
+
 export const primaryButtonStyle: React.CSSProperties = {
   display: "inline-block",
   background: "#1a66cc",

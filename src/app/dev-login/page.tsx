@@ -4,6 +4,7 @@ import { devSignInAction } from "@/lib/auth/actions";
 import { createDevStudent, deleteDevStudent } from "@/lib/dev/actions";
 import { listDevStudents } from "@/lib/dev/data";
 import { POSITIONS } from "@/lib/config/positions";
+import { Page } from "@/components/ui";
 
 // DB-backed (the test-account list) — never statically prerender.
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export default async function DevLoginPage() {
   const devStudents = await listDevStudents();
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 640 }}>
+    <Page>
       <h1>Dev login</h1>
       <p style={banner}>
         <strong>Local testing only.</strong> This bypasses Google OAuth and is disabled in
@@ -85,7 +86,7 @@ export default async function DevLoginPage() {
           ))}
         </ul>
       )}
-    </main>
+    </Page>
   );
 }
 

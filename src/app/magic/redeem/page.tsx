@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redeemAndSignIn } from "@/lib/auth/magic-link-actions";
+import { Page } from "@/components/ui";
 
 /**
  * Magic-link redemption — the "Confirm it's you" step (PLAN §11). Visiting the
@@ -16,18 +17,18 @@ export default async function RedeemPage({
 
   if (!token) {
     return (
-      <main style={{ padding: "2rem", maxWidth: 480 }}>
+      <Page width="narrow">
         <h1>Sign-in link</h1>
         <p>This sign-in link is missing or invalid.</p>
         <p>
           <Link href="/signin">Request a new link →</Link>
         </p>
-      </main>
+      </Page>
     );
   }
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 480 }}>
+    <Page width="narrow">
       <h1>Confirm it&apos;s you</h1>
       {error && (
         <p style={{ color: "var(--color-text-danger, #b00)" }}>
@@ -53,6 +54,6 @@ export default async function RedeemPage({
           <Link href="/signin">Request a new link →</Link>
         </p>
       )}
-    </main>
+    </Page>
   );
 }

@@ -4,7 +4,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadReachableSteps } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
-import { PrimaryLink } from "@/components/ui";
+import { Page, PrimaryLink } from "@/components/ui";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 
@@ -21,7 +21,7 @@ export default async function IntroPage() {
   const reachable = await loadReachableSteps(session.email);
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 680 }}>
+    <Page>
       <AppHeader>
         <WizardSteps reachable={reachable} />
       </AppHeader>
@@ -74,7 +74,7 @@ export default async function IntroPage() {
       <p style={{ marginTop: 20 }}>
         <PrimaryLink href="/course-schedule">Continue</PrimaryLink>
       </p>
-    </main>
+    </Page>
   );
 }
 

@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listNonResponses, type RosterPerson } from "@/lib/admin/data";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
+import { Page } from "@/components/ui";
 
 /**
  * Non-response tracking (PLAN §10): who on the roster still owes a submission,
@@ -22,7 +23,7 @@ export default async function NonResponsesPage() {
     report.rosterTotal > 0 ? Math.round((report.respondedCount / report.rosterTotal) * 100) : 0;
 
   return (
-    <main style={page}>
+    <Page>
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/responses" label="Responses" />
@@ -60,7 +61,7 @@ export default async function NonResponsesPage() {
           linkToDetail
         />
       )}
-    </main>
+    </Page>
   );
 }
 
@@ -104,12 +105,6 @@ function Group({
   );
 }
 
-const page: React.CSSProperties = {
-  padding: "1.5rem",
-  maxWidth: 820,
-  margin: "0 auto",
-  color: "var(--color-text-primary)",
-};
 const card: React.CSSProperties = {
   background: "var(--color-background-primary)",
   border: "0.5px solid var(--color-border-tertiary)",

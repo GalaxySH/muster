@@ -170,7 +170,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
 
       {/* Student list */}
       <div style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", maxHeight: 320, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table style={{ width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-secondary)" }}>
               <th style={th}>

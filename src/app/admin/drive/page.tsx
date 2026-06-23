@@ -5,6 +5,7 @@ import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { driveRedirectUri } from "@/lib/drive/oauth";
 import { env } from "@/lib/env";
 import { DriveControls } from "@/components/DriveControls";
+import { Page } from "@/components/ui";
 
 const ERROR_TEXT: Record<string, string> = {
   state: "The sign-in state didn't match (possible expired link). Please try connecting again.",
@@ -26,7 +27,7 @@ export default async function AdminDrivePage({
   const folderSet = Boolean(env.DRIVE_FOLDER_ID);
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 720 }}>
+    <Page>
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
       </AppHeader>
@@ -83,7 +84,7 @@ export default async function AdminDrivePage({
           {driveRedirectUri()}
         </code>
       </section>
-    </main>
+    </Page>
   );
 }
 

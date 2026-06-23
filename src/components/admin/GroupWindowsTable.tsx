@@ -28,27 +28,31 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
       <h2 style={h2}>Groups</h2>
       <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--color-text-secondary)" }}>
         Pick the open and close dates. The window starts and ends at{" "}
-        <strong>00:00 (midnight)</strong> on each date. <strong>Lock after submit</strong> keeps
+        <strong>00:00 (midnight)</strong> on each date. <strong>No edit</strong> keeps
         accepting new submissions while open but makes each student read-only once they finish.
       </p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-        <thead>
-          <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
-            <th style={th}>Group</th>
-            <th style={th}>Members</th>
-            <th style={th}>Opens</th>
-            <th style={th}>Closes</th>
-            <th style={th}>Status</th>
-            <th style={th}>After submit</th>
-            <th style={th} />
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((g) => (
-            <GroupRow key={g.id} group={g} />
-          ))}
-        </tbody>
-      </table>
+      <div style={{ overflowX: "auto" }}>
+        <table
+          style={{ width: "100%", minWidth: 680, borderCollapse: "collapse", fontSize: 14 }}
+        >
+          <thead>
+            <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
+              <th style={th}>Group</th>
+              <th style={th}>Members</th>
+              <th style={th}>Opens</th>
+              <th style={th}>Closes</th>
+              <th style={th}>Status</th>
+              <th style={th}>After submit</th>
+              <th style={th} />
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <GroupRow key={g.id} group={g} />
+            ))}
+          </tbody>
+        </table>
+      </div>
       <CreateGroup />
     </section>
   );
@@ -175,7 +179,7 @@ function GroupRow({ group }: { group: GroupView }) {
             disabled={pending}
             onChange={(e) => toggleLockAfterSubmit(e.target.checked)}
           />
-          Lock after submit
+          No edit
         </label>
       </td>
       <td style={{ ...td, whiteSpace: "nowrap" }}>

@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendar, faList, faUniversalAccess } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
+import { Page } from "@/components/ui";
 
 export default async function AdminPage() {
   const session = await getAppSession();
@@ -13,7 +14,7 @@ export default async function AdminPage() {
   if (!session.isAdmin) redirect("/me");
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 640 }}>
+    <Page>
       <AppHeader />
       <h1>Admin dashboard</h1>
       <p>Signed in as {session.email} (admin).</p>
@@ -30,6 +31,6 @@ export default async function AdminPage() {
       <FontAwesomeIcon icon={faGoogleDrive} /> <Link href="/admin/drive">Manage the Google Drive connection</Link>
       </p>
       <SignOutButton />
-    </main>
+    </Page>
   );
 }

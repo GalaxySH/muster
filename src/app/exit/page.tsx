@@ -5,6 +5,7 @@ import { FinishButton } from "@/components/FinishButton";
 import { loadReachableSteps } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
+import { Page } from "@/components/ui";
 
 /**
  * Final wizard step (PLAN §13). Sets expectations — these are preferences, not a
@@ -18,7 +19,7 @@ export default async function ExitPage() {
   const reachable = await loadReachableSteps(session.email);
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 680 }}>
+    <Page>
       <AppHeader>
         <WizardSteps reachable={reachable} />
       </AppHeader>
@@ -49,6 +50,6 @@ export default async function ExitPage() {
       </p>
 
       <FinishButton />
-    </main>
+    </Page>
   );
 }

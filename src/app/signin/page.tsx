@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { devLoginEnabled } from "@/lib/env";
 import { redirect } from "next/navigation";
 import { requestMagicLink } from "@/lib/auth/magic-link-actions";
+import { Page } from "@/components/ui";
 
 export default async function SignInPage({
   searchParams,
@@ -16,7 +17,7 @@ export default async function SignInPage({
   const { error, callbackUrl, sent } = await searchParams;
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 480 }}>
+    <Page width="narrow">
       <h1>Sign in to Muster</h1>
       {error && (
         <p style={{ color: "var(--color-text-danger, #b00)" }}>
@@ -67,7 +68,7 @@ export default async function SignInPage({
           <Link href="/dev-login">Dev login (local testing)</Link>
         </p>
       )}
-    </main>
+    </Page>
   );
 }
 
