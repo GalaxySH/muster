@@ -5,11 +5,12 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { loadReachableSteps } from "@/lib/flow/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
+import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faHouse } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { PrimaryLink } from "@/components/ui";
 
 export default async function CourseSchedulePage() {
   const session = await getAppSession();
@@ -21,15 +22,16 @@ export default async function CourseSchedulePage() {
       <main style={{ padding: "2rem", maxWidth: 640 }}>
         <h1>Course schedule &amp; activities</h1>
         <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
-        <Link href="/me">← Back</Link>
+        <Link href="/me">Back</Link>
       </main>
     );
   }
 
-  const [evidence, drive, access] = await Promise.all([
+  const [evidence, drive, access, reachable] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     resolveStudentAccess(student.email),
+    loadReachableSteps(student.email),
   ]);
 
   if (access.access === "no-group") {
@@ -37,7 +39,7 @@ export default async function CourseSchedulePage() {
       <main style={{ padding: "2rem", maxWidth: 640 }}>
         <h1>Course schedule &amp; activities</h1>
         <NoGroupNotice />
-        <Link href="/me">← Back</Link>
+        <Link href="/me">Back</Link>
       </main>
     );
   }
@@ -46,22 +48,19 @@ export default async function CourseSchedulePage() {
 
   return (
     <main style={{ padding: "2rem" }}>
-      <WizardSteps current="course-schedule" />
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/me"><FontAwesomeIcon icon={faHouse} /> Home</Link>
-      </p>
+      <AppHeader>
+        <WizardSteps current="course-schedule" reachable={reachable} />
+      </AppHeader>
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
         <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       )}
       <CourseScheduleForm initial={evidence} driveConnected={drive.connected} editable={editable} />
-      {editable && (
+      {editable && !evidence.submitted && (
         <p style={{ marginTop: 16 }}>
           {evidence.courseScheduleFileId ? (
-            <Link href="/availability" style={primaryLink}>
-              Next: availability
-            </Link>
+            <PrimaryLink href="/availability">Continue</PrimaryLink>
           ) : (
             <span style={{ color: "#777", fontSize: 14 }}>
               Upload your course schedule to continue.
@@ -72,13 +71,3 @@ export default async function CourseSchedulePage() {
     </main>
   );
 }
-
-const primaryLink: React.CSSProperties = {
-  display: "inline-block",
-  background: "#1a66cc",
-  color: "#fff",
-  borderRadius: 6,
-  padding: "0.55rem 1.1rem",
-  fontSize: 15,
-  textDecoration: "none",
-};

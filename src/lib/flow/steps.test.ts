@@ -5,6 +5,7 @@ import {
   prevHref,
   nextHref,
   flowStatus,
+  reachableStepKeys,
   type FlowInputs,
 } from "./steps";
 
@@ -57,9 +58,9 @@ describe("flowStatus", () => {
     expect(flowStatus(base).kind).toBe("not-started");
   });
 
-  it("resumes at course-schedule once started but nothing uploaded", () => {
+  it("resumes at the intro once started (info confirmed) but nothing uploaded", () => {
     const s = flowStatus({ ...base, hasSubmissionRow: true });
-    expect(s).toMatchObject({ kind: "continue", href: "/course-schedule" });
+    expect(s).toMatchObject({ kind: "continue", href: "/intro" });
   });
 
   it("treats an uploaded course schedule alone as started (continue, not not-started)", () => {
@@ -85,5 +86,31 @@ describe("flowStatus", () => {
       availabilityComplete: true,
     });
     expect(s).toMatchObject({ kind: "continue", href: "/travel" });
+  });
+});
+
+describe("reachableStepKeys", () => {
+  it("locks availability and travel until a course schedule is uploaded", () => {
+    expect(
+      reachableStepKeys({ submitted: false, hasCourseSchedule: false, availabilityComplete: false }),
+    ).toEqual(["course-schedule"]);
+  });
+
+  it("unlocks availability once the course schedule is in, but still locks travel", () => {
+    expect(
+      reachableStepKeys({ submitted: false, hasCourseSchedule: true, availabilityComplete: false }),
+    ).toEqual(["course-schedule", "availability"]);
+  });
+
+  it("unlocks travel only when course schedule + availability are complete", () => {
+    expect(
+      reachableStepKeys({ submitted: false, hasCourseSchedule: true, availabilityComplete: true }),
+    ).toEqual(["course-schedule", "availability", "travel"]);
+  });
+
+  it("opens every step for review once submitted", () => {
+    expect(
+      reachableStepKeys({ submitted: true, hasCourseSchedule: false, availabilityComplete: false }),
+    ).toEqual(["course-schedule", "availability", "travel"]);
   });
 });

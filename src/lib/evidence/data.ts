@@ -25,6 +25,8 @@ export interface TravelEntry {
 
 export interface EvidenceView {
   submissionId: string | null;
+  /** Whether the student has finalized their submission (drives the form-flow UI). */
+  submitted: boolean;
   courseScheduleFileId: string | null;
   extracurricularNotes: string;
   extracurricularFiles: ExtracurricularFile[];
@@ -45,6 +47,7 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
   if (!sub) {
     return {
       submissionId: null,
+      submitted: false,
       courseScheduleFileId: null,
       extracurricularNotes: "",
       extracurricularFiles: [],
@@ -64,6 +67,7 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
 
   return {
     submissionId: sub.id,
+    submitted: sub.status === "submitted",
     courseScheduleFileId: sub.courseScheduleFileId ?? null,
     extracurricularNotes: sub.extracurricularNotes ?? "",
     extracurricularFiles: ecFiles,

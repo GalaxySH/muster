@@ -789,6 +789,21 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.24 (2026-06-23)** — **Unified navigation header + form-flow polish (§4).** Every
+  page now renders a shared `AppHeader` with an always-present **🏠 Home** element; on the
+  flow pages it wraps `WizardSteps`, which **becomes** the navigation — a clickable
+  breadcrumb that replaces the old per-page backlinks. The breadcrumb **gates forward
+  navigation** the same way the "Next" buttons do: a new pure `reachableStepKeys` (TDD) +
+  `loadReachableSteps` lock Availability until a course schedule exists and Travel until
+  availability is complete (everything opens for review once submitted). Form-flow bottom
+  buttons are unified via centralized styles (`components/ui.tsx`): Availability keeps
+  **Save draft** + **Save and continue** in the wizard and reverts to **Save changes**
+  once submitted; the auto-saving pages (`/course-schedule`, `/travel`) hide their forward
+  button once submitted (`EvidenceView.submitted`). Directional ASCII arrows were removed
+  from buttons/backlinks. Admin pages gained the same Home element + an `Admin` crumb.
+  **Fix:** after confirming roster info (which creates a draft row and routes to `/intro`),
+  the `/me` "continue where you left off" now resumes at **`/intro`**, not mid-flow at
+  `/course-schedule`.
 - **0.23 (2026-06-22)** — **Per-group "lock editing after submit" (§13).** A new
   `groups.lockAfterSubmit` flag adds a **third access gate**: when on, the group keeps
   **accepting new submissions** while its window is open, but each student becomes

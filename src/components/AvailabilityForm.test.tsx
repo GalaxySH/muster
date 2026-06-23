@@ -92,7 +92,7 @@ describe("AvailabilityForm", () => {
   it("requires both passing rules and desired hours before continuing", async () => {
     const user = userEvent.setup();
     renderForm();
-    const cont = screen.getByRole("button", { name: "Save and continue →" });
+    const cont = screen.getByRole("button", { name: "Save and continue" });
     expect(cont).toBeDisabled();
 
     // Satisfy the availability hard rules.
@@ -125,7 +125,7 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
     await user.type(screen.getByRole("spinbutton"), "12");
 
-    expect(screen.getByRole("button", { name: "Save and continue →" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save and continue" })).toBeEnabled();
     expect(screen.getByText(/no weekend shift/i)).toBeInTheDocument();
   });
 

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { loadReachableSteps } from "@/lib/flow/data";
+import { AppHeader } from "@/components/AppHeader";
+import { WizardSteps } from "@/components/WizardSteps";
+import { PrimaryLink } from "@/components/ui";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 
@@ -15,12 +18,13 @@ export default async function IntroPage() {
   if (!session) redirect("/signin?callbackUrl=/intro");
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
+  const reachable = await loadReachableSteps(session.email);
 
   return (
     <main style={{ padding: "2rem", maxWidth: 680 }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/me">Home</Link>
-      </p>
+      <AppHeader>
+        <WizardSteps reachable={reachable} />
+      </AppHeader>
       <h1>Before you start</h1>
       <p style={{ color: "#555" }}>
         This form collects your <strong>availability and preferences</strong>. A human
@@ -68,9 +72,7 @@ export default async function IntroPage() {
       </section>
 
       <p style={{ marginTop: 20 }}>
-        <Link href="/course-schedule" style={primaryLink}>
-          Next
-        </Link>
+        <PrimaryLink href="/course-schedule">Continue</PrimaryLink>
       </p>
     </main>
   );
@@ -84,12 +86,3 @@ const card: React.CSSProperties = {
 };
 const h2: React.CSSProperties = { fontSize: 16, marginTop: 0 };
 const list: React.CSSProperties = { margin: 0, paddingLeft: "1.2rem", display: "grid", gap: 6, fontSize: 15 };
-const primaryLink: React.CSSProperties = {
-  display: "inline-block",
-  background: "#1a66cc",
-  color: "#fff",
-  borderRadius: 6,
-  padding: "0.6rem 1.2rem",
-  fontSize: 15,
-  textDecoration: "none",
-};

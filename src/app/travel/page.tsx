@@ -5,9 +5,11 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { loadReachableSteps } from "@/lib/flow/data";
 import { TravelForm } from "@/components/evidence/TravelForm";
 import { TravelContinue } from "@/components/evidence/TravelContinue";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
+import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 
 export default async function TravelPage() {
@@ -25,10 +27,11 @@ export default async function TravelPage() {
     );
   }
 
-  const [evidence, drive, access] = await Promise.all([
+  const [evidence, drive, access, reachable] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     resolveStudentAccess(student.email),
+    loadReachableSteps(student.email),
   ]);
 
   if (access.access === "no-group") {
@@ -45,25 +48,16 @@ export default async function TravelPage() {
 
   return (
     <main style={{ padding: "2rem" }}>
-      <WizardSteps current="travel" />
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/me">Home</Link>
-        <span style={{ color: "#ccc", margin: "0 8px" }}>·</span>
-        <Link href="/availability">Availability</Link>
-      </p>
+      <AppHeader>
+        <WizardSteps current="travel" reachable={reachable} />
+      </AppHeader>
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
         <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       )}
       <TravelForm initial={evidence} driveConnected={drive.connected} editable={editable} />
-      {editable ? (
-        <TravelContinue />
-      ) : (
-        <p style={{ marginTop: 16 }}>
-          <Link href="/me">Home</Link>
-        </p>
-      )}
+      {editable && !evidence.submitted && <TravelContinue />}
     </main>
   );
 }

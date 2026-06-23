@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
+import { AppHeader, Crumb } from "@/components/AppHeader";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { driveRedirectUri } from "@/lib/drive/oauth";
 import { env } from "@/lib/env";
@@ -27,9 +27,9 @@ export default async function AdminDrivePage({
 
   return (
     <main style={{ padding: "2rem", maxWidth: 720 }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/admin">← Admin</Link>
-      </p>
+      <AppHeader>
+        <Crumb href="/admin" label="Admin" />
+      </AppHeader>
       <h1>Google Drive connection</h1>
       <p style={{ color: "#555" }}>
         Proof files (course schedules, extracurricular proof, travel proof) are relayed into

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
+import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listGroups, getDefaultAutoAssignEnabled } from "@/lib/groups/data";
 import { POSITIONS } from "@/lib/config/positions";
 import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
@@ -37,9 +37,9 @@ export default async function AdminGroupsPage() {
 
   return (
     <main style={{ padding: "2rem", maxWidth: 1000 }}>
-      <p>
-        <Link href="/admin">← Admin</Link>
-      </p>
+      <AppHeader>
+        <Crumb href="/admin" label="Admin" />
+      </AppHeader>
       <h1>Groups &amp; form windows</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
         A student can only open the availability form if they&apos;re in a group whose window is

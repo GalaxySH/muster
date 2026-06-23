@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
+import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors } from "@/lib/admin/data";
 import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
@@ -59,9 +60,10 @@ export default async function StudentDetailPage({
   if (!detail) {
     return (
       <main style={page}>
-        <p style={{ marginBottom: 12 }}>
-          <Link href="/admin/responses">All responses</Link>
-        </p>
+        <AppHeader>
+          <Crumb href="/admin" label="Admin" />
+          <Crumb href="/admin/responses" label="Responses" />
+        </AppHeader>
         <p>No student found for &quot;{email}&quot;.</p>
       </main>
     );
@@ -85,9 +87,10 @@ export default async function StudentDetailPage({
 
   return (
     <main style={page}>
-      <p style={{ marginBottom: 12 }}>
-        <Link href="/admin/responses">All responses</Link>
-      </p>
+      <AppHeader>
+        <Crumb href="/admin" label="Admin" />
+        <Crumb href="/admin/responses" label="Responses" />
+      </AppHeader>
 
       {/* Identity header */}
       <div style={card}>

@@ -111,23 +111,40 @@ resyncs the Drive sheet. Both actions share a private `writeSelectionAndFlags` (
 + flags run only when the effective status is `submitted`, so an already-submitted form
 stays consistent when edited). The client form (`components/AvailabilityForm.tsx`) runs the
 same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
-continue →** (the latter routes to `/travel` on success), and for an already-submitted form
-it shows **Save changes** (edit-in-place, no downgrade). It renders the server's
-auto-assigned cell distinctly (★, never re-sent as a manual pick) and takes an `editable`
-prop (read-only when the window isn't open).
+continue** (the latter routes to `/travel` on success), and for an already-submitted form
+it shows **Save changes** (edit-in-place, no downgrade). The bottom buttons share the
+centralized button styles in `components/ui.tsx` (`primaryButtonStyle`/
+`secondaryButtonStyle`/`disabledButtonStyle`, also reused by `FinishButton`,
+`TravelContinue`, and the `PrimaryLink` forward-nav on the server pages). It renders the
+server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and takes an
+`editable` prop (read-only when the window isn't open).
 
 Form-flow layering (`src/lib/flow/` + wizard pages): `steps.ts` is **pure** (TDD) —
-`WIZARD_STEPS` + `prevHref`/`nextHref` and `flowStatus(inputs)` → `done | not-started |
-continue(href)` (resume step inferred from data, **no progress column**). `data.ts`
-(server-only) `loadFlowState(email)` resolves the two access gates + the flow inputs
-(`submitted`, `hasSubmissionRow`, `hasCourseSchedule`, `availabilityComplete` via
-`validateAvailability`). `actions.ts` `confirmRosterInfo()` records a draft row
-(`ensureSubmissionId`) so `/me` resumes, then redirects to `/intro`. Pages:
-`/me` (hub: confirm-info box / continue / review links), `/intro`, the three data steps
-(`/course-schedule`, `/availability`, `/travel` — each with `components/WizardSteps.tsx`
-progress + gated forward), and `/exit` (`components/FinishButton.tsx` → `finalizeSubmission`).
-The travel→exit gate is `components/evidence/TravelContinue.tsx` (an acknowledgement
-checkbox, since travel is optional).
+`WIZARD_STEPS` + `prevHref`/`nextHref`, `flowStatus(inputs)` → `done | not-started |
+continue(href)` (resume step inferred from data, **no progress column**), and
+`reachableStepKeys(inputs)` → which steps are unlocked (availability needs a course
+schedule, travel needs that + a complete availability; everything opens once submitted).
+`data.ts` (server-only) `loadFlowState(email)` resolves the two access gates + the flow
+inputs (`submitted`, `hasSubmissionRow`, `hasCourseSchedule`, `availabilityComplete` via
+`validateAvailability`); `loadReachableSteps(email)` reuses the same input computation
+(shared `computeFlowInputs`) and returns the unlocked step keys for the breadcrumb.
+`actions.ts` `confirmRosterInfo()` records a draft row (`ensureSubmissionId`) so `/me`
+resumes, then redirects to `/intro`.
+
+**Unified navigation:** every page renders `components/AppHeader.tsx` — an always-present
+**🏠 Home** element (plain text on `/me`, a link elsewhere; admins point it at `/me` and
+add an `Admin` `Crumb`). On the flow pages it wraps `components/WizardSteps.tsx`, which
+**is** the navigation: a clickable breadcrumb (no separate per-page backlinks) where the
+current step is bold, **unlocked** steps (from `loadReachableSteps`) are links, and locked
+steps are muted/non-clickable — so the breadcrumb can't jump ahead of the data, mirroring
+the per-step "Next" gates. Pages: `/me` (hub: confirm-info box / continue / review links),
+`/intro`, the three data steps (`/course-schedule`, `/availability`, `/travel`), and
+`/exit` (`components/FinishButton.tsx` → `finalizeSubmission`). The forward button is a
+shared `PrimaryLink`/styled button, hidden once `status = submitted` on the auto-saving
+pages (`/course-schedule`, `/travel` read `EvidenceView.submitted`) since the breadcrumb
+then handles review navigation. The travel→exit gate is
+`components/evidence/TravelContinue.tsx` (an acknowledgement checkbox, since travel is
+optional).
 
 Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`): the pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both

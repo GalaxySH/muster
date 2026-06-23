@@ -4,6 +4,8 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
+import { AppHeader } from "@/components/AppHeader";
+import { PrimaryLink } from "@/components/ui";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
@@ -15,6 +17,7 @@ export default async function MePage() {
 
   return (
     <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <AppHeader isHome />
       <h1>Profile</h1>
       <p style={{ color: "#555" }}>
         {session.name ? `${session.name} · ` : ""}
@@ -92,9 +95,7 @@ export default async function MePage() {
               <p style={{ marginTop: 0 }}>
                 You&apos;ve started but haven&apos;t submitted yet. Next up: {flow.status.stepLabel}.
               </p>
-              <Link href={flow.status.href} style={primaryLinkButton}>
-                Continue →
-              </Link>
+              <PrimaryLink href={flow.status.href}>Continue</PrimaryLink>
             </section>
           )}
         </div>
@@ -136,13 +137,4 @@ const primaryButton: React.CSSProperties = {
   fontSize: 15,
   cursor: "pointer",
   marginBottom: 10,
-};
-const primaryLinkButton: React.CSSProperties = {
-  display: "inline-block",
-  background: "#1a66cc",
-  color: "#fff",
-  borderRadius: 6,
-  padding: "0.55rem 1.1rem",
-  fontSize: 15,
-  textDecoration: "none",
 };

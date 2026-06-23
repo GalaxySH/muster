@@ -12,7 +12,7 @@ import { resolveStudentAccess } from "@/lib/groups/data";
 import { validateAvailability } from "@/lib/domain/validation";
 import { type WindowState } from "@/lib/domain/window";
 import { POSITIONS } from "@/lib/config/positions";
-import { flowStatus, type FlowStatus } from "./steps";
+import { flowStatus, reachableStepKeys, type FlowInputs, type FlowStatus, type WizardStepKey } from "./steps";
 
 export type FlowAccess =
   | { kind: "no-group" }
@@ -40,6 +40,33 @@ export type FlowState =
 
 const positionName = (id: string | null) => POSITIONS.find((p) => p.id === id)?.name ?? null;
 
+type LoadedForm = NonNullable<Awaited<ReturnType<typeof loadStudentForm>>>;
+
+/** Derive the four wizard inputs from a loaded form + the course-schedule fileId. */
+function computeFlowInputs(form: LoadedForm, courseScheduleFileId: string | null): FlowInputs {
+  let availabilityComplete = false;
+  if (form.position && form.submission && form.submission.desiredHours !== null) {
+    availabilityComplete = validateAvailability(form.selection, form.position, form.blocks, {
+      everyWeekendOptIn: form.submission.everyWeekendOptIn,
+    }).canSubmit;
+  }
+  return {
+    submitted: form.submission?.status === "submitted",
+    hasSubmissionRow: form.submission !== null,
+    hasCourseSchedule: Boolean(courseScheduleFileId),
+    availabilityComplete,
+  };
+}
+
+async function loadCourseScheduleFileId(email: string): Promise<string | null> {
+  const [sub] = await getDb()
+    .select({ courseScheduleFileId: submissions.courseScheduleFileId })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, email))
+    .limit(1);
+  return sub?.courseScheduleFileId ?? null;
+}
+
 export async function loadFlowState(email: string): Promise<FlowState> {
   const form = await loadStudentForm(email);
   if (!form) return { onRoster: false };
@@ -57,23 +84,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
           lockedAfterSubmit: accessRaw.lockedAfterSubmit,
         };
 
-  const [sub] = await getDb()
-    .select({ courseScheduleFileId: submissions.courseScheduleFileId })
-    .from(submissions)
-    .where(eq(submissions.studentEmail, email))
-    .limit(1);
-
-  const submitted = form.submission?.status === "submitted";
-  const hasSubmissionRow = form.submission !== null;
-  const hasCourseSchedule = Boolean(sub?.courseScheduleFileId);
-
-  let availabilityComplete = false;
-  if (form.position && form.submission && form.submission.desiredHours !== null) {
-    const v = validateAvailability(form.selection, form.position, form.blocks, {
-      everyWeekendOptIn: form.submission.everyWeekendOptIn,
-    });
-    availabilityComplete = v.canSubmit;
-  }
+  const inputs = computeFlowInputs(form, await loadCourseScheduleFileId(email));
 
   return {
     onRoster: true,
@@ -82,6 +93,17 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     positionName: positionName(form.student.positionId),
     international: form.student.international,
     access,
-    status: flowStatus({ submitted, hasSubmissionRow, hasCourseSchedule, availabilityComplete }),
+    status: flowStatus(inputs),
   };
+}
+
+/**
+ * The wizard steps a student may currently navigate to (PLAN §4) — the breadcrumb's
+ * forward gate, mirroring the per-step "Next" gates. Off-roster/no-form students can
+ * only reach the first step.
+ */
+export async function loadReachableSteps(email: string): Promise<WizardStepKey[]> {
+  const form = await loadStudentForm(email);
+  if (!form) return ["course-schedule"];
+  return reachableStepKeys(computeFlowInputs(form, await loadCourseScheduleFileId(email)));
 }

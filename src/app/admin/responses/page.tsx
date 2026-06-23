@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
+import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listResponses } from "@/lib/admin/data";
 import { getResponsesSheetUrl, getLastSheetSync } from "@/lib/admin/sheet-sync";
 import { ResponseList } from "@/components/admin/ResponseList";
@@ -23,10 +23,10 @@ export default async function ResponsesPage() {
 
   return (
     <main style={{ padding: "1.5rem", maxWidth: 980, margin: "0 auto", color: "var(--color-text-primary)" }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/admin">← Admin</Link> &nbsp;·&nbsp;{" "}
-        <Link href="/admin/non-responses">Non-responses →</Link>
-      </p>
+      <AppHeader>
+        <Crumb href="/admin" label="Admin" />
+        <Crumb href="/admin/non-responses" label="Non-responses" />
+      </AppHeader>
       <h1 style={{ marginTop: 0 }}>Responses</h1>
       <ResponsesToolbar sheetUrl={sheetUrl} lastSyncedAtMs={lastSync ? lastSync.getTime() : null} />
       {rows.length === 0 ? (

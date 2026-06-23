@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
+import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listNonResponses, type RosterPerson } from "@/lib/admin/data";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
 
@@ -22,9 +23,10 @@ export default async function NonResponsesPage() {
 
   return (
     <main style={page}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/admin">← Admin</Link> &nbsp;·&nbsp; <Link href="/admin/responses">Responses →</Link>
-      </p>
+      <AppHeader>
+        <Crumb href="/admin" label="Admin" />
+        <Crumb href="/admin/responses" label="Responses" />
+      </AppHeader>
       <h1 style={{ marginTop: 0 }}>Non-responses</h1>
       <p style={{ color: "var(--color-text-secondary)" }}>
         <strong>{report.respondedCount}</strong> of <strong>{report.rosterTotal}</strong> roster

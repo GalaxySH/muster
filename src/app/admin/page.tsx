@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/SignOutButton";
+import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendar, faHouse, faList, faUniversalAccess } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { faCalendar, faList, faUniversalAccess } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
 
 export default async function AdminPage() {
@@ -13,11 +14,9 @@ export default async function AdminPage() {
 
   return (
     <main style={{ padding: "2rem", maxWidth: 640 }}>
+      <AppHeader />
       <h1>Admin dashboard</h1>
       <p>Signed in as {session.email} (admin).</p>
-      <p style={{ marginTop: 20 }}>
-      <FontAwesomeIcon icon={faHouse} /> <Link href="/me">Back to home</Link>
-      </p>
       <p>
       <FontAwesomeIcon icon={faList} /> <Link href="/admin/responses">Response viewer</Link>
       </p>

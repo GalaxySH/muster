@@ -63,9 +63,28 @@ export type FlowStatus =
 export function flowStatus(i: FlowInputs): FlowStatus {
   if (i.submitted) return { kind: "done" };
   if (!i.hasSubmissionRow && !i.hasCourseSchedule) return { kind: "not-started" };
+  // Confirmed their info (a draft row exists) but haven't uploaded anything yet —
+  // resume at the intro, which is where confirming sent them, not mid-flow.
   if (!i.hasCourseSchedule)
-    return { kind: "continue", href: "/course-schedule", stepLabel: "your course schedule" };
+    return { kind: "continue", href: "/intro", stepLabel: "the introduction" };
   if (!i.availabilityComplete)
     return { kind: "continue", href: "/availability", stepLabel: "your availability" };
   return { kind: "continue", href: "/travel", stepLabel: "travel & finishing up" };
+}
+
+/**
+ * Which wizard steps the student may navigate to (PLAN §4). Mirrors the per-step
+ * "Next" gates so the breadcrumb can't jump ahead of the data: availability needs
+ * a course schedule, travel needs that plus a complete availability. Once
+ * submitted, everything is open for review. Used to disable locked breadcrumb
+ * crumbs the same way a locked "Next" button is hidden.
+ */
+export function reachableStepKeys(
+  i: Pick<FlowInputs, "submitted" | "hasCourseSchedule" | "availabilityComplete">,
+): WizardStepKey[] {
+  if (i.submitted) return WIZARD_STEPS.map((s) => s.key);
+  const keys: WizardStepKey[] = ["course-schedule"];
+  if (i.hasCourseSchedule) keys.push("availability");
+  if (i.hasCourseSchedule && i.availabilityComplete) keys.push("travel");
+  return keys;
 }

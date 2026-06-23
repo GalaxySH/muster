@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { FinishButton } from "@/components/FinishButton";
+import { loadReachableSteps } from "@/lib/flow/data";
+import { AppHeader } from "@/components/AppHeader";
+import { WizardSteps } from "@/components/WizardSteps";
 
 /**
  * Final wizard step (PLAN §13). Sets expectations — these are preferences, not a
@@ -13,12 +15,13 @@ export default async function ExitPage() {
   if (!session) redirect("/signin?callbackUrl=/exit");
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
+  const reachable = await loadReachableSteps(session.email);
 
   return (
     <main style={{ padding: "2rem", maxWidth: 680 }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/travel">← Travel</Link>
-      </p>
+      <AppHeader>
+        <WizardSteps reachable={reachable} />
+      </AppHeader>
       <h1>Almost done</h1>
 
       <div

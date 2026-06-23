@@ -13,6 +13,7 @@ import { validateAvailability } from "@/lib/domain/validation";
 import { hourCap } from "@/lib/domain/caps";
 import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
+import { primaryButtonStyle, secondaryButtonStyle, disabledButtonStyle } from "@/components/ui";
 
 const DAY_LABEL: Record<Day, string> = {
   mon: "Mon",
@@ -298,20 +299,31 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
         {editable && !editMode && (
           <>
-            <button type="button" onClick={() => run("draft")} disabled={pending}>
+            <button
+              type="button"
+              onClick={() => run("draft")}
+              disabled={pending}
+              style={pending ? disabledButtonStyle : secondaryButtonStyle}
+            >
               Save draft
             </button>
             <button
               type="button"
               onClick={() => run("continue", "/travel")}
               disabled={pending || !canSubmit}
+              style={pending || !canSubmit ? disabledButtonStyle : primaryButtonStyle}
             >
               Save and continue
             </button>
           </>
         )}
         {editable && editMode && (
-          <button type="button" onClick={() => run("continue")} disabled={pending || !canSubmit}>
+          <button
+            type="button"
+            onClick={() => run("continue")}
+            disabled={pending || !canSubmit}
+            style={pending || !canSubmit ? disabledButtonStyle : primaryButtonStyle}
+          >
             Save changes
           </button>
         )}
