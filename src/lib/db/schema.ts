@@ -60,6 +60,10 @@ export const groups = mysqlTable("groups", {
   name: varchar("name", { length: 128 }).notNull().unique(),
   opensAt: datetime("opens_at", { mode: "date" }),
   closesAt: datetime("closes_at", { mode: "date" }),
+  // When true, the form accepts new submissions while the window is open but
+  // locks (read-only) once a student finalizes — they can't edit after submit
+  // (PLAN.md §13). Default false preserves edit-until-close behavior.
+  lockAfterSubmit: boolean("lock_after_submit").notNull().default(false),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

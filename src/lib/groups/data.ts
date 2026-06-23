@@ -9,10 +9,15 @@
 import "server-only";
 import { and, asc, eq, isNull, like, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { groups, students, positions } from "@/lib/db/schema";
+import { groups, students, positions, submissions } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { getSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
-import { windowState, type WindowState } from "@/lib/domain/window";
+import {
+  windowState,
+  canEditSubmission,
+  isLockedAfterSubmit,
+  type WindowState,
+} from "@/lib/domain/window";
 import { DEFAULT_GROUP_ID } from "./constants";
 
 export interface GroupRow {
@@ -20,6 +25,7 @@ export interface GroupRow {
   name: string;
   opensAt: Date | null;
   closesAt: Date | null;
+  lockAfterSubmit: boolean;
   isDefault: boolean;
   memberCount: number;
 }
@@ -41,6 +47,7 @@ export async function listGroups(): Promise<GroupRow[]> {
       name: g.name,
       opensAt: g.opensAt,
       closesAt: g.closesAt,
+      lockAfterSubmit: g.lockAfterSubmit,
       isDefault: g.isDefault,
       memberCount: countByGroup.get(g.id) ?? 0,
     }))
@@ -67,11 +74,21 @@ export type StudentAccess =
       opensAt: Date | null;
       closesAt: Date | null;
       groupName: string;
+      /** The group's "lock editing after submit" setting (PLAN §13). */
+      lockAfterSubmit: boolean;
+      /** Whether this student has already finalized their submission. */
+      submitted: boolean;
+      /** Final editability: open window AND not locked-after-submit. */
+      canEdit: boolean;
+      /** Editing blocked *specifically* because they've already submitted. */
+      lockedAfterSubmit: boolean;
     };
 
 /**
  * The two-gate access decision for a student (PLAN §13): membership first
- * (no group ⇒ denied), then the group's window state at `now`.
+ * (no group ⇒ denied), then the group's window state at `now`. When the group
+ * locks editing after submit, an already-submitted student is read-only even
+ * with the window open — new submissions are still allowed (PLAN §13).
  */
 export async function resolveStudentAccess(
   emailRaw: string,
@@ -89,12 +106,24 @@ export async function resolveStudentAccess(
   const [grp] = await db.select().from(groups).where(eq(groups.id, stu.groupId)).limit(1);
   if (!grp) return { access: "no-group" };
 
+  const [sub] = await db
+    .select({ status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, email))
+    .limit(1);
+  const submitted = sub?.status === "submitted";
+
+  const state = windowState(grp.opensAt, grp.closesAt, now);
   return {
     access: "windowed",
-    state: windowState(grp.opensAt, grp.closesAt, now),
+    state,
     opensAt: grp.opensAt,
     closesAt: grp.closesAt,
     groupName: grp.name,
+    lockAfterSubmit: grp.lockAfterSubmit,
+    submitted,
+    canEdit: canEditSubmission(state, grp.lockAfterSubmit, submitted),
+    lockedAfterSubmit: isLockedAfterSubmit(state, grp.lockAfterSubmit, submitted),
   };
 }
 

@@ -32,11 +32,12 @@ export default async function ExitPage() {
           margin: "1rem 0 1.4rem",
         }}
       >
-        <strong>This submits your schedule preferences — not your schedule.</strong>
+        <strong>Reminder: This submits your schedule preferences, not your schedule.</strong>
         <p style={{ margin: "8px 0 0" }}>
-          You haven&apos;t been scheduled yet. A scheduler will build the actual schedule from
-          everyone&apos;s preferences. Expect to see your schedule in the next couple of weeks, by
-          the end of August.
+          You haven&apos;t been scheduled yet. We will create your schedule once we have everyone&apos;s preferences.
+        </p>
+        <p style={{ margin: "8px 0 0" }}>
+          Expect to see your schedule a week from semester start, or by the end of August. We will update you if there are any delays. We will send out emails notifying you when your schedule is ready.
         </p>
       </div>
 

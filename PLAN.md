@@ -18,7 +18,7 @@
   exit; status flips to submitted only at the exit step (§13.1). `/dev-login` now manages
   throwaway test accounts (the old `/admin/preview` is removed); `/admin/non-responses` can
   copy outstanding emails. Next: ops.
-- **Version:** 0.21
+- **Version:** 0.23
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -372,12 +372,19 @@ columns from the roster.
   download** and as the **running `Muster Responses` Google Sheet** in the Drive folder
   (§12) — the latter readable by folder members without the app and serving as a
   recovery copy. Both come from the same export matrix.
+- **Delete response:** ✅ admins can permanently delete a submission from the response
+  list (per-row) or the per-student header. The submission row is removed (cascading its
+  selections, flags, extracurricular-file rows, and travel requests), every relayed proof
+  file is best-effort deleted from Drive (no orphaned bytes), and the running sheet is
+  rebuilt so the row drops out. The **roster record stays** — only the response is gone.
 
 ### 10a. Per-student view (the primary admin surface)
 The view the scheduler works from. Layout (see wireframe):
 - **Identity header:** name, email, position; **prev/next** nav + full-list jump;
   **submitted/edited** status; a **"mark scheduled ✓" toggle** (mirrors the roster's
-  "W2W schedule created" column — track progress across ~400 without leaving Muster).
+  "W2W schedule created" column — track progress across ~400 without leaving Muster);
+  a **"delete response"** button (confirm → removes the submission + its Drive proofs,
+  then returns to the list; the roster record is kept — see §10).
 - **Hour summary cards:** hour **cap** (20/30 + intl), **requested** (`desiredHours`),
   **preference capacity** (covered hours) vs. floor, **days covered**.
 - **Flags & checks (auto-computed):** min reachable; which **open/close** was selected
@@ -608,6 +615,15 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
    `before` (opens later), `open` (editable), `closed`, `unconfigured` (no dates set).
    **Only `open` permits edits**; `unconfigured` is **locked** (the secure default — a
    freshly-seeded group isn't open by accident).
+3. **Post-submit lock (optional, per group):** a `lockAfterSubmit` flag on the group.
+   When **on**, the group still **accepts new submissions** while its window is open, but
+   a student who has **finalized** (`status = submitted`) becomes **read-only** — they
+   can't edit after submitting (contact the scheduler to change anything). Drafts are
+   unaffected, so the wizard still works up to and including the single finalize. Pure
+   composition: `canEditSubmission(state, lockAfterSubmit, submitted)` =
+   `open ∧ ¬(lockAfterSubmit ∧ submitted)`; `isLockedAfterSubmit` distinguishes the
+   "already submitted" banner from the window (opens-soon / closed) banner. Default
+   **off** preserves edit-until-close. Toggled per group in the admin groups surface.
 
 - **Default group "New Student":** seeded, single, non-deletable. Catches ungrouped
   and **non-roster self-added** students *when the default-assignment toggle is on*.
@@ -773,6 +789,28 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.23 (2026-06-22)** — **Per-group "lock editing after submit" (§13).** A new
+  `groups.lockAfterSubmit` flag adds a **third access gate**: when on, the group keeps
+  **accepting new submissions** while its window is open, but each student becomes
+  **read-only the moment they finalize** (`status = submitted`) — drafts and the wizard
+  up to the single finalize are unaffected. Pure helpers `canEditSubmission` /
+  `isLockedAfterSubmit` (`domain/window.ts`, TDD) compose the window state with the lock;
+  `resolveStudentAccess` now loads the submission status + group flag and returns
+  `canEdit` + `lockedAfterSubmit`, consumed by the two server gates (availability +
+  evidence), `flow/data.ts`, and the student pages (a new `SubmittedLockBanner` vs. the
+  window banner). Admins toggle it per group via a checkbox in the groups table
+  (`setGroupLockAfterSubmit`). Migration `0007` adds the column (default **false** =
+  edit-until-close, the prior behavior).
+- **0.22 (2026-06-22)** — **Delete responses from the admin UI (§10).** Admins can now
+  permanently delete a submission from the response list (a per-row **Delete** button that
+  stops row-navigation) or the **per-student header** (which confirms, then returns to the
+  list). The new admin-gated `deleteResponse` action (`admin/actions.ts`) removes the
+  submission row — cascading its selections, flags, extracurricular-file rows, and travel
+  requests — then **best-effort deletes every relayed proof file from Drive** (course
+  schedule + extracurriculars + travel, via `relayDelete`) so no orphaned bytes remain, and
+  rebuilds the running sheet so the row drops out. The **student's roster record is kept** —
+  only the response is deleted. Shared client island: `DeleteResponseButton` (full / icon
+  variants, both confirm first).
 - **0.21 (2026-06-22)** — **Dev test-account manager + non-responder copy button; preview
   page removed (§18b).** `/admin/preview` (the admin form-preview) is gone — previewing the
   student experience now goes through `/dev-login`, which gained a **dev-only test-account

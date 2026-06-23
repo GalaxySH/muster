@@ -10,13 +10,21 @@ import { submissions } from "@/lib/db/schema";
 import { loadStudentForm } from "@/lib/availability/data";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { validateAvailability } from "@/lib/domain/validation";
-import { canEditInWindow, type WindowState } from "@/lib/domain/window";
+import { type WindowState } from "@/lib/domain/window";
 import { POSITIONS } from "@/lib/config/positions";
 import { flowStatus, type FlowStatus } from "./steps";
 
 export type FlowAccess =
   | { kind: "no-group" }
-  | { kind: "windowed"; state: WindowState; opensAt: Date | null; closesAt: Date | null; canEdit: boolean };
+  | {
+      kind: "windowed";
+      state: WindowState;
+      opensAt: Date | null;
+      closesAt: Date | null;
+      canEdit: boolean;
+      /** Editing blocked because the student already submitted (group locks it). */
+      lockedAfterSubmit: boolean;
+    };
 
 export type FlowState =
   | { onRoster: false }
@@ -45,7 +53,8 @@ export async function loadFlowState(email: string): Promise<FlowState> {
           state: accessRaw.state,
           opensAt: accessRaw.opensAt,
           closesAt: accessRaw.closesAt,
-          canEdit: canEditInWindow(accessRaw.state),
+          canEdit: accessRaw.canEdit,
+          lockedAfterSubmit: accessRaw.lockedAfterSubmit,
         };
 
   const [sub] = await getDb()

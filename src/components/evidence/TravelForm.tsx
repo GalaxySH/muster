@@ -22,6 +22,7 @@ import {
   excusedBadge,
   lateBadge,
 } from "./shared";
+import { defaultTravelCutoff } from "@/lib/domain/travel";
 
 export function TravelForm({
   initial,
@@ -40,9 +41,9 @@ export function TravelForm({
     <div style={{ maxWidth: 720 }}>
       <h1>Travel excusals</h1>
       <p style={{ color: "#555" }}>
-        Add any planned travel during the schedule period. Upload proof and a date range for each
-        trip — these are shown to your scheduler for manual review. Travel is only excused if added
-        before September 1.
+        Add any planned travel during the semester. Upload proof and a date range for each
+        trip, these will be manually reviewed for eligibility. Travel is only excused if added
+        before {defaultTravelCutoff(new Date()).toLocaleDateString()}. We will not accept emails.
       </p>
 
       {!driveConnected && (

@@ -50,6 +50,13 @@
       "when": 1782104737653,
       "tag": "0006_striped_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1782155283748,
+      "tag": "0007_typical_lady_ursula",
+      "breakpoints": true
     }
   ]
 }

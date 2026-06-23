@@ -1,0 +1,1 @@
+ALTER TABLE `groups` ADD `lock_after_submit` boolean DEFAULT false NOT NULL;

@@ -186,8 +186,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       <h1>Choose your availability preferences</h1>
       <p style={{ color: "#555" }}>Position: {props.position.name}</p>
       <p style={{ color: "#555" }}>
-        Check every shift you&apos;d be willing to work. Selecting more than your required hours is
-        fine; these are preferences, not your final schedule.
+        Check every shift you&apos;d be willing to work. These are preferences, not your final schedule. <strong>You must meet the minimum policy requirements to submit.</strong> If you do not submit your availability, we will assign you a schedule based on your course schedule only.
       </p>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>
@@ -268,10 +267,13 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
           </>
         )}
       </div>
+      <p style={{ color: "#555", fontSize: 14 }}>
+        International students are limited to a maximum of 20 hours/week. Domestic students are limited to 30 hours/week.
+      </p>
 
       <div style={{ margin: "1.2rem 0" }}>
         <label htmlFor="schedule-notes" style={{ display: "block", color: "#555", marginBottom: 6 }}>
-          Anything else about your requested schedule?{" "}
+          Anything we should know about your schedule?{" "}
           <span style={{ color: "#888" }}>(optional)</span>
         </label>
         <textarea
@@ -304,7 +306,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
               onClick={() => run("continue", "/travel")}
               disabled={pending || !canSubmit}
             >
-              Save and continue →
+              Save and continue
             </button>
           </>
         )}

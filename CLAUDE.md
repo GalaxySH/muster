@@ -27,12 +27,19 @@ The Drive relay + the running sheet are **confirmed live**. The **magic-link fal
 (auth for users Google rejects) is built (PLAN §11). Still to build: ops/Docker hardening.
 
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
-student groups** with open/close windows — two gates: (1) **membership** — a student must
+student groups** with open/close windows — three gates: (1) **membership** — a student must
 have a persisted `students.groupId` or they're **denied** the form (no inferred fallback);
-(2) **window** — their group's window must be **open** to edit, else read-only. The pure
-state machine is `src/lib/domain/window.ts` (`windowState` → `before|open|closed|
-unconfigured`; `canEditInWindow` = open only; `unconfigured` locks — the secure default),
-shared by the server gate and the UI. A seeded, single, non-deletable **"New Student"**
+(2) **window** — their group's window must be **open** to edit, else read-only; (3)
+**post-submit lock** — an optional per-group `groups.lockAfterSubmit` flag that keeps
+**accepting new submissions** while open but makes a student **read-only once they finalize**
+(`status = submitted`) — drafts unaffected, so new submissions still flow (default **off**).
+The pure state machine is `src/lib/domain/window.ts` (`windowState` → `before|open|closed|
+unconfigured`; `canEditInWindow` = open only; `unconfigured` locks — the secure default;
+`canEditSubmission`/`isLockedAfterSubmit` fold in the post-submit lock), shared by the
+server gates and the UI. `resolveStudentAccess` loads the submission status + group flag and
+returns `canEdit` + `lockedAfterSubmit` (the student pages show a `SubmittedLockBanner` vs.
+the window banner; admins toggle the lock per group via `setGroupLockAfterSubmit`). A seeded,
+single, non-deletable **"New Student"**
 default group (`groups.isDefault`, id `default`) catches ungrouped/self-added students
 **only when** the admin's default-assignment toggle is on; the batch **Save sweep**
 (`runDefaultAssignmentSweep`) assigns it to `groupId IS NULL AND groupAssignedAuto = false`
@@ -40,8 +47,8 @@ students and marks them auto (sticky `students.groupAssignedAuto`, so a later ma
 unassign isn't re-grabbed). Group assignment is **persisted, never at roster ingest** —
 written by the admin (picker / pasted emails) or the dormant `applyDefaultGroupOnSelfAdd`
 hook (future magic-link self-add). Migration `0005` adds `groups` + the two student
-columns; `0006` drops the old unused `form_windows` table (superseded). The seed upserts
-the default group.
+columns; `0006` drops the old unused `form_windows` table (superseded); `0007` adds
+`groups.lockAfterSubmit`. The seed upserts the default group.
 
 Drive folder layout (PLAN §12): the configured root (`DRIVE_FOLDER_ID`) holds the running
 `Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**

@@ -9,6 +9,7 @@ import type { Day, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
+import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 
 const DAY_LABEL: Record<Day, string> = {
   mon: "Mon",
@@ -59,7 +60,7 @@ export default async function StudentDetailPage({
     return (
       <main style={page}>
         <p style={{ marginBottom: 12 }}>
-          <Link href="/admin/responses">← All responses</Link>
+          <Link href="/admin/responses">All responses</Link>
         </p>
         <p>No student found for &quot;{email}&quot;.</p>
       </main>
@@ -85,7 +86,7 @@ export default async function StudentDetailPage({
   return (
     <main style={page}>
       <p style={{ marginBottom: 12 }}>
-        <Link href="/admin/responses">← All responses</Link>
+        <Link href="/admin/responses">All responses</Link>
       </p>
 
       {/* Identity header */}
@@ -114,12 +115,19 @@ export default async function StudentDetailPage({
             <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
               {submission.status === "submitted" ? "submitted" : "draft"}
               {submission.status === "submitted" && submission.submittedAt
-                ? ` · submitted ${fmtDate(submission.submittedAt)}`
+                ? ` · ${fmtDate(submission.submittedAt)}`
                 : ` · edited ${fmtDate(submission.updatedAt)}`}
             </span>
           )}
           {submission && (
             <MarkScheduledButton studentEmail={detail.email} scheduled={submission.scheduled} />
+          )}
+          {submission && (
+            <DeleteResponseButton
+              studentEmail={detail.email}
+              displayName={detail.displayName}
+              redirectTo="/admin/responses"
+            />
           )}
         </div>
       </div>
@@ -146,7 +154,7 @@ export default async function StudentDetailPage({
             <SummaryCard
               label="requested"
               value={submission.desiredHours ? `${submission.desiredHours}h` : "—"}
-              sub="desired"
+              sub=""
             />
             <SummaryCard
               label="pref. capacity"
@@ -156,15 +164,15 @@ export default async function StudentDetailPage({
             <SummaryCard
               label="days covered"
               value={`${validation.daysCovered} of 7`}
-              sub={submission.everyWeekendOptIn ? "every weekend" : "A/B weekend"}
+              sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
             />
           </div>
 
           {/* Flags & checks */}
           <div style={{ ...card, ...block, marginTop: 12 }}>
             <SectionLabel>
-              flags &amp; checks{" "}
-              <span style={{ color: "var(--color-text-tertiary)" }}>(auto-computed)</span>
+              flags{" "}
+              <span style={{ color: "var(--color-text-tertiary)" }}>(automatic)</span>
             </SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
               {validation.checks

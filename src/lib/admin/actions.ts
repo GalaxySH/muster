@@ -9,9 +9,10 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { submissions } from "@/lib/db/schema";
+import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { relayDelete } from "@/lib/drive/relay";
 import {
   syncResponsesSheet,
   RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
@@ -68,6 +69,57 @@ export async function saveSchedulerNotes(
 ): Promise<AdminActionResult> {
   const trimmed = notes.trim();
   return updateSubmission(studentEmail, { schedulerNotes: trimmed.length ? trimmed : null });
+}
+
+/**
+ * Admin: permanently delete a student's response (PLAN §10). Removes the
+ * submission row — which cascades its shift selections, flags, extracurricular
+ * file rows, and travel requests — then best-effort deletes every relayed proof
+ * file from Drive (course schedule, extracurriculars, travel) so no orphaned
+ * bytes are left behind, and rebuilds the running sheet so the row drops out.
+ * The student record itself stays on the roster; only their submission is gone.
+ */
+export async function deleteResponse(studentEmail: string): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const email = normalizeEmail(studentEmail);
+  const [sub] = await db
+    .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, email))
+    .limit(1);
+  if (!sub) return { ok: false, error: "No submission exists for this student." };
+
+  // Gather every Drive proof fileId before the cascade removes its rows.
+  const ecRows = await db
+    .select({ fileId: extracurricularFiles.fileId })
+    .from(extracurricularFiles)
+    .where(eq(extracurricularFiles.submissionId, sub.id));
+  const travelRows = await db
+    .select({ proofFileId: travelRequests.proofFileId })
+    .from(travelRequests)
+    .where(eq(travelRequests.submissionId, sub.id));
+  const fileIds = [
+    sub.courseScheduleFileId,
+    ...ecRows.map((r) => r.fileId),
+    ...travelRows.map((r) => r.proofFileId),
+  ].filter((id): id is string => Boolean(id));
+
+  await db.delete(submissions).where(eq(submissions.id, sub.id));
+
+  // Best-effort Drive cleanup (relayDelete never throws) and sheet rebuild.
+  for (const fileId of fileIds) await relayDelete(fileId);
+  try {
+    await syncResponsesSheet({ cooldownMs: 0 });
+  } catch (e) {
+    console.error("Sheet resync after delete failed (non-fatal):", e);
+  }
+
+  revalidatePath("/admin/responses");
+  revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
+  return { ok: true };
 }
 
 export interface RebuildSheetResult extends AdminActionResult {

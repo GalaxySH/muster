@@ -103,12 +103,37 @@ export async function setGroupWindow(
 
   const opensAt = parseInstant(opensAtRaw);
   const closesAt = parseInstant(closesAtRaw);
+  // A window needs both bounds (windowState locks on either-null). Both empty is
+  // a deliberate clear; exactly one is a half-configured window — reject it so a
+  // partial save can't silently persist an unconfigured (locked) window.
+  if ((opensAt === null) !== (closesAt === null)) {
+    return { ok: false, error: "Set both an open and a close date, or clear both." };
+  }
   if (opensAt && closesAt && closesAt.getTime() <= opensAt.getTime()) {
     return { ok: false, error: "The close time must be after the open time." };
   }
 
   const db = getDb();
   await db.update(groups).set({ opensAt, closesAt }).where(eq(groups.id, id));
+  revalidateGroups();
+  revalidatePath("/availability");
+  return { ok: true };
+}
+
+/**
+ * Toggle a group's "lock editing after submit" setting (PLAN §13). When on, the
+ * group still accepts new submissions while its window is open, but a student who
+ * has finalized can no longer edit.
+ */
+export async function setGroupLockAfterSubmit(
+  id: string,
+  enabled: boolean,
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+
+  const db = getDb();
+  await db.update(groups).set({ lockAfterSubmit: enabled }).where(eq(groups.id, id));
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };

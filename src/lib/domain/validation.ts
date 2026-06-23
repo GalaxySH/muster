@@ -62,7 +62,7 @@ export function validateAvailability(
     id: "min_hours",
     severity: "hard",
     passed: capacity.weeklyAverageMinutes + EPSILON_MINUTES >= minMinutes,
-    detail: `${availableHours}h available of ${position.minHours}h minimum`,
+    detail: `${availableHours}h selected of ${position.minHours}h minimum`,
   });
 
   // #6 — at least one opening OR one closing block selected (hard).

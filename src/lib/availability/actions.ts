@@ -31,8 +31,11 @@ import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/sc
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { canEditInWindow } from "@/lib/domain/window";
-import { NO_GROUP_MESSAGE, lockedReasonLine } from "@/lib/groups/window-message";
+import {
+  NO_GROUP_MESSAGE,
+  SUBMITTED_LOCK_MESSAGE,
+  lockedReasonLine,
+} from "@/lib/groups/window-message";
 import { loadPositionWithBlocks } from "./data";
 import { validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
@@ -180,8 +183,11 @@ async function gateStudent(): Promise<
 
   const access = await resolveStudentAccess(student.email);
   if (access.access === "no-group") return { ok: false, error: NO_GROUP_MESSAGE };
-  if (!canEditInWindow(access.state)) {
-    return { ok: false, error: lockedReasonLine(access.state, access.opensAt, access.closesAt) };
+  if (!access.canEdit) {
+    const error = access.lockedAfterSubmit
+      ? SUBMITTED_LOCK_MESSAGE
+      : lockedReasonLine(access.state, access.opensAt, access.closesAt);
+    return { ok: false, error };
   }
   return { ok: true, email: student.email };
 }

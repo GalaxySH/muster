@@ -24,6 +24,8 @@ import {
   fmtHint,
   thumbGrid,
 } from "./shared";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowUpRightFromSquare } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
 export function CourseScheduleForm({
   initial,
@@ -44,8 +46,7 @@ export function CourseScheduleForm({
     <div style={{ maxWidth: 720 }}>
       <h1>Course schedule &amp; activities</h1>
       <p style={{ color: "#555" }}>
-        Upload images or PDFs. These are shown to your scheduler for manual review — they are not
-        read automatically. Your course schedule is required; activities are optional.
+        Upload images (preferred) or PDFs of your course schedule and any mandatory regularly occurring academic activities. You can find your course schedule in <a href="https://go.wisc.edu/76k189" target="_blank" rel="noopener noreferrer">MyUW</a> <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" /> or <a href="https://enroll.wisc.edu/my-courses" target="_blank" rel="noopener noreferrer">enroll.wisc.edu</a> <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" />. Only your course schedule is required.
       </p>
 
       {!driveConnected && (
@@ -65,7 +66,7 @@ export function CourseScheduleForm({
         <form onSubmit={onUpload("course", uploadCourseSchedule)} style={uploadRow}>
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
           <button type="submit" disabled={pending || !canUpload}>
-            {initial.courseScheduleFileId ? "Replace" : "Upload"}
+            {initial.courseScheduleFileId ? "Replace and Save" : "Save"}
           </button>
           <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>
@@ -73,7 +74,7 @@ export function CourseScheduleForm({
       </Section>
 
       {/* Mandatory extracurriculars (optional) */}
-      <Section title="Mandatory extracurriculars" hint="Only mandatory activities are excused. Add proof and details.">
+      <Section title="Mandatory extracurriculars" hint="We only prioritize excusals for mandatory activities. Add proof and details.">
         <textarea
           value={notes}
           readOnly={!editable}
@@ -109,7 +110,7 @@ export function CourseScheduleForm({
         <form onSubmit={onUpload("ec", addExtracurricularFile)} style={uploadRow}>
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
           <button type="submit" disabled={pending || !canUpload}>
-            Add proof
+            Save/add another
           </button>
           <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>

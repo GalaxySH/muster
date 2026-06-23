@@ -14,8 +14,11 @@ import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/sche
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { canEditInWindow } from "@/lib/domain/window";
-import { NO_GROUP_MESSAGE, lockedReasonLine } from "@/lib/groups/window-message";
+import {
+  NO_GROUP_MESSAGE,
+  SUBMITTED_LOCK_MESSAGE,
+  lockedReasonLine,
+} from "@/lib/groups/window-message";
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
@@ -38,8 +41,12 @@ async function requireStudent(): Promise<{ email: string } | { error: string }> 
 
   const access = await resolveStudentAccess(student.email);
   if (access.access === "no-group") return { error: NO_GROUP_MESSAGE };
-  if (!canEditInWindow(access.state)) {
-    return { error: lockedReasonLine(access.state, access.opensAt, access.closesAt) };
+  if (!access.canEdit) {
+    return {
+      error: access.lockedAfterSubmit
+        ? SUBMITTED_LOCK_MESSAGE
+        : lockedReasonLine(access.state, access.opensAt, access.closesAt),
+    };
   }
   return { email: student.email };
 }

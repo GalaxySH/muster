@@ -7,6 +7,7 @@ import {
   createGroup,
   renameGroup,
   setGroupWindow,
+  setGroupLockAfterSubmit,
   deleteGroup,
 } from "@/lib/groups/actions";
 
@@ -17,6 +18,7 @@ export interface GroupView {
   memberCount: number;
   opensAtMs: number | null;
   closesAtMs: number | null;
+  lockAfterSubmit: boolean;
 }
 
 /** Group list with inline window scheduling, rename, create, and delete (PLAN §13). */
@@ -24,6 +26,11 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
   return (
     <section style={card}>
       <h2 style={h2}>Groups</h2>
+      <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+        Pick the open and close dates. The window starts and ends at{" "}
+        <strong>00:00 (midnight)</strong> on each date. <strong>Lock after submit</strong> keeps
+        accepting new submissions while open but makes each student read-only once they finish.
+      </p>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
@@ -32,6 +39,7 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
             <th style={th}>Opens</th>
             <th style={th}>Closes</th>
             <th style={th}>Status</th>
+            <th style={th}>After submit</th>
             <th style={th} />
           </tr>
         </thead>
@@ -52,6 +60,7 @@ function GroupRow({ group }: { group: GroupView }) {
   const [closes, setCloses] = useState(toLocalInput(group.closesAtMs));
   const [name, setName] = useState(group.name);
   const [editingName, setEditingName] = useState(false);
+  const [lockAfterSubmit, setLockAfterSubmit] = useState(group.lockAfterSubmit);
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -67,6 +76,42 @@ function GroupRow({ group }: { group: GroupView }) {
       const res = await fn();
       setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
       if (res.ok) router.refresh();
+    });
+  }
+
+  function saveWindow() {
+    const isoOpens = localInputToIso(opens);
+    const isoCloses = localInputToIso(closes);
+    const hadWindow = group.opensAtMs != null && group.closesAtMs != null;
+    // A `datetime-local` input yields an empty string unless BOTH a date and a
+    // time are entered — so picking only dates silently produces no value. Guard
+    // that here: if neither bound is set and there's no existing window to clear,
+    // the admin almost certainly meant to schedule one but left the time blank.
+    if (!isoOpens && !isoCloses && !hadWindow) {
+      setMsg({ ok: false, text: "Pick a date for both Opens and Closes." });
+      return;
+    }
+    if (Boolean(isoOpens) !== Boolean(isoCloses)) {
+      setMsg({ ok: false, text: "Set both an open and a close date, or clear both." });
+      return;
+    }
+    act(
+      () => setGroupWindow(group.id, isoOpens, isoCloses),
+      isoOpens ? "Window saved." : "Window cleared.",
+    );
+  }
+
+  function toggleLockAfterSubmit(next: boolean) {
+    setLockAfterSubmit(next); // optimistic
+    setMsg(null);
+    startTransition(async () => {
+      const res = await setGroupLockAfterSubmit(group.id, next);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setLockAfterSubmit(!next); // revert on failure
+        setMsg({ ok: false, text: res.error ?? "Failed." });
+      }
     });
   }
 
@@ -105,7 +150,7 @@ function GroupRow({ group }: { group: GroupView }) {
       <td style={td}>{group.memberCount}</td>
       <td style={td}>
         <input
-          type="datetime-local"
+          type="date"
           value={opens}
           onChange={(e) => setOpens(e.target.value)}
           style={input}
@@ -113,7 +158,7 @@ function GroupRow({ group }: { group: GroupView }) {
       </td>
       <td style={td}>
         <input
-          type="datetime-local"
+          type="date"
           value={closes}
           onChange={(e) => setCloses(e.target.value)}
           style={input}
@@ -122,17 +167,19 @@ function GroupRow({ group }: { group: GroupView }) {
       <td style={td}>
         <StatusChip state={state} />
       </td>
+      <td style={td}>
+        <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={lockAfterSubmit}
+            disabled={pending}
+            onChange={(e) => toggleLockAfterSubmit(e.target.checked)}
+          />
+          Lock after submit
+        </label>
+      </td>
       <td style={{ ...td, whiteSpace: "nowrap" }}>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            act(
-              () => setGroupWindow(group.id, localInputToIso(opens), localInputToIso(closes)),
-              "Window saved.",
-            )
-          }
-        >
+        <button type="button" disabled={pending} onClick={saveWindow}>
           Save window
         </button>{" "}
         {!group.isDefault && (
@@ -216,16 +263,18 @@ function StatusChip({ state }: { state: WindowState }) {
   );
 }
 
-// datetime-local <-> instant helpers (browser-local <-> UTC ISO).
+// date <-> instant helpers. The input is a calendar date; the time defaults to
+// 00:00 in the browser's local timezone, so the window opens/closes at the start
+// of the chosen day. Round-trips through a UTC ISO instant for storage.
 function toLocalInput(ms: number | null): string {
   if (ms == null) return "";
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 function localInputToIso(value: string): string | null {
   if (!value) return null;
-  const d = new Date(value); // interpreted in the browser's local timezone
+  const d = new Date(`${value}T00:00`); // local midnight on the chosen date
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 

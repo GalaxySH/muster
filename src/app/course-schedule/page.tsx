@@ -6,8 +6,10 @@ import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
-import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { WizardSteps } from "@/components/WizardSteps";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHouse } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 
 export default async function CourseSchedulePage() {
   const session = await getAppSession();
@@ -40,21 +42,25 @@ export default async function CourseSchedulePage() {
     );
   }
 
-  const editable = access.state === "open";
+  const editable = access.canEdit;
 
   return (
     <main style={{ padding: "2rem" }}>
       <WizardSteps current="course-schedule" />
       <p style={{ marginBottom: 8 }}>
-        <Link href="/me">← Your page</Link>
+        <Link href="/me"><FontAwesomeIcon icon={faHouse} /> Home</Link>
       </p>
-      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      {access.lockedAfterSubmit ? (
+        <SubmittedLockBanner />
+      ) : (
+        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      )}
       <CourseScheduleForm initial={evidence} driveConnected={drive.connected} editable={editable} />
       {editable && (
         <p style={{ marginTop: 16 }}>
           {evidence.courseScheduleFileId ? (
             <Link href="/availability" style={primaryLink}>
-              Next: availability →
+              Next: availability
             </Link>
           ) : (
             <span style={{ color: "#777", fontSize: 14 }}>

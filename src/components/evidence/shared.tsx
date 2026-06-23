@@ -11,7 +11,9 @@ import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/evidence/actions";
 
 export const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
-export const FORMAT_HINT = "PNG/JPEG images only.";
+export const FORMAT_HINT = "PNG/JPEG/PDF only";
+export const CONTACT_EMAIL = "scheduler@example.edu"
+// export const TRAVEL_CUTOFF = new Date("2026-09-01T00:00:00");//superseded by defaultTravelCutoff()
 
 /**
  * The shared "run a server action, show a per-section status note" plumbing.

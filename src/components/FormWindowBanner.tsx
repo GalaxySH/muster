@@ -5,7 +5,11 @@
  * Renders nothing when the window is open. Copy lives in groups/window-message.
  */
 import type { WindowState } from "@/lib/domain/window";
-import { lockedMessage, NO_GROUP_MESSAGE } from "@/lib/groups/window-message";
+import {
+  lockedMessage,
+  NO_GROUP_MESSAGE,
+  SUBMITTED_LOCK_MESSAGE,
+} from "@/lib/groups/window-message";
 
 const panel = {
   border: "1px solid #e0c060",
@@ -21,6 +25,15 @@ export function NoGroupNotice() {
   return (
     <div role="status" style={panel}>
       <strong>No form access yet.</strong> {NO_GROUP_MESSAGE}
+    </div>
+  );
+}
+
+/** Shown when the student has submitted and their group locks editing afterward. */
+export function SubmittedLockBanner() {
+  return (
+    <div role="status" style={panel}>
+      <strong>Your responses are locked.</strong> {SUBMITTED_LOCK_MESSAGE}
     </div>
   );
 }

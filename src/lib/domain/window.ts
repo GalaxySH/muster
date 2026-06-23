@@ -37,3 +37,31 @@ export function windowState(
 export function canEditInWindow(state: WindowState): boolean {
   return state === "open";
 }
+
+/**
+ * Editability once the post-submit lock is taken into account (PLAN.md §13).
+ * A group may accept new submissions while open but lock editing the moment a
+ * student finalizes: an already-`submitted` student in a `lockAfterSubmit` group
+ * can no longer edit, even with the window open. Drafts (not yet submitted) are
+ * unaffected, so new submissions still flow in.
+ */
+export function canEditSubmission(
+  state: WindowState,
+  lockAfterSubmit: boolean,
+  submitted: boolean,
+): boolean {
+  return canEditInWindow(state) && !(lockAfterSubmit && submitted);
+}
+
+/**
+ * True only when the window is otherwise open but editing is blocked *specifically*
+ * by the post-submit lock — i.e. the reason to show the "already submitted" notice
+ * rather than a window (opens-soon/closed) notice.
+ */
+export function isLockedAfterSubmit(
+  state: WindowState,
+  lockAfterSubmit: boolean,
+  submitted: boolean,
+): boolean {
+  return canEditInWindow(state) && lockAfterSubmit && submitted;
+}

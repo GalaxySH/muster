@@ -14,7 +14,7 @@ export function TravelContinue() {
     <div style={{ marginTop: 20 }}>
       <label style={{ display: "block", marginBottom: 10, fontSize: 14 }}>
         <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I&apos;ve
-        added all my travel, or I have none to report.
+        added all my travel, or I don&apos;t have any to add.
       </label>
       {ack ? (
         <Link
@@ -29,7 +29,7 @@ export function TravelContinue() {
             textDecoration: "none",
           }}
         >
-          Continue →
+          Continue
         </Link>
       ) : (
         <button

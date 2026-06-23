@@ -1,5 +1,7 @@
 "use client";
 
+import { faArrowUpRightFromSquare } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useState } from "react";
 
 /**
@@ -170,7 +172,7 @@ export function EvidenceThumb({
               rel="noreferrer"
               style={{ fontSize: 12, color: "var(--color-text-info)" }}
             >
-              Open in new tab ↗
+              Open in new tab <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
             </a>
           </div>
         </div>

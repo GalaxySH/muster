@@ -9,6 +9,10 @@ import type { WindowState } from "@/lib/domain/window";
 export const NO_GROUP_MESSAGE =
   "You don't have access to the availability form yet. Ask your scheduler to add you to a group.";
 
+/** Shown when a student has submitted and their group locks editing afterward. */
+export const SUBMITTED_LOCK_MESSAGE =
+  "You've already submitted your availability, so it's now locked. Contact your scheduler if you need to change anything.";
+
 function fmt(d: Date | null): string {
   if (!d) return "";
   return d.toLocaleString("en-US", {

@@ -30,6 +30,7 @@ export default async function AdminGroupsPage() {
     memberCount: g.memberCount,
     opensAtMs: g.opensAt ? g.opensAt.getTime() : null,
     closesAtMs: g.closesAt ? g.closesAt.getTime() : null,
+    lockAfterSubmit: g.lockAfterSubmit,
   }));
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   const positions = POSITIONS.map((p) => ({ id: p.id, name: p.name }));

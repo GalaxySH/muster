@@ -5,8 +5,10 @@ import { loadStudentForm } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
-import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { WizardSteps } from "@/components/WizardSteps";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHouse } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 
 export default async function AvailabilityPage() {
   const session = await getAppSession();
@@ -49,18 +51,23 @@ export default async function AvailabilityPage() {
     );
   }
 
-  // Window gate (PLAN §13): only an open window permits edits.
-  const editable = access.state === "open";
+  // Window gate (PLAN §13): only an open window permits edits — and, if the group
+  // locks after submit, an already-submitted student is read-only too.
+  const editable = access.canEdit;
 
   return (
     <main style={{ padding: "2rem" }}>
       <WizardSteps current="availability" />
       <p style={{ marginBottom: 12 }}>
-        <Link href="/me">← Your page</Link>
+        <Link href="/me"><FontAwesomeIcon icon={faHouse} /> Home</Link>
         <span style={{ color: "#ccc", margin: "0 8px" }}>·</span>
-        <Link href="/course-schedule">← Course schedule</Link>
+        <Link href="/course-schedule">Course schedule</Link>
       </p>
-      <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      {access.lockedAfterSubmit ? (
+        <SubmittedLockBanner />
+      ) : (
+        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+      )}
       <AvailabilityForm
         key={form.position.id}
         position={form.position}

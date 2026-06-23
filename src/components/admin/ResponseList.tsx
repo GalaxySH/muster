@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResponseRow } from "@/lib/admin/data";
+import { DeleteResponseButton } from "./DeleteResponseButton";
 
 type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
 
@@ -84,6 +85,7 @@ export function ResponseList({ rows }: { rows: ResponseRow[] }) {
               <Th onClick={() => toggleSort("updated")} align="right">
                 Updated{arrow("updated")}
               </Th>
+              <th style={{ padding: "6px 10px" }} aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -121,11 +123,18 @@ export function ResponseList({ rows }: { rows: ResponseRow[] }) {
                 <td style={{ ...td, textAlign: "right", color: "var(--color-text-tertiary)", fontSize: 13 }}>
                   {fmtDate(r.submittedAt ?? r.updatedAt)}
                 </td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  <DeleteResponseButton
+                    studentEmail={r.email}
+                    displayName={r.displayName}
+                    variant="icon"
+                  />
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ ...td, color: "var(--color-text-tertiary)", textAlign: "center" }}>
+                <td colSpan={8} style={{ ...td, color: "var(--color-text-tertiary)", textAlign: "center" }}>
                   No matching responses.
                 </td>
               </tr>

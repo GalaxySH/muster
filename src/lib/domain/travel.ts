@@ -18,5 +18,7 @@ export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
  * override this later (PLAN §13).
  */
 export function defaultTravelCutoff(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), 8, 1)); // month 8 = September
+  // Return September 1 00:00 Central Standard Time (CST = UTC-6).
+  // To represent 00:00 CST in a UTC Date, add 6 hours (i.e. 06:00 UTC).
+  return new Date(Date.UTC(now.getUTCFullYear(), 8, 1, 6, 0, 0)); // month 8 = September
 }

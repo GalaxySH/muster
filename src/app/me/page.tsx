@@ -5,6 +5,7 @@ import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
 export default async function MePage() {
   const session = await getAppSession();
@@ -14,7 +15,7 @@ export default async function MePage() {
 
   return (
     <main style={{ padding: "2rem", maxWidth: 640 }}>
-      <h1>Your page</h1>
+      <h1>Profile</h1>
       <p style={{ color: "#555" }}>
         {session.name ? `${session.name} · ` : ""}
         {session.email}
@@ -22,8 +23,7 @@ export default async function MePage() {
 
       {!flow.onRoster ? (
         <p>
-          You&apos;re signed in but not on the current roster. When the form opens you&apos;ll
-          select your position to continue.
+          You&apos;re signed in but are not a known employee. If this is a mistake, contact <strong>{CONTACT_EMAIL}</strong>.
         </p>
       ) : flow.access.kind === "no-group" ? (
         <NoGroupNotice />
@@ -39,10 +39,19 @@ export default async function MePage() {
             <section>
               <p style={{ color: "#196127" }}>
                 ✓ You&apos;ve submitted your preferences
-                {flow.access.canEdit ? " — you can still edit until your window closes." : "."}
+                {flow.access.canEdit
+                  ? ""
+                  : flow.access.kind === "windowed" && flow.access.lockedAfterSubmit
+                    ? ", they're now locked. Contact the scheduler directly to make changes going forward."
+                    : "."}
               </p>
-              <p style={{ marginBottom: 6 }}>Review or update your responses:</p>
+              <p style={{ marginBottom: 6 }}>
+                {flow.access.canEdit ? "Review or update your responses:" : "Review your responses:"}
+              </p>
               <ul style={reviewList}>
+                <li>
+                  <Link href="/intro">Introduction</Link>
+                </li>
                 <li>
                   <Link href="/course-schedule">Course schedule &amp; activities</Link>
                 </li>
@@ -56,27 +65,25 @@ export default async function MePage() {
             </section>
           ) : !flow.access.canEdit ? (
             <p style={{ color: "#555" }}>
-              Your form window isn&apos;t open for editing right now. Check back during the window
+              Your access window isn&apos;t open for editing right now. Check back during the window
               shown above.
             </p>
           ) : flow.status.kind === "not-started" ? (
             <section style={highlightBox}>
               <h2 style={{ fontSize: 16, marginTop: 0 }}>First, confirm your info</h2>
-              <p style={{ marginTop: 0 }}>Here&apos;s what we have for you:</p>
+              <p style={{ marginTop: 0 }}>Here&apos;s what we have:</p>
               <ul style={{ margin: "0 0 10px", paddingLeft: "1.2rem", display: "grid", gap: 4 }}>
-                <li>
-                  <strong>{flow.displayName}</strong>
-                </li>
-                <li>Position: {flow.positionName ?? "not set yet"}</li>
+                <li>Name: <strong>{flow.displayName}</strong></li>
+                <li>Position: <strong>{flow.positionName ?? "not set yet"}</strong></li>
                 {flow.international && <li>International student</li>}
               </ul>
               <form action={confirmRosterInfo}>
                 <button type="submit" style={primaryButton}>
-                  Yes, that&apos;s me — get started →
+                  Yes, that&apos;s me
                 </button>
               </form>
               <p style={{ fontSize: 13, color: "#666", marginBottom: 0 }}>
-                Something look wrong? Check with your supervisor before continuing.
+                Something look wrong? Email <strong>{CONTACT_EMAIL}</strong> before continuing.
               </p>
             </section>
           ) : (
@@ -92,6 +99,10 @@ export default async function MePage() {
           )}
         </div>
       )}
+
+      <p style={{ marginTop: 20 }}>
+        For any questions, contact <strong>{CONTACT_EMAIL}</strong> or come into the office.
+      </p>
 
       {session.isAdmin && (
         <p style={{ marginTop: 20 }}>
