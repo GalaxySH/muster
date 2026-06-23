@@ -55,3 +55,8 @@ body {
 .page--wide {
   max-width: 1000px;
 }
+/* Full-bleed: the response-review dashboard is the deliberate exception — it
+   fills the screen so a reviewer can glance the whole response without scroll. */
+.page--full {
+  max-width: none;
+}

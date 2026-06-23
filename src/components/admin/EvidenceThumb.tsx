@@ -20,11 +20,19 @@ export function EvidenceThumb({
   label,
   caption,
   size = 96,
+  fill = false,
+  fillHeight = 300,
 }: {
   fileId: string;
   label: string;
   caption?: string;
   size?: number;
+  /** Stretch to fill the parent's width (e.g. the course-schedule panel) rather
+   *  than render a small fixed-width thumbnail. The whole image is shown
+   *  (object-fit: contain) so it fits its box without cropping. */
+  fill?: boolean;
+  /** Thumb height when `fill` is set. */
+  fillHeight?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [isImage, setIsImage] = useState(true);
@@ -46,7 +54,7 @@ export function EvidenceThumb({
         onClick={() => setOpen(true)}
         title={`${label} — click to enlarge`}
         style={{
-          width: size,
+          width: fill ? "100%" : size,
           padding: 0,
           border: "none",
           background: "transparent",
@@ -61,8 +69,8 @@ export function EvidenceThumb({
             alignItems: "center",
             justifyContent: "center",
             gap: 4,
-            height: size * 0.78,
-            border: "0.5px solid var(--color-border-secondary)",
+            height: fill ? fillHeight : size * 0.78,
+            border: "1px solid var(--color-border-secondary)",
             borderRadius: "var(--border-radius-md)",
             background: "var(--color-background-secondary)",
             color: "var(--color-text-tertiary)",
@@ -76,7 +84,7 @@ export function EvidenceThumb({
               src={url}
               alt={label}
               onError={() => setIsImage(false)}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              style={{ width: "100%", height: "100%", objectFit: fill ? "contain" : "cover" }}
             />
           ) : (
             <>

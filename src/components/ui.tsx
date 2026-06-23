@@ -13,13 +13,14 @@ import Link from "next/link";
  *   - `narrow` (480) — auth / single-form pages
  *   - `default` (720) — reading + the student form flow
  *   - `wide` (1000) — admin tables and the availability grid
+ *   - `full` — full-bleed (the response-review dashboard only)
  */
 export function Page({
   width = "default",
   style,
   children,
 }: {
-  width?: "narrow" | "default" | "wide";
+  width?: "narrow" | "default" | "wide" | "full";
   style?: React.CSSProperties;
   children: React.ReactNode;
 }) {

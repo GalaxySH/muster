@@ -87,7 +87,7 @@ export default async function StudentDetailPage({
   const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}`;
 
   return (
-    <Page width="wide">
+    <Page width="full" style={{ padding: "1.25rem 1.5rem" }}>
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/responses" label="Responses" />
@@ -148,7 +148,7 @@ export default async function StudentDetailPage({
 
       {submission && validation && (
         <>
-          {/* Hour summary cards */}
+          {/* Hour summary cards — a full-width glanceable KPI strip */}
           <div style={cardsGrid}>
             <SummaryCard
               label="hour cap"
@@ -172,119 +172,92 @@ export default async function StudentDetailPage({
             />
           </div>
 
-          {/* Flags & checks */}
-          <div style={{ ...card, ...block, marginTop: 12 }}>
-            <SectionLabel>
-              flags{" "}
-              <span style={{ color: "var(--color-text-tertiary)" }}>(automatic)</span>
-            </SectionLabel>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
-              {validation.checks
-                .filter((c) => c.id !== "weekend")
-                .map((c) => (
-                  <CheckLine key={c.id} ok={c.passed} text={c.detail} />
-                ))}
-              {!position!.weekendExempt &&
-                (autoAssigned.length > 0 ? (
+          {/* Dashboard: cards pack into balanced columns so the whole response
+              fits the screen without scrolling on a wide display. */}
+          <div style={masonry}>
+            {/* Availability preferences (weekday + weekend side by side) */}
+            {grid && (
+              <section style={panel}>
+                <SectionLabel>Availability preferences</SectionLabel>
+                <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <div>
+                    <SubHead>Weekday</SubHead>
+                    <PrefTable sub={grid.weekday} />
+                  </div>
+                  {grid.weekend && (
+                    <div>
+                      <SubHead>Weekend</SubHead>
+                      <PrefTable sub={grid.weekend} />
+                    </div>
+                  )}
+                </div>
+                <Legend />
+              </section>
+            )}
+
+            {/* Flags & checks */}
+            <section style={panel}>
+              <SectionLabel>
+                Flags <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>(automatic)</span>
+              </SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+                {validation.checks
+                  .filter((c) => c.id !== "weekend")
+                  .map((c) => (
+                    <CheckLine key={c.id} ok={c.passed} text={c.detail} />
+                  ))}
+                {!position!.weekendExempt &&
+                  (autoAssigned.length > 0 ? (
+                    <CheckLine
+                      ok={false}
+                      text={`No weekend shift selected — auto-assigned ${autoAssigned
+                        .map((c) => describeCell(c, blocks))
+                        .join(", ")}`}
+                    />
+                  ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
+                    <CheckLine ok text="Weekend shift selected" />
+                  ) : (
+                    <CheckLine ok={false} text="No weekend shift selected — will auto-assign on submit" />
+                  ))}
+                {lateTravelCount > 0 && (
                   <CheckLine
                     ok={false}
-                    text={`No weekend shift selected — auto-assigned ${autoAssigned
-                      .map((c) => describeCell(c, blocks))
-                      .join(", ")}`}
+                    text={`${lateTravelCount} travel entr${
+                      lateTravelCount === 1 ? "y" : "ies"
+                    } after 9/1 — not excused (late)`}
                   />
-                ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
-                  <CheckLine ok text="Weekend shift selected" />
-                ) : (
-                  <CheckLine ok={false} text="No weekend shift selected — will auto-assign on submit" />
-                ))}
-              {lateTravelCount > 0 && (
-                <CheckLine
-                  ok={false}
-                  text={`${lateTravelCount} travel entr${
-                    lateTravelCount === 1 ? "y" : "ies"
-                  } after 9/1 — not excused (late)`}
-                />
-              )}
-            </div>
-          </div>
+                )}
+              </div>
+            </section>
 
-          {/* Student's own note about their requested schedule */}
-          {submission.studentNotes && (
-            <div style={{ ...card, ...block, marginTop: 12 }}>
-              <SectionLabel>student notes</SectionLabel>
-              <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
-                {submission.studentNotes}
-              </p>
-            </div>
-          )}
-
-          {/* Preferences grid + course schedule */}
-          <div style={gridAndSchedule}>
-            <div style={{ ...card, ...block }}>
-              {grid && (
-                <>
-                  <SectionLabel>preferences — weekday</SectionLabel>
-                  <PrefTable sub={grid.weekday} />
-                  {grid.weekend && (
-                    <>
-                      <div style={{ height: 12 }} />
-                      <SectionLabel>preferences — weekend</SectionLabel>
-                      <PrefTable sub={grid.weekend} />
-                    </>
-                  )}
-                  <Legend />
-                </>
-              )}
-            </div>
-
-            <div style={{ ...card, ...block, display: "flex", flexDirection: "column" }}>
-              <SectionLabel>course schedule</SectionLabel>
+            {/* Course schedule */}
+            <section style={panel}>
+              <SectionLabel>Course schedule</SectionLabel>
               {evidence.courseScheduleFileId ? (
                 <EvidenceThumb
                   fileId={evidence.courseScheduleFileId}
                   label="Course schedule"
-                  size={220}
+                  fill
+                  fillHeight={320}
                 />
               ) : (
-                <p style={{ color: "var(--color-text-warning)", fontSize: 13 }}>
+                <p style={{ color: "var(--color-text-warning)", fontSize: 13, margin: 0 }}>
                   No course schedule uploaded.
                 </p>
               )}
-            </div>
-          </div>
+            </section>
 
-          {/* Extracurriculars + travel */}
-          <div style={evidenceRow}>
-            <div style={{ ...card, ...block }}>
-              <SectionLabel>extracurriculars</SectionLabel>
-              {evidence.extracurricularNotes ? (
-                <p style={{ fontSize: 13, margin: "0 0 10px" }}>
-                  <span style={{ color: "var(--color-text-tertiary)" }}>details: </span>
-                  &ldquo;{evidence.extracurricularNotes}&rdquo;
-                </p>
-              ) : (
-                <p style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "0 0 10px" }}>
-                  No details provided.
-                </p>
-              )}
-              {evidence.extracurricularFiles.length > 0 ? (
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {evidence.extracurricularFiles.map((f, i) => (
-                    <EvidenceThumb
-                      key={f.id}
-                      fileId={f.fileId}
-                      label="Extracurricular proof"
-                      caption={`proof ${i + 1}`}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No proof attached.</p>
-              )}
-            </div>
+            {/* Scheduler notes (editable) */}
+            <section style={panel}>
+              <SchedulerNotes
+                studentEmail={detail.email}
+                initialNotes={submission.schedulerNotes}
+              />
+            </section>
 
-            <div style={{ ...card, ...block }}>
-              <SectionLabel>travel</SectionLabel>
+            {/* Travel */}
+            <section style={panel}>
+              <SectionLabel>Travel</SectionLabel>
               {evidence.travel.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {evidence.travel.map((t) => (
@@ -305,19 +278,52 @@ export default async function StudentDetailPage({
                   ))}
                 </div>
               ) : (
-                <p style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
                   No travel entries.
                 </p>
               )}
-            </div>
-          </div>
+            </section>
 
-          {/* Scheduler notes */}
-          <div style={{ marginTop: 12 }}>
-            <SchedulerNotes
-              studentEmail={detail.email}
-              initialNotes={submission.schedulerNotes}
-            />
+            {/* Extracurriculars */}
+            <section style={panel}>
+              <SectionLabel>Extracurriculars</SectionLabel>
+              {evidence.extracurricularNotes ? (
+                <p style={{ fontSize: 13, margin: "0 0 10px" }}>
+                  <span style={{ color: "var(--color-text-secondary)" }}>details: </span>
+                  &ldquo;{evidence.extracurricularNotes}&rdquo;
+                </p>
+              ) : (
+                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}>
+                  No details provided.
+                </p>
+              )}
+              {evidence.extracurricularFiles.length > 0 ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {evidence.extracurricularFiles.map((f, i) => (
+                    <EvidenceThumb
+                      key={f.id}
+                      fileId={f.fileId}
+                      label="Extracurricular proof"
+                      caption={`proof ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
+                  No proof attached.
+                </p>
+              )}
+            </section>
+
+            {/* Student's own note about their requested schedule */}
+            {submission.studentNotes && (
+              <section style={panel}>
+                <SectionLabel>Student notes</SectionLabel>
+                <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
+                  {submission.studentNotes}
+                </p>
+              </section>
+            )}
           </div>
         </>
       )}
@@ -332,20 +338,37 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub:
     <div
       style={{
         background: "var(--color-background-secondary)",
+        border: "1px solid var(--color-border-secondary)",
         borderRadius: "var(--border-radius-md)",
         padding: "0.8rem 0.9rem",
       }}
     >
-      <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 500 }}>{value}</div>
-      <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{sub}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 600, color: "var(--color-text-primary)" }}>{value}</div>
+      <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{sub}</div>
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 8 }}>
+    <div
+      style={{
+        fontSize: 14,
+        fontWeight: 700,
+        color: "var(--color-text-primary)",
+        marginBottom: 10,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A small bold sub-heading inside a panel (e.g. Weekday / Weekend). */
+function SubHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6 }}>
       {children}
     </div>
   );
@@ -406,18 +429,18 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
   return (
     <table
       style={{
-        width: "100%",
-        tableLayout: "fixed",
+        // Intrinsic (compact) width — don't stretch to fill the panel.
+        width: "auto",
         borderCollapse: "separate",
         borderSpacing: 3,
         fontSize: 11,
       }}
     >
       <tbody>
-        <tr style={{ color: "var(--color-text-tertiary)" }}>
-          <td style={{ width: 96 }} />
+        <tr style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>
+          <td />
           {sub.days.map((d) => (
-            <td key={d} style={{ textAlign: "center" }}>
+            <td key={d} style={{ width: CELL, textAlign: "center" }}>
               {DAY_LABEL[d]}
             </td>
           ))}
@@ -438,7 +461,7 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
             {row.cells.map((state, i) => (
               <td key={sub.days[i]} style={cellStyle(state)}>
                 {state === "on" && (
-                  <span style={{ color: "var(--color-text-info)", display: "block", textAlign: "center" }}>
+                  <span style={{ color: "#fff", display: "block", textAlign: "center", fontWeight: 700 }}>
                     ✓
                   </span>
                 )}
@@ -456,18 +479,22 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
   );
 }
 
+// Compact fixed cell size — keeps the grid tight instead of stretching wide.
+const CELL = 26;
+
 function cellStyle(state: CellState): React.CSSProperties {
+  const base: React.CSSProperties = { width: CELL, height: 22, borderRadius: 4 };
   if (state === "on") {
-    return { background: "var(--color-background-info)", borderRadius: 4 };
+    return { ...base, background: "var(--color-text-info)" };
   }
   if (state === "auto") {
     return {
+      ...base,
       background: "var(--color-background-warning)",
       border: "1.5px dashed var(--color-border-warning)",
-      borderRadius: 4,
     };
   }
-  return { background: "var(--color-background-secondary)", borderRadius: 4, opacity: 0.5 };
+  return { ...base, background: "var(--color-background-secondary)", border: "1px solid var(--color-border-tertiary)" };
 }
 
 function Legend() {
@@ -477,13 +504,13 @@ function Legend() {
         display: "flex",
         gap: 14,
         flexWrap: "wrap",
-        marginTop: 10,
+        marginTop: 12,
         fontSize: 11,
-        color: "var(--color-text-tertiary)",
+        color: "var(--color-text-secondary)",
       }}
     >
       <span>
-        <span style={{ ...swatch, background: "var(--color-background-info)" }} /> preferred
+        <span style={{ ...swatch, background: "var(--color-text-info)" }} /> preferred
       </span>
       <span>
         <span
@@ -507,7 +534,7 @@ function Legend() {
 
 const card: React.CSSProperties = {
   background: "var(--color-background-primary)",
-  border: "0.5px solid var(--color-border-tertiary)",
+  border: "1px solid var(--color-border-secondary)",
   borderRadius: "var(--border-radius-lg)",
   padding: "0.85rem 1rem",
   display: "flex",
@@ -516,9 +543,16 @@ const card: React.CSSProperties = {
   gap: 12,
   flexWrap: "wrap",
 };
-// Override the header card's flex layout for content panels.
-const block: React.CSSProperties = {
-  display: "block",
+// A content panel (one dashboard card). Stronger border than the faint default
+// for higher contrast on this review-only screen; `break-inside: avoid` keeps it
+// whole inside the balanced multi-column masonry.
+const panel: React.CSSProperties = {
+  background: "var(--color-background-primary)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-lg)",
+  padding: "0.85rem 1rem",
+  breakInside: "avoid",
+  marginBottom: 14,
 };
 const avatar: React.CSSProperties = {
   width: 40,
@@ -539,21 +573,17 @@ const chip: React.CSSProperties = {
 };
 const cardsGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-  gap: 10,
-  marginTop: 12,
-};
-const gridAndSchedule: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.55fr) minmax(0, 1fr)",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
   gap: 12,
   marginTop: 12,
 };
-const evidenceRow: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
-  marginTop: 12,
+// Balanced multi-column packing of the dashboard cards. The browser equalizes
+// column heights, so the whole response tends to fit one screen without scroll;
+// columns collapse to fewer/one as the viewport narrows.
+const masonry: React.CSSProperties = {
+  columnWidth: 360,
+  columnGap: 14,
+  marginTop: 14,
 };
 const banner: React.CSSProperties = {
   background: "var(--color-background-warning)",

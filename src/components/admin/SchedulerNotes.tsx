@@ -39,7 +39,7 @@ export function SchedulerNotes({
           color: "var(--color-text-secondary)",
         }}
       >
-        <span>scheduling notes</span>
+        <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>Scheduling notes</span>
         {dirty && <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>unsaved</span>}
         {!dirty && saved && (
           <span style={{ color: "var(--color-text-success)", fontSize: 12 }}>✓ saved</span>
@@ -56,7 +56,7 @@ export function SchedulerNotes({
           padding: 8,
           resize: "vertical",
           borderRadius: "var(--border-radius-md)",
-          border: "0.5px solid var(--color-border-secondary)",
+          border: "1px solid var(--color-border-secondary)",
           fontFamily: "var(--font-sans)",
           fontSize: 14,
         }}
