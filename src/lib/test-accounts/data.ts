@@ -3,19 +3,22 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, submissions } from "@/lib/db/schema";
 import { POSITIONS } from "@/lib/config/positions";
-import { DEV_GROUP_ID } from "./constants";
+import { TEST_GROUP_ID } from "./constants";
+import { isTestAccountEmail } from "./email";
 
-export interface DevStudent {
+export interface TestAccount {
   email: string;
   displayName: string;
   positionName: string | null;
   status: "draft" | "submitted" | null;
+  /** False for legacy dev-created @wisc.edu accounts — hides the sign-in-as button. */
+  canSignInAs: boolean;
 }
 
 const positionName = (id: string | null) => POSITIONS.find((p) => p.id === id)?.name ?? null;
 
-/** The throwaway accounts created by the /dev-login manager (dev group members). */
-export async function listDevStudents(): Promise<DevStudent[]> {
+/** The throwaway accounts created by the /admin/test-users manager (test-group members). */
+export async function listTestAccounts(): Promise<TestAccount[]> {
   const rows = await getDb()
     .select({
       email: students.email,
@@ -25,7 +28,7 @@ export async function listDevStudents(): Promise<DevStudent[]> {
     })
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-    .where(eq(students.groupId, DEV_GROUP_ID))
+    .where(eq(students.groupId, TEST_GROUP_ID))
     .orderBy(students.email);
 
   return rows.map((r) => ({
@@ -33,5 +36,6 @@ export async function listDevStudents(): Promise<DevStudent[]> {
     displayName: r.displayName,
     positionName: positionName(r.positionId),
     status: r.status ?? null,
+    canSignInAs: isTestAccountEmail(r.email),
   }));
 }

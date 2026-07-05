@@ -9,8 +9,9 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
-import { getAppSession } from "@/lib/auth/session";
+import { submissions } from "@/lib/db/schema";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
 import {
@@ -22,13 +23,6 @@ import {
 export interface AdminActionResult {
   ok: boolean;
   error?: string;
-}
-
-async function requireAdmin(): Promise<{ ok: true } | { ok: false; error: string }> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
-  return { ok: true };
 }
 
 /** Updates the submission and reports whether a row was actually affected. */
@@ -86,26 +80,14 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
   const db = getDb();
   const email = normalizeEmail(studentEmail);
   const [sub] = await db
-    .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })
+    .select({ id: submissions.id })
     .from(submissions)
     .where(eq(submissions.studentEmail, email))
     .limit(1);
   if (!sub) return { ok: false, error: "No submission exists for this student." };
 
   // Gather every Drive proof fileId before the cascade removes its rows.
-  const ecRows = await db
-    .select({ fileId: extracurricularFiles.fileId })
-    .from(extracurricularFiles)
-    .where(eq(extracurricularFiles.submissionId, sub.id));
-  const travelRows = await db
-    .select({ proofFileId: travelRequests.proofFileId })
-    .from(travelRequests)
-    .where(eq(travelRequests.submissionId, sub.id));
-  const fileIds = [
-    sub.courseScheduleFileId,
-    ...ecRows.map((r) => r.fileId),
-    ...travelRows.map((r) => r.proofFileId),
-  ].filter((id): id is string => Boolean(id));
+  const fileIds = await collectSubmissionDriveFileIds(sub.id);
 
   await db.delete(submissions).where(eq(submissions.id, sub.id));
 

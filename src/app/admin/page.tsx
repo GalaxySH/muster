@@ -4,7 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendar, faFileImport, faList, faUniversalAccess } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { faCalendar, faFileImport, faList, faUniversalAccess, faUserGear } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
 import { Page } from "@/components/ui";
 
@@ -32,6 +32,9 @@ export default async function AdminPage() {
       </p>
       <p>
       <FontAwesomeIcon icon={faGoogleDrive} /> <Link href="/admin/drive">Manage the Google Drive connection</Link>
+      </p>
+      <p>
+      <FontAwesomeIcon icon={faUserGear} /> <Link href="/admin/test-users">Test accounts for training</Link>
       </p>
       <p>
       <Link href="https://stats.uptimerobot.com/iSpewSMtY1" target="_blank" rel="noreferrer">Status page</Link>

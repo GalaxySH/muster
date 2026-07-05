@@ -199,11 +199,23 @@ For local testing (incl. Playwright MCP), a **dev-login bypass** at `/dev-login`
 signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated by
 `DEV_LOGIN_ENABLED` and **never** honored when `NODE_ENV=production`
 (`isDevLoginEnabled` in `auth/policy.ts`). Run `DEV_LOGIN_ENABLED=1 npm run dev`.
-The same page hosts a **throwaway test-account manager** (`src/lib/dev/`, also
-`DEV_LOGIN_ENABLED`-gated): create a student (off-roster, dropped into an
-always-open `dev-test` group so the full flow is walkable), one-click sign-in,
-and delete (cascades the submission; only ever removes `dev-test` members). This
-replaces the old `/admin/preview` form-preview page (removed).
+
+The **throwaway test-account manager** is a **production admin feature** at
+**`/admin/test-users`** (`src/lib/test-accounts/`, gated by the shared `requireAdmin`
+in `auth/require-admin.ts` — also used by `admin/actions.ts` + `groups/actions.ts`),
+for walking the student flow in any position (admin training). Create by display
+name — the email is derived as `slug@test.muster.invalid` (pure, TDD-tested
+`test-accounts/email.ts`); accounts are off-roster in the always-open `dev-test`
+group ("Test accounts"), so they never show in responses/export/sheet/non-response
+tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
+via the existing `magic-link` provider (no auth-config changes; replaces the admin's
+session — return via Google). The synthetic domain fails `isWiscEmail`, so the
+admin-minted token is the **only** door in. Rails: create refuses existing rows
+(never upserts); sign-in-as requires test-group membership AND the synthetic domain;
+delete only ever removes test-group members and also cleans up relayed Drive proofs
+(shared `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
+be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
+(and before that, `/admin/preview`).
 
 Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
 `students` (minimized fields only) + `admin_users`, idempotently. `importRoster` takes a

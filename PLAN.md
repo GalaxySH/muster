@@ -15,11 +15,12 @@
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
   **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). **Guided student
   form-flow done** (§4.1): `/me` hub → intro → course-schedule → availability → travel →
-  exit; status flips to submitted only at the exit step (§13.1). `/dev-login` now manages
-  throwaway test accounts (the old `/admin/preview` is removed); `/admin/non-responses` can
-  copy outstanding emails. Next: ops.
-- **Version:** 0.32
-- **Last updated:** 2026-06-22
+  exit; status flips to submitted only at the exit step (§13.1). **Test accounts are now a
+  production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
+  students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
+  OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
+- **Version:** 0.33
+- **Last updated:** 2026-07-06
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -802,13 +803,36 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 - **Non-response: copy emails to clipboard — DONE.** A button on `/admin/non-responses`
   copies all outstanding (no-response + draft-only) emails, comma-separated, to the
   clipboard for a quick reminder mail-merge.
-- **Dev test-account manager — DONE.** `/dev-login` (dev-only) can create/sign-in-as/delete
-  throwaway students in an always-open dev group, replacing the removed `/admin/preview`
-  form-preview page.
+- **Test-account manager — DONE, now a production admin feature (0.33).** Originally the
+  dev-only `/dev-login` manager (which had replaced the removed `/admin/preview`
+  form-preview page); promoted to **`/admin/test-users`** so admins can create/
+  sign-in-as/delete throwaway students in any position in production (e.g. to train
+  admins). Accounts live in the always-open test group (id `dev-test`) under the synthetic
+  domain `test.muster.invalid`, stay off-roster (invisible in responses/export/sheet/
+  non-response tracking), and are reachable **only** via an admin-minted magic-link token —
+  the synthetic domain fails `isWiscEmail`, so the public magic-link request and Google
+  sign-in can never reach them. `/dev-login` retains only the dev-only OAuth bypass.
 
 ---
 
 ## Changelog
+- **0.33 (2026-07-06)** — **Test-account manager promoted to a production admin feature
+  (§18b).** `src/lib/dev/` → `src/lib/test-accounts/`, gated by the new shared
+  `requireAdmin` (`auth/require-admin.ts`, which also deduplicates the private copies in
+  `admin/actions.ts` and `groups/actions.ts`) instead of `DEV_LOGIN_ENABLED` — the
+  dev-login gates (`isDevLoginEnabled`, `env-guard`) are untouched. New **`/admin/test-users`**
+  page: create by display name (email derived as `slug@test.muster.invalid` — pure,
+  TDD-tested `test-accounts/email.ts`; no free-form email input), one-click **sign-in-as**
+  (admin-gated action mints a token via `issueMagicLink` and redeems it through the
+  existing `magic-link` Credentials provider — zero auth-config changes; replaces the
+  admin's session, return via Google sign-in), and delete, which now also cleans up relayed
+  Drive proofs via the new shared `collectSubmissionDriveFileIds` (`evidence/data.ts`, also
+  used by `deleteResponse`). Safety rails: create **refuses** existing rows (the old dev
+  upsert could hijack a real student row); sign-in-as requires test-group membership **and**
+  the synthetic domain (a real student moved into the group via the picker can't be
+  impersonated); the test group can't be deleted on `/admin/groups`; `listNonResponses`
+  no longer surfaces test accounts in its off-roster bucket. `/dev-login` slims to the
+  dev-only OAuth bypass.
 - **0.32 (2026-07-06)** — **Roster import moved into the admin UI (§4.2).** New
   **`/admin/roster`** page (linked from the dashboard): upload the PCPL .xlsx and the
   same idempotent `importRoster` orchestrator runs server-side — no more scp + CLI on

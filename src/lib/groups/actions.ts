@@ -14,7 +14,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { groups, students } from "@/lib/db/schema";
-import { getAppSession } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { setSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -25,17 +25,11 @@ import {
 } from "./data";
 import { parseEmailList } from "./parse-emails";
 import { DEFAULT_GROUP_ID } from "./constants";
+import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
-}
-
-async function requireAdmin(): Promise<{ ok: true } | { ok: false; error: string }> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
-  return { ok: true };
 }
 
 function revalidateGroups() {
@@ -143,6 +137,11 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
   if (id === DEFAULT_GROUP_ID) return { ok: false, error: "The default group can't be deleted." };
+  if (id === TEST_GROUP_ID) {
+    // Deleting it would null members' group_id, stranding test accounts the
+    // /admin/test-users manager could no longer list or delete.
+    return { ok: false, error: "The test-accounts group is managed on /admin/test-users and can't be deleted." };
+  }
 
   const db = getDb();
   const [g] = await db.select({ isDefault: groups.isDefault }).from(groups).where(eq(groups.id, id)).limit(1);

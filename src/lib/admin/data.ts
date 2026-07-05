@@ -23,6 +23,7 @@ import {
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
+import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 import type { FlagType } from "@/lib/domain/validation";
 
@@ -241,6 +242,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       email: students.email,
       displayName: students.displayName,
       onRoster: students.onRoster,
+      groupId: students.groupId,
       positionName: positions.name,
       status: submissions.status,
     })
@@ -266,7 +268,8 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       if (r.status === "submitted") respondedCount += 1;
       else if (r.status === "draft") draftOnly.push(person);
       else noResponse.push(person);
-    } else if (r.status != null) {
+    } else if (r.status != null && r.groupId !== TEST_GROUP_ID) {
+      // Admin-created test accounts are off-roster by design — not a roster gap.
       offRoster.push(person);
     }
   }

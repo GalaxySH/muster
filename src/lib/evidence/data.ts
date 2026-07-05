@@ -98,6 +98,33 @@ export async function ensureSubmissionId(studentEmail: string): Promise<string> 
 }
 
 /**
+ * Every Drive fileId attached to a submission (course schedule + extracurricular
+ * + travel proofs). Callers deleting a submission gather these BEFORE the delete
+ * cascades the child rows away, then best-effort relayDelete each.
+ */
+export async function collectSubmissionDriveFileIds(submissionId: string): Promise<string[]> {
+  const db = getDb();
+  const [sub] = await db
+    .select({ courseScheduleFileId: submissions.courseScheduleFileId })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1);
+  const ecRows = await db
+    .select({ fileId: extracurricularFiles.fileId })
+    .from(extracurricularFiles)
+    .where(eq(extracurricularFiles.submissionId, submissionId));
+  const travelRows = await db
+    .select({ proofFileId: travelRequests.proofFileId })
+    .from(travelRequests)
+    .where(eq(travelRequests.submissionId, submissionId));
+  return [
+    sub?.courseScheduleFileId,
+    ...ecRows.map((r) => r.fileId),
+    ...travelRows.map((r) => r.proofFileId),
+  ].filter((id): id is string => Boolean(id));
+}
+
+/**
  * Whether a fileId belongs to this student's submission — the proxy's access
  * gate for non-admins. Checks course schedule, extracurricular, and travel proof.
  */
