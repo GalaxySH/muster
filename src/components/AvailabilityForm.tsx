@@ -14,6 +14,7 @@ import { hourCap } from "@/lib/domain/caps";
 import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
 import { primaryButtonStyle, secondaryButtonStyle, disabledButtonStyle } from "@/components/ui";
+import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
 
 const DAY_LABEL: Record<Day, string> = {
   mon: "Mon",
@@ -24,6 +25,20 @@ const DAY_LABEL: Record<Day, string> = {
   sat: "Sat",
   sun: "Sun",
 };
+
+/** The user-editable fields, snapshotted at load/save to detect unsaved edits. */
+interface FormSnapshot {
+  selectedKeys: Set<string>;
+  optIn: boolean;
+  desired: string;
+  notes: string;
+}
+
+function sameKeySet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const k of a) if (!b.has(k)) return false;
+  return true;
+}
 
 interface RequirementItem {
   key: string;
@@ -62,12 +77,27 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const [desired, setDesired] = useState(props.initialDesiredHours?.toString() ?? "");
   const [notes, setNotes] = useState(props.initialNotes);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [saved, setSaved] = useState<FormSnapshot>(() => ({
+    selectedKeys: selectionToKeys(props.initialSelection),
+    optIn: props.initialEveryWeekendOptIn,
+    desired: props.initialDesiredHours?.toString() ?? "",
+    notes: props.initialNotes,
+  }));
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const editable = props.editable ?? true;
   // A submitted form is edited in place ("Save changes"); an unsubmitted one is
   // the wizard step ("Save draft" + "Save and continue → /travel").
   const editMode = props.initialStatus === "submitted";
+
+  const dirty =
+    editable &&
+    !props.preview &&
+    (!sameKeySet(selected, saved.selectedKeys) ||
+      optIn !== saved.optIn ||
+      desired !== saved.desired ||
+      notes !== saved.notes);
+  useUnsavedChangesWarning(dirty);
 
   // Only consider cells that belong to this position's blocks, so stale state
   // (e.g. switching previews) can never reference an unknown block.
@@ -132,6 +162,8 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         mode,
       });
       if (res.ok) {
+        // Everything the server accepted is now the saved baseline.
+        setSaved({ selectedKeys: selected, optIn, desired, notes });
         // The server owns auto-assignment; mirror its decision in the grid.
         setAutoAssigned(
           res.autoAssigned

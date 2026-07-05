@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.34
+- **Version:** 0.35
 - **Last updated:** 2026-07-06
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -99,7 +99,9 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
    opt-in (A/B education; Barista exempt) + desired hours, with live validation (§8).
    **Save draft** persists without gating; **Save and continue →** re-validates (hard
    rules + desired hours) and, on success, advances to travel as a **draft** (no status
-   change yet).
+   change yet). Leaving with unsaved edits warns first: a native beforeunload prompt
+   on tab close/refresh plus a confirm() on same-tab link clicks (breadcrumb/Home),
+   via `useUnsavedChangesWarning`.
 6. **`/travel`** — optional, repeatable travel entries (proof + date range; excused only
    before the 9/1 cutoff, §7b #8). Since travel is optional, **Next is gated on an explicit
    acknowledgement** ("I've added all my travel, or I have none").
@@ -817,6 +819,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.35 (2026-07-06)** — **Unsaved-changes warning on the availability form (§4 step 5).**
+  New `components/useUnsavedChangesWarning.ts` hook: while the form has unsaved edits it
+  arms (1) a native `beforeunload` prompt (tab close / refresh / external navigation) and
+  (2) a document-level capture-phase click listener that `confirm()`s before any same-tab
+  link navigation — needed because the App Router has no route-change blocking API and
+  the links that leave the page (AppHeader Home, the WizardSteps breadcrumb) render
+  outside the form component. New-tab clicks (`target="_blank"`, modifier keys), download
+  links, and same-page `#` anchors are exempt. `AvailabilityForm` tracks dirtiness against
+  a snapshot of the four editable fields (selection / opt-in / desired hours / notes),
+  reset on every successful save; preview and read-only modes never warn. Programmatic
+  `router.push` after "Save and continue" is unaffected (the state was just saved).
 - **0.34 (2026-07-06)** — **Fix: desired weekly hours below the position minimum was
   accepted (§5/§8).** Presence was checked everywhere but the value was never compared
   to the position floor, so e.g. 5h passed for a 10h-minimum position. New pure

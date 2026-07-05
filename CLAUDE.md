@@ -126,7 +126,10 @@ centralized button styles in `components/ui.tsx` (`primaryButtonStyle`/
 `secondaryButtonStyle`/`disabledButtonStyle`, also reused by `FinishButton`,
 `TravelContinue`, and the `PrimaryLink` forward-nav on the server pages). It renders the
 server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and takes an
-`editable` prop (read-only when the window isn't open).
+`editable` prop (read-only when the window isn't open). Unsaved edits arm
+`components/useUnsavedChangesWarning.ts` (a `beforeunload` prompt + a capture-phase
+`confirm()` on same-tab link clicks, since the App Router can't block route changes);
+the dirty snapshot resets on each successful save.
 
 Form-flow layering (`src/lib/flow/` + wizard pages): `steps.ts` is **pure** (TDD) —
 `WIZARD_STEPS` + `prevHref`/`nextHref`, `flowStatus(inputs)` → `done | not-started |

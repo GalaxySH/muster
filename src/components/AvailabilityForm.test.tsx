@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@/lib/availability/actions", () => ({
@@ -207,6 +207,84 @@ describe("AvailabilityForm", () => {
     expect(autoCell).toHaveAttribute("title", expect.stringContaining("auto-assigned"));
     expect(autoCell).toHaveAttribute("aria-pressed", "false"); // server-owned, not a manual pick
     expect(push).not.toHaveBeenCalled(); // editing in place — no wizard advance
+  });
+
+  it("arms the tab-close warning only while there are unsaved changes", async () => {
+    const user = userEvent.setup();
+    renderForm();
+    const fireBeforeUnload = () => {
+      const e = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+
+    expect(fireBeforeUnload()).toBe(false); // pristine
+
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
+    expect(fireBeforeUnload()).toBe(true); // dirty
+
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    await screen.findByText("Draft saved.");
+    expect(fireBeforeUnload()).toBe(false); // saved → clean again
+  });
+
+  it("confirms before leaving via a link while there are unsaved changes", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<a href="/course-schedule">Course schedule</a>);
+    renderForm();
+    const link = screen.getByRole("link", { name: "Course schedule" });
+    // Reached only when the guard lets the click through; swallows the default
+    // so jsdom doesn't attempt a real navigation.
+    let passedThrough = 0;
+    link.addEventListener("click", (e) => {
+      passedThrough += 1;
+      e.preventDefault();
+    });
+
+    // Pristine form: no prompt, the click goes through.
+    await user.click(link);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(passedThrough).toBe(1);
+
+    // Dirty + decline: prompted, navigation blocked.
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
+    await user.click(link);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(passedThrough).toBe(1);
+
+    // Accept: prompted, the click goes through.
+    confirmSpy.mockReturnValue(true);
+    await user.click(link);
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(passedThrough).toBe(2);
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not prompt for new-tab navigations (target=_blank, modified clicks)", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <>
+        <a href="/travel">Same tab</a>
+        <a href="/help" target="_blank">
+          New tab
+        </a>
+      </>,
+    );
+    renderForm();
+    for (const name of ["Same tab", "New tab"]) {
+      screen.getByRole("link", { name }).addEventListener("click", (e) => e.preventDefault());
+    }
+
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" })); // dirty
+
+    await user.click(screen.getByRole("link", { name: "New tab" }));
+    fireEvent.click(screen.getByRole("link", { name: "Same tab" }), { ctrlKey: true });
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
   });
 
   it("in preview mode shows a banner and never persists", async () => {
