@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.33
+- **Version:** 0.34
 - **Last updated:** 2026-07-06
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -275,8 +275,9 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
   overlapping/contiguous shifts merge into one continuous span and the shared time is
   counted **once** (no double-count), so two adjacent shifts credit their full combined
   length. The cap (20/30) is **not** enforced here; it's scheduler-side context
-  (§10). An optional non-validated **`desiredHours`** hint can help the scheduler aim
-  within the cap.
+  (§10). A required **`desiredHours`** field helps the scheduler aim within the cap;
+  it must be **≥ the position's minimum hours** (hard check `desired_hours`,
+  `checkDesiredHours` in the rules engine) but is never capped at the top end.
 - **High-demand indicator (red bar):** blocks the admin marks `highDemand` render a
   bare **red bar** beneath the time in the selection grid — **no explanation shown**
   (avoid gaming; these are the most over-subscribed shifts). Purely **advisory** — the
@@ -816,6 +817,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.34 (2026-07-06)** — **Fix: desired weekly hours below the position minimum was
+  accepted (§5/§8).** Presence was checked everywhere but the value was never compared
+  to the position floor, so e.g. 5h passed for a 10h-minimum position. New pure
+  `checkDesiredHours(desiredHours, position)` in `domain/validation.ts` (TDD; hard check
+  id `desired_hours`: entered + finite + ≥ `position.minHours`; the 20/30h cap remains
+  unenforced) is now the single seam for all four consumers: the live client checklist
+  in `AvailabilityForm` (which also raises the number input's `min` to the position
+  floor), the `saveAvailability` `"continue"` gate, `finalizeSubmission` (re-validates
+  the persisted value, so a stale below-min draft can't finalize), and
+  `flow/data.ts` `computeFlowInputs` (the travel step / breadcrumb no longer unlocks on
+  a below-min value). Drafts still save any value freely, matching the other hard rules.
 - **0.33 (2026-07-06)** — **Test-account manager promoted to a production admin feature
   (§18b).** `src/lib/dev/` → `src/lib/test-accounts/`, gated by the new shared
   `requireAdmin` (`auth/require-admin.ts`, which also deduplicates the private copies in

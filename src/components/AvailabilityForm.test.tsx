@@ -117,6 +117,29 @@ describe("AvailabilityForm", () => {
     expect(push).toHaveBeenCalledWith("/travel");
   });
 
+  it("blocks continuing when desired hours is below the position minimum", async () => {
+    const user = userEvent.setup();
+    renderForm();
+    const cont = screen.getByRole("button", { name: "Save and continue" });
+
+    // Satisfy the availability hard rules.
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Tue" }));
+    await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
+    await user.click(screen.getByRole("button", { name: "8:30a–11a Sat" }));
+
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    expect(input).toHaveAttribute("min", "10");
+
+    await user.type(input, "5");
+    expect(cont).toBeDisabled();
+    expect(screen.getByText(/at least 10h/i)).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "10");
+    expect(cont).toBeEnabled();
+  });
+
   it("treats a missing weekend shift as a soft warning, not a hard block", async () => {
     const user = userEvent.setup();
     renderForm();

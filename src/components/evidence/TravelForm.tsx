@@ -43,7 +43,7 @@ export function TravelForm({
       <p style={{ color: "#555" }}>
         Add any planned travel during the semester. Upload proof and a date range for each
         trip, these will be manually reviewed for eligibility. Travel is only excused if added
-        before {defaultTravelCutoff(new Date()).toLocaleDateString()}. We will not accept emails.
+        before {defaultTravelCutoff(new Date()).toLocaleDateString()}. We will not accept emails requesting excusal, unless for extenuating circumstances.
       </p>
 
       {!driveConnected && (

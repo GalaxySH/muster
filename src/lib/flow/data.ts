@@ -9,7 +9,7 @@ import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { loadStudentForm } from "@/lib/availability/data";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { validateAvailability } from "@/lib/domain/validation";
+import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { type WindowState } from "@/lib/domain/window";
 import { POSITIONS } from "@/lib/config/positions";
 import { flowStatus, reachableStepKeys, type FlowInputs, type FlowStatus, type WizardStepKey } from "./steps";
@@ -45,7 +45,11 @@ type LoadedForm = NonNullable<Awaited<ReturnType<typeof loadStudentForm>>>;
 /** Derive the four wizard inputs from a loaded form + the course-schedule fileId. */
 function computeFlowInputs(form: LoadedForm, courseScheduleFileId: string | null): FlowInputs {
   let availabilityComplete = false;
-  if (form.position && form.submission && form.submission.desiredHours !== null) {
+  if (
+    form.position &&
+    form.submission &&
+    checkDesiredHours(form.submission.desiredHours, form.position).passed
+  ) {
     availabilityComplete = validateAvailability(form.selection, form.position, form.blocks, {
       everyWeekendOptIn: form.submission.everyWeekendOptIn,
     }).canSubmit;

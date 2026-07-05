@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "./time";
-import { validateAvailability } from "./validation";
+import { checkDesiredHours, validateAvailability } from "./validation";
 import type { ShiftBlock, Position, SelectedShift } from "./types";
 
 function b(id: string, dt: "weekday" | "weekend", start: string, end: string): ShiftBlock {
@@ -104,5 +104,40 @@ describe("validateAvailability", () => {
     const r = validateAvailability(selection, SL, CA_BLOCKS, { everyWeekendOptIn: false });
     expect(r.daysCovered).toBe(3);
     expect(ids(r.checks)).not.toContain("min_days");
+  });
+});
+
+describe("checkDesiredHours", () => {
+  it("fails when no value is entered", () => {
+    const c = checkDesiredHours(null, CA);
+    expect(c.passed).toBe(false);
+    expect(c.severity).toBe("hard");
+    expect(c.detail).toMatch(/enter your desired weekly hours/i);
+  });
+
+  it("fails when the value is not a finite number", () => {
+    expect(checkDesiredHours(Number.NaN, CA).passed).toBe(false);
+    expect(checkDesiredHours(Number.POSITIVE_INFINITY, CA).passed).toBe(false);
+  });
+
+  it("fails below the position minimum and names the floor", () => {
+    const c = checkDesiredHours(5, CA);
+    expect(c.passed).toBe(false);
+    expect(c.detail).toContain("10h");
+  });
+
+  it("passes at exactly the position minimum", () => {
+    expect(checkDesiredHours(10, CA).passed).toBe(true);
+  });
+
+  it("passes above the minimum (the cap is never enforced at entry)", () => {
+    expect(checkDesiredHours(40, CA).passed).toBe(true);
+  });
+
+  it("uses the position's own floor (Shift Lead 15h)", () => {
+    const SL: Position = { ...CA, id: "sl", minHours: 15, minDays: 3 };
+    expect(checkDesiredHours(12, SL).passed).toBe(false);
+    expect(checkDesiredHours(12, SL).detail).toContain("15h");
+    expect(checkDesiredHours(15, SL).passed).toBe(true);
   });
 });

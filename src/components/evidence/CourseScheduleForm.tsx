@@ -80,7 +80,7 @@ export function CourseScheduleForm({
           readOnly={!editable}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          placeholder="Describe the mandatory activity and its times…"
+          placeholder="Describe the activities including dates and times…"
           style={{ width: "100%", boxSizing: "border-box", padding: 8 }}
         />
         <div style={{ marginTop: 6 }}>
@@ -110,7 +110,7 @@ export function CourseScheduleForm({
         <form onSubmit={onUpload("ec", addExtracurricularFile)} style={uploadRow}>
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
           <button type="submit" disabled={pending || !canUpload}>
-            Save/add another
+            Save/add another image
           </button>
           <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>

@@ -14,7 +14,7 @@ import {
   type CapacityResult,
 } from "./capacity";
 
-export type CheckId = "min_hours" | "open_or_close" | "min_days" | "weekend";
+export type CheckId = "min_hours" | "open_or_close" | "min_days" | "weekend" | "desired_hours";
 export type FlagType = "auto_assigned_weekend" | "travel_late";
 
 export interface Check {
@@ -108,6 +108,28 @@ export function validateAvailability(
   const canSubmit = checks.filter((c) => c.severity === "hard").every((c) => c.passed);
 
   return { capacity, daysCovered: days.size, checks, flags, canSubmit };
+}
+
+/**
+ * Desired weekly hours must be entered and reach the position floor (hard).
+ * Lives outside validateAvailability because desired hours sits beside the
+ * selection, not in it; the client checklist and both server gates
+ * (saveAvailability "continue" / finalizeSubmission) run this same check.
+ * Only the minimum is enforced — the 20/30h cap stays scheduler-side context.
+ */
+export function checkDesiredHours(desiredHours: number | null, position: Position): Check {
+  const entered = desiredHours !== null && Number.isFinite(desiredHours);
+  const passed = entered && desiredHours >= position.minHours;
+  return {
+    id: "desired_hours",
+    severity: "hard",
+    passed,
+    detail: !entered
+      ? "enter your desired weekly hours"
+      : passed
+        ? `desired weekly hours: ${desiredHours}h`
+        : `desired weekly hours must be at least ${position.minHours}h for your position`,
+  };
 }
 
 /** Set of block ids that are the derived open or close of either day-type. */

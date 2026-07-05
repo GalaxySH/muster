@@ -9,7 +9,7 @@ import {
   selectionToKeys,
   computeCoveredKeys,
 } from "@/lib/availability/selection";
-import { validateAvailability } from "@/lib/domain/validation";
+import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { hourCap } from "@/lib/domain/caps";
 import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
@@ -88,28 +88,18 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   );
 
   const desiredHours = desired === "" ? null : Number(desired);
-  const desiredValid = desiredHours !== null && Number.isFinite(desiredHours) && desiredHours > 0;
-  const canSubmit = validation.canSubmit && desiredValid;
+  const desiredCheck = checkDesiredHours(desiredHours, props.position);
+  const canSubmit = validation.canSubmit && desiredCheck.passed;
 
   const minHours = props.position.minHours;
   const maxHours = hourCap(props.international);
 
-  const requirements: RequirementItem[] = [
-    ...validation.checks.map((c) => ({
-      key: c.id,
-      passed: c.passed,
-      severity: c.severity,
-      label: c.detail,
-    })),
-    {
-      key: "desired_hours",
-      passed: desiredValid,
-      severity: "hard" as const,
-      label: desiredValid
-        ? `desired weekly hours: ${desiredHours}h`
-        : "enter your desired weekly hours",
-    },
-  ];
+  const requirements: RequirementItem[] = [...validation.checks, desiredCheck].map((c) => ({
+    key: c.id,
+    passed: c.passed,
+    severity: c.severity,
+    label: c.detail,
+  }));
 
   function toggle(blockId: string, day: Day) {
     if (!editable) return;
@@ -249,7 +239,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
           Desired weekly hours <span style={{ color: "#b00" }}>(required)</span>:{" "}
           <input
             type="number"
-            min={1}
+            min={minHours}
             required
             value={desired}
             disabled={!editable}

@@ -37,7 +37,7 @@ import {
   lockedReasonLine,
 } from "@/lib/groups/window-message";
 import { loadPositionWithBlocks } from "./data";
-import { validateAvailability } from "@/lib/domain/validation";
+import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
 import { trySyncResponsesSheet } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
@@ -212,7 +212,12 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     everyWeekendOptIn: input.everyWeekendOptIn,
   });
 
-  const desiredHours = input.desiredHours && input.desiredHours > 0 ? input.desiredHours : null;
+  const desiredHours =
+    typeof input.desiredHours === "number" &&
+    Number.isFinite(input.desiredHours) &&
+    input.desiredHours > 0
+      ? input.desiredHours
+      : null;
   const studentNotes = input.notes.trim() || null;
 
   // "continue" is a hard gate: refuse to advance (and don't persist) on failure,
@@ -221,7 +226,8 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     const errors = result.checks
       .filter((c) => c.severity === "hard" && !c.passed)
       .map((c) => c.detail);
-    if (desiredHours === null) errors.push("Enter your desired weekly hours.");
+    const desiredCheck = checkDesiredHours(desiredHours, position);
+    if (!desiredCheck.passed) errors.push(desiredCheck.detail);
     if (errors.length > 0) return { ok: false, errors };
   }
 
@@ -328,7 +334,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
     everyWeekendOptIn: sub.everyWeekendOptIn,
   });
   const hardFailures = result.checks.filter((c) => c.severity === "hard" && !c.passed);
-  if (hardFailures.length > 0 || sub.desiredHours === null) {
+  if (hardFailures.length > 0 || !checkDesiredHours(sub.desiredHours, position).passed) {
     return {
       ok: false,
       error: "Finish your availability before submitting.",

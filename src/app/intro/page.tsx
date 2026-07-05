@@ -38,25 +38,27 @@ export default async function IntroPage() {
             Scheduling is based primarily on your course schedule, operational needs, and availability, in that order. We do our best to accommodate your preferences, but we cannot guarantee them.
           </li>
           <li>
+            You must select your position&apos;s <strong>minimum weekly hours</strong> (10h; Shift
+            Leads 15h).
+          </li>
+          <li>
             Mark <strong>every</strong> shift you&apos;d be willing to work. These are preferences,
             not your final schedule.
           </li>
           <li>
-            Picking more than your required hours gives you a better chance of getting your preferred shifts. You can change your selections until your form window closes.
+            Weekly preferences that total more than your required hours give you a better chance of getting your preferred shifts. You can change your selections until your form window closes.
           </li>
           <li>
-            You must reach your position&apos;s <strong>minimum weekly hours</strong> (10h; Shift
-            Leads 15h) across the shifts you select.
+          You are required to work a weekend shift. Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend), unless you opt into working every weekend. You pick the shift time, we pick which of A/B based on operational needs.
           </li>
           <li>
-            Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend),
-            unless you opt into working every weekend. You are required to work a weekend shift. You pick the shift, we pick A/B based on operational needs.
+            Travel during the semester is only excused if you add it <strong>before {defaultTravelCutoff(new Date()).toLocaleDateString()}</strong>. We will not excuse <strong>any</strong> travel added after that date.
           </li>
           <li>
-            Travel is only excused if you add it <strong>before {defaultTravelCutoff(new Date()).toLocaleDateString()}</strong>. We will not excuse <strong>any</strong> travel after that date.
+            If your availability changes throughout the semester, contact us by email or come into the office. We will always accept excusal requests for exams throughout the semester, and we will review requests for extenuating circumstances on a case by case basis.
           </li>
           <li>
-            If you have questions, contact your scheduler (<strong>{CONTACT_EMAIL}</strong>).
+            If you have questions, contact the scheduler (<strong>{CONTACT_EMAIL}</strong>).
           </li>
         </ul>
       </section>
@@ -64,8 +66,8 @@ export default async function IntroPage() {
       <section style={card}>
         <h2 style={h2}>What we need from you</h2>
         <ol style={list}>
-          <li>Upload your course schedule (required) and any mandatory regularly occurring academic activities.</li>
-          <li>Set your recurring weekly availability and desired hours.</li>
+          <li>Upload proof of your course schedule (required) and any mandatory regularly occurring academic activities.</li>
+          <li>Set your recurring weekly availability and desired hours (this will apply to every week in the semester).</li>
           <li>Submit any planned travel to be excused.</li>
           <li>Review and submit.</li>
         </ol>
