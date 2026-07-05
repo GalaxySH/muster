@@ -1,0 +1,79 @@
+# Production deploy (PLAN §15): on a version tag (or manual dispatch), SSH to
+# the server, check out the exact tagged commit in the existing deploy clone,
+# and rebuild the compose stack — the same `docker compose up -d --build` used
+# for manual deploys. Afterwards the public health endpoint must come back up.
+#
+# Required repository secrets:
+#   DEPLOY_HOST         — server hostname or IP
+#   DEPLOY_USER         — SSH user (must be able to run docker compose)
+#   DEPLOY_SSH_KEY      — private key for that user (a dedicated deploy key)
+#   DEPLOY_PATH         — absolute path of the repo clone on the server
+#   DEPLOY_KNOWN_HOSTS  — optional; `ssh-keyscan <host>` output to pin the host
+#                         key (falls back to scanning at deploy time if unset)
+#
+# Server prerequisites (one-time): the clone at DEPLOY_PATH with a fetchable
+# `origin`, and the production `.env` beside compose.yaml (see .env.example).
+
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Never run two deploys at once; let a queued one wait, not cancel a live one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+      - name: Deploy tagged commit on server
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          TARGET_DIR: ${{ secrets.DEPLOY_PATH }}
+        # Deploy the exact commit this workflow ran for (tags can be moved;
+        # SHAs can't). The remote script is a quoted heredoc — nothing in it
+        # expands on the runner; TARGET_DIR/REF travel as remote env vars.
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" \
+            TARGET_DIR="$TARGET_DIR" REF="$GITHUB_SHA" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd "$TARGET_DIR"
+          git fetch --tags --force origin
+          git checkout --detach "$REF"
+          docker compose up -d --build
+          # Drop dangling images from previous builds so the disk doesn't fill.
+          docker image prune -f
+          REMOTE
+
+      - name: Verify health endpoint
+        run: |
+          echo "Waiting for https://muster.hauge.rocks/api/health ..."
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 https://muster.hauge.rocks/api/health; then
+              echo; echo "Healthy."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "App did not become healthy within 5 minutes." >&2
+          exit 1

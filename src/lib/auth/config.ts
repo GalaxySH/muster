@@ -76,7 +76,7 @@ if (devLoginEnabled) {
 
 export const authConfig: NextAuthConfig = {
   secret: env.AUTH_SECRET,
-  trustHost: true, // behind Caddy in production
+  trustHost: true, // behind the host Apache reverse proxy in production
   session: { strategy: "jwt" },
   pages: { signIn: "/signin", error: "/signin" },
   providers,

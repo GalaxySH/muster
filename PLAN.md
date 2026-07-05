@@ -676,12 +676,17 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
   generates the link; the provider only delivers. (Power Automate ruled out — premium.)
 - **Image storage:** Google Drive (UW Workspace) via `drive.file`; app stores `fileId`
   only (§12).
-- **DB:** **MariaDB** (reuse the instance already running on the box → less Docker
-  complexity).
+- **DB:** **MariaDB** — ✅ implemented as originally intended: production uses the
+  **host's central instance** (app/migrate run host-networked → `127.0.0.1:3306` as
+  the localhost-only `musteru` account; no db container, no MariaDB config changes).
+  Local dev keeps the throwaway container in `compose.dev.yaml`.
 - **ORM:** Drizzle (TS-native, light) or Prisma (batteries-included) — both support
   MariaDB/MySQL. Decision pending.
-- **Reverse proxy / TLS:** Caddy (automatic HTTPS) or nginx, serving the custom
-  domain (e.g. `muster.hauge.rocks`).
+- **Reverse proxy / TLS:** the box-wide **host Apache** (it already fronts every
+  site on the server) terminates HTTPS for `muster.hauge.rocks` and proxies to the
+  app's loopback-only port — vhost in `apache/muster.conf`, cert via certbot.
+  (Originally planned as a bundled Caddy container; dropped since Apache owns
+  80/443 on the host.)
 - **Container:** Docker with `restart: unless-stopped` for uptime/auto-restart.
 
 ---
@@ -691,9 +696,19 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 - **Host:** Ubuntu server (existing box).
 - **Domain:** custom subdomain (e.g. `muster.hauge.rocks`).
 - **Resilience:** containerized app, restart-on-crash policy.
-- **Backups:** scheduled MariaDB dumps (no schedule-image blobs stored, per §12).
-- **CI/CD:** GitHub repo → GitHub Actions build → deploy to server on release/tag
-  (image push/pull or SSH deploy). Separate prod vs test OAuth clients.
+- **Backups:** ✅ scripted (`ops/backup/backup-mariadb.sh`) — nightly root-cron
+  `mariadb-dump --all-databases --single-transaction` of the central host instance
+  (Muster rides along with the box's other apps), gzip + integrity check, 14-day
+  rotation, root-only dir; unix_socket auth so no password is stored (no
+  schedule-image blobs stored, per §12). Install steps: script header +
+  `docs/deploy.md`.
+- **CI/CD:** ✅ built (see `docs/deploy.md`). GitHub Actions: quality gate (lint/
+  typecheck/tests/build + Docker build check) on every push; deploy on `v*` tag via
+  SSH — the server checks out the tagged commit and rebuilds the compose stack, then
+  the workflow verifies the public `/api/health` endpoint (DB round-trip probe, also
+  used as the compose `app` healthcheck and for external uptime monitoring).
+  Separate prod vs test OAuth clients (register both redirect URIs on the prod
+  client — see docs/deploy.md).
 
 ---
 
@@ -714,7 +729,8 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
    into W2W?
 
 **Recently resolved:** ORM = Drizzle · test stack = Vitest + Playwright · reverse
-proxy = Caddy · cycle-averaging = both weekend days summed ×0.5 under A/B (§8) ·
+proxy = host Apache (vhost `apache/muster.conf`; bundled Caddy dropped) ·
+cycle-averaging = both weekend days summed ×0.5 under A/B (§8) ·
 email transport = provider-direct (Power Automate ruled out —
 premium; §11) · per-student admin view spec + wireframe (§10a) · max-hours model
 (preferences; over-selection allowed, only the floor is hard-checked) · Cashier/Stocker
@@ -789,6 +805,89 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.29 (2026-07-05)** — **Prod DB = host MariaDB + central backup routine
+  (§14/§15).** Production now uses the box's **central MariaDB** as §14 originally
+  intended — the compose `db` service, `db_data` volume, and `MARIADB_*` env are
+  removed, and `app`/`migrate` run with **`network_mode: host`** so `127.0.0.1:3306`
+  reaches the host instance as the **localhost-only `musteru`** account. Chosen over
+  a bridge-gateway setup deliberately: that would force the central MariaDB to also
+  bind the Docker bridge and order its startup after Docker's — coupling every other
+  app's database to dockerd. Host networking keeps MariaDB loopback-only and
+  untouched; the app compensates for the shared network namespace with its existing
+  sandbox (non-root, read-only rootfs, `cap_drop: ALL`, no-new-privileges) and a
+  compose-pinned `HOSTNAME=127.0.0.1` so Next binds loopback (never a public :3000).
+  Local dev is unchanged (`compose.dev.yaml` container). New
+  `ops/backup/backup-mariadb.sh` (install: copy root-owned to `/usr/local/sbin` +
+  root crontab — never run from the deploy-user-writable clone): nightly
+  `--all-databases --single-transaction` dump via unix_socket auth, gzip with
+  integrity check, `.part` staging against truncated dumps, 14-day rotation in
+  root-only `/var/backups/mariadb`. `docs/deploy.md` gains the host-DB and backup
+  sections (incl. the `skip_name_resolve` account-matching caveat).
+- **0.28 (2026-07-05)** — **Proxy topology: host Apache replaces bundled Caddy
+  (§14/§15).** The production box already fronts all sites with Apache on 80/443, so
+  the compose `caddy` service (and `caddy/Caddyfile` + its volumes) is removed. The
+  `app` service now publishes **loopback-only** `127.0.0.1:3000` — reachable solely
+  by the host proxy, never from the network. New `apache/muster.conf` vhost:
+  HTTP→HTTPS redirect, certbot cert paths, `ProxyPreserveHost On` +
+  `X-Forwarded-Proto https` (required for Auth.js callbacks and Next server-action
+  origin checks), and the v0.26 security headers (HSTS, nosniff, `X-Frame-Options`,
+  Referrer-Policy, CSP `frame-ancestors 'self'`) moved to the Apache edge. Includes
+  a `LimitRequestBody ≥ 16 MB` note for the 15 MB proof uploads. CI/CD and the
+  health probe are unchanged (the deploy workflow's verify still goes through the
+  public domain, now via Apache).
+- **0.27 (2026-07-05)** — **CI/CD + health probe (§15).** Two GitHub Actions
+  workflows (`docs/deploy.md` has the one-time secret/server setup): **CI** runs
+  lint/typecheck/tests/`next build` on every push plus a Docker image build check on
+  `main`/PRs; **Deploy** fires on a `v*` tag (or manual dispatch), SSHes to the box,
+  checks out the exact tagged commit in the deploy clone, reruns
+  `docker compose up -d --build`, prunes dangling images, and fails unless the new
+  public `GET /api/health` endpoint (unauthenticated up/down probe doing a
+  `select 1` DB round-trip) reports healthy within 5 minutes. The same endpoint
+  backs a new compose `app` healthcheck (busybox `wget --spider`) and is the
+  suggested target for external uptime monitoring during unattended operation.
+  Deploys are serialized via workflow concurrency; the remote script pins the
+  commit SHA rather than the (movable) tag.
+- **0.26 (2026-07-05)** — **Pre-launch security hardening (audit remediation).** Seven
+  invisible (no added user friction) fixes from a defensive audit, all test-covered:
+  (1) **CSV formula/DDE injection** — `admin/export.ts` `csvCell` now prefixes any cell
+  starting with `= + - @` / tab / CR with a `'` before RFC-4180 quoting, so
+  student-controlled notes/names can't execute when the scheduler opens the CSV export
+  (the Sheets path was already safe via RAW input). (2) **Per-submission upload caps** —
+  new pure `evidence/limits.ts` (`MAX_EXTRACURRICULAR_FILES = 10`, `MAX_TRAVEL_REQUESTS =
+  20`, `isAtEvidenceCap`); `evidence/actions.ts` enforces them **before** relaying so one
+  student can't exhaust the shared Drive (checked pre-relay ⇒ no orphaned files). (3)
+  **Admin status is now authoritative per-request** — `getAppSession` computes
+  `isAdmin = adminEmails.has(email) || isAdminInDb(email)` on every request instead of
+  trusting the stamped JWT `isAdmin` claim, so removing an admin takes effect immediately
+  rather than at token expiry (~30 days). (4) **Global magic-link issuance budget** —
+  pure `admitGlobalSend` (sliding window, 20 sends / rolling 60 s) in `auth/magic-link.ts`,
+  wired as the last gate in `requestMagicLink` (in-memory, single-process) to cap
+  roster-wide email-bombing / Resend-quota burn while keeping the always-neutral response;
+  the residual timing side-channel is noted as deferred. (5) **Security headers at the
+  edge** — `caddy/Caddyfile` sends HSTS, `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy`, CSP `frame-ancestors 'self'`, and
+  strips `Server`; `next.config.ts` sets `poweredByHeader: false`. (6) **`nosniff` on the
+  evidence proxy** response (`/api/evidence/[fileId]`). (7) **Container hardening** in
+  `compose.yaml` — `no-new-privileges` on all services; `cap_drop: ALL` + read-only rootfs
+  + tmpfs `/tmp` on app and Caddy (Caddy keeps `NET_BIND_SERVICE`); the DB keeps only the
+  escalation guard (its init needs caps + a writable data dir). Audit also **verified safe**
+  (no change needed): server-side `hd=wisc.edu` enforcement, admin gating on every
+  mutation, the evidence proxy's no-IDOR ownership check, atomic single-use magic-link
+  redemption, AES-256-GCM with per-call IVs, parameterized Drizzle (no raw SQL), and the
+  triple-gated dev-login. **Operational note:** confirm the destination Shared Drive
+  folder is **not** shared "Anyone with the link" — the responses sheet embeds
+  Drive file view URLs that rely on folder-member-only visibility.
+- **0.25 (2026-07-05)** — **Production env hardening (§15).** New pure `env-guard.ts`
+  (TDD): at startup, production now **refuses to boot** if `AUTH_SECRET` or
+  `ENCRYPTION_KEY` is still a committed dev default, or if `DEV_LOGIN_ENABLED` is set
+  at all (called from `env.ts`; skipped during `next build` like the rest of env
+  validation). `compose.yaml` now passes `ENCRYPTION_KEY` + `DRIVE_FOLDER_ID` to the
+  app container — previously missing, so a prod deploy silently encrypted the Drive
+  refresh token with the publicly-committed dev key and dropped proofs into the
+  admin's My Drive root — and marks `DATABASE_URL`/`NEXTAUTH_URL`/`AUTH_SECRET`/
+  `ENCRYPTION_KEY`/`DRIVE_FOLDER_ID` hard-required (`:?`). Also fixed the stale
+  `defaultTravelCutoff` test: the cutoff is September 1, midnight **Central**
+  (06:00 UTC), as implemented since the form-window date-input change.
 - **0.24 (2026-06-23)** — **Unified navigation header + form-flow polish (§4).** Every
   page now renders a shared `AppHeader` with an always-present **🏠 Home** element; on the
   flow pages it wraps `WizardSteps`, which **becomes** the navigation — a clickable

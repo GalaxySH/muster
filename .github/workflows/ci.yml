@@ -1,0 +1,61 @@
+# CI quality gate (PLAN §15): lint + typecheck + unit tests + production build
+# on every push, plus a Docker image build check where it matters (main + PRs).
+#
+# Required repository secret:
+#   FONTAWESOME_PACKAGE_TOKEN — Font Awesome Pro Kit install token (read by the
+#   committed .npmrc during `npm ci`; install-time only, never at runtime).
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & integration tests
+        run: npm test
+
+      # `next build` relaxes env validation itself (NEXT_PHASE) — no secrets needed.
+      - name: Production build
+        run: npm run build
+
+  # Catches Dockerfile/standalone-output breakage before a tag reaches the
+  # server. Skipped on feature-branch pushes to save runner minutes; the
+  # deploy still builds authoritatively on the server.
+  docker-build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        env:
+          FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
+        run: docker build --target runner --secret id=fa_token,env=FONTAWESOME_PACKAGE_TOKEN .

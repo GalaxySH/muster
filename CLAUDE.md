@@ -24,7 +24,12 @@ Sheet** in the Drive folder. The roster import handles the PCPL workbook's two s
 `onRoster: false`), and the active surfaces (response list, export, non-response tracking)
 filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
 The Drive relay + the running sheet are **confirmed live**. The **magic-link fallback**
-(auth for users Google rejects) is built (PLAN §11). Still to build: ops/Docker hardening.
+(auth for users Google rejects) is built (PLAN §11). Ops hardening is largely done:
+security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
+CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, verified
+against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
+DB switched to the host's central MariaDB + scripted nightly backups (v0.29). Still
+to do: install the backup cron on the box + the production deploy dry-run.
 
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
 student groups** with open/close windows — three gates: (1) **membership** — a student must
@@ -213,7 +218,16 @@ Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are neti
 
 - **ORM:** Drizzle (`drizzle-kit` migrations in `drizzle/`).
 - **Tests:** Vitest (unit/integration), Testing Library (components), Playwright (E2E).
-- **Reverse proxy/TLS:** Caddy (automatic HTTPS).
+- **Reverse proxy/TLS:** the **host Apache** (it fronts every site on the box)
+  with the vhost in `apache/muster.conf` (certbot TLS, security headers,
+  `ProxyPreserveHost` + `X-Forwarded-Proto`). The compose stack has **no proxy
+  container**; the app binds loopback-only `127.0.0.1:3000`.
+- **Prod DB:** the **host's central MariaDB** — `app`/`migrate` run with
+  `network_mode: host` and connect to `127.0.0.1:3306` as the localhost-only
+  `musteru` account (no db container in prod, no MariaDB config changes; compose
+  pins `HOSTNAME=127.0.0.1` so Next stays loopback-bound). Local dev keeps the
+  `compose.dev.yaml` container. Central-instance backups:
+  `ops/backup/backup-mariadb.sh` (root cron; install notes in the script header).
 - **Magic-link email:** Resend (abstract behind an interface until Phase 2/3).
 - **Weekend cycle-averaging:** both weekend days are summed, then ×0.5 under A/B
   (×1.0 with the every-weekend opt-in). See `src/lib/domain/capacity.ts`.
@@ -250,7 +264,9 @@ npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu   # import roster (PI
 
 Local dev setup: `cp .env.example .env.local`, start the dev DB, then
 `npm run db:migrate && npm run db:seed && npm run dev`. Production deploys via
-`docker compose up -d --build` (db + one-shot migrate + app + Caddy).
+`docker compose up -d --build` (one-shot migrate + app, host-networked against the
+host's central MariaDB; the host Apache proxies muster.hauge.rocks to the app's
+loopback-bound 127.0.0.1:3000).
 
 ## UI verification
 
