@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { parseKey } from "@/lib/crypto/secretbox";
 import { isDevLoginEnabled } from "@/lib/auth/policy";
+import {
+  DEV_AUTH_SECRET,
+  DEV_ENCRYPTION_KEY,
+  findProductionEnvIssues,
+} from "@/lib/env-guard";
 
 /**
  * Validated, typed access to environment variables.
@@ -10,14 +15,10 @@ import { isDevLoginEnabled } from "@/lib/auth/policy";
  * testable.
  */
 
-// Insecure fixed key so local dev can encrypt/decrypt across restarts without
-// setup. NEVER use in production — set a real `openssl rand -base64 32` value.
-const DEV_ENCRYPTION_KEY = "bXVzdGVyLWRldi1pbnNlY3VyZS1lbmNyeXB0aW9uLTA=";
-
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   NEXTAUTH_URL: z.string().url().default("http://localhost:3000"),
-  AUTH_SECRET: z.string().min(1).default("dev-insecure-secret"),
+  AUTH_SECRET: z.string().min(1).default(DEV_AUTH_SECRET),
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
@@ -65,6 +66,20 @@ function loadEnv() {
       .join("\n");
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+
+  // Fail fast in production if any committed dev fallback is still in place
+  // (env-guard.ts). Skipped during `next build`, like the rest of validation.
+  if (!skip) {
+    const prodIssues = findProductionEnvIssues(parsed.data, process.env.NODE_ENV);
+    if (prodIssues.length > 0) {
+      throw new Error(
+        `Refusing to start with insecure production configuration:\n${prodIssues
+          .map((i) => `  - ${i}`)
+          .join("\n")}`,
+      );
+    }
+  }
+
   return parsed.data;
 }
 
