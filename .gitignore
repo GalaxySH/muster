@@ -52,3 +52,6 @@ yarn-error.log*
 
 # Claude Code agent worktrees (temporary, auto-cleaned)
 .claude/worktrees/
+
+# Git Bash crash artifacts (Windows)
+*.stackdump
