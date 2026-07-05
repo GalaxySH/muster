@@ -805,6 +805,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.31 (2026-07-06)** — **Fix: Drive-grant redirects built from `req.url` (§12).**
+  Behind the reverse proxy the standalone Next server reports its own listen
+  address in `req.url` (normalized to `localhost:3000`), so the post-consent
+  redirect sent the admin's browser to `localhost:3000/admin/drive?connected=1`
+  (the grant itself stored fine — the exchange happens server-side). The
+  connect/callback routes now build all absolute redirects (and the state
+  cookie's `secure` flag) from the canonical `env.NEXTAUTH_URL`, matching how
+  the OAuth `redirect_uri` and magic-link URLs were already built. `req.url`
+  remains in use only for reading query params (host-independent).
 - **0.30 (2026-07-06)** — **Split DB accounts: DML-only runtime, DDL-only-for-migrations
   (§15).** Found during first boot: the deliberately DROP-less app account made
   migration `0006` (`DROP TABLE form_windows`) fail — silently, because
