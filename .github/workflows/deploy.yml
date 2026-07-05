@@ -52,10 +52,11 @@ jobs:
           TARGET_DIR: ${{ secrets.DEPLOY_PATH }}
         # Deploy the exact commit this workflow ran for (tags can be moved;
         # SHAs can't). The remote script is a quoted heredoc — nothing in it
-        # expands on the runner; TARGET_DIR/REF travel as remote env vars.
+        # expands on the runner; TARGET_DIR/REF travel as remote env vars,
+        # printf-%q-quoted so the remote shell can't re-split them on spaces.
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" \
-            TARGET_DIR="$TARGET_DIR" REF="$GITHUB_SHA" 'bash -s' <<'REMOTE'
+            "TARGET_DIR=$(printf %q "$TARGET_DIR") REF=$(printf %q "$GITHUB_SHA") bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET_DIR"
           git fetch --tags --force origin
