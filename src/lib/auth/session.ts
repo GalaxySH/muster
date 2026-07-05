@@ -7,6 +7,7 @@
  */
 import { normalizeEmail } from "./policy";
 import { auth } from "./index";
+import { adminEmails } from "@/lib/env";
 import { isAdminInDb } from "@/lib/roster/lookup";
 
 export interface AppSession {
@@ -24,9 +25,12 @@ export async function getAppSession(): Promise<AppSession | null> {
   if (!email) return null;
 
   const normalized = normalizeEmail(email);
-  // Admin = env allowlist (carried on the JWT) OR the roster-imported allowlist.
-  // Only hit the DB when the fast path didn't already grant admin.
-  const isAdmin = session.user?.isAdmin === true || (await isAdminInDb(normalized));
+  // Admin is computed authoritatively on EVERY request from the current sources
+  // of truth — the env allowlist and the roster-imported allowlist — and NEVER
+  // trusts the JWT `isAdmin` claim as a positive grant. A JWT lives ~30 days, so
+  // trusting the stamped claim would let a removed/compromised admin keep access
+  // until their token expired; recomputing here makes revocation immediate.
+  const isAdmin = adminEmails.has(normalized) || (await isAdminInDb(normalized));
 
   return {
     email: normalized,

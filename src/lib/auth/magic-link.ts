@@ -61,3 +61,43 @@ export function cooldownRemainingMs(
   if (!lastRequestedAt) return 0;
   return Math.max(0, cooldownMs - (now.getTime() - lastRequestedAt.getTime()));
 }
+
+/** Coarse GLOBAL issuance budget: total sends across ALL emails per rolling window. */
+export const MAGIC_LINK_GLOBAL_WINDOW_MS = 60 * 1000;
+/** Max sends allowed within one rolling window (a sane cap; abuse backstop). */
+export const MAGIC_LINK_GLOBAL_MAX = 20;
+
+export interface GlobalBudgetDecision {
+  /** Whether a send is permitted now (the window's budget isn't exhausted). */
+  allowed: boolean;
+  /**
+   * The retained in-window send timestamps (ms) AFTER this decision: entries
+   * outside the rolling window are always evicted, and `now` is appended iff the
+   * send was `allowed`. The caller stores this back as the new (in-memory) state.
+   */
+  timestamps: number[];
+}
+
+/**
+ * Pure sliding-window limiter for GLOBAL magic-link issuance (PLAN §11). This is
+ * DISTINCT from the per-email cooldown (cooldownRemainingMs): it caps the TOTAL
+ * number of sends across every address in a rolling window, so a script walking
+ * the roster can't trigger an unbounded stream of real sign-in emails (burning the
+ * mail quota / spamming students). The half-open window `(now - windowMs, now]`
+ * matches the cooldown's boundary convention: an entry exactly one window old is
+ * expired.
+ *
+ * `recent` is the list of prior send timestamps (ms). Returns whether another send
+ * is allowed and the pruned/updated timestamp list to persist.
+ */
+export function admitGlobalSend(
+  recent: readonly number[],
+  now: number,
+  max: number = MAGIC_LINK_GLOBAL_MAX,
+  windowMs: number = MAGIC_LINK_GLOBAL_WINDOW_MS,
+): GlobalBudgetDecision {
+  const cutoff = now - windowMs;
+  const live = recent.filter((t) => t > cutoff);
+  if (live.length >= max) return { allowed: false, timestamps: live };
+  return { allowed: true, timestamps: [...live, now] };
+}

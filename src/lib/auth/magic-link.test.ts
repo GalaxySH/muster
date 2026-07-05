@@ -4,7 +4,10 @@ import {
   generateToken,
   magicLinkValidity,
   cooldownRemainingMs,
+  admitGlobalSend,
   MAGIC_LINK_COOLDOWN_MS,
+  MAGIC_LINK_GLOBAL_MAX,
+  MAGIC_LINK_GLOBAL_WINDOW_MS,
   type MagicLinkCheckRow,
 } from "./magic-link";
 
@@ -65,5 +68,59 @@ describe("cooldownRemainingMs", () => {
     expect(cooldownRemainingMs(justNow, now)).toBe(MAGIC_LINK_COOLDOWN_MS - 10_000);
     const old = new Date(now.getTime() - MAGIC_LINK_COOLDOWN_MS - 1);
     expect(cooldownRemainingMs(old, now)).toBe(0);
+  });
+});
+
+describe("admitGlobalSend", () => {
+  const NOW = 1_000_000;
+  const WIN = 60_000;
+
+  it("allows and records a send when under the cap", () => {
+    const { allowed, timestamps } = admitGlobalSend([], NOW, 3, WIN);
+    expect(allowed).toBe(true);
+    expect(timestamps).toEqual([NOW]); // the new send is appended
+  });
+
+  it("blocks once the cap is reached in the window and consumes no slot", () => {
+    const full = [NOW - 3, NOW - 2, NOW - 1];
+    const { allowed, timestamps } = admitGlobalSend(full, NOW, 3, WIN);
+    expect(allowed).toBe(false);
+    expect(timestamps).toEqual(full); // unchanged — nothing appended when blocked
+  });
+
+  it("evicts timestamps outside the rolling window so the budget refills", () => {
+    // All prior sends predate the window → all dropped, so a send is allowed.
+    const stale = [NOW - 90_000, NOW - 70_000, NOW - 61_000];
+    const { allowed, timestamps } = admitGlobalSend(stale, NOW, 3, WIN);
+    expect(allowed).toBe(true);
+    expect(timestamps).toEqual([NOW]);
+  });
+
+  it("keeps only in-window entries and appends the new one", () => {
+    const mixed = [NOW - 61_000, NOW - 30_000, NOW - 5_000]; // one stale, two live
+    const { allowed, timestamps } = admitGlobalSend(mixed, NOW, 3, WIN);
+    expect(allowed).toBe(true); // only 2 live < cap of 3
+    expect(timestamps).toEqual([NOW - 30_000, NOW - 5_000, NOW]);
+  });
+
+  it("treats an entry exactly one window old as expired (half-open)", () => {
+    const { allowed, timestamps } = admitGlobalSend([NOW - WIN], NOW, 1, WIN);
+    expect(allowed).toBe(true); // the boundary entry is evicted, freeing the slot
+    expect(timestamps).toEqual([NOW]);
+  });
+
+  it("is a GLOBAL cap across distinct emails, not a per-email cooldown", () => {
+    // Two different addresses each sent within the window fill a global cap of 2,
+    // even though neither would be blocked by its own per-email cooldown.
+    const twoDistinct = [NOW - 5_000, NOW - 2_000];
+    expect(admitGlobalSend(twoDistinct, NOW, 2, WIN).allowed).toBe(false);
+  });
+
+  it("defaults to 20 sends per 60s", () => {
+    expect(MAGIC_LINK_GLOBAL_MAX).toBe(20);
+    expect(MAGIC_LINK_GLOBAL_WINDOW_MS).toBe(60_000);
+    const full = Array.from({ length: 20 }, (_, i) => NOW - i * 100);
+    expect(admitGlobalSend(full, NOW).allowed).toBe(false); // 20 in-window → blocked
+    expect(admitGlobalSend(full.slice(1), NOW).allowed).toBe(true); // 19 in-window → ok
   });
 });

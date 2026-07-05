@@ -123,4 +123,27 @@ describe("toCsv", () => {
     ]);
     expect(csv).toBe('a,"b,c","has ""quote"""\r\n"line\nbreak",plain,');
   });
+
+  it("neutralizes spreadsheet formula/DDE triggers with a leading apostrophe", () => {
+    // Values whose first char is =/+/-/@ execute (or exfiltrate) when opened in
+    // Excel/LibreOffice; prefixing ' forces the cell to be treated as text.
+    const csv = toCsv([["=1+2", "+1", "-1", "@foo"]]);
+    expect(csv).toBe("'=1+2,'+1,'-1,'@foo");
+  });
+
+  it("also prefixes cells starting with a tab or carriage return", () => {
+    const csv = toCsv([["\tfoo", "\rbar"]]);
+    // The \r-prefixed cell then also needs RFC-4180 quoting.
+    expect(csv).toBe("'\tfoo,\"'\rbar\"");
+  });
+
+  it("leaves ordinary values and empty strings untouched", () => {
+    const csv = toCsv([["Barista", ""]]);
+    expect(csv).toBe("Barista,");
+  });
+
+  it("prefixes AND RFC-quotes a value that is both a formula trigger and has a comma", () => {
+    const csv = toCsv([["=SUM(A1,A2)"]]);
+    expect(csv).toBe("\"'=SUM(A1,A2)\"");
+  });
 });

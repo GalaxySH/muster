@@ -7,7 +7,7 @@
  * image bytes to the app's storage.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
@@ -22,6 +22,11 @@ import {
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
+import {
+  isAtEvidenceCap,
+  MAX_EXTRACURRICULAR_FILES,
+  MAX_TRAVEL_REQUESTS,
+} from "./limits";
 import { isTravelExcused, defaultTravelCutoff } from "@/lib/domain/travel";
 
 export interface ActionResult {
@@ -104,14 +109,26 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
 
+  // Cap before relaying so a rejected upload never orphans a Drive file.
+  const db = getDb();
+  const submissionId = await ensureSubmissionId(who.email);
+  const ecCount = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(extracurricularFiles)
+    .where(eq(extracurricularFiles.submissionId, submissionId));
+  if (isAtEvidenceCap(Number(ecCount[0]?.n ?? 0), MAX_EXTRACURRICULAR_FILES)) {
+    return {
+      ok: false,
+      error: `You can upload at most ${MAX_EXTRACURRICULAR_FILES} extracurricular files. Remove one to add another.`,
+    };
+  }
+
   try {
     const fileId = await relayUpload({
       studentEmail: who.email,
       kind: "extracurricular",
       ...upload,
     });
-    const db = getDb();
-    const submissionId = await ensureSubmissionId(who.email);
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
     revalidatePath("/course-schedule");
     return { ok: true };
@@ -166,12 +183,24 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
 
+  // Cap before relaying so a rejected upload never orphans a Drive file.
+  const db = getDb();
+  const submissionId = await ensureSubmissionId(who.email);
+  const travelCount = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(travelRequests)
+    .where(eq(travelRequests.submissionId, submissionId));
+  if (isAtEvidenceCap(Number(travelCount[0]?.n ?? 0), MAX_TRAVEL_REQUESTS)) {
+    return {
+      ok: false,
+      error: `You can add at most ${MAX_TRAVEL_REQUESTS} travel requests. Remove one to add another.`,
+    };
+  }
+
   try {
     const proofFileId = await relayUpload({ studentEmail: who.email, kind: "travel", ...upload });
     const now = new Date();
     const excused = isTravelExcused(now, defaultTravelCutoff(now));
-    const db = getDb();
-    const submissionId = await ensureSubmissionId(who.email);
     await db.insert(travelRequests).values({
       id: randomUUID(),
       submissionId,

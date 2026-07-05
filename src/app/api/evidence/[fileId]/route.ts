@@ -22,6 +22,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": "inline",
+        // Serve exactly the declared type — never let the browser sniff an
+        // upload into an executable type (defense-in-depth; SVG is already
+        // excluded from ALLOWED_EVIDENCE_TYPES).
+        "X-Content-Type-Options": "nosniff",
         // Private: only this authenticated viewer; never shared caches.
         "Cache-Control": "private, max-age=300",
       },

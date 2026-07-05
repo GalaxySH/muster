@@ -161,8 +161,18 @@ export function toCsv(matrix: readonly string[][]): string {
 }
 
 function csvCell(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Neutralize spreadsheet formula/DDE injection (OWASP CSV injection): student-
+  // controlled free text (notes, display name) can reach a cell start. A cell whose
+  // first char is a formula/command trigger (= + - @) or a leading tab/CR can
+  // execute or exfiltrate row data when the CSV is opened in Excel/LibreOffice.
+  // Prefixing a single quote forces the app to treat the whole cell as text. Empty
+  // cells are left untouched.
+  let cell = value;
+  if (cell !== "" && /^[=+\-@\t\r]/.test(cell)) {
+    cell = `'${cell}`;
   }
-  return value;
+  if (/[",\r\n]/.test(cell)) {
+    return `"${cell.replace(/"/g, '""')}"`;
+  }
+  return cell;
 }

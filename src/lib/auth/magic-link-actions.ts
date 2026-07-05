@@ -18,21 +18,42 @@ import {
   isEligibleForMagicLink,
   inferRosterName,
 } from "./magic-link-store";
+import { admitGlobalSend } from "./magic-link";
 import { sendMagicLinkEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 import { MAGIC_LINK_PROVIDER } from "./config";
 
+/**
+ * Coarse GLOBAL issuance budget (PLAN §11): an in-memory sliding window shared
+ * across ALL emails. The app runs as a single Node process (standalone container),
+ * so module-level state is a valid process-wide limiter — no DB/migration needed.
+ * It backstops the per-email cooldown: even a script walking the whole roster
+ * (every address eligible + past its own cooldown) can trigger at most
+ * MAGIC_LINK_GLOBAL_MAX real sign-in emails per rolling window.
+ */
+let globalSendWindow: number[] = [];
+
+/** Consume one global send slot if the budget allows; returns whether it did. */
+function reserveGlobalSlot(now: number = Date.now()): boolean {
+  const { allowed, timestamps } = admitGlobalSend(globalSendWindow, now);
+  globalSendWindow = timestamps;
+  return allowed;
+}
+
 export async function requestMagicLink(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
 
-  // Best-effort: only ever issue to an eligible address, once per cooldown. The
-  // recipient's name is inferred from the roster (not collected). Any failure is
-  // swallowed — the response below is identical regardless.
+  // Best-effort: only ever issue to an eligible address, once per cooldown, and
+  // within the global budget (the last gate, so a slot is consumed only for an
+  // otherwise-sendable request). The recipient's name is inferred from the roster
+  // (not collected). Any failure is swallowed — the response below is identical
+  // regardless, and an exhausted budget is likewise indistinguishable to callers.
   try {
     if (
       isWiscEmail(email) &&
       (await isEligibleForMagicLink(email)) &&
-      (await requestCooldownMs(email)) === 0
+      (await requestCooldownMs(email)) === 0 &&
+      reserveGlobalSlot()
     ) {
       const name = (await inferRosterName(email)) ?? undefined;
       const token = await issueMagicLink(email);
