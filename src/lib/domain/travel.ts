@@ -13,9 +13,9 @@ export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
 }
 
 /**
- * The default semester-start cutoff: September 1 (00:00 UTC) of the year in
- * which the form is being filled. A v1 default — a global config value can
- * override this later (PLAN §13).
+ * The default semester-start cutoff: September 1, 00:00 US Central (06:00 UTC)
+ * of the year in which the form is being filled. A v1 default — a global
+ * config value can override this later (PLAN §13).
  */
 export function defaultTravelCutoff(now: Date): Date {
   // Return September 1 00:00 Central Standard Time (CST = UTC-6).

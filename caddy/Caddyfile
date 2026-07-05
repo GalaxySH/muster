@@ -1,5 +1,0 @@
-# Automatic HTTPS via Let's Encrypt for the production domain.
-muster.hauge.rocks {
-	encode zstd gzip
-	reverse_proxy app:3000
-}

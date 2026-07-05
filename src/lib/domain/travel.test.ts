@@ -15,9 +15,9 @@ describe("isTravelExcused", () => {
 });
 
 describe("defaultTravelCutoff", () => {
-  it("is September 1 of the year the form is filled", () => {
+  it("is September 1, midnight Central (06:00 UTC), of the year the form is filled", () => {
     expect(defaultTravelCutoff(new Date("2026-06-19T12:00:00Z")).toISOString()).toBe(
-      "2026-09-01T00:00:00.000Z",
+      "2026-09-01T06:00:00.000Z",
     );
   });
 
