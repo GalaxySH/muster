@@ -23,6 +23,10 @@ Sheet** in the Drive folder. The roster import handles the PCPL workbook's two s
 (**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
 `onRoster: false`), and the active surfaces (response list, export, non-response tracking)
 filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
+Admins import the workbook from the UI at **`/admin/roster`** (upload → the same
+idempotent importer, parsed in memory, never written to disk; renders the summary + a
+drift report of on-roster students absent from both sheets); the CLI remains for
+scripted use.
 The Drive relay + the running sheet are **confirmed live**. The **magic-link fallback**
 (auth for users Google rejects) is built (PLAN §11). Ops hardening is largely done:
 security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
@@ -202,7 +206,11 @@ and delete (cascades the submission; only ever removes `dev-test` members). This
 replaces the old `/admin/preview` form-preview page (removed).
 
 Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
-`students` (minimized fields only) + `admin_users`, idempotently. Title→position
+`students` (minimized fields only) + `admin_users`, idempotently. `importRoster` takes a
+file path or an in-memory buffer; two entry points share it — the CLI script and the
+`/admin/roster` upload (`roster/actions.ts` `importRosterFromUpload`, admin-gated;
+pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,
+client island `components/admin/RosterImportPanel.tsx`). Title→position
 mapping lives in `position-mapping.ts` (Southeast Cafe Team Member → barista;
 Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are netid
 `@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.
@@ -263,7 +271,7 @@ docker compose -f compose.dev.yaml up -d     # local DB on localhost:3306
 npm run db:generate    # generate a migration from schema changes
 npm run db:migrate     # apply migrations
 npm run db:seed        # upsert canonical position/block config
-npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu   # import roster (PII; gitignored)
+npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu   # import roster from the CLI (PII; gitignored) — or upload on /admin/roster
 ```
 
 Local dev setup: `cp .env.example .env.local`, start the dev DB, then

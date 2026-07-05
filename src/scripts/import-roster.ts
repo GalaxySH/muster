@@ -33,7 +33,7 @@ async function main() {
 
   const { db, pool } = createDb(url);
   try {
-    const summary = await importRoster({ db, filePath, importedBy });
+    const summary = await importRoster({ db, workbook: filePath, importedBy });
     console.log(`\nRoster import ${summary.importId} complete.`);
     console.log(`  students upserted: ${summary.studentsUpserted}`);
     console.log(`  admins upserted:   ${summary.adminsUpserted}`);
@@ -50,6 +50,12 @@ async function main() {
       for (const [title, n] of Object.entries(summary.unmappedTitles)) {
         console.log(`    ${String(n).padStart(3)}  "${title}"`);
       }
+    }
+    if (summary.unlistedOnRoster.length > 0) {
+      console.log(
+        "\n  ⚠ on-roster students in neither sheet of this workbook (left untouched):",
+      );
+      for (const email of summary.unlistedOnRoster) console.log(`    ${email}`);
     }
     if (summary.skipped.length > 0) {
       const byReason = summary.skipped.reduce<Record<string, number>>((acc, s) => {

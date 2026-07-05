@@ -34,8 +34,7 @@ export default async function AdminDrivePage({
       <h1>Google Drive connection</h1>
       <p style={{ color: "#555" }}>
         Proof files (course schedules, extracurricular proof, travel proof) are relayed into
-        UW-managed Google Drive using an admin grant. The app stores only the Drive file id, never
-        the image bytes.
+        UW-managed Google Drive using an admin grant. The database stores only the Drive file id, no image bytes.
       </p>
 
       {connected && (

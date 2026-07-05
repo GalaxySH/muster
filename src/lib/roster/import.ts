@@ -3,12 +3,14 @@
  *
  * read workbook → parse/classify → upsert students + admins + audit row, all
  * in one transaction. Idempotent: re-running updates existing rows by email.
- * Takes a Database so it's decoupled from connection setup (the CLI wires that).
+ * Takes a Database so it's decoupled from connection setup, and a workbook
+ * source that is either a file path (CLI) or the uploaded bytes (admin UI).
  */
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import { students, adminUsers, rosterImports } from "@/lib/db/schema";
-import { readPeopleComing, readPeopleLeaving } from "./read-workbook";
+import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
 import { parseRoster, parseLeaving } from "./parse";
 
 export interface ImportSummary {
@@ -17,6 +19,12 @@ export interface ImportSummary {
   adminsUpserted: number;
   /** People Leaving rows upserted as off-roster (onRoster: false). */
   leftMarked: number;
+  /**
+   * Emails still on-roster in the DB that appear in NEITHER sheet of this
+   * workbook. The import never removes them (only "People Leaving" flips a
+   * student off-roster), so they're surfaced for the admin to reconcile.
+   */
+  unlistedOnRoster: string[];
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
@@ -24,20 +32,37 @@ export interface ImportSummary {
 
 export interface ImportOptions {
   db: Database;
-  filePath: string;
+  workbook: WorkbookSource;
   importedBy: string;
 }
 
 export async function importRoster({
   db,
-  filePath,
+  workbook,
   importedBy,
 }: ImportOptions): Promise<ImportSummary> {
-  const rows = await readPeopleComing(filePath);
+  const rows = await readPeopleComing(workbook);
   const parsed = parseRoster(rows);
   // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
-  const leaving = parseLeaving(await readPeopleLeaving(filePath));
+  const leaving = parseLeaving(await readPeopleLeaving(workbook));
   const importId = randomUUID();
+
+  // Drift check (computed against the pre-import roster): anyone on-roster but
+  // absent from both sheets keeps their status — flag them so a person quietly
+  // dropped from the workbook doesn't linger unnoticed.
+  const mentioned = new Set<string>([
+    ...parsed.students.map((s) => s.email),
+    ...parsed.admins.map((a) => a.email),
+    ...leaving.map((l) => l.email),
+  ]);
+  const onRosterNow = await db
+    .select({ email: students.email })
+    .from(students)
+    .where(eq(students.onRoster, true));
+  const unlistedOnRoster = onRosterNow
+    .map((r) => r.email)
+    .filter((email) => !mentioned.has(email))
+    .sort();
 
   await db.transaction(async (tx) => {
     for (const s of parsed.students) {
@@ -101,6 +126,7 @@ export async function importRoster({
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
     leftMarked: leaving.length,
+    unlistedOnRoster,
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

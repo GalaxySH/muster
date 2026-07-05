@@ -43,9 +43,9 @@ export default async function AdminGroupsPage() {
       </AppHeader>
       <h1>Groups &amp; form windows</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        A student can only open the availability form if they&apos;re in a group whose window is
+        A student can only open the availability form if they&apos;re in a group whose response window is
         open. Students with no group are denied. Schedule a group&apos;s window below, then assign
-        students — or enable default assignment to sweep everyone ungrouped into{" "}
+        students. Enable default assignment to sweep all ungrouped employees into{" "}
         <strong>New Student</strong>.
       </p>
 

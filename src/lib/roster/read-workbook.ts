@@ -12,8 +12,20 @@
 import ExcelJS from "exceljs";
 import type { RawRosterRow, RawLeavingRow } from "./parse";
 
+/** A workbook to read: a path on disk (CLI) or the uploaded bytes (admin UI). */
+export type WorkbookSource = string | Buffer;
+
 const COMING_SHEET_NAME = "People Coming";
 const LEAVING_SHEET_NAME = "People Leaving";
+
+async function loadWorkbook(source: WorkbookSource): Promise<ExcelJS.Workbook> {
+  const wb = new ExcelJS.Workbook();
+  if (typeof source === "string") await wb.xlsx.readFile(source);
+  // ExcelJS's bundled Buffer typing predates @types/node's generic Buffer;
+  // the runtime accepts a Node Buffer fine, so bridge the declared type.
+  else await wb.xlsx.load(source as unknown as Parameters<ExcelJS.Xlsx["load"]>[0]);
+  return wb;
+}
 
 function cellText(value: ExcelJS.CellValue): string {
   if (value == null) return "";
@@ -52,9 +64,8 @@ function findCol(
   throw new Error(`Could not find the ${label} column in "${sheetName}"`);
 }
 
-export async function readPeopleComing(filePath: string): Promise<RawRosterRow[]> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(filePath);
+export async function readPeopleComing(source: WorkbookSource): Promise<RawRosterRow[]> {
+  const wb = await loadWorkbook(source);
   const ws = wb.getWorksheet(COMING_SHEET_NAME);
   if (!ws) {
     const found = wb.worksheets.map((w) => `"${w.name}"`).join(", ");
@@ -100,9 +111,8 @@ export async function readPeopleComing(filePath: string): Promise<RawRosterRow[]
  * workbooks have no such sheet at all — in that case we return [] rather than
  * throw, so they still import.
  */
-export async function readPeopleLeaving(filePath: string): Promise<RawLeavingRow[]> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(filePath);
+export async function readPeopleLeaving(source: WorkbookSource): Promise<RawLeavingRow[]> {
+  const wb = await loadWorkbook(source);
   const ws = wb.getWorksheet(LEAVING_SHEET_NAME);
   if (!ws) return [];
 

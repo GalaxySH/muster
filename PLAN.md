@@ -18,7 +18,7 @@
   exit; status flips to submitted only at the exit step (§13.1). `/dev-login` now manages
   throwaway test accounts (the old `/admin/preview` is removed); `/admin/non-responses` can
   copy outstanding emails. Next: ops.
-- **Version:** 0.23
+- **Version:** 0.32
 - **Last updated:** 2026-06-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -110,10 +110,14 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
    finite pool (§18a).
 
 ### 4.2 Admin flow
-- **Roster import** — upload the PCPL workbook; parse **People Coming** (active →
-  `onRoster: true`) and **People Leaving** (resigned/fired → `onRoster: false`); upsert
-  students. People moved to People Leaving drop out of listed/required responses; their
-  submission is retained in the DB.
+- **Roster import** — upload the PCPL workbook on **`/admin/roster`** (file upload →
+  the same idempotent importer; the CLI `npm run roster:import` remains for scripted
+  use); parse **People Coming** (active → `onRoster: true`) and **People Leaving**
+  (resigned/fired → `onRoster: false`); upsert students. People moved to People Leaving
+  drop out of listed/required responses; their submission is retained in the DB. The
+  import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
+  workbook is reported back (UI summary + CLI) so the admin can move them to People
+  Leaving and re-import. The workbook bytes are parsed in memory and never stored.
 - **Response dashboard** — full response list, fast navigation, search/sort.
 - **Per-student detail** — expanded view + computed stats (§10).
 - **Flags window** — soft-requirement violations (e.g. auto-assigned weekend).
@@ -805,6 +809,20 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.32 (2026-07-06)** — **Roster import moved into the admin UI (§4.2).** New
+  **`/admin/roster`** page (linked from the dashboard): upload the PCPL .xlsx and the
+  same idempotent `importRoster` orchestrator runs server-side — no more scp + CLI on
+  the box (the CLI remains for scripted use). `read-workbook.ts`/`importRoster` now
+  accept an in-memory buffer as well as a file path; the workbook is parsed in memory,
+  never written to disk. New pure `roster/upload-validation.ts` (TDD: .xlsx only, 10 MB
+  cap, extension fallback for generic browser MIME types) runs on both client and the
+  admin-gated `importRosterFromUpload` server action. The import summary (upserted /
+  off-roster / by-position / unmapped titles / skipped rows) renders on the page, plus a
+  new **drift report** in `ImportSummary` (`unlistedOnRoster`): on-roster students in
+  neither sheet of the uploaded workbook are listed (never auto-removed) so the roster
+  can be reconciled. The page also shows current roster counts + the last-import audit
+  row. `serverActions.bodySizeLimit` raised to 20 MB (the 1 MB default would have
+  rejected the workbook — and was already too small for the ≤15 MB evidence uploads).
 - **0.31 (2026-07-06)** — **Fix: Drive-grant redirects built from `req.url` (§12).**
   Behind the reverse proxy the standalone Next server reports its own listen
   address in `req.url` (normalized to `localhost:3000`), so the post-consent
