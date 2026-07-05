@@ -48,28 +48,43 @@ version tag deploys to the production box over SSH — automating the same
    Next server-action origin checks depend on both) and the security headers
    (HSTS, nosniff, frame-ancestors) at the edge.
 5. **Host database** — production uses the box's central MariaDB, not a
-   container (PLAN §14; local dev keeps the `compose.dev.yaml` container).
-   One-time on the host:
+   container (PLAN §14; local dev keeps the `compose.dev.yaml` container),
+   with **two accounts** so the internet-facing app can never run DDL:
+   the runtime account is DML-only; the one-shot `migrate` service uses a
+   DDL-capable account. One-time on the host:
 
    ```sql
    CREATE DATABASE muster;
-   CREATE USER 'musteru'@'localhost' IDENTIFIED BY '<password>';
-   GRANT ALL PRIVILEGES ON muster.* TO 'musteru'@'localhost';
+   -- runtime (app) account: DML only — cannot ALTER/DROP anything
+   CREATE USER 'musteru'@'localhost' IDENTIFIED BY '<password-1>';
+   GRANT SELECT, INSERT, UPDATE, DELETE ON muster.* TO 'musteru'@'localhost';
+   -- migration account: full DDL, scoped to the muster DB only
+   CREATE USER 'musterm'@'localhost' IDENTIFIED BY '<password-2>';
+   GRANT ALL PRIVILEGES ON muster.* TO 'musterm'@'localhost';
    ```
 
-   `DATABASE_URL=mysql://musteru:<password>@127.0.0.1:3306/muster`. The app
-   and migrate containers run with `network_mode: host` so `127.0.0.1`
+   `.env`: `DATABASE_URL=mysql://musteru:<password-1>@127.0.0.1:3306/muster`
+   and `MIGRATE_DATABASE_URL=mysql://musterm:<password-2>@127.0.0.1:3306/muster`.
+   The app and migrate containers run with `network_mode: host` so `127.0.0.1`
    reaches the host MariaDB — no MariaDB bind-address/grant changes, and
-   MariaDB never listens beyond loopback. Verify the account matches TCP
+   MariaDB never listens beyond loopback. Verify both accounts match TCP
    loopback connections (not just the unix socket):
 
    ```bash
    mariadb -h 127.0.0.1 -u musteru -p muster -e 'select 1'
+   mariadb -h 127.0.0.1 -u musterm -p muster -e 'select 1'
    ```
 
    If that fails while `mariadb -u musteru -p` works, the server has
-   `skip_name_resolve` on — add a second account entry
-   `'musteru'@'127.0.0.1'` with the same grants.
+   `skip_name_resolve` on — add second account entries `@'127.0.0.1'`
+   with the same grants.
+
+   > Troubleshooting: `drizzle-kit migrate` **exits 1 silently** on SQL
+   > errors (including privilege denials). To see the real error, run the
+   > same connection by hand:
+   > `docker compose run --rm migrate node -e "require('mysql2/promise').createConnection(process.env.DATABASE_URL).then(c=>c.query('select 1')).then(()=>console.log('DB OK')).catch(e=>console.error(e.message))"`
+   > and check `select * from muster.__drizzle_migrations` against the
+   > files in `drizzle/` to find where it stopped.
 6. **Backups** — nightly logical dump of the whole central instance
    (`ops/backup/backup-mariadb.sh`): `--all-databases --single-transaction`
    (no locking of other apps), gzip + integrity check, 14-day rotation in

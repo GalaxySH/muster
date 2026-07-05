@@ -25,7 +25,11 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      # Migrations use a SEPARATE, DDL-capable account (musterm) — the runtime
+      # app account in DATABASE_URL is DML-only and cannot ALTER/DROP anything
+      # (least privilege for the internet-facing process; docs/deploy.md §5).
+      # The inner name stays DATABASE_URL because drizzle.config.ts reads it.
+      DATABASE_URL: ${MIGRATE_DATABASE_URL:?set MIGRATE_DATABASE_URL in .env}
     restart: "no"
 
   app:

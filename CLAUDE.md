@@ -223,9 +223,13 @@ Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are neti
   `ProxyPreserveHost` + `X-Forwarded-Proto`). The compose stack has **no proxy
   container**; the app binds loopback-only `127.0.0.1:3000`.
 - **Prod DB:** the **host's central MariaDB** — `app`/`migrate` run with
-  `network_mode: host` and connect to `127.0.0.1:3306` as the localhost-only
-  `musteru` account (no db container in prod, no MariaDB config changes; compose
-  pins `HOSTNAME=127.0.0.1` so Next stays loopback-bound). Local dev keeps the
+  `network_mode: host` and connect to `127.0.0.1:3306` (no db container in prod,
+  no MariaDB config changes; compose pins `HOSTNAME=127.0.0.1` so Next stays
+  loopback-bound). **Two localhost-only accounts** (least privilege): the app's
+  `DATABASE_URL` user (`musteru`) is **DML-only** — it can never ALTER/DROP —
+  while the one-shot `migrate` service uses `MIGRATE_DATABASE_URL` (`musterm`,
+  ALL on `muster.*`). Note: `drizzle-kit migrate` exits 1 **silently** on SQL
+  errors (docs/deploy.md §5 has the troubleshooting probe). Local dev keeps the
   `compose.dev.yaml` container. Central-instance backups:
   `ops/backup/backup-mariadb.sh` (root cron; install notes in the script header).
 - **Magic-link email:** Resend (abstract behind an interface until Phase 2/3).

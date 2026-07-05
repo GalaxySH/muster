@@ -805,6 +805,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.30 (2026-07-06)** — **Split DB accounts: DML-only runtime, DDL-only-for-migrations
+  (§15).** Found during first boot: the deliberately DROP-less app account made
+  migration `0006` (`DROP TABLE form_windows`) fail — silently, because
+  `drizzle-kit migrate` swallows SQL errors (exit 1, no message; a troubleshooting
+  note is now in `docs/deploy.md` §5). Rather than granting DROP to the app, the
+  compose `migrate` service now uses its own `MIGRATE_DATABASE_URL` (account
+  `musterm`, ALL on `muster.*`) while the runtime `DATABASE_URL` account (`musteru`)
+  is trimmed to `SELECT/INSERT/UPDATE/DELETE` — the internet-facing process can never
+  run DDL. Local dev is unchanged (full-privilege dev-container user). Recovery needs
+  no manual surgery: `0006` was never journaled, so the migrator self-heals on the
+  next run with the new account.
 - **0.29 (2026-07-05)** — **Prod DB = host MariaDB + central backup routine
   (§14/§15).** Production now uses the box's **central MariaDB** as §14 originally
   intended — the compose `db` service, `db_data` volume, and `MARIADB_*` env are
