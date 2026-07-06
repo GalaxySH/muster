@@ -52,10 +52,7 @@ export default async function AdminTestUsersPage({
       </AppHeader>
       <h1>Test accounts</h1>
       <p style={{ color: "#555" }}>
-        Throwaway students for training and walkthroughs: create one in any position, sign in
-        as it to step through the whole student flow, then delete it. Test accounts are
-        off-roster in an always-open group, so they never appear in the response list, the
-        export, the Drive sheet, or non-response tracking.
+        Create throwaway accounts to walkthrough the app. Fill out the details, sign in as the student, and navigate through the flow. Test accounts are not on the roster and are in an always-open group, so they never appear in the response list or other tracking.
       </p>
       <p style={banner}>
         <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign
@@ -103,7 +100,7 @@ export default async function AdminTestUsersPage({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <Link href={`/admin/students/${encodeURIComponent(a.email)}`} style={{ fontSize: 14 }}>
-                  Admin view
+                  View response
                 </Link>
                 {a.canSignInAs && (
                   <form action={signInAsTestAccount}>
