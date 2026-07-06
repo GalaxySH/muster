@@ -5,7 +5,7 @@ import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
-import { Page, PrimaryLink } from "@/components/ui";
+import { Page, PrimaryLink, infoCardStyle, primaryButtonStyle } from "@/components/ui";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
@@ -72,7 +72,7 @@ export default async function MePage() {
               shown above.
             </p>
           ) : flow.status.kind === "not-started" ? (
-            <section style={highlightBox}>
+            <section style={infoCardStyle}>
               <h2 style={{ fontSize: 16, marginTop: 0 }}>First, confirm your info</h2>
               <p style={{ marginTop: 0 }}>Here&apos;s what we have:</p>
               <ul style={{ margin: "0 0 10px", paddingLeft: "1.2rem", display: "grid", gap: 4 }}>
@@ -81,7 +81,7 @@ export default async function MePage() {
                 {flow.international && <li>International student</li>}
               </ul>
               <form action={confirmRosterInfo}>
-                <button type="submit" style={primaryButton}>
+                <button type="submit" style={{ ...primaryButtonStyle, marginBottom: 10 }}>
                   Yes, that&apos;s me
                 </button>
               </form>
@@ -90,7 +90,7 @@ export default async function MePage() {
               </p>
             </section>
           ) : (
-            <section style={highlightBox}>
+            <section style={infoCardStyle}>
               <h2 style={{ fontSize: 16, marginTop: 0 }}>Pick up where you left off</h2>
               <p style={{ marginTop: 0 }}>
                 You&apos;ve started but haven&apos;t submitted yet. Next up: {flow.status.stepLabel}.
@@ -120,21 +120,4 @@ const reviewList: React.CSSProperties = {
   paddingLeft: "1.2rem",
   display: "grid",
   gap: 6,
-};
-const highlightBox: React.CSSProperties = {
-  background: "#e7f0fb",
-  border: "1px solid #b6d2f2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-  margin: "0.5rem 0 1rem",
-};
-const primaryButton: React.CSSProperties = {
-  background: "#1a66cc",
-  color: "#fff",
-  border: "none",
-  borderRadius: 6,
-  padding: "0.55rem 1.1rem",
-  fontSize: 15,
-  cursor: "pointer",
-  marginBottom: 10,
 };

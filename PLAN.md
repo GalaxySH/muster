@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.35
+- **Version:** 0.36
 - **Last updated:** 2026-07-06
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -819,6 +819,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.36 (2026-07-06)** — **Signed-in greeting on `/` restyled as an info card.** The
+  root page's plain "Signed in as … CONTINUE" text/link is now a blue info card with a
+  `PrimaryLink` Continue button. The card style was promoted from a local const on `/me`
+  to the shared `infoCardStyle` in `components/ui.tsx` (both pages now share one object;
+  `/me`'s confirm button also reuses the central `primaryButtonStyle`). No visual change
+  on `/me`.
 - **0.35 (2026-07-06)** — **Unsaved-changes warning on the availability form (§4 step 5).**
   New `components/useUnsavedChangesWarning.ts` hook: while the form has unsaved edits it
   arms (1) a native `beforeunload` prompt (tab close / refresh / external navigation) and

@@ -31,6 +31,15 @@ export function Page({
   );
 }
 
+/** The blue-themed info card used for calls to action (the /me hub boxes, the / greeting). */
+export const infoCardStyle: React.CSSProperties = {
+  background: "#e7f0fb",
+  border: "1px solid #b6d2f2",
+  borderRadius: 8,
+  padding: "1rem 1.2rem",
+  margin: "0.5rem 0 1rem",
+};
+
 export const primaryButtonStyle: React.CSSProperties = {
   display: "inline-block",
   background: "#1a66cc",
