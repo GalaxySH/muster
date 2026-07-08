@@ -361,6 +361,12 @@ These are non-obvious and pervade the data model — internalize them before edi
 When adding rules, extend the domain layer test-first; wire DB/UI around it rather
 than embedding logic in routes or components.
 
+**Refactoring rule (hard rule):** any refactoring done while implementing a task must
+leave the touched code **simpler and better** than before — deduplicate, extract a pure
+seam, delete dead code, shrink a file. Never "refactor" by only adding layers,
+indirection, or options alongside the old path. If a change can't simplify what it
+touches, keep the change minimal and leave the surrounding code alone.
+
 ## Privacy / storage invariant (do not violate)
 
 - **The app never stores image bytes.** Uploads are relayed into UW-managed Google
