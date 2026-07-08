@@ -21,7 +21,8 @@ response dashboard (`/admin/responses`), the per-student view
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
 Sheet** in the Drive folder. The roster import handles the PCPL workbook's two sheets
 (**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
-`onRoster: false`), and the active surfaces (response list, export, non-response tracking)
+`onRoster: false`; someone in **both** sheets was promoted/moved — People Coming wins,
+they stay active), and the active surfaces (response list, export, non-response tracking)
 filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
 Admins import the workbook from the UI at **`/admin/roster`** (upload → the same
 idempotent importer, parsed in memory, never written to disk; renders the summary + a

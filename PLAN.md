@@ -19,8 +19,8 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.36
-- **Last updated:** 2026-07-06
+- **Version:** 0.37
+- **Last updated:** 2026-07-09
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -116,7 +116,10 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
 - **Roster import** — upload the PCPL workbook on **`/admin/roster`** (file upload →
   the same idempotent importer; the CLI `npm run roster:import` remains for scripted
   use); parse **People Coming** (active → `onRoster: true`) and **People Leaving**
-  (resigned/fired → `onRoster: false`); upsert students. People moved to People Leaving
+  (resigned/fired → `onRoster: false`); upsert students. A person in **both** sheets was
+  promoted/moved (the old row goes to People Leaving plus a fresh People Coming entry):
+  **People Coming wins** — they stay on-roster with the new classification and are
+  reported in the summary as moved. People moved to People Leaving
   drop out of listed/required responses; their submission is retained in the DB. The
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
@@ -819,6 +822,21 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.37 (2026-07-09)** — **Fix: PCPL import dropped people (two causes, §4.2).**
+  (1) A **promotion** moves the old row to "People Leaving" and adds a fresh "People
+  Coming" entry, so the person appears in **both** sheets — the importer's explicit
+  "leaving wins" ordering then wrongly flipped them off-roster (e.g. a dishwasher
+  promoted to shift lead vanished from the active surfaces). New pure
+  `reconcileLeaving` (`roster/parse.ts`, TDD): **People Coming wins** — only people
+  absent from People Coming are marked left; both-sheet people stay on-roster with
+  their new classification and are reported in the summary/CLI as moved. (2) The
+  workbook readers iterated rows to ExcelJS's `actualRowCount`, which counts only
+  populated rows — a blank row mid-sheet shifted the bound and silently dropped
+  everyone after it (the "summary counts don't match the workbook" symptom). Now
+  `rowCount` (last row with content; blank rows are skipped in-loop), regression-
+  tested against an in-memory workbook with a mid-sheet blank row. The import
+  summary also gains per-sheet raw row counts (UI + CLI) so an import can be
+  reconciled against the workbook at a glance.
 - **0.36 (2026-07-06)** — **Signed-in greeting on `/` restyled as an info card.** The
   root page's plain "Signed in as … CONTINUE" text/link is now a blue info card with a
   `PrimaryLink` Continue button. The card style was promoted from a local const on `/me`

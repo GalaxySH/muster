@@ -35,10 +35,17 @@ async function main() {
   try {
     const summary = await importRoster({ db, workbook: filePath, importedBy });
     console.log(`\nRoster import ${summary.importId} complete.`);
+    console.log(
+      `  rows read:         ${summary.sheetRows.peopleComing} coming, ${summary.sheetRows.peopleLeaving} leaving`,
+    );
     console.log(`  students upserted: ${summary.studentsUpserted}`);
     console.log(`  admins upserted:   ${summary.adminsUpserted}`);
     console.log(`  left marked off:   ${summary.leftMarked}`);
     console.log(`  rows skipped:      ${summary.skipped.length}`);
+    if (summary.movedWithinWorkbook.length > 0) {
+      console.log("\n  in both sheets (promoted/moved — kept on roster):");
+      for (const email of summary.movedWithinWorkbook) console.log(`    ${email}`);
+    }
     console.log("\n  by position:");
     for (const [pos, n] of Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1])) {
       console.log(`    ${String(n).padStart(3)}  ${pos}`);

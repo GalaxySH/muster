@@ -89,11 +89,13 @@ export async function readPeopleComing(source: WorkbookSource): Promise<RawRoste
   );
 
   const rows: RawRosterRow[] = [];
-  for (let r = 2; r <= ws.actualRowCount; r++) {
+  // rowCount = last row with content. (actualRowCount counts only populated
+  // rows, so a blank row mid-sheet would truncate the read and drop people.)
+  for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
     const name = cellText(row.getCell(nameCol).value).trim();
     const email = cellText(row.getCell(emailCol).value).trim();
-    // Skip fully blank trailing rows.
+    // Skip fully blank rows.
     if (!name && !email) continue;
     rows.push({
       name,
@@ -121,11 +123,12 @@ export async function readPeopleLeaving(source: WorkbookSource): Promise<RawLeav
   const emailCol = findCol(headers, (h) => h.includes("email"), "Email", LEAVING_SHEET_NAME);
 
   const rows: RawLeavingRow[] = [];
-  for (let r = 2; r <= ws.actualRowCount; r++) {
+  // Same bound as readPeopleComing: rowCount, so mid-sheet blanks can't truncate.
+  for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
     const name = cellText(row.getCell(nameCol).value).trim();
     const email = cellText(row.getCell(emailCol).value).trim();
-    // Skip fully blank trailing rows.
+    // Skip fully blank rows.
     if (!name && !email) continue;
     rows.push({ name, email });
   }

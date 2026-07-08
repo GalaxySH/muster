@@ -119,3 +119,30 @@ export function parseLeaving(rows: readonly RawLeavingRow[]): LeavingStudent[] {
   }
   return [...byEmail.values()];
 }
+
+export interface LeavingReconciliation {
+  /** People only in "People Leaving" — genuinely gone; mark off-roster. */
+  markLeft: LeavingStudent[];
+  /**
+   * People in BOTH sheets: a promotion/position change moves the old row to
+   * "People Leaving" and adds a fresh "People Coming" entry. They stay active
+   * with their People Coming classification — reported, never marked left.
+   */
+  movedWithinWorkbook: LeavingStudent[];
+}
+
+/** Pure reconciliation of the two sheets: People Coming wins over People Leaving. */
+export function reconcileLeaving(
+  parsed: RosterParseResult,
+  leaving: readonly LeavingStudent[],
+): LeavingReconciliation {
+  const coming = new Set([
+    ...parsed.students.map((s) => s.email),
+    ...parsed.admins.map((a) => a.email),
+  ]);
+  const result: LeavingReconciliation = { markLeft: [], movedWithinWorkbook: [] };
+  for (const l of leaving) {
+    (coming.has(l.email) ? result.movedWithinWorkbook : result.markLeft).push(l);
+  }
+  return result;
+}

@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import { students, adminUsers, rosterImports } from "@/lib/db/schema";
 import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
-import { parseRoster, parseLeaving } from "./parse";
+import { parseRoster, parseLeaving, reconcileLeaving } from "./parse";
 
 export interface ImportSummary {
   importId: string;
@@ -20,11 +20,19 @@ export interface ImportSummary {
   /** People Leaving rows upserted as off-roster (onRoster: false). */
   leftMarked: number;
   /**
+   * Emails in BOTH sheets — a promotion/position change moves the old row to
+   * "People Leaving" and adds a fresh "People Coming" entry. People Coming
+   * wins: they stay on-roster with the new classification; reported here.
+   */
+  movedWithinWorkbook: string[];
+  /**
    * Emails still on-roster in the DB that appear in NEITHER sheet of this
    * workbook. The import never removes them (only "People Leaving" flips a
    * student off-roster), so they're surfaced for the admin to reconcile.
    */
   unlistedOnRoster: string[];
+  /** Raw data rows read per sheet (blank rows excluded) — reconcile against the workbook. */
+  sheetRows: { peopleComing: number; peopleLeaving: number };
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
@@ -44,7 +52,10 @@ export async function importRoster({
   const rows = await readPeopleComing(workbook);
   const parsed = parseRoster(rows);
   // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
-  const leaving = parseLeaving(await readPeopleLeaving(workbook));
+  const leavingRows = await readPeopleLeaving(workbook);
+  const leaving = parseLeaving(leavingRows);
+  // A person in both sheets was promoted/moved, not fired: People Coming wins.
+  const { markLeft, movedWithinWorkbook } = reconcileLeaving(parsed, leaving);
   const importId = randomUUID();
 
   // Drift check (computed against the pre-import roster): anyone on-roster but
@@ -85,10 +96,9 @@ export async function importRoster({
         });
     }
 
-    // People Leaving AFTER People Coming, so if someone erroneously appears in
-    // both sheets, "leaving" wins (their onRoster ends up false). On an existing
-    // row we only flip onRoster — never clobber stored position/displayName.
-    for (const l of leaving) {
+    // Only people NOT also in People Coming (see reconcileLeaving). On an
+    // existing row we only flip onRoster — never clobber position/displayName.
+    for (const l of markLeft) {
       await tx
         .insert(students)
         .values({
@@ -125,8 +135,10 @@ export async function importRoster({
     importId,
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
-    leftMarked: leaving.length,
+    leftMarked: markLeft.length,
+    movedWithinWorkbook: movedWithinWorkbook.map((m) => m.email).sort(),
     unlistedOnRoster,
+    sheetRows: { peopleComing: rows.length, peopleLeaving: leavingRows.length },
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

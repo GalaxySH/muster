@@ -93,6 +93,10 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
       <p style={{ margin: "0 0 8px", color: "#196127", fontWeight: 600 }}>✓ Import complete.</p>
       <ul style={{ margin: "0 0 8px", paddingLeft: 20, fontSize: 14 }}>
         <li>
+          Read <strong>{summary.sheetRows.peopleComing}</strong> “People Coming” rows and{" "}
+          <strong>{summary.sheetRows.peopleLeaving}</strong> “People Leaving” rows
+        </li>
+        <li>
           <strong>{summary.studentsUpserted}</strong> students added or refreshed (on roster)
         </li>
         <li>
@@ -102,6 +106,13 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
           <strong>{summary.leftMarked}</strong> people marked off-roster (People Leaving)
         </li>
       </ul>
+
+      {summary.movedWithinWorkbook.length > 0 && (
+        <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
+          In both sheets — promoted or moved, kept on roster with their “People Coming”
+          position: {summary.movedWithinWorkbook.join(", ")}
+        </p>
+      )}
 
       {positions.length > 0 && (
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
