@@ -3,12 +3,13 @@
 /**
  * Admin-gated test-account management (/admin/test-users) — the production
  * successor of the dev-only /dev-login manager, for walking the student flow to
- * train admins. Accounts live in a dedicated always-open group under a synthetic
- * non-deliverable domain (see ./email), so the ONLY way into one is the
- * admin-minted magic-link token issued by signInAsTestAccount below. All three
- * are form actions: failures surface as ?error=<code> on the manager page.
+ * train admins. Accounts live in a dedicated group (initially wide open;
+ * editable on /admin/groups) under a synthetic non-deliverable domain (see
+ * ./email), so the ONLY way into one is the admin-minted magic-link token
+ * issued by signInAsTestAccount below. All three are form actions: failures
+ * surface as ?error=<code> on the manager page.
  */
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
@@ -64,7 +65,9 @@ export async function createTestAccount(formData: FormData): Promise<void> {
     .limit(1);
   if (existing) fail("exists");
 
-  // Ensure the always-open test group exists, then drop the account into it.
+  // Ensure the test group exists (race-safe insert-if-absent). The wide-open
+  // bounds are initial values only — admins may edit the window on
+  // /admin/groups, so an existing row is left untouched (`id = id` no-op).
   await db
     .insert(groups)
     .values({
@@ -74,9 +77,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
       closesAt: TEST_GROUP_CLOSES_AT,
       isDefault: false,
     })
-    .onDuplicateKeyUpdate({
-      set: { name: TEST_GROUP_NAME, opensAt: TEST_GROUP_OPENS_AT, closesAt: TEST_GROUP_CLOSES_AT },
-    });
+    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
 
   try {
     await db.insert(students).values({

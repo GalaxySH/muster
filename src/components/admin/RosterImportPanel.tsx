@@ -11,7 +11,7 @@ import { useRef, useState, useTransition } from "react";
 import { importRosterFromUpload } from "@/lib/roster/actions";
 import type { ImportSummary } from "@/lib/roster/import";
 import { validateRosterUpload } from "@/lib/roster/upload-validation";
-import { primaryButtonStyle, disabledButtonStyle } from "@/components/ui";
+import { ActionButton } from "@/components/ui";
 
 const SKIP_REASON_LABEL: Record<string, string> = {
   missing_email: "no email in the row",
@@ -64,14 +64,9 @@ export function RosterImportPanel() {
           onChange={() => setError(null)}
           style={{ fontSize: 14 }}
         />
-        <button
-          type="button"
-          onClick={runImport}
-          disabled={pending}
-          style={pending ? disabledButtonStyle : primaryButtonStyle}
-        >
-          {pending ? "Importing…" : "Import roster"}
-        </button>
+        <ActionButton onClick={runImport} pending={pending} pendingLabel="Importing…">
+          Import roster
+        </ActionButton>
       </div>
 
       {error && (

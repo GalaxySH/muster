@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { primaryButtonStyle, disabledButtonStyle } from "@/components/ui";
+import { ActionButton, primaryButtonStyle } from "@/components/ui";
 
 /**
  * Travel-step gate (PLAN §4). Travel is optional, so we can't require an entry to
@@ -22,9 +22,7 @@ export function TravelContinue() {
           Continue
         </Link>
       ) : (
-        <button type="button" disabled style={disabledButtonStyle}>
-          Continue
-        </button>
+        <ActionButton disabled>Continue</ActionButton>
       )}
     </div>
   );

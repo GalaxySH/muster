@@ -4,7 +4,8 @@ import { getAppSession } from "@/lib/auth/session";
 import { devLoginEnabled } from "@/lib/env";
 import { redirect } from "next/navigation";
 import { requestMagicLink } from "@/lib/auth/magic-link-actions";
-import { Page } from "@/components/ui";
+import { InfoCard, Page } from "@/components/ui";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export default async function SignInPage({
   searchParams,
@@ -20,25 +21,20 @@ export default async function SignInPage({
     <Page width="narrow">
       <h1>Sign in to Muster</h1>
       {error && (
-        <p style={{ color: "var(--color-text-danger, #b00)" }}>
-          That account can&apos;t sign in here. Use your <strong>@wisc.edu</strong> Google account,
-          or request an email sign-in link below.
-        </p>
+        <InfoCard tone="danger" role="status">
+          <p style={{ margin: 0 }}>
+            That account can&apos;t sign in here. Use your <strong>@wisc.edu</strong> Google
+            account, or request an email sign-in link below.
+          </p>
+        </InfoCard>
       )}
       {sent && (
-        <p
-          role="status"
-          style={{
-            background: "#e6f4ea",
-            border: "1px solid #b7dfc2",
-            borderRadius: 6,
-            padding: "0.6rem 0.9rem",
-            fontSize: 14,
-          }}
-        >
-          If that address is eligible, we&apos;ve sent a sign-in link. Check your{" "}
-          <strong>@wisc.edu</strong> email — the link expires in 30 minutes.
-        </p>
+        <InfoCard tone="success" role="status">
+          <p style={{ margin: 0 }}>
+            If that address is eligible, we&apos;ve sent a sign-in link. Check your{" "}
+            <strong>@wisc.edu</strong> email — the link expires in 30 minutes.
+          </p>
+        </InfoCard>
       )}
       <form
         action={async () => {
@@ -46,7 +42,7 @@ export default async function SignInPage({
           await signIn("google", { redirectTo: callbackUrl || "/me" });
         }}
       >
-        <button type="submit">Sign in with wisc.edu</button>
+        <SubmitButton pendingLabel="Signing you in…">Sign in with wisc.edu</SubmitButton>
       </form>
 
       <details style={{ marginTop: 20 }}>
@@ -59,7 +55,13 @@ export default async function SignInPage({
         </p>
         <form action={requestMagicLink} style={{ display: "grid", gap: 8, maxWidth: 360 }}>
           <input type="email" name="email" placeholder="you@wisc.edu" required style={field} />
-          <button type="submit">Send sign-in link</button>
+          <SubmitButton
+            variant="secondary"
+            pendingLabel="Sending…"
+            style={{ justifySelf: "start" }}
+          >
+            Send sign-in link
+          </SubmitButton>
         </form>
       </details>
 

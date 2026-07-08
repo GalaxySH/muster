@@ -19,12 +19,12 @@ import { normalizeEmail } from "@/lib/auth/policy";
 import { setSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
   getDefaultAutoAssignEnabled,
+  getDefaultGroup,
   listStudentsForPicker,
   type PickerFilters,
   type PickerStudent,
 } from "./data";
 import { parseEmailList } from "./parse-emails";
-import { DEFAULT_GROUP_ID } from "./constants";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 export interface ActionResult {
@@ -133,10 +133,33 @@ export async function setGroupLockAfterSubmit(
   return { ok: true };
 }
 
+/**
+ * Re-point the default group — the one the sweep/self-add hook drop ungrouped
+ * students into (PLAN §13). Exactly one group holds the flag; flipping it is
+ * transactional so a crash can't leave zero or two defaults.
+ */
+export async function setDefaultGroup(id: string): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  if (id === TEST_GROUP_ID) {
+    return { ok: false, error: "The test-accounts group can't be the default." };
+  }
+
+  const db = getDb();
+  const [g] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, id)).limit(1);
+  if (!g) return { ok: false, error: "Group not found." };
+
+  await db.transaction(async (tx) => {
+    await tx.update(groups).set({ isDefault: false }).where(eq(groups.isDefault, true));
+    await tx.update(groups).set({ isDefault: true }).where(eq(groups.id, id));
+  });
+  revalidateGroups();
+  return { ok: true };
+}
+
 export async function deleteGroup(id: string): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  if (id === DEFAULT_GROUP_ID) return { ok: false, error: "The default group can't be deleted." };
   if (id === TEST_GROUP_ID) {
     // Deleting it would null members' group_id, stranding test accounts the
     // /admin/test-users manager could no longer list or delete.
@@ -146,7 +169,9 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
   const db = getDb();
   const [g] = await db.select({ isDefault: groups.isDefault }).from(groups).where(eq(groups.id, id)).limit(1);
   if (!g) return { ok: false, error: "Group not found." };
-  if (g.isDefault) return { ok: false, error: "The default group can't be deleted." };
+  if (g.isDefault) {
+    return { ok: false, error: "The default group can't be deleted — make another group the default first." };
+  }
 
   // Members' group_id is set null by the FK (onDelete: set null) → they revert
   // to ungrouped (denied) until reassigned or swept.
@@ -260,6 +285,9 @@ export async function runDefaultAssignmentSweep(): Promise<SweepResult> {
   const enabled = await getDefaultAutoAssignEnabled();
   if (!enabled) return { ok: true, enabled: false, swept: 0 };
 
+  const target = await getDefaultGroup();
+  if (!target) return { ok: false, error: "No default group is set.", enabled: true, swept: 0 };
+
   const db = getDb();
   const targets = await db
     .select({ email: students.email })
@@ -268,7 +296,7 @@ export async function runDefaultAssignmentSweep(): Promise<SweepResult> {
   if (targets.length > 0) {
     await db
       .update(students)
-      .set({ groupId: DEFAULT_GROUP_ID, groupAssignedAuto: true })
+      .set({ groupId: target.id, groupAssignedAuto: true })
       .where(
         and(isNull(students.groupId), eq(students.groupAssignedAuto, false)),
       );

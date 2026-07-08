@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { testDriveRelay, disconnectDrive } from "@/lib/drive/actions";
+import { primaryButtonStyle } from "@/components/ui";
 
 export function DriveControls({ connected }: { connected: boolean }) {
   const [pending, startTransition] = useTransition();
@@ -9,18 +10,7 @@ export function DriveControls({ connected }: { connected: boolean }) {
 
   if (!connected) {
     return (
-      <a
-        href="/api/drive/connect"
-        style={{
-          display: "inline-block",
-          padding: "8px 16px",
-          background: "#1a66cc",
-          color: "#fff",
-          borderRadius: 6,
-          textDecoration: "none",
-          fontSize: 14,
-        }}
-      >
+      <a href="/api/drive/connect" style={primaryButtonStyle}>
         Connect Google Drive
       </a>
     );

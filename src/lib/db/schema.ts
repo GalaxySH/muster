@@ -51,8 +51,9 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
 
 /**
  * Admin-defined student group carrying a form open/close window (PLAN.md §13).
- * A student's window is resolved through their group; exactly one group is the
- * non-deletable default ("New Student") that catches auto-assigned students.
+ * A student's window is resolved through their group; exactly one group holds
+ * `isDefault` (seeded as "New Student", re-pointable by the admin) — it catches
+ * auto-assigned students and can't be deleted while it holds the flag.
  * A null window (either bound) is "unconfigured" → the form stays locked.
  */
 export const groups = mysqlTable("groups", {

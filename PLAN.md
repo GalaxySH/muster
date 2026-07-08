@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.37
+- **Version:** 0.40
 - **Last updated:** 2026-07-09
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -102,9 +102,11 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
    change yet). Leaving with unsaved edits warns first: a native beforeunload prompt
    on tab close/refresh plus a confirm() on same-tab link clicks (breadcrumb/Home),
    via `useUnsavedChangesWarning`.
-6. **`/travel`** — optional, repeatable travel entries (proof + date range; excused only
-   before the 9/1 cutoff, §7b #8). Since travel is optional, **Next is gated on an explicit
-   acknowledgement** ("I've added all my travel, or I have none").
+6. **`/travel`** — optional, repeatable travel entries (proof + date range; must be added
+   **before the cutoff** — default 9/1, admin-configurable, §7b #8). Once the cutoff
+   passes, the step shows a "deadline has passed" notice instead of the add form and the
+   existing entries lock (server-refused too). Since travel is optional, **Next is gated
+   on an explicit acknowledgement** ("I've added all my travel, or I have none").
 7. **`/exit`** — sets expectations (these are *preferences*, not a schedule; expect the
    schedule in a couple of weeks, by end of August) and holds the single **Submit** that
    **finalizes** (§13): re-validate as authority, require the course schedule, flip to
@@ -147,13 +149,14 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 5 | Must work a weekend shift; A/B rotation, cycle-averaged hours | **Soft** | missing → auto-assign + flag. **Barista exempt** (weekday-only) |
 | 6 | Must work at least one **open OR one close** | **Hard** | ≥1 opening or ≥1 closing block selected |
 | 7 | Shifts must span ≥2 days (≥3 for Shift Lead) | **Hard** | min distinct days available to satisfy |
-| 8 | Travel excused only if submitted **before 9/1** (all positions) | rule | entries created after the 9/1 cutoff → flagged "not excused (late)" (§7b) |
+| 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** — the form stops accepting them (late policy "refuse", reversible to accept-and-flag — §7b) |
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
 > many shifts as they want; the only hours hard-block is #2 (min reachable via the
 > covered union of selected shifts). #5 soft for v1 (auto-pick + flag); Barista exempt.
-> #2/#6/#7 hard at entry. #8 travel cutoff = **9/1, all positions**.
+> #2/#6/#7 hard at entry. #8 travel cutoff = **default 9/1, admin-configurable, all
+> positions**; on/after it, new travel is refused outright.
 
 ---
 
@@ -303,10 +306,14 @@ scheduler (not auto-parsed).
   judges from the evidence + notes.
 - **Travel excusal (repeatable entries):** each entry = a **mandatory** proof-of-travel
   upload + an **inclusive start–end date range** (+ optional note). Multiple entries
-  allowed. **Policy #8:** only travel submitted **before 9/1** (same cutoff for all
-  positions) is excused; entries created after 9/1 are accepted but flagged **"not
-  excused (late)"** so the timing is visible to the scheduler rather than silently
-  honored.
+  allowed. **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
+  admin-configurable; same cutoff for all positions) is excused. On/after the cutoff the
+  step **refuses new entries** and locks existing ones (decided 2026-07-09) — every
+  stored entry is excused by construction. The decision lives in one pure policy seam
+  (`LATE_TRAVEL_POLICY` in `domain/travel.ts`, `"refuse"`); flipping it to
+  `"accept-and-flag"` restores the old behavior end to end (late entries stored
+  `excused: false`, "not excused (late)" badges, `travel_late` flag on submit — those
+  paths are deliberately kept wired).
 
 ---
 
@@ -319,7 +326,7 @@ scheduler (not auto-parsed).
 | ≥1 opening **or** ≥1 closing block selected | **Hard** | block submit |
 | Available across ≥2 days (≥3 for Shift Lead) | **Hard** | block submit |
 | A weekend shift selected (**Barista exempt**) | **Soft** | auto-assign a weekend shift + raise Flag; show *"I randomly chose this shift for you."* |
-| Travel entry created after semester-start cutoff | **Soft** | accept but mark **"not excused (late)"** + flag (§7b) |
+| Travel entry created on/after the cutoff | **Refused** | the travel step stops accepting entries (server + UI); the accept-and-flag alternative stays one policy flip away (§7b) |
 
 > **Cycle-averaging (decided):** weekday blocks count every week; **both** weekend
 > days are summed and then weighted ×0.5 under A/B (×1.0 with the every-weekend
@@ -348,15 +355,16 @@ columns from the roster.
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
-  `note?`, `createdAt`, `excused: bool` (false if created after the semester-start
-  cutoff → "not excused (late)").
+  `note?`, `createdAt`, `excused: bool` (always true under the active "refuse" late
+  policy; false rows only possible under accept-and-flag — kept for reversibility).
 - **Flag**: `submissionId`, `type` (e.g. `auto_assigned_weekend`, `travel_late`),
   `detail`.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
-  `isDefault: bool` (exactly one — the non-deletable "New Student" group). Students join
-  via `students.groupId`. (The **travel-excusal cutoff = 9/1** is separate global config,
-  not window-derived.)
+  `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
+  the flag holder can't be deleted). Students join via `students.groupId`. (The
+  **travel-excusal cutoff** is separate global config in `app_settings` — default 9/1,
+  admin-set — not window-derived.)
 - **AdminUser**: `email`, allowlist.
 - **AdminGoogleGrant**: `drive.file` refresh token (encrypted) for the image relay
   (§12) — admin-only; one row.
@@ -636,8 +644,11 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
    "already submitted" banner from the window (opens-soon / closed) banner. Default
    **off** preserves edit-until-close. Toggled per group in the admin groups surface.
 
-- **Default group "New Student":** seeded, single, non-deletable. Catches ungrouped
-  and **non-roster self-added** students *when the default-assignment toggle is on*.
+- **Default group:** exactly one group holds `isDefault` — seeded as **"New Student"**,
+  and the admin can **re-point** it to any group (`setDefaultGroup`; transactional flip;
+  the test group refused). The flag holder can't be deleted; catches ungrouped and
+  **non-roster self-added** students *when the default-assignment toggle is on* (the
+  sweep and the self-add hook resolve the flag, never a hardcoded id).
 - **Default-assignment toggle** (admin, in the groups surface): controls *only* default
   auto-assignment. **OFF ⇒** ungrouped roster students + self-adds get no group ⇒ denied.
   **ON ⇒** they get the default group. Assignment is written to the DB (never at roster
@@ -651,8 +662,11 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
   multi-select, plus a **paste-delimited-emails** path (reports matched vs. unknown).
   *(Deferred: a hire-date filter — we don't ingest hire date; it conflicts with the
   data-minimization invariant. Revisit if/when that field is added.)*
-- **Travel-excusal cutoff:** a **single global date (9/1)**, independent of windows —
-  a form open after 9/1 still flags new travel entries as late. Its own config value.
+- **Travel-excusal cutoff:** a **single global instant** (default Sep 1), independent of
+  windows — a form window open past the cutoff still stops accepting travel. Stored in
+  `app_settings` (`travel_cutoff`), editable on the admin groups surface (clear ⇒ 9/1
+  default). After the cutoff the travel step refuses new entries and locks existing ones
+  (§7b late policy).
 - **Non-response:** computed from roster PC at any time.
 
 ### 13.1 Submission status & the single finalize
@@ -813,7 +827,8 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   dev-only `/dev-login` manager (which had replaced the removed `/admin/preview`
   form-preview page); promoted to **`/admin/test-users`** so admins can create/
   sign-in-as/delete throwaway students in any position in production (e.g. to train
-  admins). Accounts live in the always-open test group (id `dev-test`) under the synthetic
+  admins). Accounts live in the test group (id `dev-test`; seeded wide-open, window
+  editable on `/admin/groups` like any group since 0.39) under the synthetic
   domain `test.muster.invalid`, stay off-roster (invisible in responses/export/sheet/
   non-response tracking), and are reachable **only** via an admin-minted magic-link token —
   the synthetic domain fails `isWiscEmail`, so the public magic-link request and Google
@@ -822,6 +837,49 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.40 (2026-07-09)** — **Travel cutoff: admin-configurable + hard stop (roadmap 1.6;
+  §5 #8, §7b, §8, §13).** The cutoff moves from a hardcoded 9/1 to `app_settings`
+  (`travel_cutoff`; `getTravelCutoff` falls back to the 9/1 default), editable on
+  `/admin/groups` (`TravelCutoffPanel` + admin action `setTravelCutoff`; clear ⇒
+  default). **Behavior change (owner decision):** on/after the cutoff travel is **not
+  submittable** — `addTravelRequest`/`removeTravelRequest` refuse server-side and the
+  `/travel` step swaps the add form for a "deadline has passed" `InfoCard` (entries
+  shown read-only; the acknowledgement → `/exit` flow is unaffected). No more
+  "not excused (late)" entries. **Reversibility rail:** the decision is one pure seam —
+  `LATE_TRAVEL_POLICY`/`decideTravelSubmission` in `domain/travel.ts` (TDD) — and the
+  `travel_late` flag type, `travel_requests.excused` column, badge rendering, and the
+  finalize-time flag block all stay wired, so flipping the policy to `"accept-and-flag"`
+  restores late submissions + flagging. `/intro` and `/travel` copy now render the
+  configured cutoff.
+- **0.39 (2026-07-09)** — **Groups manager: re-pointable default group, per-group email
+  copy, editable test-group window (roadmap 1.4–1.5; §13).** New admin action
+  `setDefaultGroup` (transactional exactly-one `isDefault` flip; test group refused) with
+  a "make default" control; **which group catches swept/self-added students is now the
+  flag, not the hardcoded id** — `getDefaultGroup()`, the sweep, and
+  `applyDefaultGroupOnSelfAdd` all resolve `isDefault`, delete-protection follows the
+  flag holder, and the seed only marks "New Student" default when no group holds the
+  flag (re-seeding never steals an admin's choice or clobbers the row). Each group row
+  gains a **copy member emails** button (shared `CopyEmailsButton`; `listGroups` now
+  returns member emails and derives the count from them). The **test group's window is
+  admin-editable** like any other group: the ensure-group upsert in `createTestAccount`
+  no longer re-clobbers bounds (insert-if-absent no-op), the seeded 2000→2100 window is
+  initial-only, and the groups table badges the test group (delete stays refused).
+- **0.38 (2026-07-09)** — **UI polish batch (roadmap 1.1–1.3).** (1) `infoCardStyle`
+  promoted to a reusable `<InfoCard>` (`components/ui.tsx`) with `info`/`success`/
+  `danger` tones; converted the `/` greeting, the `/me` hub boxes, the `/me`
+  not-known-employee notice, and the admin-dashboard link (now a card); `/signin`
+  restyled to the shared button styles + `InfoCard` banners. The `/me` confirm-info card
+  now always states residency (**"International student" or "Domestic student"** — the
+  domestic case previously showed nothing). `/intro` gains the "you do **not** need to
+  fill out WhenToWork availability preferences" bullet. (2) **Button pending states:**
+  new `ActionButton` primitive (variant + uniform disabled/pending label swap) and
+  `SubmitButton` (`useFormStatus`, for server-action forms); swept the sign-in/magic-link
+  buttons, `/me` confirm, sign-out, `FinishButton`, availability Save buttons,
+  `TravelContinue`, `MarkScheduledButton`, `RosterImportPanel`, and the evidence forms —
+  `useEvidenceRunner` now exposes per-section `busy(where)` so only the running upload's
+  button swaps to "Uploading…" (uploads are the laggiest actions). (3) The per-student
+  admin view renders the weekend rotation as a **badge on the weekend grid** ("EVERY
+  weekend" filled vs. "alternating (A/B)" quiet) instead of only card sub-text.
 - **0.37 (2026-07-09)** — **Fix: PCPL import dropped people (two causes, §4.2).**
   (1) A **promotion** moves the old row to "People Leaving" and adds a fresh "People
   Coming" entry, so the person appears in **both** sheets — the importer's explicit

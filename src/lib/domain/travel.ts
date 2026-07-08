@@ -2,14 +2,40 @@
  * Travel-excusal cutoff rule (PLAN.md §5 #8, §7b, §8).
  *
  * Travel is excused only if its entry was created BEFORE the global
- * semester-start cutoff (9/1, all positions). Entries created on or after the
- * cutoff are accepted but flagged "not excused (late)". The cutoff is its own
- * config value, independent of per-position form windows (§13).
+ * semester-start cutoff (9/1 by default; admin-configurable via app_settings,
+ * see lib/settings.ts). What happens to a LATE entry is the policy below. The
+ * cutoff is its own config value, independent of per-position form windows
+ * (§13).
  */
 
 /** True if a travel entry created at `createdAt` is excused under the cutoff. */
 export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
   return createdAt.getTime() < cutoff.getTime();
+}
+
+export type LateTravelPolicy = "refuse" | "accept-and-flag";
+
+/**
+ * The active late-travel policy (owner decision 2026-07-09): entries on/after
+ * the cutoff are REFUSED outright — nothing is stored, so every stored entry is
+ * excused by construction and the `travel_late` flag never raises. Flipping
+ * this to "accept-and-flag" restores the previous behavior end to end: late
+ * entries are stored with `excused: false`, the "not excused (late)" badges
+ * render again, and finalizeSubmission raises `travel_late` — all of those
+ * paths are deliberately kept wired.
+ */
+export const LATE_TRAVEL_POLICY: LateTravelPolicy = "refuse";
+
+export type TravelDecision = { allowed: true; excused: boolean } | { allowed: false };
+
+/** Decide a travel entry created at `now` under `cutoff` and the active policy. */
+export function decideTravelSubmission(
+  now: Date,
+  cutoff: Date,
+  policy: LateTravelPolicy = LATE_TRAVEL_POLICY,
+): TravelDecision {
+  if (isTravelExcused(now, cutoff)) return { allowed: true, excused: true };
+  return policy === "refuse" ? { allowed: false } : { allowed: true, excused: false };
 }
 
 /**

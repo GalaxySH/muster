@@ -6,7 +6,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
-import { defaultTravelCutoff } from "@/lib/domain/travel";
+import { getTravelCutoff } from "@/lib/settings";
 
 /**
  * Orientation step (PLAN §4). Concise scheduling-policy reminders + what the
@@ -19,6 +19,7 @@ export default async function IntroPage() {
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
   const reachable = await loadReachableSteps(session.email);
+  const { cutoff } = await getTravelCutoff(new Date());
 
   return (
     <Page>
@@ -38,6 +39,10 @@ export default async function IntroPage() {
             Scheduling is based primarily on your course schedule, operational needs, and availability, in that order. We do our best to accommodate your preferences, but we cannot guarantee them.
           </li>
           <li>
+            You do <strong>not</strong> need to fill out availability preferences in
+            WhenToWork — this form replaces that step.
+          </li>
+          <li>
             You must select your position&apos;s <strong>minimum weekly hours</strong> (10h; Shift
             Leads 15h).
           </li>
@@ -52,7 +57,7 @@ export default async function IntroPage() {
           You are required to work a weekend shift. Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend), unless you opt into working every weekend. You pick the shift time, we pick which of A/B based on operational needs.
           </li>
           <li>
-            Travel during the semester is only excused if you add it <strong>before {defaultTravelCutoff(new Date()).toLocaleDateString()}</strong>. We will not excuse <strong>any</strong> travel added after that date.
+            Travel during the semester is only excused if you add it <strong>before {cutoff.toLocaleDateString()}</strong>. The form does not accept <strong>any</strong> travel added after that date.
           </li>
           <li>
             If your availability changes throughout the semester, contact us by email or come into the office. We will always accept excusal requests for exams throughout the semester, and we will review requests for extenuating circumstances on a case by case basis.

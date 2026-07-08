@@ -20,7 +20,7 @@ tiers 0–1 immediately, then interleave tier 2/3 so 3.2 lands before the window
 
 ## Tier 0 — Bug fix (do first)
 
-### 0.1 PCPL import: promoted people vanish + rows dropped — **S**
+### 0.1 PCPL import: promoted people vanish + rows dropped — **S** ✅ *shipped (PLAN 0.37)*
 
 Two confirmed defects in the importer:
 
@@ -50,7 +50,7 @@ level; re-import of the real workbook to verify Ava.
 
 ## Tier 1 — Small (UI polish & config, each ≲ half-day)
 
-### 1.1 Info-card + copy batch — **S**
+### 1.1 Info-card + copy batch — **S** ✅ *shipped (PLAN 0.38; also: the /me confirm card now states "Domestic student" for non-international students — owner addition)*
 - Promote `infoCardStyle` (`components/ui.tsx`) to a reusable `<InfoCard>`
   component with tone variants (`info` blue, `danger` red — the red variant
   pre-builds the warning box 3.2 needs on `/me`).
@@ -65,7 +65,7 @@ level; re-import of the real workbook to verify Ava.
 *Refactor:* every ad-hoc blue/green banner touched converts to `InfoCard`;
 no new one-off style objects.
 
-### 1.2 Button pending/loading states — **S**
+### 1.2 Button pending/loading states — **S** ✅ *shipped (PLAN 0.38)*
 Windows-hosted responses can lag; buttons give no feedback. Add a shared
 `<SubmitButton>` (via `useFormStatus`) + a pending style to `components/ui.tsx`,
 and sweep the client islands (`FinishButton`, `TravelContinue`,
@@ -75,25 +75,25 @@ admin action buttons) to use it — disabled + spinner/label while pending.
 *Refactor:* converge hand-rolled button markup onto the ui.tsx primitives;
 delete per-component duplicates.
 
-### 1.3 Response viewer: make the weekend mode obvious — **S**
+### 1.3 Response viewer: make the weekend mode obvious — **S** ✅ *shipped (PLAN 0.38)*
 "Every weekend" vs "alternating (A/B)" is currently small sub-text on the
 per-student view. Render it as a prominent badge next to the weekend grid /
 in the hour cards.
 
-### 1.4 Test-account group window configurable — **S**
+### 1.4 Test-account group window configurable — **S** ✅ *shipped (PLAN 0.39)*
 The `dev-test` group is pinned always-open (`test-accounts/constants.ts`
 seeds 2000→2100 bounds). Make the seed bounds the *initial* values only and
 let admins edit the test group's window on `/admin/groups` like any other
 group (keep the can't-delete rail). Ensure the ensure-group logic stops
 re-clobbering edited bounds.
 
-### 1.5 Groups manager: set default group + copy group emails — **S**
+### 1.5 Groups manager: set default group + copy group emails — **S** ✅ *shipped (PLAN 0.39)*
 - `setDefaultGroup(id)` admin action: transactional exactly-one `isDefault`
   flip (refuse the test group); a control in `GroupWindowsTable`.
 - Per-group "copy member emails" button — extract/reuse the
   `CopyEmailsButton` from `/admin/non-responses` as a shared component.
 
-### 1.6 Travel cutoff: configurable + hard stop after the deadline — **S**
+### 1.6 Travel cutoff: configurable + hard stop after the deadline — **S** ✅ *shipped (PLAN 0.40)*
 Two changes to the same seam (§13's cutoff, currently hardcoded as
 `defaultTravelCutoff()` in `domain/travel.ts`, read by `evidence/actions.ts`):
 - Store the cutoff in `app_settings` (falling back to the current 9/1

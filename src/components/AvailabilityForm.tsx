@@ -13,7 +13,7 @@ import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation
 import { hourCap } from "@/lib/domain/caps";
 import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
-import { primaryButtonStyle, secondaryButtonStyle, disabledButtonStyle } from "@/components/ui";
+import { ActionButton } from "@/components/ui";
 import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
 
 const DAY_LABEL: Record<Day, string> = {
@@ -321,33 +321,33 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
         {editable && !editMode && (
           <>
-            <button
-              type="button"
+            <ActionButton
+              variant="secondary"
               onClick={() => run("draft")}
-              disabled={pending}
-              style={pending ? disabledButtonStyle : secondaryButtonStyle}
+              pending={pending}
+              pendingLabel="Saving…"
             >
               Save draft
-            </button>
-            <button
-              type="button"
+            </ActionButton>
+            <ActionButton
               onClick={() => run("continue", "/travel")}
-              disabled={pending || !canSubmit}
-              style={pending || !canSubmit ? disabledButtonStyle : primaryButtonStyle}
+              pending={pending}
+              pendingLabel="Saving…"
+              disabled={!canSubmit}
             >
               Save and continue
-            </button>
+            </ActionButton>
           </>
         )}
         {editable && editMode && (
-          <button
-            type="button"
+          <ActionButton
             onClick={() => run("continue")}
-            disabled={pending || !canSubmit}
-            style={pending || !canSubmit ? disabledButtonStyle : primaryButtonStyle}
+            pending={pending}
+            pendingLabel="Saving…"
+            disabled={!canSubmit}
           >
             Save changes
-          </button>
+          </ActionButton>
         )}
         {props.initialStatus === "submitted" && (
           <span style={{ color: "#196127" }}>✓ submitted</span>

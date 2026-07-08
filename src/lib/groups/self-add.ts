@@ -14,21 +14,23 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
-import { getDefaultAutoAssignEnabled } from "./data";
-import { DEFAULT_GROUP_ID } from "./constants";
+import { getDefaultAutoAssignEnabled, getDefaultGroup } from "./data";
 
 /**
- * Assign the default group to a just-self-added student if auto-assignment is
- * enabled. The student row must already exist. No-op (denied) when the toggle is
- * off. Returns whether a group was assigned.
+ * Assign the default group (the `isDefault`-flagged one) to a just-self-added
+ * student if auto-assignment is enabled. The student row must already exist.
+ * No-op (denied) when the toggle is off or no default exists. Returns whether
+ * a group was assigned.
  */
 export async function applyDefaultGroupOnSelfAdd(emailRaw: string): Promise<boolean> {
   if (!(await getDefaultAutoAssignEnabled())) return false;
+  const target = await getDefaultGroup();
+  if (!target) return false;
   const db = getDb();
   const email = normalizeEmail(emailRaw);
   await db
     .update(students)
-    .set({ groupId: DEFAULT_GROUP_ID, groupAssignedAuto: true })
+    .set({ groupId: target.id, groupAssignedAuto: true })
     .where(eq(students.email, email));
   return true;
 }

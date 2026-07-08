@@ -27,7 +27,8 @@ import {
   MAX_EXTRACURRICULAR_FILES,
   MAX_TRAVEL_REQUESTS,
 } from "./limits";
-import { isTravelExcused, defaultTravelCutoff } from "@/lib/domain/travel";
+import { decideTravelSubmission } from "@/lib/domain/travel";
+import { getTravelCutoff } from "@/lib/settings";
 
 export interface ActionResult {
   ok: boolean;
@@ -174,6 +175,18 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   const who = await requireStudent();
   if ("error" in who) return { ok: false, error: who.error };
 
+  // The cutoff hard stop (PLAN §8): under the active "refuse" policy, nothing
+  // is stored on/after the cutoff — so every stored entry is excused.
+  const now = new Date();
+  const { cutoff } = await getTravelCutoff(now);
+  const decision = decideTravelSubmission(now, cutoff);
+  if (!decision.allowed) {
+    return {
+      ok: false,
+      error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed — new travel can no longer be added.`,
+    };
+  }
+
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
   const note = String(formData.get("note") ?? "").slice(0, 500) || null;
@@ -199,8 +212,6 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 
   try {
     const proofFileId = await relayUpload({ studentEmail: who.email, kind: "travel", ...upload });
-    const now = new Date();
-    const excused = isTravelExcused(now, defaultTravelCutoff(now));
     await db.insert(travelRequests).values({
       id: randomUUID(),
       submissionId,
@@ -208,7 +219,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       note,
-      excused,
+      excused: decision.excused,
     });
     revalidatePath("/travel");
     return { ok: true };
@@ -220,6 +231,14 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 export async function removeTravelRequest(id: string): Promise<ActionResult> {
   const who = await requireStudent();
   if ("error" in who) return { ok: false, error: who.error };
+
+  // Travel is locked entirely after the cutoff — removal too, since a removed
+  // entry could never be re-added under the "refuse" policy.
+  const now = new Date();
+  const { cutoff } = await getTravelCutoff(now);
+  if (!decideTravelSubmission(now, cutoff).allowed) {
+    return { ok: false, error: "The travel deadline has passed — travel entries are locked." };
+  }
 
   const db = getDb();
   const submissionId = await ensureSubmissionId(who.email);

@@ -48,17 +48,25 @@ unconfigured`; `canEditInWindow` = open only; `unconfigured` locks — the secur
 `canEditSubmission`/`isLockedAfterSubmit` fold in the post-submit lock), shared by the
 server gates and the UI. `resolveStudentAccess` loads the submission status + group flag and
 returns `canEdit` + `lockedAfterSubmit` (the student pages show a `SubmittedLockBanner` vs.
-the window banner; admins toggle the lock per group via `setGroupLockAfterSubmit`). A seeded,
-single, non-deletable **"New Student"**
-default group (`groups.isDefault`, id `default`) catches ungrouped/self-added students
-**only when** the admin's default-assignment toggle is on; the batch **Save sweep**
-(`runDefaultAssignmentSweep`) assigns it to `groupId IS NULL AND groupAssignedAuto = false`
-students and marks them auto (sticky `students.groupAssignedAuto`, so a later manual
-unassign isn't re-grabbed). Group assignment is **persisted, never at roster ingest** —
-written by the admin (picker / pasted emails) or the dormant `applyDefaultGroupOnSelfAdd`
-hook (future magic-link self-add). Migration `0005` adds `groups` + the two student
-columns; `0006` drops the old unused `form_windows` table (superseded); `0007` adds
-`groups.lockAfterSubmit`. The seed upserts the default group.
+the window banner; admins toggle the lock per group via `setGroupLockAfterSubmit`).
+**Exactly one group holds `groups.isDefault`** (seeded as **"New Student"**, id `default`;
+re-pointable via `setDefaultGroup` — test group refused; the flag holder can't be
+deleted): it catches ungrouped/self-added students **only when** the admin's
+default-assignment toggle is on; the batch **Save sweep** (`runDefaultAssignmentSweep`)
+assigns it (resolved by flag, never by id) to `groupId IS NULL AND groupAssignedAuto =
+false` students and marks them auto (sticky `students.groupAssignedAuto`, so a later
+manual unassign isn't re-grabbed). Group assignment is **persisted, never at roster
+ingest** — written by the admin (picker / pasted emails) or the dormant
+`applyDefaultGroupOnSelfAdd` hook (future magic-link self-add). Migration `0005` adds
+`groups` + the two student columns; `0006` drops the old unused `form_windows` table
+(superseded); `0007` adds `groups.lockAfterSubmit`. The seed inserts the "New Student"
+group only if absent (default-flagged only when no group holds the flag). The
+**travel-excusal cutoff** (default 9/1) lives in `app_settings` (`getTravelCutoff` in
+`settings.ts`), editable on `/admin/groups` (`TravelCutoffPanel`); on/after it the
+travel step **refuses** new entries and locks existing ones — the pure policy seam is
+`LATE_TRAVEL_POLICY`/`decideTravelSubmission` in `domain/travel.ts` (`"refuse"` now;
+flip to `"accept-and-flag"` to restore late-accept + `travel_late` flagging, whose
+paths stay wired).
 
 Drive folder layout (PLAN §12): the configured root (`DRIVE_FOLDER_ID`) holds the running
 `Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**
@@ -209,9 +217,9 @@ The **throwaway test-account manager** is a **production admin feature** at
 in `auth/require-admin.ts` — also used by `admin/actions.ts` + `groups/actions.ts`),
 for walking the student flow in any position (admin training). Create by display
 name — the email is derived as `slug@test.muster.invalid` (pure, TDD-tested
-`test-accounts/email.ts`); accounts are off-roster in the always-open `dev-test`
-group ("Test accounts"), so they never show in responses/export/sheet/non-response
-tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
+`test-accounts/email.ts`); accounts are off-roster in the `dev-test` group ("Test
+accounts", seeded wide-open; window editable on `/admin/groups` like any group), so
+they never show in responses/export/sheet/non-response tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
 via the existing `magic-link` provider (no auth-config changes; replaces the admin's
 session — return via Google). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
@@ -339,8 +347,10 @@ These are non-obvious and pervade the data model — internalize them before edi
   scheduler-side, not modeled here.
 - **Hard rules block submission; soft rules allow + flag.** Hard: min reachable (§2),
   ≥1 open OR close selected (§6), spans ≥2 days (≥3 for SL) (§7). Soft: missing
-  weekend → auto-assign + flag (Barista exempt) (§5); travel created after the
-  **9/1 global cutoff** → accepted but flagged "not excused (late)" (§8).
+  weekend → auto-assign + flag (Barista exempt) (§5). Travel on/after the **global
+  cutoff** (default 9/1, admin-configurable) is **refused outright** (§8) — the old
+  accept-and-flag ("not excused (late)") behavior is one policy flip away in
+  `domain/travel.ts`.
 - **Evidence is advisory, never auto-parsed.** Course schedule (required),
   extracurriculars (optional), and travel proofs are all uploaded images/PDFs shown
   to the scheduler as clickable thumbnails → lightbox for manual review. Conflict

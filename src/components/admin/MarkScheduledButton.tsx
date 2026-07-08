@@ -43,7 +43,7 @@ export function MarkScheduledButton({
         color: scheduled ? "var(--color-text-success)" : "var(--color-text-primary)",
       }}
     >
-      {scheduled ? "✓ scheduled" : "mark scheduled"}
+      {pending ? "saving…" : scheduled ? "✓ scheduled" : "mark scheduled"}
     </button>
   );
 }

@@ -154,7 +154,9 @@ async function writeSelectionAndFlags(
         detail: `No weekend shift selected; auto-assigned ${autoAssigned.label}.`,
       });
     }
-    // Late travel (created after the 9/1 cutoff) → flag for the scheduler (§8).
+    // Late travel (unexcused entries) → flag for the scheduler (§8). Under the
+    // active "refuse" late policy (domain/travel.ts) unexcused rows can't be
+    // created, so this stays dormant until the policy flips to accept-and-flag.
     const lateTravel = await tx
       .select({ id: travelRequests.id })
       .from(travelRequests)
@@ -164,7 +166,7 @@ async function writeSelectionAndFlags(
         id: randomUUID(),
         submissionId,
         type: "travel_late",
-        detail: `${lateTravel.length} travel entr${lateTravel.length === 1 ? "y" : "ies"} added after the 9/1 cutoff (not excused).`,
+        detail: `${lateTravel.length} travel entr${lateTravel.length === 1 ? "y" : "ies"} added after the cutoff (not excused).`,
       });
     }
   }

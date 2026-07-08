@@ -14,6 +14,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
+import { setSetting, deleteSetting, SETTING_TRAVEL_CUTOFF } from "@/lib/settings";
 import {
   syncResponsesSheet,
   RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
@@ -101,6 +102,28 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
 
   revalidatePath("/admin/responses");
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
+  return { ok: true };
+}
+
+/**
+ * Set (an ISO instant) or clear (null ⇒ revert to the 9/1 default) the
+ * travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
+ * new entries under the active late-travel policy (domain/travel.ts).
+ */
+export async function setTravelCutoff(iso: string | null): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (iso === null) {
+    await deleteSetting(SETTING_TRAVEL_CUTOFF);
+  } else {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return { ok: false, error: "Invalid date." };
+    await setSetting(SETTING_TRAVEL_CUTOFF, d.toISOString());
+  }
+  revalidatePath("/admin/groups");
+  revalidatePath("/travel");
+  revalidatePath("/intro");
   return { ok: true };
 }
 

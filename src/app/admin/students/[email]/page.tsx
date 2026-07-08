@@ -186,7 +186,12 @@ export default async function StudentDetailPage({
                   </div>
                   {grid.weekend && (
                     <div>
-                      <SubHead>Weekend</SubHead>
+                      <SubHead>
+                        Weekend
+                        <span style={weekendModeBadge(submission.everyWeekendOptIn)}>
+                          {submission.everyWeekendOptIn ? "EVERY weekend" : "alternating (A/B)"}
+                        </span>
+                      </SubHead>
                       <PrefTable sub={grid.weekend} />
                     </div>
                   )}
@@ -599,6 +604,22 @@ const swatch: React.CSSProperties = {
   borderRadius: 3,
   verticalAlign: -1,
 };
+/** The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet one. */
+const weekendModeBadge = (every: boolean): React.CSSProperties => ({
+  display: "inline-block",
+  marginLeft: 8,
+  padding: "1px 8px",
+  borderRadius: 10,
+  fontSize: 11,
+  fontWeight: 600,
+  ...(every
+    ? { background: "var(--color-text-info)", color: "#fff" }
+    : {
+        background: "var(--color-background-secondary)",
+        color: "var(--color-text-secondary)",
+        border: "1px solid var(--color-border-tertiary)",
+      }),
+});
 const excusedBadge: React.CSSProperties = {
   background: "#e6f4ea",
   color: "var(--color-text-success)",

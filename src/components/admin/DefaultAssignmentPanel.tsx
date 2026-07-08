@@ -40,7 +40,7 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
       } else {
         setMsg({
           ok: true,
-          text: `Swept ${res.swept} ungrouped student${res.swept === 1 ? "" : "s"} into New Student.`,
+          text: `Swept ${res.swept} ungrouped student${res.swept === 1 ? "" : "s"} into the default group.`,
         });
       }
       router.refresh();
@@ -52,8 +52,9 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Default assignment</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
         When on, clicking <strong>Save</strong> assigns every ungrouped student (and future
-        self-adds) to the <strong>New Student</strong> group. Already-grouped or previously
-        auto-assigned students are left alone. Turning this off never un-assigns anyone.
+        self-adds) to the group marked <strong>default</strong> above. Already-grouped or
+        previously auto-assigned students are left alone. Turning this off never un-assigns
+        anyone.
       </p>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         <input

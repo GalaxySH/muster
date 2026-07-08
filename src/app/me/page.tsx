@@ -5,7 +5,8 @@ import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
-import { Page, PrimaryLink, infoCardStyle, primaryButtonStyle } from "@/components/ui";
+import { InfoCard, Page, PrimaryLink } from "@/components/ui";
+import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
@@ -25,9 +26,12 @@ export default async function MePage() {
       </p>
 
       {!flow.onRoster ? (
-        <p>
-          You&apos;re signed in but are not a known employee. If this is a mistake, contact <strong>{CONTACT_EMAIL}</strong>.
-        </p>
+        <InfoCard title="We don't recognize this account">
+          <p style={{ margin: 0 }}>
+            You&apos;re signed in but are not a known employee. If this is a mistake, contact{" "}
+            <strong>{CONTACT_EMAIL}</strong>.
+          </p>
+        </InfoCard>
       ) : flow.access.kind === "no-group" ? (
         <NoGroupNotice />
       ) : (
@@ -72,31 +76,29 @@ export default async function MePage() {
               shown above.
             </p>
           ) : flow.status.kind === "not-started" ? (
-            <section style={infoCardStyle}>
-              <h2 style={{ fontSize: 16, marginTop: 0 }}>First, confirm your info</h2>
+            <InfoCard title="First, confirm your info">
               <p style={{ marginTop: 0 }}>Here&apos;s what we have:</p>
               <ul style={{ margin: "0 0 10px", paddingLeft: "1.2rem", display: "grid", gap: 4 }}>
                 <li>Name: <strong>{flow.displayName}</strong></li>
                 <li>Position: <strong>{flow.positionName ?? "not set yet"}</strong></li>
-                {flow.international && <li>International student</li>}
+                <li>{flow.international ? "International" : "Domestic"} student</li>
               </ul>
               <form action={confirmRosterInfo}>
-                <button type="submit" style={{ ...primaryButtonStyle, marginBottom: 10 }}>
+                <SubmitButton pendingLabel="One moment…" style={{ marginBottom: 10 }}>
                   Yes, that&apos;s me
-                </button>
+                </SubmitButton>
               </form>
               <p style={{ fontSize: 13, color: "#666", marginBottom: 0 }}>
                 Something look wrong? Email <strong>{CONTACT_EMAIL}</strong> before continuing.
               </p>
-            </section>
+            </InfoCard>
           ) : (
-            <section style={infoCardStyle}>
-              <h2 style={{ fontSize: 16, marginTop: 0 }}>Pick up where you left off</h2>
+            <InfoCard title="Pick up where you left off">
               <p style={{ marginTop: 0 }}>
                 You&apos;ve started but haven&apos;t submitted yet. Next up: {flow.status.stepLabel}.
               </p>
               <PrimaryLink href={flow.status.href}>Continue</PrimaryLink>
-            </section>
+            </InfoCard>
           )}
         </div>
       )}
@@ -106,9 +108,11 @@ export default async function MePage() {
       </p>
 
       {session.isAdmin && (
-        <p style={{ marginTop: 20 }}>
-          You have admin access. <Link href="/admin">Admin dashboard</Link>
-        </p>
+        <InfoCard title="Admin access" style={{ marginTop: 20 }}>
+          <p style={{ margin: 0 }}>
+            You have admin access. <Link href="/admin">Open the admin dashboard</Link>.
+          </p>
+        </InfoCard>
       )}
       <SignOutButton />
     </Page>

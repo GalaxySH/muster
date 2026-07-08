@@ -12,6 +12,8 @@ import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/componen
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
+import { getTravelCutoff } from "@/lib/settings";
+import { decideTravelSubmission } from "@/lib/domain/travel";
 
 export default async function TravelPage() {
   const session = await getAppSession();
@@ -28,12 +30,15 @@ export default async function TravelPage() {
     );
   }
 
-  const [evidence, drive, access, reachable] = await Promise.all([
+  const now = new Date();
+  const [evidence, drive, access, reachable, { cutoff }] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     resolveStudentAccess(student.email),
     loadReachableSteps(student.email),
+    getTravelCutoff(now),
   ]);
+  const canAddTravel = decideTravelSubmission(now, cutoff).allowed;
 
   if (access.access === "no-group") {
     return (
@@ -57,7 +62,13 @@ export default async function TravelPage() {
       ) : (
         <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
       )}
-      <TravelForm initial={evidence} driveConnected={drive.connected} editable={editable} />
+      <TravelForm
+        initial={evidence}
+        driveConnected={drive.connected}
+        editable={editable}
+        cutoffMs={cutoff.getTime()}
+        canAddTravel={canAddTravel}
+      />
       {editable && !evidence.submitted && <TravelContinue />}
     </Page>
   );

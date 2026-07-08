@@ -8,14 +8,18 @@ import {
   renameGroup,
   setGroupWindow,
   setGroupLockAfterSubmit,
+  setDefaultGroup,
   deleteGroup,
 } from "@/lib/groups/actions";
+import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
+import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 export interface GroupView {
   id: string;
   name: string;
   isDefault: boolean;
   memberCount: number;
+  memberEmails: string[];
   opensAtMs: number | null;
   closesAtMs: number | null;
   lockAfterSubmit: boolean;
@@ -60,6 +64,7 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
 
 function GroupRow({ group }: { group: GroupView }) {
   const router = useRouter();
+  const isTestGroup = group.id === TEST_GROUP_ID;
   const [opens, setOpens] = useState(toLocalInput(group.opensAtMs));
   const [closes, setCloses] = useState(toLocalInput(group.closesAtMs));
   const [name, setName] = useState(group.name);
@@ -145,13 +150,40 @@ function GroupRow({ group }: { group: GroupView }) {
           <>
             <strong>{group.name}</strong>
             {group.isDefault && <span style={badge}>default</span>}
+            {isTestGroup && <span style={badge}>test accounts</span>}
             <button type="button" onClick={() => setEditingName(true)} style={linkBtn}>
               rename
             </button>
+            {!group.isDefault && !isTestGroup && (
+              <button
+                type="button"
+                disabled={pending}
+                style={linkBtn}
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Make "${group.name}" the default group? New/ungrouped students will be swept into it instead.`,
+                    )
+                  ) {
+                    act(() => setDefaultGroup(group.id), "Now the default group.");
+                  }
+                }}
+              >
+                make default
+              </button>
+            )}
           </>
         )}
       </td>
-      <td style={td}>{group.memberCount}</td>
+      <td style={{ ...td, whiteSpace: "nowrap" }}>
+        {group.memberCount}
+        {group.memberEmails.length > 0 && (
+          <>
+            {" "}
+            <CopyEmailsButton emails={group.memberEmails} label="copy emails" />
+          </>
+        )}
+      </td>
       <td style={td}>
         <input
           type="date"
@@ -186,7 +218,7 @@ function GroupRow({ group }: { group: GroupView }) {
         <button type="button" disabled={pending} onClick={saveWindow}>
           Save window
         </button>{" "}
-        {!group.isDefault && (
+        {!group.isDefault && !isTestGroup && (
           <button
             type="button"
             disabled={pending}
@@ -267,16 +299,17 @@ function StatusChip({ state }: { state: WindowState }) {
   );
 }
 
-// date <-> instant helpers. The input is a calendar date; the time defaults to
-// 00:00 in the browser's local timezone, so the window opens/closes at the start
-// of the chosen day. Round-trips through a UTC ISO instant for storage.
-function toLocalInput(ms: number | null): string {
+// date <-> instant helpers (shared with TravelCutoffPanel). The input is a
+// calendar date; the time defaults to 00:00 in the browser's local timezone, so
+// the window opens/closes at the start of the chosen day. Round-trips through a
+// UTC ISO instant for storage.
+export function toLocalInput(ms: number | null): string {
   if (ms == null) return "";
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-function localInputToIso(value: string): string | null {
+export function localInputToIso(value: string): string | null {
   if (!value) return null;
   const d = new Date(`${value}T00:00`); // local midnight on the chosen date
   return Number.isNaN(d.getTime()) ? null : d.toISOString();

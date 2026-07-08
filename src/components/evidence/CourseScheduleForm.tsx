@@ -24,6 +24,7 @@ import {
   fmtHint,
   thumbGrid,
 } from "./shared";
+import { ActionButton } from "@/components/ui";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowUpRightFromSquare } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
@@ -37,7 +38,7 @@ export function CourseScheduleForm({
   /** When false, all uploads/edits are disabled (form window not open — PLAN §13). */
   editable?: boolean;
 }) {
-  const { pending, onUpload, run, note } = useEvidenceRunner();
+  const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   // Uploads need both an active Drive grant and an open form window.
   const canUpload = driveConnected && editable;
   const [notes, setNotes] = useState(initial.extracurricularNotes);
@@ -65,9 +66,14 @@ export function CourseScheduleForm({
         )}
         <form onSubmit={onUpload("course", uploadCourseSchedule)} style={uploadRow}>
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
-          <button type="submit" disabled={pending || !canUpload}>
+          <ActionButton
+            type="submit"
+            pending={busy("course")}
+            pendingLabel="Uploading…"
+            disabled={pending || !canUpload}
+          >
             {initial.courseScheduleFileId ? "Replace and Save" : "Save"}
-          </button>
+          </ActionButton>
           <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>
         {note("course")}
@@ -84,13 +90,15 @@ export function CourseScheduleForm({
           style={{ width: "100%", boxSizing: "border-box", padding: 8 }}
         />
         <div style={{ marginTop: 6 }}>
-          <button
-            type="button"
+          <ActionButton
+            variant="secondary"
+            pending={busy("ecnotes")}
+            pendingLabel="Saving…"
             disabled={pending || !editable}
             onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes))}
           >
             Save notes
-          </button>
+          </ActionButton>
         </div>
         {note("ecnotes")}
 
@@ -109,9 +117,15 @@ export function CourseScheduleForm({
         )}
         <form onSubmit={onUpload("ec", addExtracurricularFile)} style={uploadRow}>
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
-          <button type="submit" disabled={pending || !canUpload}>
+          <ActionButton
+            type="submit"
+            variant="secondary"
+            pending={busy("ec")}
+            pendingLabel="Uploading…"
+            disabled={pending || !canUpload}
+          >
             Save/add another image
-          </button>
+          </ActionButton>
           <span style={fmtHint}>{FORMAT_HINT}</span>
         </form>
         {note("ec")}

@@ -29,7 +29,8 @@ const ERROR_COPY: Record<TestAccountError, string> = {
  * Admin manager for throwaway test accounts (the production successor of the
  * /dev-login manager): create a student in any position, sign in as it to walk
  * the whole student flow (e.g. to train admins), then delete it. Accounts are
- * off-roster, in an always-open group, on a synthetic non-deliverable email
+ * off-roster, in a dedicated "Test accounts" group (initially wide open;
+ * window editable on /admin/groups), on a synthetic non-deliverable email
  * domain — invisible in responses/exports and reachable only from this page.
  */
 export default async function AdminTestUsersPage({
@@ -52,7 +53,7 @@ export default async function AdminTestUsersPage({
       </AppHeader>
       <h1>Test accounts</h1>
       <p style={{ color: "#555" }}>
-        Create throwaway accounts to walkthrough the app. Fill out the details, sign in as the student, and navigate through the flow. Test accounts are not on the roster and are in an always-open group, so they never appear in the response list or other tracking.
+        Create throwaway accounts to walkthrough the app. Fill out the details, sign in as the student, and navigate through the flow. Test accounts are not on the roster and live in the <strong>Test accounts</strong> group (its form window is editable on <Link href="/admin/groups">Groups &amp; form windows</Link>), so they never appear in the response list or other tracking.
       </p>
       <p style={banner}>
         <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign

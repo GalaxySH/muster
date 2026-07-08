@@ -1,9 +1,12 @@
 import { signOutAction } from "@/lib/auth/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export function SignOutButton() {
   return (
     <form action={signOutAction}>
-      <button type="submit">Sign out</button>
+      <SubmitButton variant="secondary" pendingLabel="Signing out…">
+        Sign out
+      </SubmitButton>
     </form>
   );
 }

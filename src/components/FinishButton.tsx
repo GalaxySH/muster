@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { finalizeSubmission } from "@/lib/availability/actions";
-import { primaryButtonStyle, disabledButtonStyle } from "@/components/ui";
+import { ActionButton } from "@/components/ui";
 
 /**
  * The exit-page submit (PLAN §13). Calls finalizeSubmission — the single place a
@@ -32,14 +32,9 @@ export function FinishButton() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={submit}
-        disabled={pending}
-        style={pending ? disabledButtonStyle : primaryButtonStyle}
-      >
-        {pending ? "Submitting…" : "Submit my preferences"}
-      </button>
+      <ActionButton onClick={submit} pending={pending} pendingLabel="Submitting…">
+        Submit my preferences
+      </ActionButton>
       {err && (
         <p role="status" style={{ color: "#b00", marginTop: 10 }}>
           ✗ {err.message}{" "}

@@ -12,22 +12,26 @@ import type { ActionResult } from "@/lib/evidence/actions";
 
 export const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 export const FORMAT_HINT = "PNG/JPEG/PDF only";
-export const CONTACT_EMAIL = "scheduler@example.edu"
-// export const TRAVEL_CUTOFF = new Date("2026-09-01T00:00:00");//superseded by defaultTravelCutoff()
+export const CONTACT_EMAIL = "scheduler@example.edu";
 
 /**
  * The shared "run a server action, show a per-section status note" plumbing.
  * `where` namespaces the message so each section shows only its own result.
+ * `busy(where)` is true only for the section whose action is running, so its
+ * button can swap to a pending label while the others just disable.
  */
 export function useEvidenceRunner() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [runningWhere, setRunningWhere] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; where: string } | null>(null);
 
   function run(where: string, fn: () => Promise<ActionResult>, form?: HTMLFormElement) {
     setMsg(null);
+    setRunningWhere(where);
     startTransition(async () => {
       const res = await fn();
+      setRunningWhere(null);
       setMsg({ ok: res.ok, text: res.ok ? "Saved." : (res.error ?? "Something went wrong."), where });
       if (res.ok) {
         form?.reset();
@@ -35,6 +39,8 @@ export function useEvidenceRunner() {
       }
     });
   }
+
+  const busy = (where: string) => pending && runningWhere === where;
 
   const onUpload =
     (where: string, action: (fd: FormData) => Promise<ActionResult>) =>
@@ -52,7 +58,7 @@ export function useEvidenceRunner() {
       </p>
     ) : null;
 
-  return { pending, run, onUpload, note };
+  return { pending, busy, run, onUpload, note };
 }
 
 export function Section({

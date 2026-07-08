@@ -31,14 +31,46 @@ export function Page({
   );
 }
 
-/** The blue-themed info card used for calls to action (the /me hub boxes, the / greeting). */
-export const infoCardStyle: React.CSSProperties = {
-  background: "#e7f0fb",
-  border: "1px solid #b6d2f2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-  margin: "0.5rem 0 1rem",
-};
+const CARD_TONES = {
+  info: { background: "#e7f0fb", border: "1px solid #b6d2f2" },
+  success: { background: "#e6f4ea", border: "1px solid #b7dfc2" },
+  danger: { background: "#fdecea", border: "1px solid #f0b4ae" },
+} as const;
+
+/**
+ * The tinted notice/call-to-action card (the /me hub boxes, the / greeting, the
+ * /signin banners). `info` (blue) is the default; `success` (green) confirms;
+ * `danger` (red) warns. `title` renders the standard card heading.
+ */
+export function InfoCard({
+  tone = "info",
+  title,
+  role,
+  style,
+  children,
+}: {
+  tone?: keyof typeof CARD_TONES;
+  title?: React.ReactNode;
+  role?: React.AriaRole;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      role={role}
+      style={{
+        ...CARD_TONES[tone],
+        borderRadius: 8,
+        padding: "1rem 1.2rem",
+        margin: "0.5rem 0 1rem",
+        ...style,
+      }}
+    >
+      {title != null && <h2 style={{ fontSize: 16, marginTop: 0 }}>{title}</h2>}
+      {children}
+    </section>
+  );
+}
 
 export const primaryButtonStyle: React.CSSProperties = {
   display: "inline-block",
@@ -70,6 +102,45 @@ export const disabledButtonStyle: React.CSSProperties = {
   color: "#fff",
   cursor: "default",
 };
+
+/**
+ * The standard action button: primary/secondary look, one disabled style, and a
+ * uniform pending state (disabled + label swap) so slow server actions always
+ * give feedback. Presentational only (no hooks) — pass `pending` from
+ * useTransition, or use `<SubmitButton>` (components/SubmitButton.tsx) inside a
+ * `<form action>` to get it from useFormStatus.
+ */
+export function ActionButton({
+  variant = "primary",
+  pending = false,
+  pendingLabel = "Working…",
+  disabled = false,
+  type = "button",
+  onClick,
+  style,
+  children,
+}: {
+  variant?: "primary" | "secondary";
+  pending?: boolean;
+  pendingLabel?: string;
+  disabled?: boolean;
+  type?: "button" | "submit";
+  onClick?: () => void;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const base = variant === "primary" ? primaryButtonStyle : secondaryButtonStyle;
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={pending || disabled}
+      style={{ ...(pending || disabled ? disabledButtonStyle : base), ...style }}
+    >
+      {pending ? pendingLabel : children}
+    </button>
+  );
+}
 
 /** `next/link` styled as the primary button — for forward navigation on server pages. */
 export function PrimaryLink({

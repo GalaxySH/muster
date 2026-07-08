@@ -7,7 +7,7 @@
  * `domain/window.ts`; this layer only loads + joins.
  */
 import "server-only";
-import { and, asc, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { groups, students, positions, submissions } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -18,7 +18,6 @@ import {
   isLockedAfterSubmit,
   type WindowState,
 } from "@/lib/domain/window";
-import { DEFAULT_GROUP_ID } from "./constants";
 
 export interface GroupRow {
   id: string;
@@ -28,36 +27,52 @@ export interface GroupRow {
   lockAfterSubmit: boolean;
   isDefault: boolean;
   memberCount: number;
+  /** Member emails (sorted) — feeds the per-group "copy emails" control. */
+  memberEmails: string[];
 }
 
-/** All groups (default first, then by name) with their member counts. */
+/** All groups (default first, then by name) with their members. */
 export async function listGroups(): Promise<GroupRow[]> {
   const db = getDb();
   const rows = await db.select().from(groups).orderBy(asc(groups.name));
-  const countRows = await db
-    .select({ groupId: students.groupId, n: sql<number>`count(*)` })
+  const memberRows = await db
+    .select({ groupId: students.groupId, email: students.email })
     .from(students)
-    .groupBy(students.groupId);
-  const countByGroup = new Map<string, number>();
-  for (const c of countRows) if (c.groupId) countByGroup.set(c.groupId, Number(c.n));
+    .where(isNotNull(students.groupId))
+    .orderBy(asc(students.email));
+  const emailsByGroup = new Map<string, string[]>();
+  for (const m of memberRows) {
+    if (!m.groupId) continue;
+    const list = emailsByGroup.get(m.groupId) ?? [];
+    list.push(m.email);
+    emailsByGroup.set(m.groupId, list);
+  }
 
   return rows
-    .map((g) => ({
-      id: g.id,
-      name: g.name,
-      opensAt: g.opensAt,
-      closesAt: g.closesAt,
-      lockAfterSubmit: g.lockAfterSubmit,
-      isDefault: g.isDefault,
-      memberCount: countByGroup.get(g.id) ?? 0,
-    }))
+    .map((g) => {
+      const memberEmails = emailsByGroup.get(g.id) ?? [];
+      return {
+        id: g.id,
+        name: g.name,
+        opensAt: g.opensAt,
+        closesAt: g.closesAt,
+        lockAfterSubmit: g.lockAfterSubmit,
+        isDefault: g.isDefault,
+        memberCount: memberEmails.length,
+        memberEmails,
+      };
+    })
     .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
 }
 
-/** The non-deletable default ("New Student") group, or null if not seeded. */
+/**
+ * The current default group — the one that catches swept/self-added students
+ * (`isDefault` flag; exactly one by construction, re-pointable via
+ * setDefaultGroup). Null only if the seed never ran.
+ */
 export async function getDefaultGroup(): Promise<typeof groups.$inferSelect | null> {
   const db = getDb();
-  const [g] = await db.select().from(groups).where(eq(groups.id, DEFAULT_GROUP_ID)).limit(1);
+  const [g] = await db.select().from(groups).where(eq(groups.isDefault, true)).limit(1);
   return g ?? null;
 }
 
