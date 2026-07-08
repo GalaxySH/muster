@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.40
+- **Version:** 0.41
 - **Last updated:** 2026-07-09
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -126,6 +126,11 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
   Leaving and re-import. The workbook bytes are parsed in memory and never stored.
+  *Planned:* a configurable **excluded position titles** property on `/admin/roster`
+  (e.g. Dining Advisory Board members). Today the exclusion list is the hardcoded
+  `SKIP_TITLES` set in `roster/position-mapping.ts`; it should move to admin-editable
+  config (`app_settings`), shown and editable on the import page, seeded from the
+  current hardcoded titles — so a new non-worker title never requires a code change.
 - **Response dashboard** — full response list, fast navigation, search/sort.
 - **Per-student detail** — expanded view + computed stats (§10).
 - **Flags window** — soft-requirement violations (e.g. auto-assigned weekend).
@@ -292,6 +297,13 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
   student can still select them; selection isn't blocked. *v1:* admin sets the flag by
   hand. *Future:* auto-flag from live selection counts (a block flips red once
   oversubscribed) — same opaque UX, self-maintaining.
+- **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
+  adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
+  scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
+  week** (a Sat + Sun pick is two separate week-edge days, not a continuous block).
+  Add a **visual indicator between the two columns** in both weekend grids — the
+  student selection grid (`AvailabilityForm`) and the admin per-student display grid
+  (§10a `PrefTable`) — so the non-adjacency is evident at a glance.
 
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
@@ -837,6 +849,14 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.41 (2026-07-09)** — **Plan notes (spec only, no code change).** (1) **Configurable
+  excluded roster titles (§4.2):** recorded the planned admin-configurable **excluded
+  position titles** property on `/admin/roster` (e.g. Dining Advisory Board members) to
+  replace the hardcoded `SKIP_TITLES` in `roster/position-mapping.ts`; queued as roadmap
+  item 1.7. (2) **Weekend Sat/Sun separation (§7):** the weekend grids' adjacent Sat/Sun
+  columns misread as a contiguous weekend when the scheduling week starts on Sunday —
+  add a visual indicator between the two columns in both the student selection grid and
+  the admin display grid; queued as roadmap item 1.8.
 - **0.40 (2026-07-09)** — **Travel cutoff: admin-configurable + hard stop (roadmap 1.6;
   §5 #8, §7b, §8, §13).** The cutoff moves from a hardcoded 9/1 to `app_settings`
   (`travel_cutoff`; `getTravelCutoff` falls back to the 9/1 default), editable on
