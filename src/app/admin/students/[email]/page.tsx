@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors } from "@/lib/admin/data";
+import { loadHighDemandBlockIds } from "@/lib/availability/data";
+import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
 import { formatTime } from "@/lib/domain/time";
@@ -47,8 +49,10 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
 
 export default async function StudentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ email: string }>;
+  searchParams: Promise<{ group?: string; flag?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/responses");
@@ -56,6 +60,11 @@ export default async function StudentDetailPage({
 
   const { email: emailParam } = await params;
   const email = decodeURIComponent(emailParam);
+  // The group/flag filter follows the admin from the list (roadmap 2.2): it
+  // scopes the prev/next walk + the jump menu, and is preserved on every link.
+  const filters = parseResponseFilters(await searchParams);
+  const filterQuery = serializeResponseFilters(filters);
+  const suffix = filterQuery ? `?${filterQuery}` : "";
   const detail = await loadStudentDetail(email);
 
   if (!detail) {
@@ -63,14 +72,14 @@ export default async function StudentDetailPage({
       <Page width="wide">
         <AppHeader>
           <Crumb href="/admin" label="Admin" />
-          <Crumb href="/admin/responses" label="Responses" />
+          <Crumb href={`/admin/responses${suffix}`} label="Responses" />
         </AppHeader>
         <p>No student found for &quot;{email}&quot;.</p>
       </Page>
     );
   }
 
-  const nav = await getResponseNeighbors(email);
+  const nav = await getResponseNeighbors(email, filters);
   const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
 
   const validation =
@@ -80,17 +89,18 @@ export default async function StudentDetailPage({
         })
       : null;
 
-  const grid = position ? buildAdminGrid(blocks, selection, autoAssigned) : null;
+  const highDemand = position ? await loadHighDemandBlockIds(position.id) : new Set<string>();
+  const grid = position ? buildAdminGrid(blocks, selection, autoAssigned, highDemand) : null;
   const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
   const cap = hourCap(detail.international);
 
-  const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}`;
+  const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}${suffix}`;
 
   return (
     <Page width="full" style={{ padding: "1.25rem 1.5rem" }}>
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
-        <Crumb href="/admin/responses" label="Responses" />
+        <Crumb href={`/admin/responses${suffix}`} label="Responses" />
       </AppHeader>
 
       {/* Identity header */}
@@ -99,14 +109,14 @@ export default async function StudentDetailPage({
           <NavArrow href={nav.prevEmail ? studentHref(nav.prevEmail) : null} dir="prev" />
           <div style={avatar}>{initials(detail.displayName)}</div>
           <div>
-            <div style={{ fontWeight: 500 }}>
-              {detail.displayName}{" "}
-              {nav.index > 0 && (
-                <span style={{ color: "var(--color-text-tertiary)", fontWeight: 400, fontSize: 13 }}>
-                  · {nav.index} of {nav.total}
-                </span>
-              )}
-            </div>
+            <JumpMenu
+              displayName={detail.displayName}
+              index={nav.index}
+              total={nav.total}
+              people={nav.people}
+              currentEmail={detail.email}
+              studentHref={studentHref}
+            />
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
               {detail.email}
               {position && <> &nbsp;·&nbsp; <span style={chip}>{position.name}</span></>}
@@ -338,6 +348,68 @@ export default async function StudentDetailPage({
 
 // --- presentational helpers (server) ---
 
+/**
+ * The student name as a "jump to" disclosure (roadmap 2.2): the summary shows the
+ * name + position in the filtered list; expanding it lists every responder in the
+ * active filter for a one-click jump (each link preserves the filter). Falls back
+ * to a plain name when there's no list to jump within.
+ */
+function JumpMenu({
+  displayName,
+  index,
+  total,
+  people,
+  currentEmail,
+  studentHref,
+}: {
+  displayName: string;
+  index: number;
+  total: number;
+  people: { email: string; displayName: string }[];
+  currentEmail: string;
+  studentHref: (email: string) => string;
+}) {
+  const counter =
+    index > 0 ? (
+      <span style={{ color: "var(--color-text-tertiary)", fontWeight: 400, fontSize: 13 }}>
+        {" "}
+        · {index} of {total}
+      </span>
+    ) : null;
+
+  if (people.length === 0) {
+    return (
+      <div style={{ fontWeight: 500 }}>
+        {displayName}
+        {counter}
+      </div>
+    );
+  }
+
+  return (
+    <details style={{ position: "relative" }}>
+      <summary style={{ cursor: "pointer", fontWeight: 500, listStyle: "revert" }}>
+        {displayName}
+        {counter}
+      </summary>
+      <div style={jumpMenu}>
+        {people.map((p) => (
+          <Link
+            key={p.email}
+            href={studentHref(p.email)}
+            style={{
+              ...jumpItem,
+              ...(p.email === currentEmail ? jumpItemCurrent : null),
+            }}
+          >
+            {p.displayName}
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function SummaryCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div
@@ -455,8 +527,8 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
             <td
               style={{
                 whiteSpace: "nowrap",
-                borderLeft: row.block.highDemand ? "3px solid var(--color-text-danger)" : undefined,
-                paddingLeft: row.block.highDemand ? 5 : 0,
+                borderLeft: row.highDemand ? "3px solid var(--color-text-danger)" : undefined,
+                paddingLeft: row.highDemand ? 5 : 0,
               }}
             >
               {row.label}{" "}
@@ -575,6 +647,35 @@ const chip: React.CSSProperties = {
   padding: "1px 8px",
   borderRadius: "var(--border-radius-md)",
   fontSize: 12,
+};
+const jumpMenu: React.CSSProperties = {
+  position: "absolute",
+  zIndex: 20,
+  top: "100%",
+  left: 0,
+  marginTop: 4,
+  minWidth: 220,
+  maxHeight: 320,
+  overflowY: "auto",
+  background: "var(--color-background-primary)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
+  padding: 4,
+};
+const jumpItem: React.CSSProperties = {
+  display: "block",
+  padding: "5px 8px",
+  borderRadius: "var(--border-radius-md)",
+  fontSize: 13,
+  color: "var(--color-text-primary)",
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+const jumpItemCurrent: React.CSSProperties = {
+  background: "var(--color-background-info)",
+  color: "var(--color-text-info)",
+  fontWeight: 600,
 };
 const cardsGrid: React.CSSProperties = {
   display: "grid",

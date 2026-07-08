@@ -10,20 +10,24 @@
  * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
+  groups,
   positions,
   shiftBlocks,
   students,
   submissions,
   shiftSelections,
+  travelRequests,
   flags,
 } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
+import { applyResponseFilters, type ResponseFilters } from "./response-filters";
+import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 import type { FlagType } from "@/lib/domain/validation";
 
@@ -146,17 +150,22 @@ export interface ResponseRow {
   status: "draft" | "submitted";
   scheduled: boolean;
   desiredHours: number | null;
+  /** Group membership, for the group filter (null = on-roster but ungrouped). */
+  groupId: string | null;
+  /** Flag types on this submission, for the flag filter + count. */
+  flagTypes: FlagType[];
   flagCount: number;
   submittedAt: Date | null;
   updatedAt: Date;
 }
 
 /**
- * All responders (anyone with a submission), in the canonical nav order:
- * by display name, then email. This ordering is the source of truth for the
- * per-student prev/next walk.
+ * Responders (anyone with a submission) matching `filters`, in the canonical nav
+ * order: by display name, then email. This ordering is the source of truth for
+ * the per-student prev/next walk, and the group/flag filters (PLAN §10, roadmap
+ * 2.2) apply here so the list and the neighbor walk stay in lockstep.
  */
-export async function listResponses(): Promise<ResponseRow[]> {
+export async function listResponses(filters: ResponseFilters = {}): Promise<ResponseRow[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -164,6 +173,7 @@ export async function listResponses(): Promise<ResponseRow[]> {
       displayName: students.displayName,
       positionId: students.positionId,
       positionName: positions.name,
+      groupId: students.groupId,
       status: submissions.status,
       scheduled: submissions.scheduled,
       desiredHours: submissions.desiredHours,
@@ -178,15 +188,15 @@ export async function listResponses(): Promise<ResponseRow[]> {
     .where(eq(students.onRoster, true))
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 
-  // One follow-up query for flag counts keyed by submission, avoiding a GROUP BY
-  // round-trip per row. (Response volume is ~400; a single IN is fine.)
+  // One follow-up query for the flag types keyed by submission, avoiding a
+  // GROUP BY round-trip per row. (Response volume is ~400; a single IN is fine.)
   const subIds = await db
     .select({ id: submissions.id, email: submissions.studentEmail })
     .from(submissions);
   const idByEmail = new Map(subIds.map((s) => [s.email, s.id]));
   const allFlags = subIds.length
     ? await db
-        .select({ submissionId: flags.submissionId })
+        .select({ submissionId: flags.submissionId, type: flags.type })
         .from(flags)
         .where(
           inArray(
@@ -195,23 +205,32 @@ export async function listResponses(): Promise<ResponseRow[]> {
           ),
         )
     : [];
-  const flagCountBySub = new Map<string, number>();
+  const flagTypesBySub = new Map<string, FlagType[]>();
   for (const f of allFlags) {
-    flagCountBySub.set(f.submissionId, (flagCountBySub.get(f.submissionId) ?? 0) + 1);
+    const list = flagTypesBySub.get(f.submissionId) ?? [];
+    list.push(f.type);
+    flagTypesBySub.set(f.submissionId, list);
   }
 
-  return rows.map((r) => ({
-    email: r.email,
-    displayName: r.displayName,
-    positionId: r.positionId,
-    positionName: r.positionName,
-    status: r.status,
-    scheduled: r.scheduled,
-    desiredHours: r.desiredHours,
-    flagCount: flagCountBySub.get(idByEmail.get(r.email) ?? "") ?? 0,
-    submittedAt: r.submittedAt,
-    updatedAt: r.updatedAt,
-  }));
+  const mapped: ResponseRow[] = rows.map((r) => {
+    const flagTypes = flagTypesBySub.get(idByEmail.get(r.email) ?? "") ?? [];
+    return {
+      email: r.email,
+      displayName: r.displayName,
+      positionId: r.positionId,
+      positionName: r.positionName,
+      status: r.status,
+      scheduled: r.scheduled,
+      desiredHours: r.desiredHours,
+      groupId: r.groupId,
+      flagTypes,
+      flagCount: flagTypes.length,
+      submittedAt: r.submittedAt,
+      updatedAt: r.updatedAt,
+    };
+  });
+
+  return applyResponseFilters(mapped, filters);
 }
 
 export interface RosterPerson {
@@ -283,20 +302,143 @@ export interface ResponseNeighbors {
   total: number;
   prevEmail: string | null;
   nextEmail: string | null;
+  /** The filtered responders in nav order, for the header "jump to" menu. */
+  people: { email: string; displayName: string }[];
 }
 
-/** Prev/next email + position for the identity header nav (PLAN §10a). */
-export async function getResponseNeighbors(emailRaw: string): Promise<ResponseNeighbors> {
+/**
+ * Prev/next email + position for the identity header nav (PLAN §10a). Walks the
+ * same filtered list the response dashboard shows (roadmap 2.2), so the arrows
+ * follow whatever group/flag filter is active.
+ */
+export async function getResponseNeighbors(
+  emailRaw: string,
+  filters: ResponseFilters = {},
+): Promise<ResponseNeighbors> {
   const email = normalizeEmail(emailRaw);
-  const list = await listResponses();
+  const list = await listResponses(filters);
+  const people = list.map((r) => ({ email: r.email, displayName: r.displayName }));
   const i = list.findIndex((r) => r.email === email);
   if (i === -1) {
-    return { index: 0, total: list.length, prevEmail: null, nextEmail: null };
+    return { index: 0, total: list.length, prevEmail: null, nextEmail: null, people };
   }
   return {
     index: i + 1,
     total: list.length,
     prevEmail: i > 0 ? list[i - 1]!.email : null,
     nextEmail: i < list.length - 1 ? list[i + 1]!.email : null,
+    people,
+  };
+}
+
+export interface UpcomingTravelEntry {
+  id: string;
+  studentEmail: string;
+  studentName: string;
+  positionName: string | null;
+  startDate: string; // ISO yyyy-mm-dd (inclusive)
+  endDate: string; // ISO yyyy-mm-dd (inclusive)
+  note: string | null;
+}
+
+const toIsoDate = (d: Date | string): string =>
+  typeof d === "string" ? d : d.toISOString().slice(0, 10);
+
+/**
+ * On-roster students' travel grouped into the current + next weeks (roadmap 2.3),
+ * so the scheduler can see who is away each week. Every stored entry is excused by
+ * construction (PLAN §8 late policy "refuse"). Pure bucketing in `upcoming-travel.ts`.
+ */
+export async function loadUpcomingTravel(
+  now: Date = new Date(),
+): Promise<TravelWeek<UpcomingTravelEntry>[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: travelRequests.id,
+      studentEmail: submissions.studentEmail,
+      studentName: students.displayName,
+      positionName: positions.name,
+      startDate: travelRequests.startDate,
+      endDate: travelRequests.endDate,
+      note: travelRequests.note,
+    })
+    .from(travelRequests)
+    .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .leftJoin(positions, eq(students.positionId, positions.id))
+    .where(eq(students.onRoster, true))
+    // Name order so same-day entries within a week bucket read alphabetically.
+    .orderBy(asc(students.displayName), asc(students.email));
+
+  const entries: UpcomingTravelEntry[] = rows.map((r) => ({
+    id: r.id,
+    studentEmail: r.studentEmail,
+    studentName: r.studentName,
+    positionName: r.positionName ?? null,
+    startDate: toIsoDate(r.startDate),
+    endDate: toIsoDate(r.endDate),
+    note: r.note ?? null,
+  }));
+
+  return upcomingTravel(entries, now);
+}
+
+export interface ScheduleEmailRecipient {
+  email: string;
+  displayName: string;
+}
+
+export interface ScheduleEmailPreview {
+  groupId: string;
+  groupName: string;
+  /** On-roster, submitted, scheduled members not yet emailed (the send targets). */
+  recipients: ScheduleEmailRecipient[];
+  /** Members already emailed (scheduleEmailSentAt set); skipped on re-run. */
+  alreadyNotified: number;
+}
+
+/**
+ * Who the "your schedule is ready" batch (roadmap 2.4) would email for a group:
+ * on-roster members whose submission is submitted AND scheduled, split into those
+ * not yet notified (recipients) vs. already emailed (skipped, idempotent re-runs).
+ */
+export async function loadScheduleEmailPreview(
+  groupId: string,
+): Promise<ScheduleEmailPreview | null> {
+  const db = getDb();
+  const [grp] = await db
+    .select({ name: groups.name })
+    .from(groups)
+    .where(eq(groups.id, groupId))
+    .limit(1);
+  if (!grp) return null;
+
+  const rows = await db
+    .select({
+      email: students.email,
+      displayName: students.displayName,
+      sentAt: submissions.scheduleEmailSentAt,
+    })
+    .from(students)
+    .innerJoin(submissions, eq(submissions.studentEmail, students.email))
+    .where(
+      and(
+        eq(students.groupId, groupId),
+        eq(students.onRoster, true),
+        eq(submissions.status, "submitted"),
+        eq(submissions.scheduled, true),
+      ),
+    )
+    .orderBy(asc(students.displayName), asc(students.email));
+
+  const recipients = rows
+    .filter((r) => r.sentAt === null)
+    .map((r) => ({ email: r.email, displayName: r.displayName }));
+  return {
+    groupId,
+    groupName: grp.name,
+    recipients,
+    alreadyNotified: rows.length - recipients.length,
   };
 }

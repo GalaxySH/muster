@@ -46,7 +46,8 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
   dayType: mysqlEnum("day_type", dayTypeEnum).notNull(),
   startMinutes: int("start_minutes").notNull(),
   endMinutes: int("end_minutes").notNull(),
-  highDemand: boolean("high_demand").notNull().default(false),
+  // (high_demand removed in roadmap 2.5: demand is now computed from live
+  // selection counts at grid load, not an admin-set column. See domain/demand.ts.)
 });
 
 /**
@@ -76,6 +77,10 @@ export const students = mysqlTable("students", {
   positionId: varchar("position_id", { length: 64 }).references(() => positions.id),
   international: boolean("international").notNull().default(false),
   onRoster: boolean("on_roster").notNull().default(false),
+  // Hire date from the People Coming sheet (PLAN §9). Used only to greet
+  // returning employees (hired before the current cycle) on /me; null when the
+  // workbook omits it or the date is unparseable.
+  hiredOn: date("hired_on", { mode: "date" }),
   // Form-window group membership (PLAN.md §13). No group → no form access.
   // Written on admin assignment / self-add, never at roster ingest.
   groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
@@ -108,6 +113,9 @@ export const submissions = mysqlTable("submissions", {
   // notes per student. Set by admins in the per-student view, never by students.
   scheduled: boolean("scheduled").notNull().default(false),
   schedulerNotes: text("scheduler_notes"),
+  // When the batch "your schedule is ready" email was sent (roadmap 2.4). Null =
+  // not yet notified; the batch send skips already-stamped rows (idempotent).
+  scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
   submittedAt: datetime("submitted_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),

@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.41
+- **Version:** 0.43
 - **Last updated:** 2026-07-09
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -81,7 +81,9 @@ left off" (resume is **inferred from persisted data** — no progress column). T
 flip to **submitted** happens exactly once, at the final exit step (§13).
 
 1. **Sign in** with Google (`@wisc.edu` enforced) → redirected to **`/me`**.
-2. **`/me` hub** branches on the two access gates (§13) then on flow state:
+2. **`/me` hub** branches on the two access gates (§13) then on flow state (returning
+   employees, hired before June of the current cycle, also see a short **welcome-back**
+   greeting, from `students.hiredOn` — §9):
    - **Not on roster / no group** → access notice (no flow).
    - **Done** (status submitted) → review links to every step (editable until the window
      closes).
@@ -131,9 +133,18 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
   `SKIP_TITLES` set in `roster/position-mapping.ts`; it should move to admin-editable
   config (`app_settings`), shown and editable on the import page, seeded from the
   current hardcoded titles — so a new non-worker title never requires a code change.
-- **Response dashboard** — full response list, fast navigation, search/sort.
-- **Per-student detail** — expanded view + computed stats (§10).
-- **Flags window** — soft-requirement violations (e.g. auto-assigned weekend).
+- **Response dashboard** — full response list, fast navigation, search/sort, plus
+  **group + flag filters carried in the URL** so they follow the admin into the
+  per-student view and drive its prev/next walk (roadmap 2.2).
+- **Per-student detail** — expanded view + computed stats (§10). The name is a
+  **jump-to dropdown** over the filtered list for direct hops.
+- **Flags** — soft-requirement violations (e.g. auto-assigned weekend) are surfaced by
+  the **flag filter on the response list** (roadmap 2.2), not a separate page. With
+  `travel_late` retired (§8), that filter is effectively the auto-assigned-weekend queue.
+- **Upcoming travel** (`/admin/travel`, roadmap 2.3) — on-roster students traveling now
+  through the next three weeks, grouped by week, so the scheduler plans around them.
+- **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
+  the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students).
 - **Config** — positions, shift blocks, form windows.
@@ -198,8 +209,10 @@ attaches to each). Editable config so they can be merged further later.
   latest-ending = closing.
 - **Block sets differ by day-type**, and a position may have **no weekend set**
   (Barista is weekday-only). Open/close are derived **per position per day-type**.
-- **`highDemand` flag (§7):** any block may be marked high-demand by the admin; the
-  selection UI shows a bare red bar under it (no explanation), advisory only.
+- **High-demand indicator (§7):** **computed** from live selection counts (roadmap 2.5),
+  not an admin-set flag; the selection UI shows a bare red bar under an over-subscribed
+  block (no explanation), advisory only. (The old `shift_blocks.high_demand` column was
+  retired.)
 
 ### 6.3 Canonical block table
 Authoritative per-position blocks (provided 2026-06). **Open** = earliest-starting
@@ -291,12 +304,16 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
   (§10). A required **`desiredHours`** field helps the scheduler aim within the cap;
   it must be **≥ the position's minimum hours** (hard check `desired_hours`,
   `checkDesiredHours` in the rules engine) but is never capped at the top end.
-- **High-demand indicator (red bar):** blocks the admin marks `highDemand` render a
-  bare **red bar** beneath the time in the selection grid — **no explanation shown**
-  (avoid gaming; these are the most over-subscribed shifts). Purely **advisory** — the
-  student can still select them; selection isn't blocked. *v1:* admin sets the flag by
-  hand. *Future:* auto-flag from live selection counts (a block flips red once
-  oversubscribed) — same opaque UX, self-maintaining.
+- **High-demand indicator (red bar):** a bare **red bar** renders beside an
+  over-subscribed block in the selection grid — **no explanation shown** (avoid gaming;
+  these are the most over-subscribed shifts). Purely **advisory** — the student can still
+  select them; selection isn't blocked. **Computed** (roadmap 2.5): once a position has
+  **≥ 20 submitted responses**, a (block × day) cell whose responder share crosses a
+  threshold (~60%) is high-demand; a block row shows the bar if any of its day cells
+  qualifies. The signal is self-maintaining and supersedes the old admin-set flag (the
+  `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`;
+  computed at grid load in `availability/data.ts`. A graded-intensity view, if ever
+  wanted, stays admin-side.
 - **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
   adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
   scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
@@ -353,17 +370,21 @@ columns from the roster.
 
 - **Student**: `email` (PK / lookup key — must equal Google sign-in email),
   `displayName`, `positionId?` (from roster), `international` (from roster or
-  self-report), `onRoster: bool`, `groupId?` (form-window group — §13; null = no
+  self-report), `hiredOn?` (date, from People Coming; drives the welcome-back greeting —
+  §4.1, roadmap 2.1), `onRoster: bool`, `groupId?` (form-window group — §13; null = no
   access), `groupAssignedAuto: bool` (sticky: set by the default-assignment sweep /
   self-add hook vs. a manual admin assignment).
 - **Position**: `id`, `name`, `minHours`, `minDays`, `weekendExempt: bool` (Barista),
   `active`, `mergedIntoId?`.
 - **ShiftBlock**: `id`, `positionId`, `dayType` (`weekday`|`weekend`), `start`,
-  `end`, `highDemand: bool` (red-bar indicator — §7). Open/close derived.
+  `end`. Open/close derived; high-demand is **computed** from selections (§7, roadmap
+  2.5), no longer a stored column.
 - **Submission**: `id`, `studentEmail`, `submittedAt`, `everyWeekendOptIn: bool`,
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
-  `desiredHours?`, `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
+  §10a), `scheduleEmailSentAt?` (idempotency marker for the batch schedule-ready email —
+  roadmap 2.4), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
@@ -391,12 +412,17 @@ columns from the roster.
 ## 10. Admin View / Outputs
 
 - **Response list:** all submissions, sortable/searchable, **fast prev/next
-  navigation** between students and back to the full list (hard requirement).
+  navigation** between students and back to the full list (hard requirement). **Group +
+  flag filters live in the URL** (roadmap 2.2) so they survive the hop into the
+  per-student view; prev/next walks the filtered list, and the per-student name is a
+  jump-to dropdown over it. One canonical `listResponses(filters)` backs both the list
+  and the neighbor computation.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
   every-weekend opt-in, flags. (Scheduler picks within [floor, cap] from preferences.)
-- **Flags window:** all soft-requirement violations (e.g. auto-assigned weekend).
+- **Flags:** soft-requirement violations (e.g. auto-assigned weekend) are surfaced by
+  the response-list **flag filter** (roadmap 2.2), not a dedicated page.
 - **Non-response tracking:** roster (PC) − responders; rows for off-roster
   responders shown with gaps/missing fields noted.
 - **Export:** ✅ one comprehensive row per submission, available as an **in-app CSV
@@ -672,8 +698,8 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
   toggle off never un-assigns anyone.
 - **Assignment surfaces:** a filterable picker (position / roster / group / name) with
   multi-select, plus a **paste-delimited-emails** path (reports matched vs. unknown).
-  *(Deferred: a hire-date filter — we don't ingest hire date; it conflicts with the
-  data-minimization invariant. Revisit if/when that field is added.)*
+  *(Hire date is now ingested for the welcome-back greeting — §9, roadmap 2.1 — so a
+  hire-date picker filter is an optional follow-up, no longer blocked on the field.)*
 - **Travel-excusal cutoff:** a **single global instant** (default Sep 1), independent of
   windows — a form window open past the cutoff still stops accepting travel. Stored in
   `app_settings` (`travel_cutoff`), editable on the admin groups surface (clear ⇒ 9/1
@@ -849,6 +875,35 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.43 (2026-07-09)** — **Master email switch (§11).** A new admin
+  **`/admin/email-settings`** page with a single toggle enables/disables all outbound
+  email (a global kill-switch). Stored in `app_settings` (`email_sending_enabled`,
+  enabled by default; `getEmailSendingEnabled`); enforced at the one choke point,
+  `sendEmail`, so both sign-in links and the batch schedule-ready send obey it. When off,
+  `sendEmail` suppresses and logs (like the no-API-key dev path); the batch send
+  additionally refuses up front with a clear message so no one is marked notified. Admin
+  action `setEmailSendingEnabled`; client `EmailSettingsPanel` (confirm on turning off).
+- **0.42 (2026-07-09)** — **Tier 2 features (roadmap 2.1–2.5).** Five medium features
+  landed together. (1) **Hire date + welcome-back (2.1; §4.1, §9):** the import now reads
+  an optional Hire Date column from People Coming into `students.hiredOn` (migration
+  `0008`; pure `parseHireDate`), and `/me` greets returners (hired before June of the
+  current cycle — pure `flow/returner.ts`). Amends §13's hire-date deferral. (2)
+  **Response-list filters that follow you (2.2; §4.2, §10):** group + flag-type filters on
+  `/admin/responses` live in the URL (pure `admin/response-filters.ts`), so they survive
+  the hop into the per-student view; `listResponses(filters)` is the one canonical source
+  for the list AND the prev/next neighbor walk, and the per-student name is a jump-to
+  dropdown over the filtered list. The flag filter stands in for the never-built flags
+  window. (3) **Upcoming-travel tab (2.3):** `/admin/travel` groups on-roster students'
+  travel (now through +3 weeks) by Sunday-week (pure `admin/upcoming-travel.ts`). (4)
+  **Batch schedule-ready email (2.4):** `email/resend.ts` split into a generic `sendEmail`
+  core + template callers; `/admin/schedule-email` picks a group, previews recipients
+  (on-roster + submitted + scheduled, not yet emailed), and sends once each with a modest
+  throttle and per-recipient failure report, stamping `submissions.scheduleEmailSentAt`
+  (migration `0009`) for idempotent re-runs. (5) **Computed high-demand (2.5; §6.2, §7):**
+  the red bar is now computed from live selection counts (pure `domain/demand.ts`: ≥ 20
+  submitted responses, ~60% responder share per block×day cell), computed at grid load,
+  reusing the existing per-block red-bar rendering. The manual `shift_blocks.high_demand`
+  column + the `ShiftBlock.highDemand` field were retired (migration `0010`). +34 tests.
 - **0.41 (2026-07-09)** — **Plan notes (spec only, no code change).** (1) **Configurable
   excluded roster titles (§4.2):** recorded the planned admin-configurable **excluded
   position titles** property on `/admin/roster` (e.g. Dining Advisory Board members) to

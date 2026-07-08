@@ -42,7 +42,6 @@ async function main() {
             dayType: b.dayType,
             startMinutes: b.start,
             endMinutes: b.end,
-            highDemand: b.highDemand,
           })
           .onDuplicateKeyUpdate({
             set: {

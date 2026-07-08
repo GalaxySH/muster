@@ -1,13 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  weekendCandidates,
-  needsWeekendAutoAssign,
-  chooseWeekendAutoAssign,
-} from "./auto-assign";
+import { weekendCandidates, needsWeekendAutoAssign, chooseWeekendAutoAssign } from "./auto-assign";
 import type { Position, ShiftBlock, SelectedShift } from "./types";
 
 function block(id: string, dayType: "weekday" | "weekend"): ShiftBlock {
-  return { id, positionId: "p", dayType, start: 510, end: 660, highDemand: false };
+  return { id, positionId: "p", dayType, start: 510, end: 660 };
 }
 
 const blocks: ShiftBlock[] = [

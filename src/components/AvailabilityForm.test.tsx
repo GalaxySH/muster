@@ -23,7 +23,6 @@ function b(id: string, dt: "weekday" | "weekend", s: string, e: string): ShiftBl
     dayType: dt,
     start: parseTime(s),
     end: parseTime(e),
-    highDemand: false,
   };
 }
 

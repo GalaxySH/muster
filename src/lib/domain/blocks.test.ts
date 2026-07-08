@@ -10,7 +10,6 @@ function block(id: string, start: string, end: string): ShiftBlock {
     dayType: "weekday",
     start: parseTime(start),
     end: parseTime(end),
-    highDemand: false,
   };
 }
 

@@ -3,12 +3,13 @@
  * Resolves the signed-in student → position → blocks → existing draft.
  */
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, shiftBlocks, submissions, shiftSelections } from "@/lib/db/schema";
+import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
-import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
+import { highDemandBlockIds, DEMAND_MIN_RESPONDERS, type CellCount } from "@/lib/domain/demand";
+import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
 export interface PositionWithBlocks {
   position: Position;
@@ -27,6 +28,56 @@ export async function loadPositionWithBlocks(
     .from(shiftBlocks)
     .where(eq(shiftBlocks.positionId, positionId));
   return { position: toDomainPosition(posRow), blocks: blockRows.map(toDomainBlock) };
+}
+
+/**
+ * Blocks to flag as high-demand in a position's grid (roadmap 2.5): computed from
+ * submitted responders' own picks (auto-assigned cells excluded), off-roster and
+ * test accounts excluded. Empty until the position clears the responder floor, so
+ * the signal never shows on a thin cohort. Runs at grid load (~cheap, two queries).
+ */
+export async function loadHighDemandBlockIds(positionId: string): Promise<Set<string>> {
+  const db = getDb();
+  const [rc] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(submissions)
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .where(
+      and(
+        eq(students.positionId, positionId),
+        eq(students.onRoster, true),
+        eq(submissions.status, "submitted"),
+      ),
+    );
+  const responderCount = Number(rc?.n ?? 0);
+  if (responderCount < DEMAND_MIN_RESPONDERS) return new Set();
+
+  const rows = await db
+    .select({
+      blockId: shiftSelections.shiftBlockId,
+      day: shiftSelections.day,
+      count: sql<number>`count(distinct ${shiftSelections.submissionId})`,
+    })
+    .from(shiftSelections)
+    .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .where(
+      and(
+        eq(students.positionId, positionId),
+        eq(students.onRoster, true),
+        eq(submissions.status, "submitted"),
+        // Machine-assigned weekend cells aren't preferences; don't count them.
+        eq(shiftSelections.autoAssigned, false),
+      ),
+    )
+    .groupBy(shiftSelections.shiftBlockId, shiftSelections.day);
+
+  const counts: CellCount[] = rows.map((r) => ({
+    blockId: r.blockId,
+    day: r.day as Day,
+    count: Number(r.count),
+  }));
+  return highDemandBlockIds(counts, responderCount);
 }
 
 export interface ExistingSubmission {

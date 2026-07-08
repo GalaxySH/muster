@@ -12,11 +12,20 @@ type SortKey = "name" | "position" | "status" | "requested" | "flags" | "schedul
  * sortable, each row opening the per-student view. Client-side filter/sort is
  * fine at roster scale (~400 rows); the server hands the full list once.
  */
-export function ResponseList({ rows }: { rows: ResponseRow[] }) {
+export function ResponseList({
+  rows,
+  filterQuery = "",
+}: {
+  rows: ResponseRow[];
+  /** Active group/flag filter as a query string; carried onto row links so the
+   *  per-student view keeps the same filter for its prev/next walk (roadmap 2.2). */
+  filterQuery?: string;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("name");
   const [dir, setDir] = useState<1 | -1>(1);
+  const suffix = filterQuery ? `?${filterQuery}` : "";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -92,7 +101,7 @@ export function ResponseList({ rows }: { rows: ResponseRow[] }) {
             {filtered.map((r) => (
               <tr
                 key={r.email}
-                onClick={() => router.push(`/admin/students/${encodeURIComponent(r.email)}`)}
+                onClick={() => router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)}
                 style={{ borderTop: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}
               >
                 <td style={td}>

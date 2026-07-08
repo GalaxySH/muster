@@ -41,6 +41,19 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value);
 }
 
+/**
+ * A date cell as an ISO `yyyy-mm-dd` string (or "" if empty/unrecognized).
+ * ExcelJS returns date-formatted cells as JS Dates; take the UTC calendar date
+ * so a stored midnight doesn't drift a day. A pre-formatted text date passes
+ * through; anything else (e.g. a bare number) is ignored rather than guessed.
+ */
+function cellDateIso(value: ExcelJS.CellValue): string {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "string") return value.trim();
+  return "";
+}
+
 /** Map header text (row 1) → 1-based column index, lowercased/trimmed. */
 function headerColumns(ws: ExcelJS.Worksheet): Map<string, number> {
   const headers = new Map<string, number>();
@@ -58,10 +71,20 @@ function findCol(
   label: string,
   sheetName: string,
 ): number {
+  const col = findColOptional(headers, predicate);
+  if (col === null) throw new Error(`Could not find the ${label} column in "${sheetName}"`);
+  return col;
+}
+
+/** Like findCol but returns null instead of throwing (for optional columns). */
+function findColOptional(
+  headers: Map<string, number>,
+  predicate: (header: string) => boolean,
+): number | null {
   for (const [header, col] of headers) {
     if (predicate(header)) return col;
   }
-  throw new Error(`Could not find the ${label} column in "${sheetName}"`);
+  return null;
 }
 
 export async function readPeopleComing(source: WorkbookSource): Promise<RawRosterRow[]> {
@@ -87,6 +110,8 @@ export async function readPeopleComing(source: WorkbookSource): Promise<RawRoste
     "International",
     COMING_SHEET_NAME,
   );
+  // Optional: older workbooks (and the data-minimized past) may omit hire date.
+  const hireCol = findColOptional(headers, (h) => h.includes("hire"));
 
   const rows: RawRosterRow[] = [];
   // rowCount = last row with content. (actualRowCount counts only populated
@@ -102,6 +127,7 @@ export async function readPeopleComing(source: WorkbookSource): Promise<RawRoste
       email,
       positionTitle: cellText(row.getCell(titleCol).value).trim(),
       international: cellText(row.getCell(intlCol).value).trim(),
+      hireDate: hireCol === null ? "" : cellDateIso(row.getCell(hireCol).value),
     });
   }
   return rows;

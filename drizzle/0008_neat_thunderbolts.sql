@@ -1,0 +1,1 @@
+ALTER TABLE `students` ADD `hired_on` date;

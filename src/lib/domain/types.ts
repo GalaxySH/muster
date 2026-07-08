@@ -32,8 +32,6 @@ export interface ShiftBlock {
   start: number;
   /** minutes since midnight, exclusive end */
   end: number;
-  /** admin-marked over-subscribed block; renders a red bar (advisory). */
-  highDemand: boolean;
 }
 
 /** A selectable availability position (PLAN.md §6.1). */

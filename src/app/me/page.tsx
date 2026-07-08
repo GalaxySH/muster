@@ -25,6 +25,12 @@ export default async function MePage() {
         {session.email}
       </p>
 
+      {flow.onRoster && flow.returning && (
+        <p style={{ color: "#196127", fontWeight: 600, marginTop: 0 }}>
+          Welcome back! Good to have you back this year.
+        </p>
+      )}
+
       {!flow.onRoster ? (
         <InfoCard title="We don't recognize this account">
           <p style={{ margin: 0 }}>

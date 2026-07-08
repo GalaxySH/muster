@@ -10,7 +10,6 @@ function b(id: string, dt: "weekday" | "weekend", start: string, end: string): S
     dayType: dt,
     start: parseTime(start),
     end: parseTime(end),
-    highDemand: false,
   };
 }
 

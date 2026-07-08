@@ -22,6 +22,8 @@ export interface BlockRow {
   isClose: boolean;
   /** e.g. "6:30a–10:15a" */
   label: string;
+  /** Computed over-subscribed indicator (roadmap 2.5); renders a red bar (advisory). */
+  highDemand: boolean;
 }
 
 export interface SubGrid {
@@ -40,6 +42,7 @@ function buildSubGrid(
   blocks: readonly ShiftBlock[],
   dayType: DayType,
   days: readonly Day[],
+  highDemandBlockIds: ReadonlySet<string>,
 ): SubGrid {
   const set = blocks
     .filter((b) => b.dayType === dayType)
@@ -50,16 +53,25 @@ function buildSubGrid(
     isOpen: block.id === openId,
     isClose: block.id === closeId,
     label: `${formatTime(block.start)}–${formatTime(block.end)}`,
+    highDemand: highDemandBlockIds.has(block.id),
   }));
   return { dayType, days, rows };
 }
 
-export function buildGridModel(blocks: readonly ShiftBlock[]): GridModel {
+/**
+ * Build the grid view model. `highDemandBlockIds` (computed from live selection
+ * counts, roadmap 2.5) flags the blocks that render a red bar; omit it (empty) for
+ * contexts with no demand signal yet.
+ */
+export function buildGridModel(
+  blocks: readonly ShiftBlock[],
+  highDemandBlockIds: ReadonlySet<string> = new Set(),
+): GridModel {
   const weekend = blocks.some((b) => b.dayType === "weekend")
-    ? buildSubGrid(blocks, "weekend", WEEKEND_DAYS)
+    ? buildSubGrid(blocks, "weekend", WEEKEND_DAYS, highDemandBlockIds)
     : null;
   return {
-    weekday: buildSubGrid(blocks, "weekday", WEEKDAY_DAYS),
+    weekday: buildSubGrid(blocks, "weekday", WEEKDAY_DAYS, highDemandBlockIds),
     weekend,
   };
 }

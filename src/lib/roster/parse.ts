@@ -15,6 +15,8 @@ export interface RawRosterRow {
   positionTitle: string;
   email: string;
   international: string;
+  /** Hire date as an ISO `yyyy-mm-dd` string, or "" when absent (PLAN §9). */
+  hireDate: string;
 }
 
 /** A name+email pair from the "People Leaving" sheet (cell values stringified). */
@@ -35,6 +37,8 @@ export interface RosterStudent {
   /** null when the title has no mapping; student self-reports at onboarding. */
   positionId: string | null;
   international: boolean;
+  /** Hire date (midnight UTC), or null when absent/unparseable. */
+  hiredOn: Date | null;
 }
 
 export interface RosterAdmin {
@@ -57,6 +61,15 @@ export interface RosterParseResult {
 
 function parseInternational(value: string): boolean {
   return value.trim().toLowerCase().startsWith("y");
+}
+
+/** Parse an ISO `yyyy-mm-dd` hire date to a UTC-midnight Date, or null if blank/invalid. */
+export function parseHireDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
@@ -98,6 +111,7 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
       displayName,
       positionId,
       international: parseInternational(row.international ?? ""),
+      hiredOn: parseHireDate(row.hireDate ?? ""),
     });
   }
 

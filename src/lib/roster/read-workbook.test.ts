@@ -50,6 +50,32 @@ describe("readPeopleComing", () => {
       "dee@wisc.edu",
     ]);
   });
+
+  it("reads a hire-date column (Date cell) as an ISO string, else empty", async () => {
+    const buf = await workbookBuffer((wb) => {
+      const ws = wb.addWorksheet("People Coming");
+      ws.getRow(1).values = ["Name", "Position Title", "Email", "International", "Hire Date"];
+      ws.getRow(2).values = [
+        "Ann A",
+        "Culinary Assistant",
+        "ann@wisc.edu",
+        "No",
+        new Date(Date.UTC(2025, 7, 20)),
+      ];
+      // Row with no hire-date cell → "".
+      ws.getRow(3).values = ["Bob B", "Dishwasher", "bob@wisc.edu", "No"];
+    });
+    const rows = await readPeopleComing(buf);
+    expect(rows.map((r) => r.hireDate)).toEqual(["2025-08-20", ""]);
+  });
+
+  it("returns empty hire dates when the column is absent", async () => {
+    const buf = await workbookBuffer((wb) =>
+      addComingSheet(wb, [["Ann A", "Culinary Assistant", "ann@wisc.edu", "No"]]),
+    );
+    const rows = await readPeopleComing(buf);
+    expect(rows[0]?.hireDate).toBe("");
+  });
 });
 
 describe("readPeopleLeaving", () => {

@@ -36,6 +36,23 @@ against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), 
 DB switched to the host's central MariaDB + scripted nightly backups (v0.29). Still
 to do: install the backup cron on the box + the production deploy dry-run.
 
+**Tier 2 continuing-development features** (roadmap 2.1–2.5, PLAN 0.42): (1) **hire-date
+ingest** — the import reads an optional Hire Date column from People Coming into
+`students.hiredOn`, driving a **welcome-back** greeting on `/me` for returners (hired
+before June of the current cycle; pure `flow/returner.ts`); (2) **URL-driven group + flag
+filters** on `/admin/responses` that follow you into the per-student view (pure
+`admin/response-filters.ts`; `listResponses(filters)` is the single source for the list
+AND the prev/next walk; the per-student name is a jump-to dropdown; the flag filter
+replaces the never-built flags window); (3) an **upcoming-travel** tab `/admin/travel`
+(pure `admin/upcoming-travel.ts`, grouped by Sunday-week, now through +3 weeks); (4) a
+**batch schedule-ready email** `/admin/schedule-email` (generic `sendEmail` core in
+`email/resend.ts` + template callers; recipients = on-roster + submitted + scheduled;
+idempotent via `submissions.scheduleEmailSentAt`); (5) **computed high-demand** — the red
+bar now derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
+responses, ~60% responder share; computed in `availability/data.ts`
+`loadHighDemandBlockIds`, reusing the existing per-block rendering), retiring the manual
+`shift_blocks.high_demand` column + the `ShiftBlock.highDemand` field.
+
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
 student groups** with open/close windows — three gates: (1) **membership** — a student must
 have a persisted `students.groupId` or they're **denied** the form (no inferred fallback);
@@ -88,17 +105,24 @@ old name; the student-facing pages are now `/course-schedule` + `/travel`).
 Admin-views layering (`src/lib/admin/` + `src/components/admin/`): `summary.ts` is the
 **pure** presenter (`hourCap`, `buildAdminGrid` — overlays the saved selection +
 auto-assigned cell onto the shared `availability/grid.ts` model as per-cell
-on/auto/off). `data.ts` (server-only) loads `loadStudentDetail` (student + position +
-blocks + submission + selection/auto split + flags + evidence via `evidence/data.ts`),
-`listResponses` (the canonical nav order), and `getResponseNeighbors` (prev/next).
-`actions.ts` ("use server", **admin-gated**) owns the two admin mutations —
-`setScheduled` and `saveSchedulerNotes` — which write the new `submissions.scheduled` /
-`scheduler_notes` columns. The per-student page is a server component; the client islands
-are `MarkScheduledButton`, `SchedulerNotes`, and `EvidenceThumb` (one thumbnail+lightbox
-for all three evidence kinds — images inline, PDFs via `<iframe>`, both through the
-`/api/evidence/[fileId]` proxy). The flags & checks panel is **recomputed live** from
-`validateAvailability` + the evidence, not read from the persisted `flags` rows. Wireframe
-design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
+on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
+`loadStudentDetail` (student + position + blocks + submission + selection/auto split +
+flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
+order, now filter-aware), `getResponseNeighbors(email, filters)` (prev/next + the
+filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
+`loadScheduleEmailPreview` (2.4). The **group + flag filters** are a pure seam
+(`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
+per-student page, so the filter follows you and the neighbor walk stays in lockstep;
+`ResponseFilterBar` drives the URL. `actions.ts` ("use server", **admin-gated**) owns
+`setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
+`schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
+`ScheduleEmailPanel` island). The per-student page is a server component; the client
+islands are `MarkScheduledButton`, `SchedulerNotes`, and `EvidenceThumb` (one
+thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
+both through the `/api/evidence/[fileId]` proxy). The flags & checks panel is
+**recomputed live** from `validateAvailability` + the evidence, not read from the
+persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+(2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`): the admin grants
 `drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,
@@ -196,7 +220,13 @@ Magic-link fallback (PLAN §11) — auth only, for users Google rejects: pure to
 cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redeem in
 `magic-link-store.ts` (only the SHA-256 hash stored; redemption is one atomic single-use
 `UPDATE`); delivery via `src/lib/email/resend.ts` (verified domain `re.hauge.rocks`;
-**no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). Server
+**no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). All
+outbound email flows through one choke point, `sendEmail`, which obeys a **master switch**
+(`app_settings.email_sending_enabled`, `getEmailSendingEnabled`; enabled by default):
+when off it suppresses+logs every message, so sign-in links and the batch schedule-ready
+send both stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
+`EmailSettingsPanel`); the batch send also refuses up front when off so no one is marked
+notified. Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the
@@ -230,7 +260,9 @@ be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-l
 (and before that, `/admin/preview`).
 
 Roster import (`src/lib/roster/`): parses the PCPL "People Coming" sheet → upserts
-`students` (minimized fields only) + `admin_users`, idempotently. `importRoster` takes a
+`students` (minimized fields only — name, position, international, and now an **optional
+Hire Date** → `students.hiredOn`, located by header, tolerated when absent) + `admin_users`,
+idempotently. `importRoster` takes a
 file path or an in-memory buffer; two entry points share it — the CLI script and the
 `/admin/roster` upload (`roster/actions.ts` `importRosterFromUpload`, admin-gated;
 pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,

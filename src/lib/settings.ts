@@ -17,6 +17,8 @@ export const SETTING_RESPONSES_SHEET_SYNCED_AT = "responses_sheet_synced_at";
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
 /** ISO instant overriding the default 9/1 travel cutoff (PLAN §8). Absent ⇒ default. */
 export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
+/** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
+export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -51,4 +53,13 @@ export async function getTravelCutoff(
     if (!Number.isNaN(d.getTime())) return { cutoff: d, isCustom: true };
   }
   return { cutoff: defaultTravelCutoff(now), isCustom: false };
+}
+
+/**
+ * The master email switch (admin-set). Enabled by default; only an explicit "0"
+ * turns it off. When off, no outbound email is sent (sign-in links or batch
+ * notifications) — the choke point is `sendEmail` in `email/resend.ts`.
+ */
+export async function getEmailSendingEnabled(): Promise<boolean> {
+  return (await getSetting(SETTING_EMAIL_SENDING_ENABLED)) !== "0";
 }

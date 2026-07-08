@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "@/lib/domain/types";
-import {
-  MAX_HOURS_DOMESTIC,
-  MAX_HOURS_INTERNATIONAL,
-  buildAdminGrid,
-  hourCap,
-} from "./summary";
+import { MAX_HOURS_DOMESTIC, MAX_HOURS_INTERNATIONAL, buildAdminGrid, hourCap } from "./summary";
 
 // Minimal block fixtures: one weekday block, two weekend blocks.
 const weekdayOpen: ShiftBlock = {
@@ -14,7 +9,6 @@ const weekdayOpen: ShiftBlock = {
   dayType: "weekday",
   start: 6 * 60 + 45, // 6:45a (earliest start → derived open)
   end: 10 * 60,
-  highDemand: false,
 };
 const weekdayClose: ShiftBlock = {
   id: "wd-close",
@@ -22,7 +16,6 @@ const weekdayClose: ShiftBlock = {
   dayType: "weekday",
   start: 20 * 60, // 8p
   end: 23 * 60 + 30, // 11:30p (latest end → derived close)
-  highDemand: true,
 };
 const weekendA: ShiftBlock = {
   id: "we-a",
@@ -30,7 +23,6 @@ const weekendA: ShiftBlock = {
   dayType: "weekend",
   start: 8 * 60 + 45,
   end: 12 * 60 + 30,
-  highDemand: false,
 };
 const weekendB: ShiftBlock = {
   id: "we-b",
@@ -38,7 +30,6 @@ const weekendB: ShiftBlock = {
   dayType: "weekend",
   start: 17 * 60, // 5p
   end: 20 * 60 + 30, // 8:30p
-  highDemand: false,
 };
 
 const allBlocks = [weekdayOpen, weekdayClose, weekendA, weekendB];
@@ -79,13 +70,14 @@ describe("buildAdminGrid", () => {
     expect(row.cells[0]).toBe("auto");
   });
 
-  it("carries through derived open/close and high-demand tags", () => {
-    const grid = buildAdminGrid(allBlocks, [], []);
+  it("carries through derived open/close and the computed high-demand overlay", () => {
+    const grid = buildAdminGrid(allBlocks, [], [], new Set(["wd-close"]));
     const open = grid.weekday.rows.find((r) => r.block.id === "wd-open")!;
     const close = grid.weekday.rows.find((r) => r.block.id === "wd-close")!;
     expect(open.isOpen).toBe(true);
+    expect(open.highDemand).toBe(false);
     expect(close.isClose).toBe(true);
-    expect(close.block.highDemand).toBe(true);
+    expect(close.highDemand).toBe(true);
   });
 
   it("has a weekend sub-grid of null for a weekday-only position", () => {

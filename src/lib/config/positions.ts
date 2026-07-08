@@ -19,7 +19,6 @@ function blockSet(positionId: string, dayType: DayType, specs: readonly RangeSpe
     dayType,
     start: parseTime(start),
     end: parseTime(end),
-    highDemand: false,
   }));
 }
 

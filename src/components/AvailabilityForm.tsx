@@ -410,7 +410,7 @@ function Grid({
                   whiteSpace: "nowrap",
                 }}
               >
-                {row.block.highDemand && (
+                {row.highDemand && (
                   <span
                     aria-hidden
                     title="high demand"

@@ -1,0 +1,1 @@
+ALTER TABLE `submissions` ADD `schedule_email_sent_at` datetime;

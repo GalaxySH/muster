@@ -1,0 +1,1 @@
+ALTER TABLE `shift_blocks` DROP COLUMN `high_demand`;

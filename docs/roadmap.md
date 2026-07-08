@@ -128,7 +128,7 @@ days sit at opposite ends of the week. Add a visual indicator between the two co
 
 ## Tier 2 — Medium features
 
-### 2.1 Hire date + welcome-back message — **M**
+### 2.1 Hire date + welcome-back message — **M** ✅ *shipped (PLAN 0.42)*
 Ingest a hire-date column from People Coming (migration:
 `students.hiredOn: date?`), show a "welcome back" greeting to returners
 (hired before June of the current cycle) on `/me`.
@@ -136,7 +136,7 @@ Ingest a hire-date column from People Coming (migration:
 data minimization — landing this amends PLAN §9/§13 (and unlocks the deferred
 hire-date picker filter as an optional follow-up).
 
-### 2.2 Response-list filters that follow you — **M**
+### 2.2 Response-list filters that follow you — **M** ✅ *shipped (PLAN 0.42)*
 - Add a **form-window group** filter to the response list (alongside the
   existing client-side search/sort), with filter state lifted into URL
   `searchParams` so it survives navigation.
@@ -154,7 +154,7 @@ hire-date picker filter as an optional follow-up).
 and the neighbor computation — the filter logic lives once, server-side,
 instead of split client/server.
 
-### 2.3 Admin "travel to be excused" tab — **M**
+### 2.3 Admin "travel to be excused" tab — **M** ✅ *shipped (PLAN 0.42)*
 New admin surface listing travel requests that have become current: now
 through +3 weeks, **grouped and separated by week**, each entry showing the
 student and the inclusive day range (after 1.6, every stored entry is excused
@@ -162,7 +162,7 @@ by construction). Pure date logic
 (`upcomingTravel(requests, now)`, TDD) + a thin `/admin/travel` page joined
 against on-roster students; linked from the dashboard.
 
-### 2.4 Batch "your schedule has been created" email — **M**
+### 2.4 Batch "your schedule has been created" email — **M** ✅ *shipped (PLAN 0.42)*
 - *Refactor first:* split `email/resend.ts` into a generic
   `sendEmail({to, subject, text, html})` core; the magic-link mail becomes a
   template caller (net-simpler seam, needed by 3.1's digest too).
@@ -172,7 +172,7 @@ against on-roster students; linked from the dashboard.
 - Preview the recipient list, confirm, send with modest throttle (Resend rate
   limits), report per-recipient failures. Dev fallback: console log.
 
-### 2.5 High-demand heatmap in the availability grid — **M**
+### 2.5 High-demand heatmap in the availability grid — **M** ✅ *shipped (PLAN 0.42)*
 Auto-compute demand instead of the manual `shift_blocks.highDemand` flag —
 this is PLAN §7's planned "future: auto-flag from live selection counts."
 - Pure demand model (TDD): eligible once a position has **≥ 20 submitted

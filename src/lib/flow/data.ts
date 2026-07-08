@@ -13,6 +13,7 @@ import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation
 import { type WindowState } from "@/lib/domain/window";
 import { POSITIONS } from "@/lib/config/positions";
 import { flowStatus, reachableStepKeys, type FlowInputs, type FlowStatus, type WizardStepKey } from "./steps";
+import { isReturningStudent } from "./returner";
 
 export type FlowAccess =
   | { kind: "no-group" }
@@ -34,6 +35,8 @@ export type FlowState =
       positionId: string | null;
       positionName: string | null;
       international: boolean;
+      /** Hired before the current cycle (§4.1) → show a welcome-back greeting. */
+      returning: boolean;
       access: FlowAccess;
       status: FlowStatus;
     };
@@ -96,6 +99,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     positionId: form.student.positionId,
     positionName: positionName(form.student.positionId),
     international: form.student.international,
+    returning: isReturningStudent(form.student.hiredOn, new Date()),
     access,
     status: flowStatus(inputs),
   };

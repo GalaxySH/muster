@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Position, ShiftBlock } from "@/lib/domain/types";
-import {
-  EXPORT_HEADERS,
-  buildExportMatrix,
-  toCsv,
-  type ExportAggregate,
-} from "./export";
+import { EXPORT_HEADERS, buildExportMatrix, toCsv, type ExportAggregate } from "./export";
 
 const position: Position = {
   id: "ca",
@@ -20,7 +15,6 @@ const open: ShiftBlock = {
   dayType: "weekday",
   start: 6 * 60 + 30,
   end: 10 * 60 + 15,
-  highDemand: false,
 };
 const weekend: ShiftBlock = {
   id: "we",
@@ -28,7 +22,6 @@ const weekend: ShiftBlock = {
   dayType: "weekend",
   start: 17 * 60,
   end: 20 * 60,
-  highDemand: false,
 };
 
 function aggregate(over: Partial<ExportAggregate> = {}): ExportAggregate {
@@ -55,7 +48,13 @@ function aggregate(over: Partial<ExportAggregate> = {}): ExportAggregate {
     extracurricularNotes: "Marching band",
     extracurricularFileIds: ["EC1", "EC2"],
     travel: [
-      { startDate: "2026-09-06", endDate: "2026-09-08", excused: false, note: null, proofFileId: "TR1" },
+      {
+        startDate: "2026-09-06",
+        endDate: "2026-09-08",
+        excused: false,
+        note: null,
+        proofFileId: "TR1",
+      },
     ],
     ...over,
   };
@@ -144,6 +143,6 @@ describe("toCsv", () => {
 
   it("prefixes AND RFC-quotes a value that is both a formula trigger and has a comma", () => {
     const csv = toCsv([["=SUM(A1,A2)"]]);
-    expect(csv).toBe("\"'=SUM(A1,A2)\"");
+    expect(csv).toBe('"\'=SUM(A1,A2)"');
   });
 });

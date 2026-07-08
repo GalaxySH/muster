@@ -14,7 +14,12 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
-import { setSetting, deleteSetting, SETTING_TRAVEL_CUTOFF } from "@/lib/settings";
+import {
+  setSetting,
+  deleteSetting,
+  SETTING_TRAVEL_CUTOFF,
+  SETTING_EMAIL_SENDING_ENABLED,
+} from "@/lib/settings";
 import {
   syncResponsesSheet,
   RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
@@ -124,6 +129,18 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
   revalidatePath("/admin/groups");
   revalidatePath("/travel");
   revalidatePath("/intro");
+  return { ok: true };
+}
+
+/**
+ * Master switch for outbound email (the /admin/email-settings toggle). When off,
+ * `sendEmail` suppresses every message (sign-in links and batch notifications).
+ */
+export async function setEmailSendingEnabled(enabled: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_EMAIL_SENDING_ENABLED, enabled ? "1" : "0");
+  revalidatePath("/admin/email-settings");
   return { ok: true };
 }
 

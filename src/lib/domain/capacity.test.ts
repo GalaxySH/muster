@@ -10,7 +10,6 @@ function wk(id: string, start: string, end: string): ShiftBlock {
     dayType: "weekday",
     start: parseTime(start),
     end: parseTime(end),
-    highDemand: false,
   };
 }
 function we(id: string, start: string, end: string): ShiftBlock {
@@ -20,7 +19,6 @@ function we(id: string, start: string, end: string): ShiftBlock {
     dayType: "weekend",
     start: parseTime(start),
     end: parseTime(end),
-    highDemand: false,
   };
 }
 

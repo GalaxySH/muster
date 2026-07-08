@@ -1,16 +1,22 @@
 /**
- * Transactional email via Resend (PLAN §11). The app owns the magic-link token;
- * Resend is only the courier. Sends from the verified `re.hauge.rocks` domain
- * (`EMAIL_FROM`). In dev (no `RESEND_API_KEY`) the link is logged to the server
- * console instead of sent, so local/automated testing needs no real mailbox.
+ * Transactional email via Resend (PLAN §11). The app owns any tokens; Resend is
+ * only the courier. Sends from the verified `re.hauge.rocks` domain (`EMAIL_FROM`).
+ * In dev (no `RESEND_API_KEY`) messages are logged to the server console instead
+ * of sent, so local/automated testing needs no real mailbox.
+ *
+ * `sendEmail` is the generic core; the `send*Email` helpers are template callers
+ * (magic-link sign-in, schedule-created) so message copy lives in one place.
  */
 import "server-only";
 import { env } from "@/lib/env";
+import { getEmailSendingEnabled } from "@/lib/settings";
+import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
-export interface MagicLinkEmail {
+export interface EmailMessage {
   to: string;
-  url: string;
-  name?: string;
+  subject: string;
+  text: string;
+  html?: string;
 }
 
 function escapeHtml(s: string): string {
@@ -21,13 +27,47 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Deliver a magic-link sign-in email (or log it in dev). Throws on send failure. */
-export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Promise<void> {
+/** Send one transactional email via Resend, or log it in dev. Throws on send failure. */
+export async function sendEmail({ to, subject, text, html }: EmailMessage): Promise<void> {
+  // Master switch (admin-set, /admin/email-settings): when off, nothing is sent.
+  // This is the single choke point, so every sender obeys it.
+  if (!(await getEmailSendingEnabled())) {
+    console.log(`[email] sending is turned off; suppressed message to ${to}: "${subject}"`);
+    return;
+  }
   if (!env.RESEND_API_KEY) {
-    console.log(`[magic-link] no RESEND_API_KEY set, link for ${to}:\n${url}`);
+    console.log(`[email] no RESEND_API_KEY set. Would send to ${to}: "${subject}"\n${text}`);
     return;
   }
 
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM,
+      to: [to],
+      subject,
+      text,
+      ...(html ? { html } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend send failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+}
+
+export interface MagicLinkEmail {
+  to: string;
+  url: string;
+  name?: string;
+}
+
+/** Deliver a magic-link sign-in email (or log it in dev). Throws on send failure. */
+export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Promise<void> {
   const greeting = name ? `Hi ${name},` : "Hi,";
   const text =
     `${greeting}\n\nUse this link to sign in to GDEC Scheduling (Muster). ` +
@@ -39,22 +79,25 @@ export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Pro
     `<p><a href="${url}">Sign in to Muster</a></p>` +
     `<p style="color:#666">If you didn't request this, you can ignore this email.</p>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.EMAIL_FROM,
-      to: [to],
-      subject: "Your GDEC Scheduling sign-in link",
-      text,
-      html,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend send failed (${res.status}): ${body.slice(0, 300)}`);
-  }
+  await sendEmail({ to, subject: "Your GDEC Scheduling sign-in link", text, html });
+}
+
+export interface ScheduleCreatedEmail {
+  to: string;
+  name?: string;
+}
+
+/** Tell a student their W2W schedule is ready (roadmap 2.4). Throws on send failure. */
+export async function sendScheduleCreatedEmail({ to, name }: ScheduleCreatedEmail): Promise<void> {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const text =
+    `${greeting}\n\nYour dining work schedule for this semester has been created. You will receive an email from WhenToWork (W2W) with when it has been published, which will also include the shifts you were given. ` +
+    `From now on you will be able to view your scheduled shifts on W2W. Schedules will be published 1-2 weeks in advance.\n\n` +
+    `If something looks off, do not reply to this email. Send an email to ${CONTACT_EMAIL}.\n\nThank you.`;
+  const html =
+    `<p>${escapeHtml(greeting)}</p>` +
+    `<p>Your dining work schedule for this semester has been created. You will receive an email from WhenToWork (W2W) when it has been published, which will also include the shifts you were given. From now on you will be able to view your scheduled shifts on W2W. Schedules will be published 1-2 weeks in advance.</p>` +
+    `<p style="color:#666">If something looks off, do not reply to this email. Send an email to ${CONTACT_EMAIL}.</p>`;
+
+  await sendEmail({ to, subject: "Work schedule created", text, html });
 }

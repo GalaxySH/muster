@@ -4,7 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendar, faFileImport, faList, faUniversalAccess, faUserGear } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { faBadgeCheck, faCalendar, faEnvelope, faFileImport, faGear, faList, faPlaneDeparture, faUniversalAccess, faUserGear } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
 import { Page } from "@/components/ui";
 
@@ -25,6 +25,15 @@ export default async function AdminPage() {
       <FontAwesomeIcon icon={faUniversalAccess} /> <Link href="/admin/non-responses">Missing responses list</Link>
       </p>
       <p>
+      <FontAwesomeIcon icon={faPlaneDeparture} /> <Link href="/admin/travel">Upcoming travel</Link>
+      </p>
+      <p>
+      <FontAwesomeIcon icon={faEnvelope} /> <Link href="/admin/schedule-email">Batch sched email</Link>
+      </p>
+      <p>
+      <FontAwesomeIcon icon={faGear} /> <Link href="/admin/email-settings">Email settings</Link>
+      </p>
+      <p>
       <FontAwesomeIcon icon={faCalendar} /> <Link href="/admin/groups">Who can respond and when</Link>
       </p>
       <p>
@@ -37,7 +46,7 @@ export default async function AdminPage() {
       <FontAwesomeIcon icon={faUserGear} /> <Link href="/admin/test-users">Test accounts for training</Link>
       </p>
       <p>
-      <Link href="https://stats.uptimerobot.com/iSpewSMtY1" target="_blank" rel="noreferrer">Status page</Link>
+      <FontAwesomeIcon icon={faBadgeCheck} /> <Link href="https://stats.uptimerobot.com/iSpewSMtY1" target="_blank" rel="noreferrer">Status page</Link>
       </p>
       <SignOutButton />
     </Page>

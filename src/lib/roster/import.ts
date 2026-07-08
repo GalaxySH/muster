@@ -84,6 +84,7 @@ export async function importRoster({
           displayName: s.displayName,
           positionId: s.positionId,
           international: s.international,
+          hiredOn: s.hiredOn,
           onRoster: true,
         })
         .onDuplicateKeyUpdate({
@@ -91,6 +92,7 @@ export async function importRoster({
             displayName: s.displayName,
             positionId: s.positionId,
             international: s.international,
+            hiredOn: s.hiredOn,
             onRoster: true,
           },
         });

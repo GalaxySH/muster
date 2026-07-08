@@ -57,6 +57,27 @@
       "when": 1782155283748,
       "tag": "0007_typical_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1783546615047,
+      "tag": "0008_neat_thunderbolts",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1783547479025,
+      "tag": "0009_daily_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1783547984305,
+      "tag": "0010_safe_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }

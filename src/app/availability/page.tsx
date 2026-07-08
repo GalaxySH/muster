@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
-import { loadStudentForm } from "@/lib/availability/data";
+import { loadStudentForm, loadHighDemandBlockIds } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadReachableSteps } from "@/lib/flow/data";
@@ -55,7 +55,10 @@ export default async function AvailabilityPage() {
   // Window gate (PLAN §13): only an open window permits edits, and if the group
   // locks after submit, an already-submitted student is read-only too.
   const editable = access.canEdit;
-  const reachable = await loadReachableSteps(form.student.email);
+  const [reachable, highDemand] = await Promise.all([
+    loadReachableSteps(form.student.email),
+    loadHighDemandBlockIds(form.position.id),
+  ]);
 
   return (
     <Page width="wide">
@@ -71,7 +74,7 @@ export default async function AvailabilityPage() {
         key={form.position.id}
         position={form.position}
         blocks={form.blocks}
-        gridModel={buildGridModel(form.blocks)}
+        gridModel={buildGridModel(form.blocks, highDemand)}
         international={form.student.international}
         initialSelection={form.selection}
         initialAutoAssigned={form.autoAssigned}

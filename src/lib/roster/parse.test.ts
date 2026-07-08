@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseRoster,
   parseLeaving,
+  parseHireDate,
   reconcileLeaving,
   type RawRosterRow,
   type RawLeavingRow,
@@ -12,6 +13,7 @@ const row = (over: Partial<RawRosterRow>): RawRosterRow => ({
   positionTitle: "Culinary Assistant",
   email: "test1@wisc.edu",
   international: "No",
+  hireDate: "",
   ...over,
 });
 
@@ -28,18 +30,21 @@ describe("parseRoster", () => {
         displayName: "Test Person",
         positionId: "culinary-assistant",
         international: true,
+        hiredOn: null,
       },
       {
         email: "sl1@wisc.edu",
         displayName: "Test Person",
         positionId: "shift-lead",
         international: false,
+        hiredOn: null,
       },
       {
         email: "st1@wisc.edu",
         displayName: "Test Person",
         positionId: "stocker",
         international: false,
+        hiredOn: null,
       },
     ]);
   });
@@ -90,6 +95,28 @@ describe("parseRoster", () => {
     ]);
     expect(students).toHaveLength(0);
     expect(skipped.map((s) => s.reason)).toEqual(["missing_email", "non_wisc_email"]);
+  });
+
+  it("carries a parsed hire date onto the student", () => {
+    const { students } = parseRoster([row({ hireDate: "2025-08-20" })]);
+    expect(students[0]?.hiredOn?.toISOString()).toBe("2025-08-20T00:00:00.000Z");
+  });
+});
+
+describe("parseHireDate", () => {
+  it("parses a yyyy-mm-dd string to UTC midnight", () => {
+    expect(parseHireDate("2025-08-20")?.toISOString()).toBe("2025-08-20T00:00:00.000Z");
+  });
+
+  it("accepts an ISO datetime prefix", () => {
+    expect(parseHireDate("2025-08-20T00:00:00.000Z")?.toISOString()).toBe(
+      "2025-08-20T00:00:00.000Z",
+    );
+  });
+
+  it("returns null for blank or unrecognized values", () => {
+    expect(parseHireDate("")).toBeNull();
+    expect(parseHireDate("not a date")).toBeNull();
   });
 });
 
