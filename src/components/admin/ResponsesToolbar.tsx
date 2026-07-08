@@ -42,7 +42,7 @@ export function ResponsesToolbar({
       } else if (s.cooldown) {
         setMsg({
           ok: true,
-          text: `Rebuilt recently — next rebuild allowed at ${fmtTime(s.nextEligibleAt)}.`,
+          text: `Rebuilt recently. Next rebuild allowed at ${fmtTime(s.nextEligibleAt)}.`,
         });
       }
       router.refresh();

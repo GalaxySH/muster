@@ -26,7 +26,7 @@ import { MAGIC_LINK_PROVIDER } from "./config";
 /**
  * Coarse GLOBAL issuance budget (PLAN §11): an in-memory sliding window shared
  * across ALL emails. The app runs as a single Node process (standalone container),
- * so module-level state is a valid process-wide limiter — no DB/migration needed.
+ * so module-level state is a valid process-wide limiter; no DB/migration needed.
  * It backstops the per-email cooldown: even a script walking the whole roster
  * (every address eligible + past its own cooldown) can trigger at most
  * MAGIC_LINK_GLOBAL_MAX real sign-in emails per rolling window.
@@ -46,7 +46,7 @@ export async function requestMagicLink(formData: FormData) {
   // Best-effort: only ever issue to an eligible address, once per cooldown, and
   // within the global budget (the last gate, so a slot is consumed only for an
   // otherwise-sendable request). The recipient's name is inferred from the roster
-  // (not collected). Any failure is swallowed — the response below is identical
+  // (not collected). Any failure is swallowed; the response below is identical
   // regardless, and an exhausted budget is likewise indistinguishable to callers.
   try {
     if (
@@ -64,7 +64,7 @@ export async function requestMagicLink(formData: FormData) {
     console.error("Magic-link request failed (non-fatal):", e);
   }
 
-  // Neutral, constant-shape response — never reveal whether the address exists.
+  // Neutral, constant-shape response; never reveal whether the address exists.
   redirect("/signin?sent=1");
 }
 
@@ -79,7 +79,7 @@ export async function redeemAndSignIn(formData: FormData) {
     if (error instanceof AuthError) {
       redirect(`/magic/redeem?error=1&token=${encodeURIComponent(token)}`);
     }
-    // Otherwise it's the success NEXT_REDIRECT thrown by signIn — let it through.
+    // Otherwise it's the success NEXT_REDIRECT thrown by signIn; let it through.
     throw error;
   }
 }

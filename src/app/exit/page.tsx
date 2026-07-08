@@ -8,8 +8,8 @@ import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
 
 /**
- * Final wizard step (PLAN §13). Sets expectations — these are preferences, not a
- * schedule — and holds the one button that finalizes the submission.
+ * Final wizard step (PLAN §13). Sets expectations (these are preferences, not a
+ * schedule) and holds the one button that finalizes the submission.
  */
 export default async function ExitPage() {
   const session = await getAppSession();

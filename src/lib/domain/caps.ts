@@ -1,7 +1,7 @@
 /**
  * Scheduler-side weekly hour cap (PLAN.md §5 #3, §10).
  *
- * NOT an entry constraint — students may select more than their cap. It's used
+ * NOT an entry constraint; students may select more than their cap. It's used
  * as a target hint (e.g. the "Max" shortcut for desired hours) and as context
  * in the admin view.
  */

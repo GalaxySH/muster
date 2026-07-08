@@ -378,6 +378,14 @@ seam, delete dead code, shrink a file. Never "refactor" by only adding layers,
 indirection, or options alongside the old path. If a change can't simplify what it
 touches, keep the change minimal and leave the surrounding code alone.
 
+**UI copy rule (hard rule):** user-facing text must never use em dashes, and it must
+read naturally, the way a person would say it. Keep it short and functional: tell the
+user what they need to know or do, and leave out WHY the system works that way.
+Implementation rationale belongs in code comments or PLAN.md, never in the UI (e.g.
+"so they never appear in the response list or other tracking" is a design reason, not
+user-facing copy). Where possible, code comments should also avoid em dashes and read
+naturally.
+
 ## Privacy / storage invariant (do not violate)
 
 - **The app never stores image bytes.** Uploads are relayed into UW-managed Google

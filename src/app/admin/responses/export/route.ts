@@ -1,5 +1,5 @@
 /**
- * Admin-only CSV export of all responses (PLAN.md §10) — the same matrix that
+ * Admin-only CSV export of all responses (PLAN.md §10): the same matrix that
  * backs the running Drive sheet, downloaded on demand. Prefixed with a BOM so
  * Excel reads the UTF-8 (en-dashes in shift times etc.) correctly.
  */

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /**
- * Copies a list of emails (comma-separated) to the clipboard — e.g. all
+ * Copies a list of emails (comma-separated) to the clipboard, e.g. all
  * outstanding non-responders, for a quick reminder mail-merge (PLAN §18b).
  */
 export function CopyEmailsButton({ emails, label }: { emails: string[]; label?: string }) {

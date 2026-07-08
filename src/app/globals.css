@@ -42,7 +42,7 @@ body {
    Horizontal padding shrinks on narrow viewports for mobile. */
 .page {
   width: 100%;
-  margin: 0; /* left-aligned — never auto-centered */
+  margin: 0; /* left-aligned, never auto-centered */
   padding: 2rem clamp(1rem, 4vw, 2rem);
   color: var(--color-text-primary);
 }
@@ -55,7 +55,7 @@ body {
 .page--wide {
   max-width: 1000px;
 }
-/* Full-bleed: the response-review dashboard is the deliberate exception — it
+/* Full-bleed: the response-review dashboard is the deliberate exception; it
    fills the screen so a reviewer can glance the whole response without scroll. */
 .page--full {
   max-width: none;

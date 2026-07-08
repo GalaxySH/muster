@@ -2,7 +2,7 @@
  * Pure roster parsing/classification (PLAN.md §4.2, §9, §16).
  *
  * Maps raw "People Coming" rows to students / admins / skipped, applying data
- * minimization (only name, email, position, international are carried — never
+ * minimization (only name, email, position, international are carried, never
  * Campus ID, phone, or tracking columns). No I/O; unit-tested with synthetic
  * rows. The xlsx reading lives in ./read-workbook.
  */
@@ -32,7 +32,7 @@ export interface LeavingStudent {
 export interface RosterStudent {
   email: string;
   displayName: string;
-  /** null when the title has no mapping — student self-reports at onboarding. */
+  /** null when the title has no mapping; student self-reports at onboarding. */
   positionId: string | null;
   international: boolean;
 }
@@ -81,7 +81,7 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
       continue;
     }
     if (SKIP_TITLES.has(title)) {
-      result.skipped.push({ reason: "excluded_title", detail: `${displayName} — ${title}` });
+      result.skipped.push({ reason: "excluded_title", detail: `${displayName} · ${title}` });
       continue;
     }
     if (ADMIN_TITLES.has(title)) {
@@ -121,12 +121,12 @@ export function parseLeaving(rows: readonly RawLeavingRow[]): LeavingStudent[] {
 }
 
 export interface LeavingReconciliation {
-  /** People only in "People Leaving" — genuinely gone; mark off-roster. */
+  /** People only in "People Leaving": genuinely gone; mark off-roster. */
   markLeft: LeavingStudent[];
   /**
    * People in BOTH sheets: a promotion/position change moves the old row to
    * "People Leaving" and adds a fresh "People Coming" entry. They stay active
-   * with their People Coming classification — reported, never marked left.
+   * with their People Coming classification: reported, never marked left.
    */
   movedWithinWorkbook: LeavingStudent[];
 }

@@ -110,7 +110,7 @@ export async function readPeopleComing(source: WorkbookSource): Promise<RawRoste
 /**
  * Reads the "People Leaving" sheet (name + email only). Tolerant by design:
  * the sheet may lack position/international columns, and older single-sheet
- * workbooks have no such sheet at all — in that case we return [] rather than
+ * workbooks have no such sheet at all; in that case we return [] rather than
  * throw, so they still import.
  */
 export async function readPeopleLeaving(source: WorkbookSource): Promise<RawLeavingRow[]> {

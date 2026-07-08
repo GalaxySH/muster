@@ -6,7 +6,7 @@ import { ActionButton, primaryButtonStyle } from "@/components/ui";
 
 /**
  * Travel-step gate (PLAN §4). Travel is optional, so we can't require an entry to
- * advance — instead the student must explicitly acknowledge they're done before
+ * advance; instead the student must explicitly acknowledge they're done before
  * the "Continue" button enables.
  */
 export function TravelContinue() {

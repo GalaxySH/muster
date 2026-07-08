@@ -43,7 +43,7 @@ async function main() {
     console.log(`  left marked off:   ${summary.leftMarked}`);
     console.log(`  rows skipped:      ${summary.skipped.length}`);
     if (summary.movedWithinWorkbook.length > 0) {
-      console.log("\n  in both sheets (promoted/moved — kept on roster):");
+      console.log("\n  in both sheets (promoted/moved, kept on roster):");
       for (const email of summary.movedWithinWorkbook) console.log(`    ${email}`);
     }
     console.log("\n  by position:");
@@ -52,7 +52,7 @@ async function main() {
     }
     if (Object.keys(summary.unmappedTitles).length > 0) {
       console.log(
-        "\n  ⚠ unmapped titles (imported with no position — add to position-mapping.ts):",
+        "\n  ⚠ unmapped titles (imported with no position, add to position-mapping.ts):",
       );
       for (const [title, n] of Object.entries(summary.unmappedTitles)) {
         console.log(`    ${String(n).padStart(3)}  "${title}"`);

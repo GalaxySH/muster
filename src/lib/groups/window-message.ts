@@ -1,5 +1,5 @@
 /**
- * User-facing copy for the form-access gates (PLAN.md §13). Pure — shared by the
+ * User-facing copy for the form-access gates (PLAN.md §13). Pure, shared by the
  * server actions (error strings) and the student pages (banners) so the wording
  * stays in one place. Date formatting happens here; pages render server-side so
  * there's no client/server locale mismatch.

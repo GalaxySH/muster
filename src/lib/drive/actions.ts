@@ -55,7 +55,7 @@ export async function testDriveRelay(): Promise<DriveTestResult> {
     return matches
       ? {
           ok: true,
-          message: `Success — created, read back, and cleaned up a test file${
+          message: `Success. Created, read back, and cleaned up a test file${
             env.DRIVE_FOLDER_ID ? " in the configured folder" : " (no DRIVE_FOLDER_ID set; used My Drive root)"
           }.`,
         }

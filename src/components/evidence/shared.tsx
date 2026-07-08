@@ -2,7 +2,7 @@
 
 /**
  * Shared client-side primitives for the split evidence pages (course schedule +
- * activities, and travel). The two forms — CourseScheduleForm and TravelForm —
+ * activities, and travel). The two forms, CourseScheduleForm and TravelForm,
  * share the same upload/runner plumbing, thumbnails, and styling, kept here so
  * neither page duplicates it.
  */
@@ -119,7 +119,7 @@ export function Thumb({
             📄 View file
           </span>
         ) : (
-          // Private, auth-proxied blob (not a static asset) — next/image can't optimize it.
+          // Private, auth-proxied blob (not a static asset); next/image can't optimize it.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={url}

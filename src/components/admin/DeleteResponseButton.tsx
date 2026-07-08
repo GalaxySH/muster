@@ -8,7 +8,7 @@ import { deleteResponse } from "@/lib/admin/actions";
  * Admin-only "delete response" control (PLAN §10). Confirms, then permanently
  * removes the student's submission (availability, flags, and uploaded proofs).
  * Used both in the response list (compact "icon" variant, inside a clickable
- * row — so it stops propagation) and in the per-student header ("full" variant,
+ * row, so it stops propagation) and in the per-student header ("full" variant,
  * which redirects back to the list on success).
  */
 export function DeleteResponseButton({

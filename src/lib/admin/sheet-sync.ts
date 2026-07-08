@@ -84,7 +84,7 @@ export async function syncResponsesSheet({
   return { synced: true, url, lastSyncedAt: now, nextEligibleAt: null };
 }
 
-/** Best-effort resync (rate-limited) for the student submit path — never throws. */
+/** Best-effort resync (rate-limited) for the student submit path; never throws. */
 export async function trySyncResponsesSheet(): Promise<void> {
   try {
     await syncResponsesSheet({ cooldownMs: RESPONSES_SHEET_AUTO_COOLDOWN_MS });

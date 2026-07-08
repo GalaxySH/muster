@@ -1,7 +1,7 @@
 /**
  * Roster "Position Title" → Muster position mapping (PLAN.md §16.2).
  *
- * Keys are normalized titles (lowercased, trimmed, whitespace-collapsed — see
+ * Keys are normalized titles (lowercased, trimmed, whitespace-collapsed, see
  * normalizeTitle). Editable config: when the roster introduces a new title,
  * add it here. Titles not found map to a null position (the student self-reports
  * during onboarding) and are reported by the importer.

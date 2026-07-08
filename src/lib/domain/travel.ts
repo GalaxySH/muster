@@ -17,11 +17,11 @@ export type LateTravelPolicy = "refuse" | "accept-and-flag";
 
 /**
  * The active late-travel policy (owner decision 2026-07-09): entries on/after
- * the cutoff are REFUSED outright — nothing is stored, so every stored entry is
+ * the cutoff are REFUSED outright: nothing is stored, so every stored entry is
  * excused by construction and the `travel_late` flag never raises. Flipping
  * this to "accept-and-flag" restores the previous behavior end to end: late
  * entries are stored with `excused: false`, the "not excused (late)" badges
- * render again, and finalizeSubmission raises `travel_late` — all of those
+ * render again, and finalizeSubmission raises `travel_late`. All of those
  * paths are deliberately kept wired.
  */
 export const LATE_TRAVEL_POLICY: LateTravelPolicy = "refuse";
@@ -40,7 +40,7 @@ export function decideTravelSubmission(
 
 /**
  * The default semester-start cutoff: September 1, 00:00 US Central (06:00 UTC)
- * of the year in which the form is being filled. A v1 default — a global
+ * of the year in which the form is being filled. A v1 default; a global
  * config value can override this later (PLAN §13).
  */
 export function defaultTravelCutoff(now: Date): Date {

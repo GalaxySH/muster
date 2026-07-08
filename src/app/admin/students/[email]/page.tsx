@@ -138,7 +138,7 @@ export default async function StudentDetailPage({
 
       {!detail.onRoster && (
         <div style={{ ...banner, marginTop: 12 }}>
-          Off-roster responder — position and international status may be self-reported.
+          Off-roster responder. Position and international status may be self-reported.
         </div>
       )}
 
@@ -148,7 +148,7 @@ export default async function StudentDetailPage({
 
       {submission && validation && (
         <>
-          {/* Hour summary cards — a full-width glanceable KPI strip */}
+          {/* Hour summary cards: a full-width glanceable KPI strip */}
           <div style={cardsGrid}>
             <SummaryCard
               label="hour cap"
@@ -215,21 +215,21 @@ export default async function StudentDetailPage({
                   (autoAssigned.length > 0 ? (
                     <CheckLine
                       ok={false}
-                      text={`No weekend shift selected — auto-assigned ${autoAssigned
+                      text={`No weekend shift selected. Auto-assigned ${autoAssigned
                         .map((c) => describeCell(c, blocks))
                         .join(", ")}`}
                     />
                   ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
                     <CheckLine ok text="Weekend shift selected" />
                   ) : (
-                    <CheckLine ok={false} text="No weekend shift selected — will auto-assign on submit" />
+                    <CheckLine ok={false} text="No weekend shift selected. Will auto-assign on submit." />
                   ))}
                 {lateTravelCount > 0 && (
                   <CheckLine
                     ok={false}
                     text={`${lateTravelCount} travel entr${
                       lateTravelCount === 1 ? "y" : "ies"
-                    } after 9/1 — not excused (late)`}
+                    } after 9/1, not excused (late)`}
                   />
                 )}
               </div>
@@ -434,7 +434,7 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
   return (
     <table
       style={{
-        // Intrinsic (compact) width — don't stretch to fill the panel.
+        // Intrinsic (compact) width; don't stretch to fill the panel.
         width: "auto",
         borderCollapse: "separate",
         borderSpacing: 3,
@@ -484,7 +484,7 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
   );
 }
 
-// Compact fixed cell size — keeps the grid tight instead of stretching wide.
+// Compact fixed cell size; keeps the grid tight instead of stretching wide.
 const CELL = 26;
 
 function cellStyle(state: CellState): React.CSSProperties {

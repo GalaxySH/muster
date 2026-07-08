@@ -3,13 +3,13 @@
  *
  * A student's group carries an open/close window. This pure helper turns the
  * window's dates + the current time into an editability state, shared by the
- * server (authority) and the UI (banner/read-only). No I/O, no DB — the window
+ * server (authority) and the UI (banner/read-only). No I/O, no DB; the window
  * dates and group membership are resolved elsewhere; this is just the math.
  *
  * Membership ("does the student have a group at all?") is a separate gate
  * handled server-side; this module only answers "given a window, can they edit
  * right now?". An unset window (either bound null) is `unconfigured` and locks
- * the form — the secure default, so a freshly-seeded group isn't open by
+ * the form: the secure default, so a freshly-seeded group isn't open by
  * accident (PLAN §13).
  */
 
@@ -55,7 +55,7 @@ export function canEditSubmission(
 
 /**
  * True only when the window is otherwise open but editing is blocked *specifically*
- * by the post-submit lock — i.e. the reason to show the "already submitted" notice
+ * by the post-submit lock, i.e. the reason to show the "already submitted" notice
  * rather than a window (opens-soon/closed) notice.
  */
 export function isLockedAfterSubmit(

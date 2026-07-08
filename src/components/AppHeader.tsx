@@ -1,8 +1,8 @@
 /**
  * The shared top-of-page header. A Home element is always present (the user's
  * requirement); optional `children` render as additional breadcrumb crumbs after
- * it — the wizard step breadcrumb on the form flow, or an "Admin" crumb on admin
- * pages. Pure/server — no client state.
+ * it: the wizard step breadcrumb on the form flow, or an "Admin" crumb on admin
+ * pages. Pure/server, no client state.
  */
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";

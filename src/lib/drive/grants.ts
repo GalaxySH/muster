@@ -1,7 +1,7 @@
 /**
  * Encrypted store for the admin Drive grant (PLAN.md §11, §12).
  *
- * Exactly the refresh token is persisted, AES-256-GCM encrypted — never in
+ * Exactly the refresh token is persisted, AES-256-GCM encrypted, never in
  * plaintext, never in a cookie. The most recently connected admin is the active
  * grant the relay uses.
  */
@@ -27,7 +27,7 @@ export interface DriveGrant {
   refreshToken: string;
 }
 
-/** The active grant (most recently updated), decrypted — or null if none. */
+/** The active grant (most recently updated), decrypted, or null if none. */
 export async function getActiveDriveGrant(): Promise<DriveGrant | null> {
   const db = getDb();
   const [row] = await db

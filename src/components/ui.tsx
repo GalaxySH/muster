@@ -10,10 +10,10 @@ import Link from "next/link";
  * The standard page shell: a left-aligned `<main>` with one of three comfortable,
  * mobile-aware content widths (see `.page` in globals.css). Use this for every
  * top-level page so width, alignment, and padding stay consistent.
- *   - `narrow` (480) — auth / single-form pages
- *   - `default` (720) — reading + the student form flow
- *   - `wide` (1000) — admin tables and the availability grid
- *   - `full` — full-bleed (the response-review dashboard only)
+ *   - `narrow` (480): auth / single-form pages
+ *   - `default` (720): reading + the student form flow
+ *   - `wide` (1000): admin tables and the availability grid
+ *   - `full`: full-bleed (the response-review dashboard only)
  */
 export function Page({
   width = "default",
@@ -106,7 +106,7 @@ export const disabledButtonStyle: React.CSSProperties = {
 /**
  * The standard action button: primary/secondary look, one disabled style, and a
  * uniform pending state (disabled + label swap) so slow server actions always
- * give feedback. Presentational only (no hooks) — pass `pending` from
+ * give feedback. Presentational only (no hooks); pass `pending` from
  * useTransition, or use `<SubmitButton>` (components/SubmitButton.tsx) inside a
  * `<form action>` to get it from useFormStatus.
  */
@@ -142,7 +142,7 @@ export function ActionButton({
   );
 }
 
-/** `next/link` styled as the primary button — for forward navigation on server pages. */
+/** `next/link` styled as the primary button, for forward navigation on server pages. */
 export function PrimaryLink({
   href,
   children,

@@ -36,7 +36,7 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
       if (!res.ok) {
         setMsg({ ok: false, text: res.error ?? "Failed." });
       } else if (!res.enabled) {
-        setMsg({ ok: true, text: "Default assignment is off — nothing was swept." });
+        setMsg({ ok: true, text: "Default assignment is off. Nothing was swept." });
       } else {
         setMsg({
           ok: true,

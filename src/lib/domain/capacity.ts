@@ -3,14 +3,14 @@
  *
  * "Preference capacity" = the hours a student's selection *covers* (the union
  * of their selected blocks per day, overlapping shifts merged into one span with
- * the shared time counted once), averaged across the two-week A/B cycle — see
+ * the shared time counted once), averaged across the two-week A/B cycle, see
  * ./intervals.
  *
  * Weekday blocks happen every week (factor 1). Weekend blocks happen every
  * *other* week under A/B (factor 0.5), or every week with the opt-in (factor 1).
  *
  * Weekend model (decided): BOTH weekend days are summed before applying the
- * factor — a student may be scheduled Saturday and Sunday on their on-weekend.
+ * factor: a student may be scheduled Saturday and Sunday on their on-weekend.
  */
 import { dayTypeOf, type Day, type SelectedShift, type ShiftBlock } from "./types";
 import { coveredMinutes } from "./intervals";

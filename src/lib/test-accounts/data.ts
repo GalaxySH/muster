@@ -11,7 +11,7 @@ export interface TestAccount {
   displayName: string;
   positionName: string | null;
   status: "draft" | "submitted" | null;
-  /** False for legacy dev-created @wisc.edu accounts — hides the sign-in-as button. */
+  /** False for legacy dev-created @wisc.edu accounts; hides the sign-in-as button. */
   canSignInAs: boolean;
 }
 

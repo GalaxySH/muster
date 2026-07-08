@@ -40,7 +40,7 @@ export default async function IntroPage() {
           </li>
           <li>
             You do <strong>not</strong> need to fill out availability preferences in
-            WhenToWork — this form replaces that step.
+            WhenToWork. This form replaces that step.
           </li>
           <li>
             You must select your position&apos;s <strong>minimum weekly hours</strong> (10h; Shift

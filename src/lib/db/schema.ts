@@ -1,5 +1,5 @@
 /**
- * Drizzle schema for Muster (MariaDB) — mirrors the data model in PLAN.md §9.
+ * Drizzle schema for Muster (MariaDB): mirrors the data model in PLAN.md §9.
  *
  * Privacy invariants baked in: NO image bytes are stored (only Drive fileIds),
  * and roster ingestion is minimal (no Campus ID / phone / tracking columns).
@@ -52,7 +52,7 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
 /**
  * Admin-defined student group carrying a form open/close window (PLAN.md §13).
  * A student's window is resolved through their group; exactly one group holds
- * `isDefault` (seeded as "New Student", re-pointable by the admin) — it catches
+ * `isDefault` (seeded as "New Student", re-pointable by the admin); it catches
  * auto-assigned students and can't be deleted while it holds the flag.
  * A null window (either bound) is "unconfigured" → the form stays locked.
  */
@@ -62,7 +62,7 @@ export const groups = mysqlTable("groups", {
   opensAt: datetime("opens_at", { mode: "date" }),
   closesAt: datetime("closes_at", { mode: "date" }),
   // When true, the form accepts new submissions while the window is open but
-  // locks (read-only) once a student finalizes — they can't edit after submit
+  // locks (read-only) once a student finalizes; they can't edit after submit
   // (PLAN.md §13). Default false preserves edit-until-close behavior.
   lockAfterSubmit: boolean("lock_after_submit").notNull().default(false),
   isDefault: boolean("is_default").notNull().default(false),
@@ -87,7 +87,7 @@ export const students = mysqlTable("students", {
   groupAssignedAuto: boolean("group_assigned_auto").notNull().default(false),
 });
 
-/** One student's availability submission (PLAN.md §9). No image bytes — Drive fileIds only. */
+/** One student's availability submission (PLAN.md §9). No image bytes, Drive fileIds only. */
 export const submissions = mysqlTable("submissions", {
   id: varchar("id", { length: 36 }).primaryKey(),
   // One submission per student per cycle.

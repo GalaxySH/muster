@@ -3,7 +3,7 @@
  *
  * When a verified-`@wisc.edu` student who isn't on the roster self-adds (via the
  * failed-Google / magic-link path), that flow will create their `students` row
- * and then call this to grant the default-group window **immediately** — but
+ * and then call this to grant the default-group window **immediately**, but
  * only if the default-assignment toggle is on (otherwise they stay ungrouped =
  * denied, the secure default). There is no caller yet; this defines the contract
  * the self-add flow will plug into so the gate is consistent with the admin

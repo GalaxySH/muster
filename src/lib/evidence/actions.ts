@@ -75,7 +75,7 @@ function relayError(e: unknown): string {
 }
 
 // NOTE (future): we may restrict the course schedule specifically to image
-// types (PNG/JPEG) — PDFs can't be shown as a glanceable thumbnail beside the
+// types (PNG/JPEG); PDFs can't be shown as a glanceable thumbnail beside the
 // preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
   const who = await requireStudent();
@@ -176,14 +176,14 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   if ("error" in who) return { ok: false, error: who.error };
 
   // The cutoff hard stop (PLAN §8): under the active "refuse" policy, nothing
-  // is stored on/after the cutoff — so every stored entry is excused.
+  // is stored on/after the cutoff, so every stored entry is excused.
   const now = new Date();
   const { cutoff } = await getTravelCutoff(now);
   const decision = decideTravelSubmission(now, cutoff);
   if (!decision.allowed) {
     return {
       ok: false,
-      error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed — new travel can no longer be added.`,
+      error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed. New travel can no longer be added.`,
     };
   }
 
@@ -232,12 +232,12 @@ export async function removeTravelRequest(id: string): Promise<ActionResult> {
   const who = await requireStudent();
   if ("error" in who) return { ok: false, error: who.error };
 
-  // Travel is locked entirely after the cutoff — removal too, since a removed
+  // Travel is locked entirely after the cutoff, removal too, since a removed
   // entry could never be re-added under the "refuse" policy.
   const now = new Date();
   const { cutoff } = await getTravelCutoff(now);
   if (!decideTravelSubmission(now, cutoff).allowed) {
-    return { ok: false, error: "The travel deadline has passed — travel entries are locked." };
+    return { ok: false, error: "The travel deadline has passed. Travel entries are locked." };
   }
 
   const db = getDb();

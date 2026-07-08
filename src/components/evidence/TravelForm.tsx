@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Travel excusals — its own page now (split out of the old combined EvidenceForm).
+ * Travel excusals, its own page now (split out of the old combined EvidenceForm).
  * Each entry is proof + a date range. Travel must be added before the cutoff
  * (PLAN §8, admin-configurable): under the active "refuse" late policy the form
  * is replaced by a "too late" notice once the cutoff passes, and entries lock.
@@ -36,9 +36,9 @@ export function TravelForm({
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
-  /** When false, all uploads/edits are disabled (form window not open — PLAN §13). */
+  /** When false, all uploads/edits are disabled (form window not open, PLAN §13). */
   editable?: boolean;
-  /** The effective travel cutoff (epoch ms) — for display. */
+  /** The effective travel cutoff (epoch ms), for display. */
   cutoffMs: number;
   /** False once the cutoff has passed (server-decided): no new entries, entries lock. */
   canAddTravel: boolean;
@@ -53,7 +53,7 @@ export function TravelForm({
       <p style={{ color: "#555" }}>
         Add any planned travel during the semester. Upload proof and a date range for each
         trip, these will be manually reviewed for eligibility. Travel is only excused if added
-        before {cutoffLabel} — after that date, the form no longer accepts travel entries. We
+        before {cutoffLabel}. After that date, the form no longer accepts travel entries. We
         will not accept emails requesting excusal, unless for extenuating circumstances.
       </p>
 

@@ -3,7 +3,7 @@
  *
  * Reuses the student-form grid model (rows = blocks per day-type, derived
  * open/close, labels) and overlays the persisted selection + any auto-assigned
- * weekend cell into a per-cell state the admin grid renders directly. No I/O —
+ * weekend cell into a per-cell state the admin grid renders directly. No I/O;
  * the route loads data and hands it here.
  */
 import { buildGridModel, type BlockRow, type SubGrid } from "@/lib/availability/grid";

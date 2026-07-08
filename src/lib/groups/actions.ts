@@ -3,7 +3,7 @@
 /**
  * Admin-only group + form-window mutations (PLAN.md §13). All admin-gated.
  *
- * Assignment is persisted to `students.groupId` — manual assignments
+ * Assignment is persisted to `students.groupId`. Manual assignments
  * (picker / pasted emails) clear the sticky `groupAssignedAuto` marker; the
  * default-assignment sweep sets it. The sweep is the batch "Save" action: it
  * only runs when the toggle is on and only touches genuinely-ungrouped,
@@ -98,7 +98,7 @@ export async function setGroupWindow(
   const opensAt = parseInstant(opensAtRaw);
   const closesAt = parseInstant(closesAtRaw);
   // A window needs both bounds (windowState locks on either-null). Both empty is
-  // a deliberate clear; exactly one is a half-configured window — reject it so a
+  // a deliberate clear; exactly one is a half-configured window; reject it so a
   // partial save can't silently persist an unconfigured (locked) window.
   if ((opensAt === null) !== (closesAt === null)) {
     return { ok: false, error: "Set both an open and a close date, or clear both." };
@@ -134,7 +134,7 @@ export async function setGroupLockAfterSubmit(
 }
 
 /**
- * Re-point the default group — the one the sweep/self-add hook drop ungrouped
+ * Re-point the default group: the one the sweep/self-add hook drop ungrouped
  * students into (PLAN §13). Exactly one group holds the flag; flipping it is
  * transactional so a crash can't leave zero or two defaults.
  */
@@ -170,7 +170,7 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
   const [g] = await db.select({ isDefault: groups.isDefault }).from(groups).where(eq(groups.id, id)).limit(1);
   if (!g) return { ok: false, error: "Group not found." };
   if (g.isDefault) {
-    return { ok: false, error: "The default group can't be deleted — make another group the default first." };
+    return { ok: false, error: "The default group can't be deleted. Make another group the default first." };
   }
 
   // Members' group_id is set null by the FK (onDelete: set null) → they revert
@@ -275,7 +275,7 @@ export interface SweepResult extends ActionResult {
 /**
  * The batch "Save" action (PLAN §13): if the toggle is on, assign the default
  * group to every ungrouped, never-auto-assigned student and mark them auto
- * (sticky). A no-op when the toggle is off. Idempotent — already-grouped and
+ * (sticky). A no-op when the toggle is off. Idempotent: already-grouped and
  * already-auto students are skipped.
  */
 export async function runDefaultAssignmentSweep(): Promise<SweepResult> {

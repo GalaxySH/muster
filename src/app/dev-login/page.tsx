@@ -3,12 +3,12 @@ import { devLoginEnabled } from "@/lib/env";
 import { devSignInAction } from "@/lib/auth/actions";
 import { Page } from "@/components/ui";
 
-// Env-gated redirect — never statically prerender.
+// Env-gated redirect; never statically prerender.
 export const dynamic = "force-dynamic";
 
 /**
  * DEV ONLY sign-in bypass (no OAuth). The route redirects to /signin unless the
- * env-gated bypass is active — it can never render in prod. Throwaway test
+ * env-gated bypass is active; it can never render in prod. Throwaway test
  * accounts are managed on /admin/test-users (sign in as an admin first).
  */
 export default function DevLoginPage() {

@@ -3,7 +3,7 @@
  *
  * Shifts are assigned into designated blocks; an overlapping shift *extends* the
  * block rather than stacking on it. So "how many hours can this student work?"
- * is the time their selected blocks *cover* — the union of the ranges, where
+ * is the time their selected blocks *cover*: the union of the ranges, where
  * overlapping or touching ranges merge into one continuous span and the shared
  * time is counted **once** (never double-counted). A 2p–5p block plus an
  * overlapping 4p–8p shift covers 2p–8p (6h), not 7h.

@@ -5,7 +5,7 @@
  *   npm run dev:add-student -- you@wisc.edu
  *   npm run dev:add-student -- you@wisc.edu --position shift-lead --name "Test SL" --intl
  *
- * Not for production data — the real roster comes from `npm run roster:import`.
+ * Not for production data. The real roster comes from `npm run roster:import`.
  * A later roster import may overwrite or drop this row.
  */
 import { createDb } from "../lib/db/client";
@@ -61,7 +61,7 @@ async function main() {
         set: { displayName, positionId: position, international, onRoster: true },
       });
     console.log(
-      `✓ Test student ready: ${normalized} — ${displayName}, ${position}${
+      `✓ Test student ready: ${normalized} · ${displayName}, ${position}${
         international ? " (international)" : ""
       }`,
     );

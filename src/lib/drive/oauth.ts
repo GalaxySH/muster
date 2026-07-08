@@ -4,7 +4,7 @@
  * This is deliberately separate from student sign-in (which uses sign-in scopes
  * only and JWT sessions). Here we request offline access so Google returns a
  * durable refresh token, which we store encrypted (never in a cookie). Scope is
- * `drive.file` only — the app can touch the files it creates, nothing else.
+ * `drive.file` only: the app can touch the files it creates, nothing else.
  */
 import "server-only";
 import { OAuth2Client } from "google-auth-library";
@@ -38,7 +38,7 @@ export function getDriveAuthUrl(state: string): string {
     scope: GRANT_SCOPES,
     // Deliberately NOT include_granted_scopes: this is a dedicated least-privilege
     // grant. Merging prior grants would resurface the full `drive` scope this
-    // account granted during the Phase 0 spike (PLAN §11) — exactly drive.file only.
+    // account granted during the Phase 0 spike (PLAN §11): exactly drive.file only.
     include_granted_scopes: false,
     state,
     hd: WISC_DOMAIN,

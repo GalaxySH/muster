@@ -20,7 +20,7 @@ export interface ImportSummary {
   /** People Leaving rows upserted as off-roster (onRoster: false). */
   leftMarked: number;
   /**
-   * Emails in BOTH sheets — a promotion/position change moves the old row to
+   * Emails in BOTH sheets: a promotion/position change moves the old row to
    * "People Leaving" and adds a fresh "People Coming" entry. People Coming
    * wins: they stay on-roster with the new classification; reported here.
    */
@@ -31,7 +31,7 @@ export interface ImportSummary {
    * student off-roster), so they're surfaced for the admin to reconcile.
    */
   unlistedOnRoster: string[];
-  /** Raw data rows read per sheet (blank rows excluded) — reconcile against the workbook. */
+  /** Raw data rows read per sheet (blank rows excluded); reconcile against the workbook. */
   sheetRows: { peopleComing: number; peopleLeaving: number };
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
@@ -59,7 +59,7 @@ export async function importRoster({
   const importId = randomUUID();
 
   // Drift check (computed against the pre-import roster): anyone on-roster but
-  // absent from both sheets keeps their status — flag them so a person quietly
+  // absent from both sheets keeps their status; flag them so a person quietly
   // dropped from the workbook doesn't linger unnoticed.
   const mentioned = new Set<string>([
     ...parsed.students.map((s) => s.email),
@@ -97,7 +97,7 @@ export async function importRoster({
     }
 
     // Only people NOT also in People Coming (see reconcileLeaving). On an
-    // existing row we only flip onRoster — never clobber position/displayName.
+    // existing row we only flip onRoster; never clobber position/displayName.
     for (const l of markLeft) {
       await tx
         .insert(students)

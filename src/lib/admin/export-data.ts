@@ -55,7 +55,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
     .innerJoin(students, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
     // Exclude people moved to "People Leaving" from the export/running sheet
-    // (PLAN §4.2) — their submission stays in the DB but isn't a live response.
+    // (PLAN §4.2); their submission stays in the DB but isn't a live response.
     .where(eq(students.onRoster, true))
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 

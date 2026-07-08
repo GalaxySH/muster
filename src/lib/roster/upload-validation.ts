@@ -1,7 +1,7 @@
 /**
  * Pure validation for the admin roster-workbook upload (PLAN.md §4.2).
  *
- * The UI import accepts only the modern .xlsx PCPL workbook — the same format
+ * The UI import accepts only the modern .xlsx PCPL workbook, the same format
  * the CLI importer reads. Browsers don't always send the canonical spreadsheet
  * MIME type, so a generic type is accepted when the filename says .xlsx; the
  * real structural check (the "People Coming" sheet must exist) happens when
@@ -10,7 +10,7 @@
 export const XLSX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-export const MAX_ROSTER_BYTES = 10 * 1024 * 1024; // 10 MB — PCPL workbooks are far smaller
+export const MAX_ROSTER_BYTES = 10 * 1024 * 1024; // 10 MB, PCPL workbooks are far smaller
 
 export interface RosterUploadCandidate {
   name: string;

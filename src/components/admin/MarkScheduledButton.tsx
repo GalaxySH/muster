@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { setScheduled } from "@/lib/admin/actions";
 
 /**
- * The "mark scheduled ✓" toggle (PLAN §10a) — tracks W2W-entry progress across
+ * The "mark scheduled ✓" toggle (PLAN §10a): tracks W2W-entry progress across
  * the roster without leaving Muster. Optimistic UI is unnecessary at this scale;
  * we just refresh after the server confirms.
  */

@@ -4,7 +4,7 @@
  * What the relay needs: multipart create (upload) and media get (download) for
  * proof files, plus native-Sheet create + cell writes for the running responses
  * spreadsheet. `supportsAllDrives` is set so a Shared Drive folder works as the
- * destination. Bytes are passed through in memory — nothing is written to disk.
+ * destination. Bytes are passed through in memory; nothing is written to disk.
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
@@ -137,7 +137,7 @@ export function createSpreadsheet(p: {
  * v4: read the first sheet's title + numeric id, clear stale content, write the
  * new values RAW, then bold + freeze the header row. The values write (clear +
  * update) is the must-have; the header formatting is best-effort styling layered
- * on top — if `batchUpdate` fails it throws, but the values are already written
+ * on top: if `batchUpdate` fails it throws, but the values are already written
  * (it does not roll them back). Throws `SheetWriteError` carrying the HTTP status
  * so the caller can recreate on a 404 (sheet deleted).
  */
@@ -264,7 +264,7 @@ export async function deleteFile(accessToken: string, fileId: string): Promise<v
     `${FILES_URL}/${encodeURIComponent(fileId)}?supportsAllDrives=true`,
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  // 204 = deleted, 404 = already gone — both fine.
+  // 204 = deleted, 404 = already gone, both fine.
   if (!res.ok && res.status !== 404) {
     throw new Error(`Drive delete failed (${res.status}): ${await safeText(res)}`);
   }

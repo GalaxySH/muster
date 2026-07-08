@@ -56,7 +56,7 @@ export default async function NonResponsesPage() {
       {report.offRoster.length > 0 && (
         <Group
           title={`Off-roster responders (${report.offRoster.length})`}
-          hint="Submitted but not on the current roster — position/intl may be self-reported."
+          hint="Submitted but not on the current roster. Position and international status may be self-reported."
           people={report.offRoster}
           linkToDetail
         />

@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
  *
  * Images render a real thumbnail + image lightbox. PDFs (and anything the
  * browser can't put in <img>) fall back to a file card thumbnail and open in
- * the lightbox via an <iframe> of the same proxy URL (option A, §10a) — native
+ * the lightbox via an <iframe> of the same proxy URL (option A, §10a): native
  * browser PDF view, no first-page render dependency.
  */
 export function EvidenceThumb({
@@ -52,7 +52,7 @@ export function EvidenceThumb({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={`${label} — click to enlarge`}
+        title={`Enlarge ${label}`}
         style={{
           width: fill ? "100%" : size,
           padding: 0,
@@ -78,7 +78,7 @@ export function EvidenceThumb({
           }}
         >
           {isImage ? (
-            // Private, auth-proxied blob — next/image can't optimize it.
+            // Private, auth-proxied blob; next/image can't optimize it.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}

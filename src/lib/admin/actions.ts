@@ -68,8 +68,8 @@ export async function saveSchedulerNotes(
 
 /**
  * Admin: permanently delete a student's response (PLAN §10). Removes the
- * submission row — which cascades its shift selections, flags, extracurricular
- * file rows, and travel requests — then best-effort deletes every relayed proof
+ * submission row (which cascades its shift selections, flags, extracurricular
+ * file rows, and travel requests), then best-effort deletes every relayed proof
  * file from Drive (course schedule, extracurriculars, travel) so no orphaned
  * bytes are left behind, and rebuilds the running sheet so the row drops out.
  * The student record itself stays on the roster; only their submission is gone.

@@ -1,8 +1,8 @@
 /**
  * Authenticated symmetric encryption for secrets at rest (PLAN.md §11, §12).
  *
- * Used to encrypt the admin Drive refresh token before it is written to the DB
- * — tokens are never stored in plaintext and never in a session cookie. AES-256
+ * Used to encrypt the admin Drive refresh token before it is written to the DB.
+ * Tokens are never stored in plaintext and never in a session cookie. AES-256
  * in GCM mode gives confidentiality + tamper detection (a wrong key or altered
  * ciphertext fails on `final()`). Pure given a key, so it is unit-testable.
  */

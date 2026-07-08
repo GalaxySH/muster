@@ -2,7 +2,7 @@
  * Canonical position + shift-block configuration (PLAN.md §6.1, §6.3).
  *
  * This is the seed/default config. Positions and block sets are data, not
- * hardcoded logic — the admin can edit them and the rules engine reads them at
+ * hardcoded logic; the admin can edit them and the rules engine reads them at
  * runtime. Times use the `6:45a`/`8p` notation; open/close are DERIVED from the
  * set (see ../domain/blocks), never declared here.
  */

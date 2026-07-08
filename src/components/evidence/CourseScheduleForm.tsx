@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Course schedule (required) + mandatory extracurriculars (optional) — the first
+ * Course schedule (required) + mandatory extracurriculars (optional): the first
  * evidence page. Split out of the old combined EvidenceForm; travel lives on its
  * own page now (TravelForm).
  */
@@ -35,7 +35,7 @@ export function CourseScheduleForm({
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
-  /** When false, all uploads/edits are disabled (form window not open — PLAN §13). */
+  /** When false, all uploads/edits are disabled (form window not open, PLAN §13). */
   editable?: boolean;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();

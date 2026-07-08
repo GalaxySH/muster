@@ -1,7 +1,7 @@
 /**
  * Proof relay (PLAN.md §12): student bytes → Drive via the admin grant; the
  * app keeps only the returned fileId. The single seam the upload actions and
- * the image-proxy route call — nothing else touches Drive directly.
+ * the image-proxy route call; nothing else touches Drive directly.
  *
  * Folder layout (PLAN §12): the configured root holds the running responses
  * spreadsheet; all proof files live in a single `proofs/` subfolder under it.
@@ -34,10 +34,10 @@ import { extensionForType } from "./upload-validation";
 const PROOFS_FOLDER_NAME = "proofs";
 const RESPONSES_SHEET_NAME = "Muster Responses";
 
-/** Thrown when no admin has connected Drive yet — surfaced to the student. */
+/** Thrown when no admin has connected Drive yet; surfaced to the student. */
 export class NoDriveGrantError extends Error {
   constructor() {
-    super("Proof uploads aren't available yet — an administrator must connect Google Drive first.");
+    super("Proof uploads aren't available yet. An administrator must connect Google Drive first.");
     this.name = "NoDriveGrantError";
   }
 }
@@ -113,7 +113,7 @@ export interface ResponsesSheetResult {
  * Write the running responses spreadsheet in the Drive root from a values matrix
  * (find-or-create by cached id, then name). The sheet duplicates the response
  * data so folder members can read it without the app, and survives app
- * retirement (PLAN §10, §12). Written via the Sheets API (proper cell control —
+ * retirement (PLAN §10, §12). Written via the Sheets API (proper cell control,
  * clear, RAW values, frozen/bold header) within the `drive.file` grant. Recovers
  * if the cached sheet was deleted out from under us (404 → recreate + retry once).
  */
@@ -136,7 +136,7 @@ export async function upsertResponsesSheet(values: string[][]): Promise<Response
   try {
     await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
   } catch (e) {
-    // The cached/found sheet was deleted out from under us — recreate once.
+    // The cached/found sheet was deleted out from under us; recreate once.
     if (e instanceof SheetWriteError && e.status === 404) {
       sheetId = await createSpreadsheet({ accessToken, name: RESPONSES_SHEET_NAME, parentId: root });
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });

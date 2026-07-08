@@ -2,7 +2,7 @@
  * Pure validation for evidence uploads (PLAN.md §7b, §12).
  *
  * Evidence is always advisory images/PDFs shown to the scheduler for manual
- * review — never auto-parsed. We accept common screenshot formats and PDFs,
+ * review; never auto-parsed. We accept common screenshot formats and PDFs,
  * cap the size, and reject anything else before a byte ever reaches the relay.
  */
 // HEIC is intentionally excluded: browsers can't render it in <img>, so it

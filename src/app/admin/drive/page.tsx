@@ -71,7 +71,7 @@ export default async function AdminDrivePage({
             <code>{env.DRIVE_FOLDER_ID}</code>
           ) : (
             <span style={{ color: "#946c00" }}>
-              not set — set <code>DRIVE_FOLDER_ID</code> to a Shared Drive folder id, otherwise
+              not set. Set <code>DRIVE_FOLDER_ID</code> to a Shared Drive folder id, otherwise
               uploads land in the connected account&apos;s My Drive root.
             </span>
           )}

@@ -1,5 +1,5 @@
 /**
- * NextAuth (Auth.js v5) configuration — the Google sign-in path (PLAN.md §11).
+ * NextAuth (Auth.js v5) configuration: the Google sign-in path (PLAN.md §11).
  *
  * Sign-in scopes only (`openid email profile`), `hd=wisc.edu` hinted to Google
  * and enforced in the signIn callback. JWT sessions (no DB adapter): auth only

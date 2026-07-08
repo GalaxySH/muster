@@ -62,7 +62,7 @@ export interface AvailabilityFormProps {
   initialStatus: "draft" | "submitted" | null;
   /** Admin inspection mode: live validation works, but nothing is persisted. */
   preview?: boolean;
-  /** When false, the form is read-only (window closed/not-yet-open — PLAN §13). */
+  /** When false, the form is read-only (window closed or not yet open, PLAN §13). */
   editable?: boolean;
 }
 
@@ -172,7 +172,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         );
         if (advanceTo) {
           router.push(advanceTo);
-          return; // leaving the page — no need to set a message
+          return; // leaving the page, no need to set a message
         }
       }
       setMessage({
@@ -354,7 +354,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
         )}
         {!editable && (
           <span style={{ color: "#777" }}>
-            Read-only — your form window isn&apos;t open for edits right now.
+            Read-only. Your form window isn&apos;t open for edits right now.
           </span>
         )}
       </div>

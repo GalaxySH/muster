@@ -27,7 +27,7 @@ export interface GroupRow {
   lockAfterSubmit: boolean;
   isDefault: boolean;
   memberCount: number;
-  /** Member emails (sorted) — feeds the per-group "copy emails" control. */
+  /** Member emails (sorted); feeds the per-group "copy emails" control. */
   memberEmails: string[];
 }
 
@@ -66,7 +66,7 @@ export async function listGroups(): Promise<GroupRow[]> {
 }
 
 /**
- * The current default group — the one that catches swept/self-added students
+ * The current default group: the one that catches swept/self-added students
  * (`isDefault` flag; exactly one by construction, re-pointable via
  * setDefaultGroup). Null only if the seed never ran.
  */
@@ -103,7 +103,7 @@ export type StudentAccess =
  * The two-gate access decision for a student (PLAN §13): membership first
  * (no group ⇒ denied), then the group's window state at `now`. When the group
  * locks editing after submit, an already-submitted student is read-only even
- * with the window open — new submissions are still allowed (PLAN §13).
+ * with the window open. New submissions are still allowed (PLAN §13).
  */
 export async function resolveStudentAccess(
   emailRaw: string,

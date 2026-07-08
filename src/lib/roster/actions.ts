@@ -4,7 +4,7 @@
  * Admin roster-import action (PLAN.md §4.2): upload the PCPL workbook from
  * /admin/roster instead of running the CLI on the box. Admin-gated; the file
  * is validated, read into memory, and handed to the same importRoster
- * orchestrator the CLI uses (idempotent upsert — "People Coming" → on-roster,
+ * orchestrator the CLI uses (idempotent upsert: "People Coming" → on-roster,
  * "People Leaving" → off-roster). The workbook bytes are never written to disk.
  */
 import { revalidatePath } from "next/cache";
@@ -36,7 +36,7 @@ export async function importRosterFromUpload(formData: FormData): Promise<Roster
       workbook,
       importedBy: session.email,
     });
-    // The roster feeds every active-student surface — refresh them all.
+    // The roster feeds every active-student surface; refresh them all.
     revalidatePath("/admin/roster");
     revalidatePath("/admin/responses");
     revalidatePath("/admin/non-responses");

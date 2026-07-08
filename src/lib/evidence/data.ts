@@ -1,6 +1,6 @@
 /**
  * Server-side data for the evidence pages (PLAN.md §7b). Resolves a student's
- * submission and its evidence artifacts (Drive fileIds only — never bytes), and
+ * submission and its evidence artifacts (Drive fileIds only, never bytes), and
  * answers the proxy's "may this student see this fileId?" question.
  */
 import "server-only";
@@ -125,7 +125,7 @@ export async function collectSubmissionDriveFileIds(submissionId: string): Promi
 }
 
 /**
- * Whether a fileId belongs to this student's submission — the proxy's access
+ * Whether a fileId belongs to this student's submission: the proxy's access
  * gate for non-admins. Checks course schedule, extracurricular, and travel proof.
  */
 export async function studentOwnsFile(studentEmail: string, fileId: string): Promise<boolean> {

@@ -11,7 +11,7 @@ export const MAX_EXTRACURRICULAR_FILES = 10;
 export const MAX_TRAVEL_REQUESTS = 20;
 
 /**
- * Whether a submission already holding `count` rows has reached `cap` — i.e.
+ * Whether a submission already holding `count` rows has reached `cap`, i.e.
  * adding one more would exceed the cap, so the new upload must be refused.
  */
 export function isAtEvidenceCap(count: number, cap: number): boolean {

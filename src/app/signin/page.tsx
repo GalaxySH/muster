@@ -32,7 +32,7 @@ export default async function SignInPage({
         <InfoCard tone="success" role="status">
           <p style={{ margin: 0 }}>
             If that address is eligible, we&apos;ve sent a sign-in link. Check your{" "}
-            <strong>@wisc.edu</strong> email — the link expires in 30 minutes.
+            <strong>@wisc.edu</strong> email. The link expires in 30 minutes.
           </p>
         </InfoCard>
       )}

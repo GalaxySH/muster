@@ -12,7 +12,7 @@ export const TEST_GROUP_ID = "dev-test";
 export const TEST_GROUP_NAME = "Test accounts";
 
 /**
- * Initial window bounds for the test group — wide open, so test accounts work
+ * Initial window bounds for the test group, wide open, so test accounts work
  * out of the box. Applied only when the group is first created; admins can
  * edit the window on /admin/groups afterwards like any other group.
  */

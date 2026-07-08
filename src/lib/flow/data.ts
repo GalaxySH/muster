@@ -1,7 +1,7 @@
 /**
  * Server-side state for the student hub (/me) and the guided wizard (PLAN §4, §18b).
  * Resolves the two access gates (group membership + window) and infers where the
- * student is in the flow from persisted data — there is no progress column.
+ * student is in the flow from persisted data; there is no progress column.
  */
 import "server-only";
 import { eq } from "drizzle-orm";
@@ -102,7 +102,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
 }
 
 /**
- * The wizard steps a student may currently navigate to (PLAN §4) — the breadcrumb's
+ * The wizard steps a student may currently navigate to (PLAN §4): the breadcrumb's
  * forward gate, mirroring the per-step "Next" gates. Off-roster/no-form students can
  * only reach the first step.
  */

@@ -11,7 +11,7 @@ import { adminEmails } from "@/lib/env";
 import { isAdminInDb } from "@/lib/roster/lookup";
 
 export interface AppSession {
-  /** normalized wisc.edu email — the stable identity key (PLAN §9, §11). */
+  /** normalized wisc.edu email: the stable identity key (PLAN §9, §11). */
   email: string;
   name: string | null;
   isAdmin: boolean;
@@ -26,7 +26,7 @@ export async function getAppSession(): Promise<AppSession | null> {
 
   const normalized = normalizeEmail(email);
   // Admin is computed authoritatively on EVERY request from the current sources
-  // of truth — the env allowlist and the roster-imported allowlist — and NEVER
+  // of truth (the env allowlist and the roster-imported allowlist) and NEVER
   // trusts the JWT `isAdmin` claim as a positive grant. A JWT lives ~30 days, so
   // trusting the stamped claim would let a removed/compromised admin keep access
   // until their token expired; recomputing here makes revocation immediate.

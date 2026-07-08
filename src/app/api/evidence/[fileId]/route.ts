@@ -1,7 +1,7 @@
 /**
  * Authenticated proxy for evidence images (PLAN.md §12). `drive.file` files
  * aren't viewable by the scheduler/student directly, so the app streams the
- * bytes through using the admin grant — never storing them. Access: an admin,
+ * bytes through using the admin grant, never storing them. Access: an admin,
  * or the student who owns the file.
  */
 import { getAppSession } from "@/lib/auth/session";
@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": "inline",
-        // Serve exactly the declared type — never let the browser sniff an
+        // Serve exactly the declared type; never let the browser sniff an
         // upload into an executable type (defense-in-depth; SVG is already
         // excluded from ALLOWED_EVIDENCE_TYPES).
         "X-Content-Type-Options": "nosniff",

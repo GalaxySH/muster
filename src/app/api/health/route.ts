@@ -2,7 +2,7 @@
  * Liveness/readiness probe for deploys and uptime monitoring (PLAN §15).
  *
  * 200 { ok: true } when the app can reach the database, 503 otherwise.
- * Unauthenticated by design — it reveals nothing beyond up/down, and the
+ * Unauthenticated by design: it reveals nothing beyond up/down, and the
  * deploy workflow + any external monitor need to reach it without a session.
  */
 import { sql } from "drizzle-orm";

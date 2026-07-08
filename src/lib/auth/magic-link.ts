@@ -1,20 +1,20 @@
 /**
- * Magic-link fallback auth — token primitives + pure validity logic (PLAN §11).
+ * Magic-link fallback auth: token primitives + pure validity logic (PLAN §11).
  *
  * The app generates and OWNS the token: a high-entropy random string, delivered
  * to the user's wisc.edu mailbox, with only its SHA-256 hash stored at rest. This
- * module is dependency-free (node crypto only — no env/DB) so the validity +
+ * module is dependency-free (node crypto only, no env/DB) so the validity +
  * cooldown rules are unit-testable; the DB-backed issue/redeem lives in
  * ./magic-link-store (server-only).
  */
 import { randomBytes, createHash } from "node:crypto";
 
-/** Link lifetime (single-use, short — PLAN §11 "expires"). */
+/** Link lifetime (single-use, short; PLAN §11 "expires"). */
 export const MAGIC_LINK_TTL_MS = 30 * 60 * 1000;
 /** Minimum gap between link requests for the same email (anti-spam). */
 export const MAGIC_LINK_COOLDOWN_MS = 60 * 1000;
 
-/** SHA-256 hex of the raw token — only this is persisted (never the raw token). */
+/** SHA-256 hex of the raw token: only this is persisted (never the raw token). */
 export function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }

@@ -32,7 +32,7 @@ export function testEmailFromSlug(slug: string): string {
   return `${slug}@${TEST_ACCOUNT_DOMAIN}`;
 }
 
-/** True only for addresses on the synthetic domain — the impersonation rail. */
+/** True only for addresses on the synthetic domain: the impersonation rail. */
 export function isTestAccountEmail(email: string): boolean {
   return emailDomain(email) === TEST_ACCOUNT_DOMAIN;
 }

@@ -1,6 +1,6 @@
 /**
  * Seed the canonical position + shift-block config into the database.
- * Idempotent upsert — safe to re-run. Invoked via `npm run db:seed`.
+ * Idempotent upsert, safe to re-run. Invoked via `npm run db:seed`.
  */
 import { eq, sql } from "drizzle-orm";
 import { createDb } from "./client";
@@ -54,7 +54,7 @@ async function main() {
     }
     // The seeded "New Student" group (PLAN §13). Window left unconfigured (null)
     // so the form stays locked until an admin schedules it. It becomes the
-    // default only when no group holds the flag yet — re-seeding never steals
+    // default only when no group holds the flag yet; re-seeding never steals
     // the flag back from an admin's setDefaultGroup choice, and an existing row
     // is left untouched entirely (no window/name/flag clobber).
     const [existingDefault] = await db

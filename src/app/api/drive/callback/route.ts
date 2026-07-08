@@ -3,7 +3,7 @@
  * code for a refresh token, and stores it encrypted. Admin-only.
  *
  * Absolute redirects use the canonical public base (env.NEXTAUTH_URL), NOT
- * req.url — behind the reverse proxy the standalone server reports its own
+ * req.url: behind the reverse proxy the standalone server reports its own
  * listen address (localhost:3000), which sent the admin's browser off-site.
  * req.url is still fine for reading query params (host-independent).
  */

@@ -2,7 +2,7 @@
  * Roster linking on sign-in (PLAN.md §4.1 step 2).
  *
  * Resolves a signed-in identity to its roster record by email (the netid
- * `@wisc.edu` address equals the Google sign-in identity — confirmed §16.1),
+ * `@wisc.edu` address equals the Google sign-in identity, confirmed §16.1),
  * and checks the imported admin allowlist.
  */
 import "server-only";

@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * Admin-gated test-account management (/admin/test-users) — the production
+ * Admin-gated test-account management (/admin/test-users): the production
  * successor of the dev-only /dev-login manager, for walking the student flow to
  * train admins. Accounts live in a dedicated group (initially wide open;
  * editable on /admin/groups) under a synthetic non-deliverable domain (see
@@ -56,7 +56,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const email = testEmailFromSlug(slug);
 
   const db = getDb();
-  // Refuse (never upsert) when any row already exists — an upsert here could
+  // Refuse (never upsert) when any row already exists; an upsert here could
   // hijack an existing student row into the test group.
   const [existing] = await db
     .select({ email: students.email })
@@ -66,7 +66,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   if (existing) fail("exists");
 
   // Ensure the test group exists (race-safe insert-if-absent). The wide-open
-  // bounds are initial values only — admins may edit the window on
+  // bounds are initial values only; admins may edit the window on
   // /admin/groups, so an existing row is left untouched (`id = id` no-op).
   await db
     .insert(groups)
@@ -135,7 +135,7 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
 
 /**
  * Sign the current admin in AS a test account: mint a single-use magic-link
- * token and redeem it through the existing `magic-link` Credentials provider —
+ * token and redeem it through the existing `magic-link` Credentials provider,
  * no new auth surface. Requires BOTH test-group membership AND the synthetic
  * domain, so a real student moved into the group via the /admin/groups picker
  * can never be impersonated. Replaces the admin's session; they return by
@@ -159,7 +159,7 @@ export async function signInAsTestAccount(formData: FormData): Promise<void> {
     await signIn(MAGIC_LINK_PROVIDER, { token, email, redirectTo: "/me" });
   } catch (error) {
     if (error instanceof AuthError) fail("signin");
-    // Otherwise it's the success NEXT_REDIRECT thrown by signIn — let it through.
+    // Otherwise it's the success NEXT_REDIRECT thrown by signIn; let it through.
     throw error;
   }
 }

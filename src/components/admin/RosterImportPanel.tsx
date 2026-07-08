@@ -4,7 +4,7 @@
  * Admin roster-import upload (PLAN.md §4.2): pick the PCPL .xlsx workbook,
  * relay it to the importRosterFromUpload server action, and render the returned
  * summary. The import is idempotent, so re-uploading a corrected workbook is
- * always safe — "People Coming" refreshes/activates students, "People Leaving"
+ * always safe: "People Coming" refreshes/activates students, "People Leaving"
  * marks them off-roster.
  */
 import { useRef, useState, useTransition } from "react";
@@ -32,7 +32,7 @@ export function RosterImportPanel() {
       setError("Choose the PCPL workbook (.xlsx) first.");
       return;
     }
-    // Same pure check the server re-runs — instant feedback on the wrong file.
+    // Same pure check the server re-runs; instant feedback on the wrong file.
     const check = validateRosterUpload({ name: file.name, type: file.type, size: file.size });
     if (!check.ok) {
       setError(check.error ?? "Invalid file.");
@@ -104,7 +104,7 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
 
       {summary.movedWithinWorkbook.length > 0 && (
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
-          In both sheets — promoted or moved, kept on roster with their “People Coming”
+          In both sheets, promoted or moved, kept on roster with their “People Coming”
           position: {summary.movedWithinWorkbook.join(", ")}
         </p>
       )}
@@ -134,7 +134,7 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
       {summary.unlistedOnRoster.length > 0 && (
         <div style={warnBox}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            ⚠ Still on roster but in neither sheet of this workbook (left unchanged — move
+            ⚠ Still on roster but in neither sheet of this workbook (left unchanged; move
             them to “People Leaving” and re-import to remove them):
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
@@ -151,7 +151,7 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {summary.skipped.map((s, i) => (
               <li key={i}>
-                {s.detail} — {SKIP_REASON_LABEL[s.reason] ?? s.reason}
+                {s.detail} · {SKIP_REASON_LABEL[s.reason] ?? s.reason}
               </li>
             ))}
           </ul>

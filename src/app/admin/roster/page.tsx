@@ -22,7 +22,7 @@ export default async function AdminRosterPage() {
         Upload the current PCPL workbook (.xlsx) to bring the roster up to date. Rows on{" "}
         <strong>People Coming</strong> are added or refreshed as active students;
         rows on <strong>People Leaving</strong> are marked off-roster (they drop out of the
-        response list, export, and non-response tracking — their submission is kept).
+        response list, export, and non-response tracking, though their submission is kept).
         Re-importing the same workbook is safe.
       </p>
 

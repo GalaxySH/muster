@@ -2,7 +2,7 @@
  * Pure parsing for the admin "paste a list of emails" group-assignment path
  * (PLAN.md §13). Accepts a free-form blob (commas, semicolons, spaces, or
  * newlines), normalizes + de-dupes, and partitions into valid `@wisc.edu`
- * addresses vs. the rest. No I/O — the caller matches `valid` against the
+ * addresses vs. the rest. No I/O; the caller matches `valid` against the
  * roster and reports what didn't match.
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";

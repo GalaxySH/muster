@@ -52,7 +52,7 @@ export default async function AvailabilityPage() {
     );
   }
 
-  // Window gate (PLAN §13): only an open window permits edits — and, if the group
+  // Window gate (PLAN §13): only an open window permits edits, and if the group
   // locks after submit, an already-submitted student is read-only too.
   const editable = access.canEdit;
   const reachable = await loadReachableSteps(form.student.email);

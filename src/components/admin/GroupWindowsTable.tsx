@@ -93,7 +93,7 @@ function GroupRow({ group }: { group: GroupView }) {
     const isoCloses = localInputToIso(closes);
     const hadWindow = group.opensAtMs != null && group.closesAtMs != null;
     // A `datetime-local` input yields an empty string unless BOTH a date and a
-    // time are entered — so picking only dates silently produces no value. Guard
+    // time are entered, so picking only dates silently produces no value. Guard
     // that here: if neither bound is set and there's no existing window to clear,
     // the admin almost certainly meant to schedule one but left the time blank.
     if (!isoOpens && !isoCloses && !hadWindow) {

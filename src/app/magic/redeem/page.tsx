@@ -3,7 +3,7 @@ import { redeemAndSignIn } from "@/lib/auth/magic-link-actions";
 import { Page } from "@/components/ui";
 
 /**
- * Magic-link redemption — the "Confirm it's you" step (PLAN §11). Visiting the
+ * Magic-link redemption: the "Confirm it's you" step (PLAN §11). Visiting the
  * link (GET) does NOT consume the token; the user re-enters their email and
  * submits, which hands token+email to the `magic-link` provider for atomic
  * single-use redemption. The re-entry also defeats mail-scanner link previews.

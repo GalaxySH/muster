@@ -16,7 +16,7 @@ export function selectionKey(blockId: string, day: Day): string {
  * Cells that are implicitly covered: a block whose time range falls entirely
  * within the *combined* span of the selected shifts on that day. Because
  * adjacent shifts merge (e.g. 2–5p + 5–10p ⇒ 2–10p), a straddling block like
- * 3:30–7p is covered too. These render as "already covered" hints — the student
+ * 3:30–7p is covered too. These render as "already covered" hints; the student
  * needn't also pick them. Display-only; not part of the saved selection.
  */
 export function computeCoveredKeys(

@@ -9,7 +9,7 @@
  * regardless so students can come back.
  *
  * Status semantics (PLAN §13, form-flow): `saveAvailability` NEVER promotes a
- * submission to "submitted" — that flip happens once, at the end of the wizard,
+ * submission to "submitted": that flip happens once, at the end of the wizard,
  * in `finalizeSubmission` (the exit-page submit). So:
  *   - "draft"    → save, no validation gate.
  *   - "continue" → validate (hard rules + desired hours); refuse on failure;
@@ -18,8 +18,8 @@
  * stays submitted and keeps its finalize artifacts (weekend auto-assign + flags)
  * re-applied on each save, so the scheduler's view never goes stale.
  *
- * The one soft rule that needs server action — a non-exempt student who picked
- * no weekend shift gets one auto-assigned (PLAN §5 #5) — plus the late-travel
+ * The one soft rule that needs server action (a non-exempt student who picked
+ * no weekend shift gets one auto-assigned, PLAN §5 #5) plus the late-travel
  * flag (§8) are written by `writeSelectionAndFlags` whenever the effective status
  * is "submitted".
  */
@@ -223,7 +223,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
   const studentNotes = input.notes.trim() || null;
 
   // "continue" is a hard gate: refuse to advance (and don't persist) on failure,
-  // exactly as the old submit did — students can "Save draft" to keep work safe.
+  // exactly as the old submit did; students can "Save draft" to keep work safe.
   if (input.mode === "continue") {
     const errors = result.checks
       .filter((c) => c.severity === "hard" && !c.passed)

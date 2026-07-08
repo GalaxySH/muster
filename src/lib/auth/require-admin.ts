@@ -1,6 +1,6 @@
 /**
  * Shared admin gate for server actions. Admin is recomputed per request inside
- * getAppSession (env allowlist + admin_users table — never the JWT claim), so a
+ * getAppSession (env allowlist + admin_users table, never the JWT claim), so a
  * revoked admin is locked out immediately.
  */
 import "server-only";

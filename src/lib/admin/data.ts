@@ -4,10 +4,10 @@
  * The per-student view is the primary admin surface: it pulls a student's
  * roster record, position config, submission, selection (split into the
  * student's own picks vs. the machine-assigned weekend cell), persisted flags,
- * and evidence (Drive fileIds only — never bytes, via the evidence loader).
+ * and evidence (Drive fileIds only, never bytes, via the evidence loader).
  *
  * The response list is the navigation hub; it also defines the stable ordering
- * the per-student prev/next nav walks (PLAN §10 "fast prev/next" — hard req).
+ * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
 import { asc, eq, inArray } from "drizzle-orm";
@@ -269,7 +269,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       else if (r.status === "draft") draftOnly.push(person);
       else noResponse.push(person);
     } else if (r.status != null && r.groupId !== TEST_GROUP_ID) {
-      // Admin-created test accounts are off-roster by design — not a roster gap.
+      // Admin-created test accounts are off-roster by design, not a roster gap.
       offRoster.push(person);
     }
   }

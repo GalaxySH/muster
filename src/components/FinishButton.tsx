@@ -7,8 +7,8 @@ import { finalizeSubmission } from "@/lib/availability/actions";
 import { ActionButton } from "@/components/ui";
 
 /**
- * The exit-page submit (PLAN §13). Calls finalizeSubmission — the single place a
- * submission flips to "submitted" — and on success returns the student to /me
+ * The exit-page submit (PLAN §13). Calls finalizeSubmission, the single place a
+ * submission flips to "submitted", and on success returns the student to /me
  * (now the "done" view). On a validation/missing-course-schedule error it shows
  * the message with a link to the step that needs fixing.
  */

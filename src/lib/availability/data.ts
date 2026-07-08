@@ -51,7 +51,7 @@ export interface StudentForm {
 
 /**
  * Everything the form route needs. Returns null when the user has no roster
- * record (off-roster — onboarding handled separately).
+ * record (off-roster; onboarding handled separately).
  */
 export async function loadStudentForm(email: string): Promise<StudentForm | null> {
   const student = await findStudentByEmail(email);

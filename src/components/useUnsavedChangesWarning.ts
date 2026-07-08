@@ -3,7 +3,7 @@
 /**
  * Warn before unsaved form edits are lost: a native beforeunload prompt for tab
  * close / refresh / external navigation, plus a confirm() on same-tab link
- * clicks — the App Router has no route-change blocking API, and the links that
+ * clicks: the App Router has no route-change blocking API, and the links that
  * leave a wizard page (AppHeader Home, the WizardSteps breadcrumb) live outside
  * the form component, so a document-level capture listener is the seam. Capture
  * phase runs before Next's <Link> onClick; stopPropagation on decline cancels
@@ -27,7 +27,7 @@ export function useUnsavedChangesWarning(dirty: boolean) {
 
     const onClickCapture = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0) return;
-      // Modified clicks open a new tab/window — this page's state survives.
+      // Modified clicks open a new tab/window; this page's state survives.
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const anchor = (e.target as Element | null)?.closest?.("a[href]");
       if (!(anchor instanceof HTMLAnchorElement)) return;

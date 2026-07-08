@@ -24,7 +24,7 @@ function escapeHtml(s: string): string {
 /** Deliver a magic-link sign-in email (or log it in dev). Throws on send failure. */
 export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Promise<void> {
   if (!env.RESEND_API_KEY) {
-    console.log(`[magic-link] no RESEND_API_KEY set — link for ${to}:\n${url}`);
+    console.log(`[magic-link] no RESEND_API_KEY set, link for ${to}:\n${url}`);
     return;
   }
 

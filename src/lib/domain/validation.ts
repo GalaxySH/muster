@@ -55,7 +55,7 @@ export function validateAvailability(
 
   const checks: Check[] = [];
 
-  // #2 — minimum hours (hard): best non-overlapping packing, cycle-averaged.
+  // #2: minimum hours (hard): best non-overlapping packing, cycle-averaged.
   const minMinutes = position.minHours * 60;
   const availableHours = hours(capacity.weeklyAverageMinutes);
   checks.push({
@@ -65,7 +65,7 @@ export function validateAvailability(
     detail: `${availableHours}h selected of ${position.minHours}h minimum`,
   });
 
-  // #6 — at least one opening OR one closing block selected (hard).
+  // #6: at least one opening OR one closing block selected (hard).
   const openCloseIds = openAndCloseIds(blocks);
   const hasOpenOrClose = [...selectedIds].some((id) => openCloseIds.has(id));
   checks.push({
@@ -77,7 +77,7 @@ export function validateAvailability(
       : "select an opening or closing shift",
   });
 
-  // #7 — selection spans at least minDays distinct days (hard).
+  // #7: selection spans at least minDays distinct days (hard).
   checks.push({
     id: "min_days",
     severity: "hard",
@@ -85,7 +85,7 @@ export function validateAvailability(
     detail: `${days.size} of ${position.minDays} required days selected`,
   });
 
-  // #5 — must work a weekend shift (soft; Barista exempt).
+  // #5: must work a weekend shift (soft; Barista exempt).
   const flags: Flag[] = [];
   if (!position.weekendExempt) {
     const hasWeekend = selection.some((s) => dayTypeOf(s.day) === "weekend");
@@ -115,7 +115,7 @@ export function validateAvailability(
  * Lives outside validateAvailability because desired hours sits beside the
  * selection, not in it; the client checklist and both server gates
  * (saveAvailability "continue" / finalizeSubmission) run this same check.
- * Only the minimum is enforced — the 20/30h cap stays scheduler-side context.
+ * Only the minimum is enforced; the 20/30h cap stays scheduler-side context.
  */
 export function checkDesiredHours(desiredHours: number | null, position: Position): Check {
   const entered = desiredHours !== null && Number.isFinite(desiredHours);

@@ -92,7 +92,7 @@ export const adminEmails = new Set(
     .filter(Boolean),
 );
 
-/** The encryption key as raw bytes, parsed once (for secrets at rest — §12). */
+/** The encryption key as raw bytes, parsed once (for secrets at rest, §12). */
 export const encryptionKey = parseKey(env.ENCRYPTION_KEY);
 
 /** Whether the dev-login bypass is active (flag set AND not production). */

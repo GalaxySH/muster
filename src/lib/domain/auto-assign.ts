@@ -4,7 +4,7 @@
  * When a non-exempt student submits without choosing any weekend shift, the
  * scheduler still needs a weekend cell to place them on the A/B rotation. We
  * pick one for them ("I randomly chose this shift for you") and raise a soft
- * flag. This is pure selection logic — the action wires persistence around it.
+ * flag. This is pure selection logic; the action wires persistence around it.
  */
 import { WEEKEND_DAYS, dayTypeOf, type Position, type SelectedShift, type ShiftBlock } from "./types";
 

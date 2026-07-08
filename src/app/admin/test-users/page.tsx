@@ -13,16 +13,16 @@ import {
 import { TEST_ACCOUNT_DOMAIN } from "@/lib/test-accounts/email";
 import { POSITIONS } from "@/lib/config/positions";
 
-// DB-backed (the test-account list) — never statically prerender.
+// DB-backed (the test-account list); never statically prerender.
 export const dynamic = "force-dynamic";
 
 const ERROR_COPY: Record<TestAccountError, string> = {
   forbidden: "Admins only.",
   "invalid-name": "Enter a display name with at least one letter or digit.",
   "invalid-position": "Pick a valid position.",
-  exists: "An account with that name already exists — pick a different name.",
+  exists: "An account with that name already exists. Pick a different name.",
   "not-found": "That test account no longer exists (or isn't a test account).",
-  signin: "Sign-in as the test account failed — try again.",
+  signin: "Sign-in as the test account failed. Try again.",
 };
 
 /**
@@ -31,7 +31,7 @@ const ERROR_COPY: Record<TestAccountError, string> = {
  * the whole student flow (e.g. to train admins), then delete it. Accounts are
  * off-roster, in a dedicated "Test accounts" group (initially wide open;
  * window editable on /admin/groups), on a synthetic non-deliverable email
- * domain — invisible in responses/exports and reachable only from this page.
+ * domain, invisible in responses/exports and reachable only from this page.
  */
 export default async function AdminTestUsersPage({
   searchParams,
@@ -53,7 +53,10 @@ export default async function AdminTestUsersPage({
       </AppHeader>
       <h1>Test accounts</h1>
       <p style={{ color: "#555" }}>
-        Create throwaway accounts to walkthrough the app. Fill out the details, sign in as the student, and navigate through the flow. Test accounts are not on the roster and live in the <strong>Test accounts</strong> group (its form window is editable on <Link href="/admin/groups">Groups &amp; form windows</Link>), so they never appear in the response list or other tracking.
+        Create throwaway accounts to walk through the app. Fill out the details, sign in as
+        the student, and navigate the flow. Test accounts stay off the roster and live in
+        the <strong>Test accounts</strong> group; edit that group&apos;s form window on{" "}
+        <Link href="/admin/groups">Groups &amp; form windows</Link>.
       </p>
       <p style={banner}>
         <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign

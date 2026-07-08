@@ -7,7 +7,7 @@
  * `intro` (orientation) and `exit` (final submit) bookend three "data" steps.
  * This module is pure (no I/O) so it can be unit-tested and shared by the server
  * data loader and the page components. The "where do I resume?" decision is
- * inferred from persisted data — there is no separate progress column.
+ * inferred from persisted data; there is no separate progress column.
  */
 
 /** The three data-entry steps, in order (intro/exit are not counted here). */
@@ -39,9 +39,9 @@ export function nextHref(key: WizardStepKey): string {
 }
 
 export interface FlowInputs {
-  /** submissions.status === "submitted" — the student finished the wizard. */
+  /** submissions.status === "submitted": the student finished the wizard. */
   submitted: boolean;
-  /** A submission row exists at all (they've started — e.g. confirmed the intro). */
+  /** A submission row exists at all (they've started, e.g. confirmed the intro). */
   hasSubmissionRow: boolean;
   /** A course schedule has been uploaded. */
   hasCourseSchedule: boolean;
@@ -63,7 +63,7 @@ export type FlowStatus =
 export function flowStatus(i: FlowInputs): FlowStatus {
   if (i.submitted) return { kind: "done" };
   if (!i.hasSubmissionRow && !i.hasCourseSchedule) return { kind: "not-started" };
-  // Confirmed their info (a draft row exists) but haven't uploaded anything yet —
+  // Confirmed their info (a draft row exists) but haven't uploaded anything yet;
   // resume at the intro, which is where confirming sent them, not mid-flow.
   if (!i.hasCourseSchedule)
     return { kind: "continue", href: "/intro", stepLabel: "the introduction" };

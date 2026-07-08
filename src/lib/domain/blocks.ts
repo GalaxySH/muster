@@ -1,7 +1,7 @@
 /**
  * Open/close derivation for shift blocks (PLAN.md §6.2).
  *
- * Open/close are NOT stored — they're derived per position per day-type:
+ * Open/close are NOT stored; they're derived per position per day-type:
  * the earliest-starting block of a day-type is the opening shift, the
  * latest-ending block is the closing shift. Callers pass a list already
  * filtered to a single position + day-type.

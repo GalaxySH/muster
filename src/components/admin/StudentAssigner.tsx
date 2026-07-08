@@ -140,7 +140,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
               {p.name}
             </option>
           ))}
-          <option value="none">— no position —</option>
+          <option value="none">No position</option>
         </select>
         <select value={rosterSel} onChange={(e) => setRosterSel(e.target.value)} style={ctrl}>
           <option value="">Any roster status</option>
@@ -149,7 +149,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
         </select>
         <select value={groupSel} onChange={(e) => setGroupSel(e.target.value)} style={ctrl}>
           <option value="">Any group</option>
-          <option value="none">— ungrouped —</option>
+          <option value="none">Ungrouped</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
