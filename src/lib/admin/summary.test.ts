@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "@/lib/domain/types";
+import { demandCellKey } from "@/lib/domain/demand";
 import { MAX_HOURS_DOMESTIC, MAX_HOURS_INTERNATIONAL, buildAdminGrid, hourCap } from "./summary";
 
 // Minimal block fixtures: one weekday block, two weekend blocks.
@@ -70,14 +71,16 @@ describe("buildAdminGrid", () => {
     expect(row.cells[0]).toBe("auto");
   });
 
-  it("carries through derived open/close and the computed high-demand overlay", () => {
-    const grid = buildAdminGrid(allBlocks, [], [], new Set(["wd-close"]));
+  it("carries through derived open/close and the per-day high-demand overlay", () => {
+    // Flag only wd-close on Monday; the bar must land on that cell alone, not the row.
+    const grid = buildAdminGrid(allBlocks, [], [], new Set([demandCellKey("wd-close", "mon")]));
     const open = grid.weekday.rows.find((r) => r.block.id === "wd-open")!;
     const close = grid.weekday.rows.find((r) => r.block.id === "wd-close")!;
     expect(open.isOpen).toBe(true);
-    expect(open.highDemand).toBe(false);
+    expect(open.highDemandDays.every((v) => v === false)).toBe(true);
     expect(close.isClose).toBe(true);
-    expect(close.highDemand).toBe(true);
+    expect(close.highDemandDays[0]).toBe(true); // Mon
+    expect(close.highDemandDays[1]).toBe(false); // Tue
   });
 
   it("has a weekend sub-grid of null for a weekday-only position", () => {

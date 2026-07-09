@@ -19,7 +19,7 @@
   production admin feature** (`/admin/test-users`, §18b): create/sign-in-as/delete throwaway
   students in any position for training walkthroughs (`/dev-login` keeps only the dev-only
   OAuth bypass); `/admin/non-responses` can copy outstanding emails. Next: ops.
-- **Version:** 0.43
+- **Version:** 0.45
 - **Last updated:** 2026-07-09
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -210,9 +210,9 @@ attaches to each). Editable config so they can be merged further later.
 - **Block sets differ by day-type**, and a position may have **no weekend set**
   (Barista is weekday-only). Open/close are derived **per position per day-type**.
 - **High-demand indicator (§7):** **computed** from live selection counts (roadmap 2.5),
-  not an admin-set flag; the selection UI shows a bare red bar under an over-subscribed
-  block (no explanation), advisory only. (The old `shift_blocks.high_demand` column was
-  retired.)
+  not an admin-set flag; the selection UI marks each most-picked **(block × day) cell**
+  (per day) with a red mark plus a short steering hint, advisory only. (The old
+  `shift_blocks.high_demand` column was retired.)
 
 ### 6.3 Canonical block table
 Authoritative per-position blocks (provided 2026-06). **Open** = earliest-starting
@@ -304,16 +304,21 @@ block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm
   (§10). A required **`desiredHours`** field helps the scheduler aim within the cap;
   it must be **≥ the position's minimum hours** (hard check `desired_hours`,
   `checkDesiredHours` in the rules engine) but is never capped at the top end.
-- **High-demand indicator (red bar):** a bare **red bar** renders beside an
-  over-subscribed block in the selection grid — **no explanation shown** (avoid gaming;
-  these are the most over-subscribed shifts). Purely **advisory** — the student can still
-  select them; selection isn't blocked. **Computed** (roadmap 2.5): once a position has
-  **≥ 20 submitted responses**, a (block × day) cell whose responder share crosses a
-  threshold (~60%) is high-demand; a block row shows the bar if any of its day cells
-  qualifies. The signal is self-maintaining and supersedes the old admin-set flag (the
-  `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`;
-  computed at grid load in `availability/data.ts`. A graded-intensity view, if ever
-  wanted, stays admin-side.
+- **High-demand indicator (red mark):** a small **red mark** renders on each high-demand
+  **(block × day) cell** (per day, not on the whole block row) in the selection grid,
+  with a short **steering hint** ("a lot of students picked that shift; choosing less
+  busy ones can help you get the hours you want"). The underlying counts and ranking stay
+  hidden (avoid gaming). Purely **advisory** — the student can still select them;
+  selection isn't blocked. **Computed** (roadmap 2.5): once a position has **≥ 20
+  submitted responses**, shifts are ranked by responder pick count **within each
+  day-type** (weekday vs weekend, so weekend shifts aren't buried), and the **busiest
+  ~15%** of (block × day) cells are flagged (cells tied at the cutoff count are all
+  included). A **relative** rank, not an absolute share of the cohort — students
+  over-select, so what matters is which shifts stand out above the pack, and a fixed
+  cohort-percentage almost never fires. The signal is self-maintaining and supersedes the old admin-set flag (the
+  `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
+  (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
+  graded-intensity view, if ever wanted, stays admin-side.
 - **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
   adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
   scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
@@ -449,8 +454,8 @@ The view the scheduler works from. Layout (see wireframe):
   **late travel** (post-9/1); **off-roster** banner if position/intl were self-reported.
 - **Preferences grid:** the quick-read centerpiece — **separate weekday and weekend
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
-  open/close rows tagged, **high-demand** red bar, any **auto-assigned** weekend cell
-  marked distinctly.
+  open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
+  any **auto-assigned** weekend cell marked distinctly.
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -875,6 +880,28 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.45 (2026-07-09)** — **High-demand mark is now per (block × day) cell (§6.2, §7,
+  §10a).** The red indicator previously rendered on the whole block row (all days) when
+  any of the block's day cells qualified; it now renders on each **individual flagged
+  cell** on both the student selection grid and the admin per-student grid. The cell-
+  level data already existed (`domain/demand.ts` `highDemandCells`); the loader
+  `loadHighDemandBlockIds` → **`loadHighDemandCells`** now returns the `demandCellKey`
+  cell set instead of rolling up to block ids, and the grid view-model carries
+  `BlockRow.highDemandDays[]` (one flag per day, aligned to the sub-grid's `days`) in
+  place of `highDemand: boolean`. Deleted the now-dead `highDemandBlockIds` rollup. No
+  schema change. Updated `demand.test.ts`, `summary.test.ts`, `AvailabilityForm.test.tsx`.
+- **0.44 (2026-07-09)** — **High-demand indicator: steering hint + relative metric
+  (§6.2, §7).** (1) The student availability grid now shows a short **hint** below the
+  intro explaining the red bar ("a lot of students picked that shift; choosing less busy
+  ones can help you get the hours you want"), rendered only when a bar is actually
+  showing; the row tooltip changed from "high demand" to "A lot of students picked this
+  shift." (2) The demand metric moved from an **absolute cohort share** (a cell needed
+  ~60% of all responders, which almost never fired) to a **relative top share**: shifts
+  are ranked by responder pick count **within each day-type** and the busiest **~15%**
+  are flagged (`DEMAND_TOP_SHARE`; shifts tied at the cutoff all included). Self-
+  calibrates to over-selection and surfaces genuine concentration. The ≥ 20 responder
+  floor and the pure `domain/demand.ts` / `availability/data.ts` layering are unchanged.
+  No schema change. Rewrote `demand.test.ts` (8 tests).
 - **0.43 (2026-07-09)** — **Master email switch (§11).** A new admin
   **`/admin/email-settings`** page with a single toggle enables/disables all outbound
   email (a global kill-switch). Stored in `app_settings` (`email_sending_enabled`,

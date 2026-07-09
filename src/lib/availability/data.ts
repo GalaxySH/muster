@@ -8,7 +8,7 @@ import { getDb } from "@/lib/db";
 import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
-import { highDemandBlockIds, DEMAND_MIN_RESPONDERS, type CellCount } from "@/lib/domain/demand";
+import { highDemandCells, DEMAND_MIN_RESPONDERS, type CellCount } from "@/lib/domain/demand";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
 export interface PositionWithBlocks {
@@ -31,12 +31,13 @@ export async function loadPositionWithBlocks(
 }
 
 /**
- * Blocks to flag as high-demand in a position's grid (roadmap 2.5): computed from
- * submitted responders' own picks (auto-assigned cells excluded), off-roster and
- * test accounts excluded. Empty until the position clears the responder floor, so
- * the signal never shows on a thin cohort. Runs at grid load (~cheap, two queries).
+ * (block × day) cells to flag as high-demand in a position's grid (roadmap 2.5):
+ * computed from submitted responders' own picks (auto-assigned cells excluded),
+ * off-roster and test accounts excluded. Empty until the position clears the responder
+ * floor, so the signal never shows on a thin cohort. Runs at grid load (~cheap, two
+ * queries). Keys are `demandCellKey(blockId, day)`.
  */
-export async function loadHighDemandBlockIds(positionId: string): Promise<Set<string>> {
+export async function loadHighDemandCells(positionId: string): Promise<Set<string>> {
   const db = getDb();
   const [rc] = await db
     .select({ n: sql<number>`count(*)` })
@@ -77,7 +78,7 @@ export async function loadHighDemandBlockIds(positionId: string): Promise<Set<st
     day: r.day as Day,
     count: Number(r.count),
   }));
-  return highDemandBlockIds(counts, responderCount);
+  return highDemandCells(counts, responderCount);
 }
 
 export interface ExistingSubmission {

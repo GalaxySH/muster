@@ -90,6 +90,12 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   // the wizard step ("Save draft" + "Save and continue → /travel").
   const editMode = props.initialStatus === "submitted";
 
+  // Only surface the high-demand legend when at least one cell is actually flagged,
+  // so it never references a mark the student can't see.
+  const anyHighDemand =
+    props.gridModel.weekday.rows.some((r) => r.highDemandDays.some(Boolean)) ||
+    (props.gridModel.weekend?.rows.some((r) => r.highDemandDays.some(Boolean)) ?? false);
+
   const dirty =
     editable &&
     !props.preview &&
@@ -211,6 +217,34 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       <p style={{ color: "#555" }}>
         Check every shift you&apos;d be willing to work. These are preferences, not your final schedule. <strong>You must meet the minimum policy requirements to submit.</strong> If you do not submit your availability, we will assign you a schedule based on your course schedule only.
       </p>
+
+      {anyHighDemand && (
+        <p
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            color: "#555",
+            fontSize: 13,
+            marginTop: 4,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: 3,
+              height: 12,
+              background: "#d33",
+              flex: "none",
+            }}
+          />
+          <span>
+            This mark means a lot of students already picked that shift. Choosing less busy
+            shifts can help you get the hours you want.
+          </span>
+        </p>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>
         <Grid
@@ -410,29 +444,16 @@ function Grid({
                   whiteSpace: "nowrap",
                 }}
               >
-                {row.highDemand && (
-                  <span
-                    aria-hidden
-                    title="high demand"
-                    style={{
-                      display: "inline-block",
-                      width: 3,
-                      height: 11,
-                      background: "#d33",
-                      marginRight: 5,
-                      verticalAlign: "-1px",
-                    }}
-                  />
-                )}
                 {row.label}
                 {row.isOpen && <span style={{ color: "#1a66cc" }}> · open</span>}
                 {row.isClose && <span style={{ color: "#1a66cc" }}> · close</span>}
               </th>
-              {sub.days.map((day) => {
+              {sub.days.map((day, di) => {
                 const key = selectionKey(row.block.id, day);
                 const on = selected.has(key);
                 const isAuto = !on && autoAssigned.has(key);
                 const isCovered = !on && !isAuto && covered.has(key);
+                const isHot = row.highDemandDays[di];
                 return (
                   <td key={day} style={{ padding: 2 }}>
                     <button
@@ -444,10 +465,13 @@ function Grid({
                           ? "We auto-assigned this weekend shift because you didn't pick one. Click to choose your own."
                           : isCovered
                             ? "Already covered by a longer shift you selected"
-                            : undefined
+                            : isHot
+                              ? "A lot of students picked this shift"
+                              : undefined
                       }
                       onClick={() => onToggle(row.block.id, day)}
                       style={{
+                        position: "relative",
                         width: 30,
                         height: 26,
                         borderRadius: 4,
@@ -473,6 +497,21 @@ function Grid({
                         cursor: editable ? "pointer" : "default",
                       }}
                     >
+                      {isHot && (
+                        <span
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            top: 2,
+                            right: 2,
+                            width: 3,
+                            height: 8,
+                            background: "#d33",
+                            borderRadius: 1,
+                            pointerEvents: "none",
+                          }}
+                        />
+                      )}
                       {on ? "✓" : isAuto ? "★" : isCovered ? "–" : "✓"}
                     </button>
                   </td>

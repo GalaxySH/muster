@@ -8,6 +8,7 @@
  */
 import { deriveOpenClose } from "@/lib/domain/blocks";
 import { formatTime } from "@/lib/domain/time";
+import { demandCellKey } from "@/lib/domain/demand";
 import {
   WEEKDAY_DAYS,
   WEEKEND_DAYS,
@@ -22,8 +23,11 @@ export interface BlockRow {
   isClose: boolean;
   /** e.g. "6:30a–10:15a" */
   label: string;
-  /** Computed over-subscribed indicator (roadmap 2.5); renders a red bar (advisory). */
-  highDemand: boolean;
+  /**
+   * Per-day over-subscribed flags (roadmap 2.5), one per day in the parent sub-grid's
+   * `days` (same order); a true cell renders a red mark (advisory).
+   */
+  highDemandDays: boolean[];
 }
 
 export interface SubGrid {
@@ -42,7 +46,7 @@ function buildSubGrid(
   blocks: readonly ShiftBlock[],
   dayType: DayType,
   days: readonly Day[],
-  highDemandBlockIds: ReadonlySet<string>,
+  highDemandCellKeys: ReadonlySet<string>,
 ): SubGrid {
   const set = blocks
     .filter((b) => b.dayType === dayType)
@@ -53,25 +57,25 @@ function buildSubGrid(
     isOpen: block.id === openId,
     isClose: block.id === closeId,
     label: `${formatTime(block.start)}–${formatTime(block.end)}`,
-    highDemand: highDemandBlockIds.has(block.id),
+    highDemandDays: days.map((day) => highDemandCellKeys.has(demandCellKey(block.id, day))),
   }));
   return { dayType, days, rows };
 }
 
 /**
- * Build the grid view model. `highDemandBlockIds` (computed from live selection
- * counts, roadmap 2.5) flags the blocks that render a red bar; omit it (empty) for
+ * Build the grid view model. `highDemandCellKeys` (computed from live selection counts,
+ * roadmap 2.5) are the (block × day) cells that render a red mark; omit it (empty) for
  * contexts with no demand signal yet.
  */
 export function buildGridModel(
   blocks: readonly ShiftBlock[],
-  highDemandBlockIds: ReadonlySet<string> = new Set(),
+  highDemandCellKeys: ReadonlySet<string> = new Set(),
 ): GridModel {
   const weekend = blocks.some((b) => b.dayType === "weekend")
-    ? buildSubGrid(blocks, "weekend", WEEKEND_DAYS, highDemandBlockIds)
+    ? buildSubGrid(blocks, "weekend", WEEKEND_DAYS, highDemandCellKeys)
     : null;
   return {
-    weekday: buildSubGrid(blocks, "weekday", WEEKDAY_DAYS, highDemandBlockIds),
+    weekday: buildSubGrid(blocks, "weekday", WEEKDAY_DAYS, highDemandCellKeys),
     weekend,
   };
 }

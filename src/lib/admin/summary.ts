@@ -59,9 +59,9 @@ export function buildAdminGrid(
   blocks: readonly ShiftBlock[],
   selection: readonly SelectedShift[],
   autoAssigned: readonly SelectedShift[],
-  highDemandBlockIds: ReadonlySet<string> = new Set(),
+  highDemandCellKeys: ReadonlySet<string> = new Set(),
 ): AdminGridModel {
-  const base = buildGridModel(blocks, highDemandBlockIds);
+  const base = buildGridModel(blocks, highDemandCellKeys);
   const onKeys = new Set(selection.map((s) => keyOf(s.blockId, s.day)));
   const autoKeys = new Set(autoAssigned.map((s) => keyOf(s.blockId, s.day)));
   return {

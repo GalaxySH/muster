@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 import { AvailabilityForm } from "./AvailabilityForm";
 import { saveAvailability } from "@/lib/availability/actions";
 import { buildGridModel } from "@/lib/availability/grid";
+import { demandCellKey } from "@/lib/domain/demand";
 import { parseTime } from "@/lib/domain/time";
 import type { Position, ShiftBlock } from "@/lib/domain/types";
 
@@ -46,6 +47,7 @@ function renderForm(
     blocks?: ShiftBlock[];
     international?: boolean;
     status?: "draft" | "submitted" | null;
+    highDemand?: Set<string>;
   } = {},
 ) {
   const blocks = opts.blocks ?? defaultBlocks;
@@ -53,7 +55,7 @@ function renderForm(
     <AvailabilityForm
       position={position}
       blocks={blocks}
-      gridModel={buildGridModel(blocks)}
+      gridModel={buildGridModel(blocks, opts.highDemand)}
       international={opts.international ?? false}
       initialSelection={[]}
       initialAutoAssigned={[]}
@@ -75,6 +77,21 @@ describe("AvailabilityForm", () => {
     expect(screen.getByText("Weekend")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Mon" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Sat" })).toBeInTheDocument();
+  });
+
+  it("shows the high-demand hint and marks only the flagged day cell", () => {
+    const { unmount } = renderForm();
+    expect(screen.queryByText(/less busy shifts/i)).not.toBeInTheDocument();
+    unmount();
+
+    renderForm({ highDemand: new Set([demandCellKey("wd-open", "mon")]) });
+    expect(screen.getByText(/less busy shifts/i)).toBeInTheDocument();
+    // The mark lands on Monday's cell only, not every day of the block row.
+    expect(screen.getByRole("button", { name: "6:30a–10:15a Mon" })).toHaveAttribute(
+      "title",
+      "A lot of students picked this shift",
+    );
+    expect(screen.getByRole("button", { name: "6:30a–10:15a Tue" })).not.toHaveAttribute("title");
   });
 
   it("toggles a cell's pressed state on click", async () => {

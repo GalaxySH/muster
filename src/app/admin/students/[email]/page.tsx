@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors } from "@/lib/admin/data";
-import { loadHighDemandBlockIds } from "@/lib/availability/data";
+import { loadHighDemandCells } from "@/lib/availability/data";
 import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
@@ -38,8 +38,25 @@ const initials = (name: string) =>
     .map((p) => p[0]!.toUpperCase())
     .join("") || "?";
 
-const fmtDate = (d: Date | null) =>
-  d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+// Full timestamp for the scheduler, e.g. "09 July 2026 14:30:05 CDT". Rendered in
+// US Central (UW-Madison / how the domain reasons about cutoffs); formatToParts lets us
+// assemble the DD-month-YYYY order ourselves (en-US gives the CDT/CST short zone name).
+const fmtDate = (d: Date | null) => {
+  if (!d) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "America/Chicago",
+    timeZoneName: "short",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`;
+};
 
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
@@ -89,7 +106,7 @@ export default async function StudentDetailPage({
         })
       : null;
 
-  const highDemand = position ? await loadHighDemandBlockIds(position.id) : new Set<string>();
+  const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
   const grid = position ? buildAdminGrid(blocks, selection, autoAssigned, highDemand) : null;
   const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
   const cap = hourCap(detail.international);
@@ -524,19 +541,31 @@ function PrefTable({ sub }: { sub: AdminSubGrid }) {
         </tr>
         {sub.rows.map((row) => (
           <tr key={row.block.id}>
-            <td
-              style={{
-                whiteSpace: "nowrap",
-                borderLeft: row.highDemand ? "3px solid var(--color-text-danger)" : undefined,
-                paddingLeft: row.highDemand ? 5 : 0,
-              }}
-            >
+            <td style={{ whiteSpace: "nowrap" }}>
               {row.label}{" "}
               {row.isOpen && <span style={{ color: "var(--color-text-info)" }}>open</span>}
               {row.isClose && <span style={{ color: "var(--color-text-info)" }}>close</span>}
             </td>
             {row.cells.map((state, i) => (
-              <td key={sub.days[i]} style={cellStyle(state)}>
+              <td
+                key={sub.days[i]}
+                title={row.highDemandDays[i] ? "A lot of students picked this shift" : undefined}
+                style={{ ...cellStyle(state), position: "relative" }}
+              >
+                {row.highDemandDays[i] && (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: 1,
+                      right: 1,
+                      width: 3,
+                      height: 7,
+                      background: "var(--color-text-danger)",
+                      borderRadius: 1,
+                    }}
+                  />
+                )}
                 {state === "on" && (
                   <span style={{ color: "#fff", display: "block", textAlign: "center", fontWeight: 700 }}>
                     ✓

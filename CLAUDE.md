@@ -49,9 +49,13 @@ replaces the never-built flags window); (3) an **upcoming-travel** tab `/admin/t
 `email/resend.ts` + template callers; recipients = on-roster + submitted + scheduled;
 idempotent via `submissions.scheduleEmailSentAt`); (5) **computed high-demand** — the red
 bar now derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
-responses, ~60% responder share; computed in `availability/data.ts`
-`loadHighDemandBlockIds`, reusing the existing per-block rendering), retiring the manual
-`shift_blocks.high_demand` column + the `ShiftBlock.highDemand` field.
+responses, then the busiest **~15%** of picked shifts **ranked within each day-type**
+via `DEMAND_TOP_SHARE`, a relative rank rather than an absolute cohort share so it
+actually fires; computed in `availability/data.ts` `loadHighDemandCells` as a set of
+`demandCellKey(blockId, day)` cells), retiring the manual `shift_blocks.high_demand`
+column + the `ShiftBlock.highDemand` field. The red mark renders **per (block × day)
+cell** (`grid.ts` `BlockRow.highDemandDays[]`, one flag per day), on both the student
+grid (with a short steering hint, `AvailabilityForm`) and the admin per-student grid.
 
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
 student groups** with open/close windows — three gates: (1) **membership** — a student must

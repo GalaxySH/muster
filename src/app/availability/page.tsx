@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
-import { loadStudentForm, loadHighDemandBlockIds } from "@/lib/availability/data";
+import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadReachableSteps } from "@/lib/flow/data";
@@ -57,7 +57,7 @@ export default async function AvailabilityPage() {
   const editable = access.canEdit;
   const [reachable, highDemand] = await Promise.all([
     loadReachableSteps(form.student.email),
-    loadHighDemandBlockIds(form.position.id),
+    loadHighDemandCells(form.position.id),
   ]);
 
   return (
