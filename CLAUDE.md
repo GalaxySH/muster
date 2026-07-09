@@ -57,6 +57,29 @@ column + the `ShiftBlock.highDemand` field. The red mark renders **per (block ×
 cell** (`grid.ts` `BlockRow.highDemandDays[]`, one flag per day), on both the student
 grid (with a short steering hint, `AvailabilityForm`) and the admin per-student grid.
 
+**SL weekend-close picking** (roadmap 3.2, PLAN §18a, v0.46): a claim/inventory
+subsystem for Shift Leads, who must each claim **exactly 3** Fri/Sat close shifts
+(6p–11:30p) for the semester. Tables `close_slots` (dated inventory, unique date,
+per-slot capacity) + `close_claims` (composite PK `(closeSlotId, studentEmail)`,
+cascading deletes); pure rules in `domain/close-claims.ts` (default range = first
+September weekend → second December weekend, slot generation, remaining capacity,
+feasibility, `REQUIRED_CLOSE_CLAIMS`); server layer in `src/lib/closes/` (`data.ts`
+loaders; `actions.ts` **atomic claims** — student-row → slot-row lock order inside one
+transaction, PK backstop, losers get "just filled" + the refreshed board;
+`admin-actions.ts` idempotent inventory generation that never removes claimed slots).
+The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
+board via `components/closes/CloseClaimBoard.tsx`, counts polled every 10 s, dormant
+until an admin generates slots); the step list is **position-aware** (`wizardSteps` /
+`loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
+`finalizeSubmission` refuses an SL with ≠ 3 claims; `/me` shows a red warning card +
+a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead
+progress, per-slot claimants, feasibility warning, and a second backup Drive sheet
+(`Muster SL Closes`) — `sheet-sync.ts` + `drive/relay.ts` are now **parametrized by
+sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
+`getSheetUrl`), the student-action gate is deduplicated into `groups/gate.ts`
+(`requireEditableStudent`, used by availability/evidence/closes actions), and the old
+`ResponsesToolbar` folded into the shared `components/admin/SheetControls.tsx`.
+
 **Edit-window enforcement** (PLAN §13) gates the student form on **admin-configured
 student groups** with open/close windows — three gates: (1) **membership** — a student must
 have a persisted `students.groupId` or they're **denied** the form (no inferred fallback);

@@ -9,6 +9,7 @@ import { InfoCard, Page, PrimaryLink } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
+import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 
 export default async function MePage() {
   const session = await getAppSession();
@@ -48,6 +49,26 @@ export default async function MePage() {
             closesAt={flow.access.closesAt}
           />
 
+          {flow.closes.required && flow.closes.count < REQUIRED_CLOSE_CLAIMS && (
+            <InfoCard tone="danger" title="Weekend closes still needed">
+              <p style={{ marginTop: 0 }}>
+                Shift Leads each hold {REQUIRED_CLOSE_CLAIMS} weekend closes for the semester.
+                You have picked {flow.closes.count} of {REQUIRED_CLOSE_CLAIMS}. Spots are first
+                come first served.
+              </p>
+              {flow.access.canEdit &&
+                (flow.status.kind === "done" ||
+                (flow.status.kind === "continue" &&
+                  (flow.status.href === "/travel" || flow.status.href === "/closes")) ? (
+                  <PrimaryLink href="/closes">Pick your closes</PrimaryLink>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 14 }}>
+                    Finish the earlier form steps to unlock close picking.
+                  </p>
+                ))}
+            </InfoCard>
+          )}
+
           {flow.status.kind === "done" ? (
             <section>
               <p style={{ color: "#196127" }}>
@@ -74,6 +95,11 @@ export default async function MePage() {
                 <li>
                   <Link href="/travel">Travel excusals</Link>
                 </li>
+                {flow.closes.required && (
+                  <li>
+                    <Link href="/closes">Weekend closes</Link>
+                  </li>
+                )}
               </ul>
             </section>
           ) : !flow.access.canEdit ? (

@@ -1,36 +1,46 @@
 import { describe, it, expect } from "vitest";
 import {
   WIZARD_STEPS,
-  stepNumber,
-  prevHref,
+  CLOSES_STEP,
+  wizardSteps,
   nextHref,
   flowStatus,
   reachableStepKeys,
   type FlowInputs,
 } from "./steps";
 
-describe("wizard step navigation", () => {
-  it("numbers the data steps 1..3 in order", () => {
+describe("wizard step lists", () => {
+  it("has the three base data steps in order", () => {
     expect(WIZARD_STEPS.map((s) => s.key)).toEqual([
       "course-schedule",
       "availability",
       "travel",
     ]);
-    expect(stepNumber("course-schedule")).toBe(1);
-    expect(stepNumber("availability")).toBe(2);
-    expect(stepNumber("travel")).toBe(3);
   });
 
-  it("bookends with /intro before the first step and /exit after the last", () => {
-    expect(prevHref("course-schedule")).toBe("/intro");
-    expect(nextHref("travel")).toBe("/exit");
+  it("appends the closes step only for shift leads with an inventory", () => {
+    expect(wizardSteps(false).map((s) => s.key)).toEqual([
+      "course-schedule",
+      "availability",
+      "travel",
+    ]);
+    expect(wizardSteps(true).map((s) => s.key)).toEqual([
+      "course-schedule",
+      "availability",
+      "travel",
+      "closes",
+    ]);
   });
 
-  it("links adjacent data steps", () => {
-    expect(nextHref("course-schedule")).toBe("/availability");
-    expect(prevHref("availability")).toBe("/course-schedule");
-    expect(nextHref("availability")).toBe("/travel");
-    expect(prevHref("travel")).toBe("/availability");
+  it("links adjacent steps and exits after the last", () => {
+    const base = wizardSteps(false);
+    expect(nextHref("course-schedule", base)).toBe("/availability");
+    expect(nextHref("availability", base)).toBe("/travel");
+    expect(nextHref("travel", base)).toBe("/exit");
+
+    const sl = wizardSteps(true);
+    expect(nextHref("travel", sl)).toBe(CLOSES_STEP.href);
+    expect(nextHref("closes", sl)).toBe("/exit");
   });
 });
 
@@ -40,12 +50,15 @@ describe("flowStatus", () => {
     hasSubmissionRow: false,
     hasCourseSchedule: false,
     availabilityComplete: false,
+    closesRequired: false,
+    closeClaimCount: 0,
   };
 
   it("is done when submitted, regardless of other inputs", () => {
     expect(flowStatus({ ...base, submitted: true }).kind).toBe("done");
     expect(
       flowStatus({
+        ...base,
         submitted: true,
         hasSubmissionRow: true,
         hasCourseSchedule: true,
@@ -87,30 +100,90 @@ describe("flowStatus", () => {
     });
     expect(s).toMatchObject({ kind: "continue", href: "/travel" });
   });
+
+  it("still resumes at travel for a shift lead with no claims yet", () => {
+    const s = flowStatus({
+      ...base,
+      hasSubmissionRow: true,
+      hasCourseSchedule: true,
+      availabilityComplete: true,
+      closesRequired: true,
+    });
+    expect(s).toMatchObject({ kind: "continue", href: "/travel" });
+  });
+
+  it("resumes at closes for a shift lead with picks started but unfinished", () => {
+    const s = flowStatus({
+      ...base,
+      hasSubmissionRow: true,
+      hasCourseSchedule: true,
+      availabilityComplete: true,
+      closesRequired: true,
+      closeClaimCount: 1,
+    });
+    expect(s).toMatchObject({ kind: "continue", href: "/closes" });
+  });
+
+  it("resumes at travel once a shift lead's picks are complete", () => {
+    const s = flowStatus({
+      ...base,
+      hasSubmissionRow: true,
+      hasCourseSchedule: true,
+      availabilityComplete: true,
+      closesRequired: true,
+      closeClaimCount: 3,
+    });
+    expect(s).toMatchObject({ kind: "continue", href: "/travel" });
+  });
 });
 
 describe("reachableStepKeys", () => {
+  const base = {
+    submitted: false,
+    hasCourseSchedule: false,
+    availabilityComplete: false,
+    closesRequired: false,
+  };
+
   it("locks availability and travel until a course schedule is uploaded", () => {
-    expect(
-      reachableStepKeys({ submitted: false, hasCourseSchedule: false, availabilityComplete: false }),
-    ).toEqual(["course-schedule"]);
+    expect(reachableStepKeys(base)).toEqual(["course-schedule"]);
   });
 
   it("unlocks availability once the course schedule is in, but still locks travel", () => {
-    expect(
-      reachableStepKeys({ submitted: false, hasCourseSchedule: true, availabilityComplete: false }),
-    ).toEqual(["course-schedule", "availability"]);
+    expect(reachableStepKeys({ ...base, hasCourseSchedule: true })).toEqual([
+      "course-schedule",
+      "availability",
+    ]);
   });
 
   it("unlocks travel only when course schedule + availability are complete", () => {
     expect(
-      reachableStepKeys({ submitted: false, hasCourseSchedule: true, availabilityComplete: true }),
+      reachableStepKeys({ ...base, hasCourseSchedule: true, availabilityComplete: true }),
     ).toEqual(["course-schedule", "availability", "travel"]);
   });
 
-  it("opens every step for review once submitted", () => {
+  it("unlocks closes alongside travel for shift leads", () => {
     expect(
-      reachableStepKeys({ submitted: true, hasCourseSchedule: false, availabilityComplete: false }),
-    ).toEqual(["course-schedule", "availability", "travel"]);
+      reachableStepKeys({
+        ...base,
+        hasCourseSchedule: true,
+        availabilityComplete: true,
+        closesRequired: true,
+      }),
+    ).toEqual(["course-schedule", "availability", "travel", "closes"]);
+  });
+
+  it("opens every step for review once submitted", () => {
+    expect(reachableStepKeys({ ...base, submitted: true })).toEqual([
+      "course-schedule",
+      "availability",
+      "travel",
+    ]);
+    expect(reachableStepKeys({ ...base, submitted: true, closesRequired: true })).toEqual([
+      "course-schedule",
+      "availability",
+      "travel",
+      "closes",
+    ]);
   });
 });

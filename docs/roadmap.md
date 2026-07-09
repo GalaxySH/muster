@@ -191,9 +191,16 @@ the rendering is reused.
 
 ## Tier 3 — Large features
 
-### 3.2 Shift-Lead weekend-close picking — **L** *(deadline-bound: before the fall window opens)*
+### 3.2 Shift-Lead weekend-close picking — **L** — ✅ DONE (2026-07-10, v0.46) *(deadline-bound: before the fall window opens)*
 
-PLAN §18a already sketches this; the concrete spec:
+Shipped as specced below (PLAN §18a has the as-built summary). Notes vs. the spec:
+per-slot atomic claims were chosen over the global mutex (as recommended); the whole
+step stays **dormant until the admin generates the inventory** on `/admin/closes`, so
+rollout is admin-controlled; capacity feasibility renders as an admin warning card;
+travel-collision surfacing (below) was **not** built in this pass — the admin can
+cross-check `/admin/travel` — and can be revisited if it bites.
+
+Original spec:
 
 - **Inventory:** Fri + Sat closes, 6p–11:30p, first September weekend →
   second December weekend, **3 slots per shift** — stored as admin-editable
@@ -242,6 +249,9 @@ explicitly usable all semester by any known student):
 - **Daily digest email** of new requests to the scheduling admin — reuses the
   2.4 email seam; scheduling via host cron hitting a token-authenticated
   route (matches existing ops posture; no in-process scheduler).
+- *Recipients (decided 2026-07-10):* the digest goes **only to the
+  `ADMIN_EMAILS` env allowlist** (currently stu@wisc.edu), **not** to the
+  roster-imported `admin_users` admins.
 
 ### 3.3 Admin-configurable positions & shift blocks — **L**
 The schema is already data-driven (`positions`, `shift_blocks` tables; the

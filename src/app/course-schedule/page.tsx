@@ -5,7 +5,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { loadReachableSteps } from "@/lib/flow/data";
+import { loadWizardNav } from "@/lib/flow/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
@@ -27,11 +27,11 @@ export default async function CourseSchedulePage() {
     );
   }
 
-  const [evidence, drive, access, reachable] = await Promise.all([
+  const [evidence, drive, access, nav] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     resolveStudentAccess(student.email),
-    loadReachableSteps(student.email),
+    loadWizardNav(student.email),
   ]);
 
   if (access.access === "no-group") {
@@ -49,7 +49,7 @@ export default async function CourseSchedulePage() {
   return (
     <Page>
       <AppHeader>
-        <WizardSteps current="course-schedule" reachable={reachable} />
+        <WizardSteps steps={nav.steps} current="course-schedule" reachable={nav.reachable} />
       </AppHeader>
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />

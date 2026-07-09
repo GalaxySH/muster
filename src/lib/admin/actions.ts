@@ -21,8 +21,9 @@ import {
   SETTING_EMAIL_SENDING_ENABLED,
 } from "@/lib/settings";
 import {
-  syncResponsesSheet,
-  RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
+  syncSheet,
+  RESPONSES_SHEET,
+  SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
 } from "./sheet-sync";
 
@@ -100,7 +101,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
   // Best-effort Drive cleanup (relayDelete never throws) and sheet rebuild.
   for (const fileId of fileIds) await relayDelete(fileId);
   try {
-    await syncResponsesSheet({ cooldownMs: 0 });
+    await syncSheet(RESPONSES_SHEET, { cooldownMs: 0 });
   } catch (e) {
     console.error("Sheet resync after delete failed (non-fatal):", e);
   }
@@ -157,7 +158,7 @@ export async function rebuildResponsesSheet(): Promise<RebuildSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncResponsesSheet({ cooldownMs: RESPONSES_SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(RESPONSES_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
     revalidatePath("/admin/responses");
     return { ok: true, sync };
   } catch (e) {

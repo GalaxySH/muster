@@ -4,11 +4,14 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listResponses } from "@/lib/admin/data";
 import { listGroups } from "@/lib/groups/data";
 import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
-import { getResponsesSheetUrl, getLastSheetSync } from "@/lib/admin/sheet-sync";
+import { getSheetUrl, getLastSheetSync, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
+import { rebuildResponsesSheet } from "@/lib/admin/actions";
 import { ResponseList } from "@/components/admin/ResponseList";
 import { ResponseFilterBar } from "@/components/admin/ResponseFilterBar";
-import { ResponsesToolbar } from "@/components/admin/ResponsesToolbar";
+import { SheetControls, btnLink } from "@/components/admin/SheetControls";
 import { Page } from "@/components/ui";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
@@ -32,8 +35,8 @@ export default async function ResponsesPage({
   const [rows, groups, sheetUrl, lastSync] = await Promise.all([
     listResponses(filters),
     listGroups(),
-    getResponsesSheetUrl(),
-    getLastSheetSync(),
+    getSheetUrl(RESPONSES_SHEET),
+    getLastSheetSync(RESPONSES_SHEET),
   ]);
   const filtered = filterQuery !== "";
 
@@ -44,7 +47,16 @@ export default async function ResponsesPage({
         <Crumb href="/admin/non-responses" label="Non-responses" />
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>Responses</h1>
-      <ResponsesToolbar sheetUrl={sheetUrl} lastSyncedAtMs={lastSync ? lastSync.getTime() : null} />
+      <SheetControls
+        sheetUrl={sheetUrl}
+        lastSyncedAtMs={lastSync ? lastSync.getTime() : null}
+        rebuild={rebuildResponsesSheet}
+        leading={
+          <a href="/admin/responses/export" style={btnLink} download>
+            Download CSV <FontAwesomeIcon icon={faDownload} />
+          </a>
+        }
+      />
       <ResponseFilterBar
         groups={groups.map((g) => ({ id: g.id, name: g.name }))}
         group={sp.group}

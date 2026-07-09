@@ -28,18 +28,13 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/schema";
-import { getAppSession } from "@/lib/auth/session";
-import { findStudentByEmail } from "@/lib/roster/lookup";
-import { resolveStudentAccess } from "@/lib/groups/data";
-import {
-  NO_GROUP_MESSAGE,
-  SUBMITTED_LOCK_MESSAGE,
-  lockedReasonLine,
-} from "@/lib/groups/window-message";
+import { requireEditableStudent } from "@/lib/groups/gate";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
-import { trySyncResponsesSheet } from "@/lib/admin/sheet-sync";
+import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
+import { trySyncSheet, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
 import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
@@ -173,36 +168,13 @@ async function writeSelectionAndFlags(
   return autoAssigned;
 }
 
-/** Shared access gate for the availability/finalize actions (PLAN §13). */
-async function gateStudent(): Promise<
-  | { ok: true; email: string }
-  | { ok: false; error: string }
-> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  const student = await findStudentByEmail(session.email);
-  if (!student) return { ok: false, error: "You are not on the roster." };
-
-  const access = await resolveStudentAccess(student.email);
-  if (access.access === "no-group") return { ok: false, error: NO_GROUP_MESSAGE };
-  if (!access.canEdit) {
-    const error = access.lockedAfterSubmit
-      ? SUBMITTED_LOCK_MESSAGE
-      : lockedReasonLine(access.state, access.opensAt, access.closesAt);
-    return { ok: false, error };
-  }
-  return { ok: true, email: student.email };
-}
-
 export async function saveAvailability(input: SaveAvailabilityInput): Promise<SaveResult> {
-  const gate = await gateStudent();
+  const gate = await requireEditableStudent();
   if (!gate.ok) return { ok: false, errors: [gate.error] };
-
-  const student = await findStudentByEmail(gate.email);
-  if (!student?.positionId)
+  if (!gate.positionId)
     return { ok: false, errors: ["No position is set for your account yet."] };
 
-  const posWithBlocks = await loadPositionWithBlocks(student.positionId);
+  const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
   if (!posWithBlocks) return { ok: false, errors: ["Your position configuration is missing."] };
   const { position, blocks } = posWithBlocks;
 
@@ -238,7 +210,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     const [existing] = await tx
       .select({ id: submissions.id, status: submissions.status })
       .from(submissions)
-      .where(eq(submissions.studentEmail, student.email))
+      .where(eq(submissions.studentEmail, gate.email))
       .limit(1);
 
     // Never promote here; preserve whatever status the submission already has.
@@ -255,7 +227,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
       submissionId = randomUUID();
       await tx.insert(submissions).values({
         id: submissionId,
-        studentEmail: student.email,
+        studentEmail: gate.email,
         status: "draft",
         everyWeekendOptIn: input.everyWeekendOptIn,
         desiredHours,
@@ -275,7 +247,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 
   // Keep the running Drive spreadsheet fresh only when an actual response changed
   // (i.e. the form is already submitted). Drafts never trigger it.
-  if (effectiveStatus === "submitted") await trySyncResponsesSheet();
+  if (effectiveStatus === "submitted") await trySyncSheet(RESPONSES_SHEET);
 
   revalidatePath("/availability");
   return { ok: true, autoAssigned, errors: [] };
@@ -288,15 +260,12 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
  * performs the weekend auto-assign, raises flags, and refreshes the Drive sheet.
  */
 export async function finalizeSubmission(): Promise<FinalizeResult> {
-  const gate = await gateStudent();
+  const gate = await requireEditableStudent();
   if (!gate.ok) return { ok: false, error: gate.error };
   const email = gate.email;
+  if (!gate.positionId) return { ok: false, error: "No position is set for your account yet." };
 
-  const student = await findStudentByEmail(email);
-  if (!student?.positionId)
-    return { ok: false, error: "No position is set for your account yet." };
-
-  const posWithBlocks = await loadPositionWithBlocks(student.positionId);
+  const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
   if (!posWithBlocks) return { ok: false, error: "Your position configuration is missing." };
   const { position, blocks } = posWithBlocks;
 
@@ -344,6 +313,20 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
     };
   }
 
+  // SL close-picking gate (PLAN §18a): a Shift Lead must hold exactly the
+  // required number of weekend closes before finalizing. Dormant until an
+  // admin generates the close inventory.
+  if (await isCloseStepRequired(gate.positionId)) {
+    const claimCount = await countCloseClaims(email);
+    if (claimCount !== REQUIRED_CLOSE_CLAIMS) {
+      return {
+        ok: false,
+        error: `Pick your ${REQUIRED_CLOSE_CLAIMS} weekend closes before submitting.`,
+        fixHref: "/closes",
+      };
+    }
+  }
+
   let autoAssigned: AutoAssignedShift | null = null;
   await db.transaction(async (tx) => {
     await tx
@@ -359,7 +342,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
     });
   });
 
-  await trySyncResponsesSheet();
+  await trySyncSheet(RESPONSES_SHEET);
   revalidatePath("/availability");
   revalidatePath("/me");
   return { ok: true, autoAssigned };

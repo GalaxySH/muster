@@ -11,15 +11,18 @@ vi.mock("@/lib/settings", () => ({
   setSetting: vi.fn(),
   SETTING_RESPONSES_SHEET_ID: "responses_sheet_id",
   SETTING_RESPONSES_SHEET_SYNCED_AT: "responses_sheet_synced_at",
+  SETTING_CLOSES_SHEET_ID: "closes_sheet_id",
+  SETTING_CLOSES_SHEET_SYNCED_AT: "closes_sheet_synced_at",
 }));
-vi.mock("@/lib/drive/relay", () => ({ upsertResponsesSheet: vi.fn() }));
+vi.mock("@/lib/drive/relay", () => ({ upsertManagedSheet: vi.fn() }));
+vi.mock("@/lib/closes/data", () => ({ loadCloseAdmin: vi.fn() }));
 vi.mock("./export-data", () => ({ loadExportData: vi.fn() }));
 vi.mock("./export", () => ({ buildExportMatrix: vi.fn() }));
 
 import {
   cooldownRemainingMs,
-  RESPONSES_SHEET_AUTO_COOLDOWN_MS,
-  RESPONSES_SHEET_MANUAL_COOLDOWN_MS,
+  SHEET_AUTO_COOLDOWN_MS,
+  SHEET_MANUAL_COOLDOWN_MS,
 } from "./sheet-sync";
 
 describe("cooldownRemainingMs", () => {
@@ -50,8 +53,8 @@ describe("cooldownRemainingMs", () => {
   });
 
   it("the manual cooldown is far shorter than the auto cooldown", () => {
-    expect(RESPONSES_SHEET_MANUAL_COOLDOWN_MS).toBeLessThan(RESPONSES_SHEET_AUTO_COOLDOWN_MS);
-    expect(RESPONSES_SHEET_AUTO_COOLDOWN_MS).toBe(10 * 60 * 1000);
-    expect(RESPONSES_SHEET_MANUAL_COOLDOWN_MS).toBe(30 * 1000);
+    expect(SHEET_MANUAL_COOLDOWN_MS).toBeLessThan(SHEET_AUTO_COOLDOWN_MS);
+    expect(SHEET_AUTO_COOLDOWN_MS).toBe(10 * 60 * 1000);
+    expect(SHEET_MANUAL_COOLDOWN_MS).toBe(30 * 1000);
   });
 });

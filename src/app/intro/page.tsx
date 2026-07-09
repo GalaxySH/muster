@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
-import { loadReachableSteps } from "@/lib/flow/data";
+import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
@@ -18,13 +18,13 @@ export default async function IntroPage() {
   if (!session) redirect("/signin?callbackUrl=/intro");
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
-  const reachable = await loadReachableSteps(session.email);
+  const nav = await loadWizardNav(session.email);
   const { cutoff } = await getTravelCutoff(new Date());
 
   return (
     <Page>
       <AppHeader>
-        <WizardSteps reachable={reachable} />
+        <WizardSteps steps={nav.steps} reachable={nav.reachable} />
       </AppHeader>
       <h1>Before you start</h1>
       <p style={{ color: "#555" }}>

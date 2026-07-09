@@ -5,7 +5,8 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { loadReachableSteps } from "@/lib/flow/data";
+import { loadWizardNav } from "@/lib/flow/data";
+import { nextHref } from "@/lib/flow/steps";
 import { TravelForm } from "@/components/evidence/TravelForm";
 import { TravelContinue } from "@/components/evidence/TravelContinue";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
@@ -31,11 +32,11 @@ export default async function TravelPage() {
   }
 
   const now = new Date();
-  const [evidence, drive, access, reachable, { cutoff }] = await Promise.all([
+  const [evidence, drive, access, nav, { cutoff }] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     resolveStudentAccess(student.email),
-    loadReachableSteps(student.email),
+    loadWizardNav(student.email),
     getTravelCutoff(now),
   ]);
   const canAddTravel = decideTravelSubmission(now, cutoff).allowed;
@@ -55,7 +56,7 @@ export default async function TravelPage() {
   return (
     <Page>
       <AppHeader>
-        <WizardSteps current="travel" reachable={reachable} />
+        <WizardSteps steps={nav.steps} current="travel" reachable={nav.reachable} />
       </AppHeader>
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
@@ -69,7 +70,7 @@ export default async function TravelPage() {
         cutoffMs={cutoff.getTime()}
         canAddTravel={canAddTravel}
       />
-      {editable && !evidence.submitted && <TravelContinue />}
+      {editable && !evidence.submitted && <TravelContinue nextHref={nextHref("travel", nav.steps)} />}
     </Page>
   );
 }

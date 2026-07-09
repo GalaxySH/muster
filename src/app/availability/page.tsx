@@ -4,7 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { loadReachableSteps } from "@/lib/flow/data";
+import { loadWizardNav } from "@/lib/flow/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
@@ -55,15 +55,15 @@ export default async function AvailabilityPage() {
   // Window gate (PLAN §13): only an open window permits edits, and if the group
   // locks after submit, an already-submitted student is read-only too.
   const editable = access.canEdit;
-  const [reachable, highDemand] = await Promise.all([
-    loadReachableSteps(form.student.email),
+  const [nav, highDemand] = await Promise.all([
+    loadWizardNav(form.student.email),
     loadHighDemandCells(form.position.id),
   ]);
 
   return (
     <Page width="wide">
       <AppHeader>
-        <WizardSteps current="availability" reachable={reachable} />
+        <WizardSteps steps={nav.steps} current="availability" reachable={nav.reachable} />
       </AppHeader>
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />

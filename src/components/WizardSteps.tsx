@@ -1,25 +1,28 @@
 import Link from "next/link";
-import { WIZARD_STEPS, type WizardStepKey } from "@/lib/flow/steps";
+import { type WizardStep, type WizardStepKey } from "@/lib/flow/steps";
 
 /**
- * The onboarding-wizard breadcrumb (course schedule → availability → travel). This
- * is the flow's navigation: a step is a link only when it's unlocked, so the
- * breadcrumb can't jump ahead of the data, the same gate the per-step "Next"
- * buttons enforce. `reachable` lists the unlocked step keys (omit to make every
- * step a link). The current step is bold; locked steps are muted, non-clickable.
- * Rendered inside AppHeader (after Home), so each step carries a leading `·`.
- * Pure/server, no client state.
+ * The onboarding-wizard breadcrumb (course schedule → availability → travel,
+ * plus weekend closes for SLs). This is the flow's navigation: a step is a
+ * link only when it's unlocked, so the breadcrumb can't jump ahead of the
+ * data, the same gate the per-step "Next" buttons enforce. `steps` comes from
+ * `loadWizardNav` (position-aware); `reachable` lists the unlocked step keys
+ * (omit to make every step a link). The current step is bold; locked steps are
+ * muted, non-clickable. Rendered inside AppHeader (after Home), so each step
+ * carries a leading `·`. Pure/server, no client state.
  */
 export function WizardSteps({
+  steps,
   current,
   reachable,
 }: {
+  steps: WizardStep[];
   current?: WizardStepKey;
   reachable?: WizardStepKey[];
 }) {
   return (
     <>
-      {WIZARD_STEPS.map((s, i) => {
+      {steps.map((s, i) => {
         const active = s.key === current;
         const unlocked = reachable === undefined || reachable.includes(s.key);
         const label = `${i + 1}. ${s.label}`;

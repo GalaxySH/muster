@@ -8,12 +8,7 @@
  */
 import "server-only";
 import { env } from "@/lib/env";
-import {
-  getSetting,
-  setSetting,
-  SETTING_PROOFS_FOLDER_ID,
-  SETTING_RESPONSES_SHEET_ID,
-} from "@/lib/settings";
+import { getSetting, setSetting, SETTING_PROOFS_FOLDER_ID } from "@/lib/settings";
 import { getActiveDriveGrant } from "./grants";
 import { getAccessToken } from "./oauth";
 import {
@@ -32,7 +27,6 @@ import {
 import { extensionForType } from "./upload-validation";
 
 const PROOFS_FOLDER_NAME = "proofs";
-const RESPONSES_SHEET_NAME = "Muster Responses";
 
 /** Thrown when no admin has connected Drive yet; surfaced to the student. */
 export class NoDriveGrantError extends Error {
@@ -104,48 +98,52 @@ export async function relayDelete(fileId: string): Promise<void> {
   }
 }
 
-export interface ResponsesSheetResult {
+export interface ManagedSheetResult {
   spreadsheetId: string;
   url: string;
 }
 
 /**
- * Write the running responses spreadsheet in the Drive root from a values matrix
- * (find-or-create by cached id, then name). The sheet duplicates the response
- * data so folder members can read it without the app, and survives app
- * retirement (PLAN §10, §12). Written via the Sheets API (proper cell control,
- * clear, RAW values, frozen/bold header) within the `drive.file` grant. Recovers
- * if the cached sheet was deleted out from under us (404 → recreate + retry once).
+ * Write a managed spreadsheet in the Drive root from a values matrix
+ * (find-or-create by cached id, then name). Each sheet duplicates app data so
+ * folder members can read it without the app, and survives app retirement
+ * (PLAN §10, §12, §18a); `admin/sheet-sync.ts` defines the targets (responses,
+ * SL closes). Written via the Sheets API (proper cell control, clear, RAW
+ * values, frozen/bold header) within the `drive.file` grant. Recovers if the
+ * cached sheet was deleted out from under us (404 → recreate + retry once).
  */
-export async function upsertResponsesSheet(values: string[][]): Promise<ResponsesSheetResult> {
+export async function upsertManagedSheet(
+  sheet: { name: string; idSettingKey: string },
+  values: string[][],
+): Promise<ManagedSheetResult> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
   const accessToken = await getAccessToken(grant.refreshToken);
   const root = driveRoot();
 
   let sheetId =
-    (await getSetting(SETTING_RESPONSES_SHEET_ID)) ??
+    (await getSetting(sheet.idSettingKey)) ??
     (await findChildByName({
       accessToken,
       parentId: root,
-      name: RESPONSES_SHEET_NAME,
+      name: sheet.name,
       mimeType: SPREADSHEET_MIME,
     })) ??
-    (await createSpreadsheet({ accessToken, name: RESPONSES_SHEET_NAME, parentId: root }));
+    (await createSpreadsheet({ accessToken, name: sheet.name, parentId: root }));
 
   try {
     await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
   } catch (e) {
     // The cached/found sheet was deleted out from under us; recreate once.
     if (e instanceof SheetWriteError && e.status === 404) {
-      sheetId = await createSpreadsheet({ accessToken, name: RESPONSES_SHEET_NAME, parentId: root });
+      sheetId = await createSpreadsheet({ accessToken, name: sheet.name, parentId: root });
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     } else {
       throw e;
     }
   }
 
-  await setSetting(SETTING_RESPONSES_SHEET_ID, sheetId);
+  await setSetting(sheet.idSettingKey, sheetId);
   return {
     spreadsheetId: sheetId,
     url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit`,

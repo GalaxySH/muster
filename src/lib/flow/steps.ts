@@ -1,40 +1,47 @@
 /**
- * Pure wizard-flow logic (PLAN §4, §18b). The student onboarding flow is a linear
- * progression:
+ * Pure wizard-flow logic (PLAN §4, §18a, §18b). The student onboarding flow is
+ * a linear progression:
  *
- *   intro → course-schedule → availability → travel → exit
+ *   intro → course-schedule → availability → travel [→ closes] → exit
  *
- * `intro` (orientation) and `exit` (final submit) bookend three "data" steps.
- * This module is pure (no I/O) so it can be unit-tested and shared by the server
- * data loader and the page components. The "where do I resume?" decision is
- * inferred from persisted data; there is no separate progress column.
+ * `intro` (orientation) and `exit` (final submit) bookend the data steps. The
+ * `closes` step (SL weekend-close picking, §18a) exists only for Shift Leads
+ * once an admin has generated a close inventory; everyone else gets the three
+ * base steps. This module is pure (no I/O) so it can be unit-tested and shared
+ * by the server data loader and the page components. The "where do I resume?"
+ * decision is inferred from persisted data; there is no progress column.
  */
+import { closeClaimsComplete } from "@/lib/domain/close-claims";
 
-/** The three data-entry steps, in order (intro/exit are not counted here). */
+/** The base data-entry steps, in order (intro/exit are not counted here). */
 export const WIZARD_STEPS = [
   { key: "course-schedule", href: "/course-schedule", label: "Course schedule" },
   { key: "availability", href: "/availability", label: "Availability" },
   { key: "travel", href: "/travel", label: "Travel" },
 ] as const;
 
-export type WizardStepKey = (typeof WIZARD_STEPS)[number]["key"];
+/** SL-only close-picking step (PLAN §18a), appended after travel. */
+export const CLOSES_STEP = { key: "closes", href: "/closes", label: "Weekend closes" } as const;
 
-/** 1-based position of a step (for "Step N of 3" copy). */
-export function stepNumber(key: WizardStepKey): number {
-  return WIZARD_STEPS.findIndex((s) => s.key === key) + 1;
+export type WizardStepKey =
+  | (typeof WIZARD_STEPS)[number]["key"]
+  | (typeof CLOSES_STEP)["key"];
+
+export interface WizardStep {
+  key: WizardStepKey;
+  href: string;
+  label: string;
 }
 
-/** The href of the step before `key`, or "/intro" before the first data step. */
-export function prevHref(key: WizardStepKey): string {
-  const i = WIZARD_STEPS.findIndex((s) => s.key === key);
-  const prev = WIZARD_STEPS[i - 1];
-  return prev ? prev.href : "/intro";
+/** The data steps this student walks; `includeCloses` = SL + inventory exists. */
+export function wizardSteps(includeCloses: boolean): WizardStep[] {
+  return includeCloses ? [...WIZARD_STEPS, CLOSES_STEP] : [...WIZARD_STEPS];
 }
 
-/** The href of the step after `key`, or "/exit" after the last data step. */
-export function nextHref(key: WizardStepKey): string {
-  const i = WIZARD_STEPS.findIndex((s) => s.key === key);
-  const next = WIZARD_STEPS[i + 1];
+/** The href of the step after `key` in `steps`, or "/exit" after the last. */
+export function nextHref(key: WizardStepKey, steps: WizardStep[]): string {
+  const i = steps.findIndex((s) => s.key === key);
+  const next = steps[i + 1];
   return next ? next.href : "/exit";
 }
 
@@ -47,6 +54,10 @@ export interface FlowInputs {
   hasCourseSchedule: boolean;
   /** The saved availability passes hard rules AND has desired hours (could "continue"). */
   availabilityComplete: boolean;
+  /** The closes step applies: Shift Lead + a generated close inventory (§18a). */
+  closesRequired: boolean;
+  /** Close claims held; only meaningful when closesRequired. */
+  closeClaimCount: number;
 }
 
 export type FlowStatus =
@@ -69,22 +80,33 @@ export function flowStatus(i: FlowInputs): FlowStatus {
     return { kind: "continue", href: "/intro", stepLabel: "the introduction" };
   if (!i.availabilityComplete)
     return { kind: "continue", href: "/availability", stepLabel: "your availability" };
+  // A shift lead who started picking closes but hasn't finished clearly passed
+  // travel already; send them back to the board. With no picks yet, travel is
+  // still the next unvisited step (travel completion itself is un-inferable).
+  if (i.closesRequired && i.closeClaimCount > 0 && !closeClaimsComplete(i.closeClaimCount))
+    return { kind: "continue", href: CLOSES_STEP.href, stepLabel: "your weekend closes" };
   return { kind: "continue", href: "/travel", stepLabel: "travel & finishing up" };
 }
 
 /**
  * Which wizard steps the student may navigate to (PLAN §4). Mirrors the per-step
  * "Next" gates so the breadcrumb can't jump ahead of the data: availability needs
- * a course schedule, travel needs that plus a complete availability. Once
- * submitted, everything is open for review. Used to disable locked breadcrumb
- * crumbs the same way a locked "Next" button is hidden.
+ * a course schedule; travel (and closes, for SLs) needs that plus a complete
+ * availability. Once submitted, everything is open for review. Used to disable
+ * locked breadcrumb crumbs the same way a locked "Next" button is hidden.
  */
 export function reachableStepKeys(
-  i: Pick<FlowInputs, "submitted" | "hasCourseSchedule" | "availabilityComplete">,
+  i: Pick<
+    FlowInputs,
+    "submitted" | "hasCourseSchedule" | "availabilityComplete" | "closesRequired"
+  >,
 ): WizardStepKey[] {
-  if (i.submitted) return WIZARD_STEPS.map((s) => s.key);
+  if (i.submitted) return wizardSteps(i.closesRequired).map((s) => s.key);
   const keys: WizardStepKey[] = ["course-schedule"];
   if (i.hasCourseSchedule) keys.push("availability");
-  if (i.hasCourseSchedule && i.availabilityComplete) keys.push("travel");
+  if (i.hasCourseSchedule && i.availabilityComplete) {
+    keys.push("travel");
+    if (i.closesRequired) keys.push("closes");
+  }
   return keys;
 }

@@ -4,7 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBadgeCheck, faCalendar, faEnvelope, faFileImport, faGear, faList, faPlaneDeparture, faUniversalAccess, faUserGear } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { faBadgeCheck, faCalendar, faEnvelope, faFileImport, faGear, faList, faMoon, faPlaneDeparture, faUniversalAccess, faUserGear } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
 import { Page } from "@/components/ui";
 
@@ -26,6 +26,9 @@ export default async function AdminPage() {
       </p>
       <p>
       <FontAwesomeIcon icon={faPlaneDeparture} /> <Link href="/admin/travel">Upcoming travel</Link>
+      </p>
+      <p>
+      <FontAwesomeIcon icon={faMoon} /> <Link href="/admin/closes">SL weekend closes</Link>
       </p>
       <p>
       <FontAwesomeIcon icon={faEnvelope} /> <Link href="/admin/schedule-email">Batch sched email</Link>

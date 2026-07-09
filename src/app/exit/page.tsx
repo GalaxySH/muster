@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { FinishButton } from "@/components/FinishButton";
-import { loadReachableSteps } from "@/lib/flow/data";
+import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
@@ -16,12 +16,12 @@ export default async function ExitPage() {
   if (!session) redirect("/signin?callbackUrl=/exit");
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
-  const reachable = await loadReachableSteps(session.email);
+  const nav = await loadWizardNav(session.email);
 
   return (
     <Page>
       <AppHeader>
-        <WizardSteps reachable={reachable} />
+        <WizardSteps steps={nav.steps} reachable={nav.reachable} />
       </AppHeader>
       <h1>Almost done</h1>
 
