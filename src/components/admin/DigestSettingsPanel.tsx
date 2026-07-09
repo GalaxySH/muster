@@ -1,0 +1,118 @@
+"use client";
+
+/**
+ * Settings for the daily schedule-change digest (roadmap 3.1): an on/off
+ * toggle plus the recipient list. Both live in app_settings; the ADMIN_EMAILS
+ * env allowlist has no role in digest delivery. With no recipients the digest
+ * sends nothing even while on.
+ */
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ActionButton, InfoCard } from "@/components/ui";
+import { setChangeDigestEnabled, setChangeDigestRecipients } from "@/lib/admin/actions";
+
+export function DigestSettingsPanel({
+  enabled,
+  recipients,
+}: {
+  enabled: boolean;
+  recipients: string[];
+}) {
+  const router = useRouter();
+  const [pendingToggle, startToggle] = useTransition();
+  const [pendingSave, startSave] = useTransition();
+  const [draft, setDraft] = useState(recipients.join(", "));
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function toggle() {
+    startToggle(async () => {
+      const res = await setChangeDigestEnabled(!enabled);
+      if (res.ok) router.refresh();
+      else alert(res.error ?? "Could not update.");
+    });
+  }
+
+  function save() {
+    setMsg(null);
+    startSave(async () => {
+      const res = await setChangeDigestRecipients(draft);
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error ?? "Could not save." });
+        return;
+      }
+      setMsg({
+        ok: true,
+        text:
+          res.saved && res.saved.length > 0
+            ? `Saved ${res.saved.length} recipient${res.saved.length === 1 ? "" : "s"}.`
+            : "Recipient list cleared. The digest will not be sent to anyone.",
+      });
+      router.refresh();
+    });
+  }
+
+  const configured = recipients.length > 0;
+
+  return (
+    <InfoCard
+      tone={enabled && configured ? "success" : "info"}
+      title={enabled ? "Change-request digest is on" : "Change-request digest is off"}
+    >
+      <p style={{ marginTop: 0 }}>
+        A daily email summarizing new schedule change requests.{" "}
+        {enabled
+          ? configured
+            ? "It goes to the recipients below."
+            : "Add at least one recipient below or nothing is sent."
+          : "No digest is sent while it is off."}
+      </p>
+      <ActionButton
+        onClick={toggle}
+        variant={enabled ? "secondary" : "primary"}
+        pending={pendingToggle}
+        pendingLabel="Saving…"
+      >
+        {enabled ? "Turn off the digest" : "Turn on the digest"}
+      </ActionButton>
+
+      <div style={{ marginTop: 14 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+          Recipients
+        </label>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={2}
+          placeholder="scheduler@wisc.edu, backup@example.com"
+          style={{
+            width: "100%",
+            padding: "6px 8px",
+            border: "1px solid var(--color-border-secondary)",
+            borderRadius: "var(--border-radius-md)",
+            fontSize: 14,
+            fontFamily: "inherit",
+          }}
+        />
+        <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "4px 0 8px" }}>
+          Separate addresses with commas or new lines. Any email address works.
+        </p>
+        <ActionButton onClick={save} pending={pendingSave} pendingLabel="Saving…">
+          Save recipients
+        </ActionButton>
+        {msg && (
+          <p
+            role="status"
+            style={{
+              margin: "8px 0 0",
+              fontSize: 13,
+              color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
+            }}
+          >
+            {msg.ok ? "✓ " : "✗ "}
+            {msg.text}
+          </p>
+        )}
+      </div>
+    </InfoCard>
+  );
+}

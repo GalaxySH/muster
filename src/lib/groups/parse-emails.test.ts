@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { isEmailShaped } from "@/lib/auth/policy";
 import { parseEmailList } from "./parse-emails";
 
 describe("parseEmailList", () => {
@@ -26,5 +27,14 @@ describe("parseEmailList", () => {
 
   it("returns empty arrays for blank input", () => {
     expect(parseEmailList("   \n , ; ")).toEqual({ valid: [], invalid: [] });
+  });
+
+  it("accepts any well-formed address with a custom validity check", () => {
+    const { valid, invalid } = parseEmailList(
+      "a@wisc.edu, someone@gmail.com, notanemail, no-dot@host",
+      isEmailShaped,
+    );
+    expect(valid).toEqual(["a@wisc.edu", "someone@gmail.com"]);
+    expect(invalid).toEqual(["notanemail", "no-dot@host"]);
   });
 });

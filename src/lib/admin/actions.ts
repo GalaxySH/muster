@@ -19,7 +19,11 @@ import {
   deleteSetting,
   SETTING_TRAVEL_CUTOFF,
   SETTING_EMAIL_SENDING_ENABLED,
+  SETTING_CHANGE_DIGEST_ENABLED,
+  SETTING_CHANGE_DIGEST_RECIPIENTS,
 } from "@/lib/settings";
+import { parseEmailList } from "@/lib/groups/parse-emails";
+import { isEmailShaped } from "@/lib/auth/policy";
 import {
   syncSheet,
   RESPONSES_SHEET,
@@ -143,6 +147,42 @@ export async function setEmailSendingEnabled(enabled: boolean): Promise<AdminAct
   await setSetting(SETTING_EMAIL_SENDING_ENABLED, enabled ? "1" : "0");
   revalidatePath("/admin/email-settings");
   return { ok: true };
+}
+
+/** Toggle the daily schedule-change digest (roadmap 3.1; /admin/email-settings). */
+export async function setChangeDigestEnabled(enabled: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_CHANGE_DIGEST_ENABLED, enabled ? "1" : "0");
+  revalidatePath("/admin/email-settings");
+  return { ok: true };
+}
+
+export interface SaveDigestRecipientsResult extends AdminActionResult {
+  /** The normalized list that was stored (on success). */
+  saved?: string[];
+}
+
+/**
+ * Set who receives the daily schedule-change digest (roadmap 3.1). The list is
+ * admin data in app_settings — the ADMIN_EMAILS env allowlist plays no part in
+ * digest delivery. Any well-formed address is accepted (not wisc-only); the
+ * whole save is refused if any token is malformed so nothing drops silently.
+ * An empty input clears the list, which silences the digest.
+ */
+export async function setChangeDigestRecipients(raw: string): Promise<SaveDigestRecipientsResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const { valid, invalid } = parseEmailList(raw, isEmailShaped);
+  if (invalid.length > 0) {
+    return { ok: false, error: `These don't look like email addresses: ${invalid.join(", ")}` };
+  }
+
+  if (valid.length === 0) await deleteSetting(SETTING_CHANGE_DIGEST_RECIPIENTS);
+  else await setSetting(SETTING_CHANGE_DIGEST_RECIPIENTS, valid.join(","));
+  revalidatePath("/admin/email-settings");
+  return { ok: true, saved: valid };
 }
 
 export interface RebuildSheetResult extends AdminActionResult {

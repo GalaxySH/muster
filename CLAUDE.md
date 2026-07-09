@@ -253,7 +253,14 @@ outbound email flows through one choke point, `sendEmail`, which obeys a **maste
 when off it suppresses+logs every message, so sign-in links and the batch schedule-ready
 send both stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
 `EmailSettingsPanel`); the batch send also refuses up front when off so no one is marked
-notified. Server
+notified. The same page also holds the **schedule-change digest settings** (roadmap 3.1
+prep, v0.47; `DigestSettingsPanel`): a digest on/off toggle + the admin-configured
+recipient list, stored in `app_settings` (`change_digest_enabled`,
+`change_digest_recipients`; accessors `getChangeDigestEnabled`/
+`getChangeDigestRecipients`). Digest recipients come **only** from that list — the
+`ADMIN_EMAILS` env allowlist and the `admin_users` table play no part — and any
+well-formed address is accepted (`isEmailShaped`; `parseEmailList` now takes an optional
+validity check). The digest sender itself is unbuilt (ships with 3.1). Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the

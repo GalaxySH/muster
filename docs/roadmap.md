@@ -249,9 +249,16 @@ explicitly usable all semester by any known student):
 - **Daily digest email** of new requests to the scheduling admin — reuses the
   2.4 email seam; scheduling via host cron hitting a token-authenticated
   route (matches existing ops posture; no in-process scheduler).
-- *Recipients (decided 2026-07-10):* the digest goes **only to the
-  `ADMIN_EMAILS` env allowlist** (currently stu@wisc.edu), **not** to the
-  roster-imported `admin_users` admins.
+- *Recipients (decided 2026-07-10, superseding the same-day env-allowlist
+  decision):* the digest goes to an **admin-configured recipient list** on
+  `/admin/email-settings`, next to a **digest on/off toggle** — the settings
+  surface is **already built** (v0.47): `app_settings` keys
+  `change_digest_recipients` / `change_digest_enabled`, accessors
+  `getChangeDigestRecipients()` / `getChangeDigestEnabled()` in `settings.ts`,
+  UI in `DigestSettingsPanel`. Neither `ADMIN_EMAILS` nor the roster-imported
+  `admin_users` table plays any part in digest delivery. The digest sender
+  (this item) must honor both settings and send nothing when the list is
+  empty.
 
 ### 3.3 Admin-configurable positions & shift blocks — **L**
 The schema is already data-driven (`positions`, `shift_blocks` tables; the

@@ -1,20 +1,23 @@
 /**
- * Pure parsing for the admin "paste a list of emails" group-assignment path
- * (PLAN.md §13). Accepts a free-form blob (commas, semicolons, spaces, or
- * newlines), normalizes + de-dupes, and partitions into valid `@wisc.edu`
- * addresses vs. the rest. No I/O; the caller matches `valid` against the
- * roster and reports what didn't match.
+ * Pure parsing for admin "paste a list of emails" inputs. Accepts a free-form
+ * blob (commas, semicolons, spaces, or newlines), normalizes + de-dupes, and
+ * partitions by the given validity check: the group-assignment path (PLAN.md
+ * §13) keeps the default `@wisc.edu` gate, the digest-recipient list (roadmap
+ * 3.1) passes `isEmailShaped` to accept any well-formed address. No I/O.
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";
 
 export interface ParsedEmailList {
-  /** Normalized, unique `@wisc.edu` addresses, in first-seen order. */
+  /** Normalized, unique addresses that passed the check, in first-seen order. */
   valid: string[];
-  /** Normalized, unique tokens that are not valid `@wisc.edu` addresses. */
+  /** Normalized, unique tokens that failed it. */
   invalid: string[];
 }
 
-export function parseEmailList(blob: string): ParsedEmailList {
+export function parseEmailList(
+  blob: string,
+  isValid: (email: string) => boolean = isWiscEmail,
+): ParsedEmailList {
   const valid: string[] = [];
   const invalid: string[] = [];
   const seen = new Set<string>();
@@ -23,7 +26,7 @@ export function parseEmailList(blob: string): ParsedEmailList {
     const token = normalizeEmail(raw);
     if (!token || seen.has(token)) continue;
     seen.add(token);
-    (isWiscEmail(token) ? valid : invalid).push(token);
+    (isValid(token) ? valid : invalid).push(token);
   }
 
   return { valid, invalid };

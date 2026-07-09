@@ -22,7 +22,7 @@
   picking done** (§18a): the dated Fri/Sat close inventory, atomic per-slot claims, the
   SL-only `/closes` wizard step, the `/admin/closes` dashboard, and the closes backup
   sheet. Next: ops.
-- **Version:** 0.46
+- **Version:** 0.47
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -907,6 +907,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.47 (2026-07-10)** — **Schedule-change digest settings (roadmap 3.1 prep).**
+  `/admin/email-settings` gains a second panel (`DigestSettingsPanel`): an on/off toggle
+  for the daily schedule-change digest plus its **admin-configured recipient list**, both
+  in `app_settings` (`change_digest_enabled`, `change_digest_recipients`; accessors in
+  `settings.ts`). This replaces the earlier decision to send the digest to the
+  `ADMIN_EMAILS` env allowlist — the env var now plays no part in digest delivery. Any
+  well-formed address is accepted (`isEmailShaped` in `auth/policy.ts`;
+  `parseEmailList` generalized to take a validity check); a save with malformed tokens is
+  refused whole, and an empty list silences the digest. The digest sender itself ships
+  with roadmap 3.1 and must honor both settings plus the master email switch.
 - **0.46 (2026-07-10)** — **SL weekend-close picking (§18a, roadmap 3.2).** The full
   claim/inventory subsystem: `close_slots` + `close_claims` tables (migration `0011`;
   composite-PK claims, cascading deletes), pure calendar/claim rules in

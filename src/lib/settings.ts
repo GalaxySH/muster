@@ -21,6 +21,10 @@ export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
 export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
 /** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
 export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
+/** "1"/"0": the daily schedule-change digest (roadmap 3.1). Absent ⇒ enabled. */
+export const SETTING_CHANGE_DIGEST_ENABLED = "change_digest_enabled";
+/** Comma-separated digest recipient emails, admin-set. Absent ⇒ none (nothing sends). */
+export const SETTING_CHANGE_DIGEST_RECIPIENTS = "change_digest_recipients";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -64,4 +68,23 @@ export async function getTravelCutoff(
  */
 export async function getEmailSendingEnabled(): Promise<boolean> {
   return (await getSetting(SETTING_EMAIL_SENDING_ENABLED)) !== "0";
+}
+
+/**
+ * The daily schedule-change digest switch (roadmap 3.1, admin-set on
+ * /admin/email-settings). Enabled by default, but the digest only actually
+ * sends when recipients are configured too (and the master switch is on).
+ */
+export async function getChangeDigestEnabled(): Promise<boolean> {
+  return (await getSetting(SETTING_CHANGE_DIGEST_ENABLED)) !== "0";
+}
+
+/**
+ * The digest recipient list (roadmap 3.1): admin-configured in app_settings,
+ * NOT the ADMIN_EMAILS env allowlist and not the roster-imported admins.
+ * Empty until an admin sets it, which keeps the digest silent.
+ */
+export async function getChangeDigestRecipients(): Promise<string[]> {
+  const raw = await getSetting(SETTING_CHANGE_DIGEST_RECIPIENTS);
+  return raw ? raw.split(",").filter(Boolean) : [];
 }

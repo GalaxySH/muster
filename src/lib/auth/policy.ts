@@ -28,6 +28,16 @@ export function isWiscEmail(email: string): boolean {
   return emailDomain(email) === WISC_DOMAIN;
 }
 
+/**
+ * True for any plausibly-deliverable address (local part + dotted domain).
+ * Deliberately loose: a typo catch for admin-entered recipient lists, not an
+ * identity check like isWiscEmail.
+ */
+export function isEmailShaped(email: string): boolean {
+  const domain = emailDomain(email);
+  return domain !== null && domain.includes(".");
+}
+
 /** Shape of the Google profile fields relevant to the sign-in gate. */
 export interface GoogleSignInClaims {
   email?: string | null;
