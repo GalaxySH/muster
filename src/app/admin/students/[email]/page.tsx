@@ -13,8 +13,9 @@ import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
-import { ChangeRequestResolveButton } from "@/components/admin/ChangeRequestResolveButton";
+import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { listChangeRequests } from "@/lib/changes/data";
+import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
 
 const fmtHours = (h: number) => {
@@ -360,7 +361,11 @@ export default async function StudentDetailPage({
           <SectionLabel>Schedule change requests</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {changeRequests.map((r) => (
-              <div key={r.id} style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 8 }}>
+              <div
+                key={r.id}
+                id={changeRequestAnchor(r.id)}
+                style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 8, scrollMarginTop: 20 }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
                   <span style={{ fontWeight: 600 }}>
                     {DAY_LABEL[r.day]} · {r.shiftText}
@@ -370,7 +375,7 @@ export default async function StudentDetailPage({
                     <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
                       {fmtDate(r.createdAt)}
                     </span>
-                    <ChangeRequestResolveButton id={r.id} status={r.status} />
+                    <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
                   </span>
                 </div>
                 <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildChangeDigestEmail, type DigestEmailRequest } from "./digest-email";
 
 const req = (over: Partial<DigestEmailRequest> = {}): DigestEmailRequest => ({
+  id: "req-1",
   studentName: "Ada Lovelace",
   studentEmail: "ada@wisc.edu",
   day: "tue",
@@ -15,7 +16,10 @@ describe("buildChangeDigestEmail", () => {
   it("counts the requests in the subject", () => {
     const one = buildChangeDigestEmail([req()], "https://muster.test");
     expect(one.subject).toBe("1 new schedule change request");
-    const three = buildChangeDigestEmail([req(), req(), req()], "https://muster.test");
+    const three = buildChangeDigestEmail(
+      [req(), req({ id: "req-2" }), req({ id: "req-3" })],
+      "https://muster.test",
+    );
     expect(three.subject).toBe("3 new schedule change requests");
   });
 
@@ -23,8 +27,9 @@ describe("buildChangeDigestEmail", () => {
     const { text } = buildChangeDigestEmail(
       [
         req(),
-        req({ day: "fri", shiftText: "close", comment: "Please add me here." }),
+        req({ id: "req-2", day: "fri", shiftText: "close", comment: "Please add me here." }),
         req({
+          id: "req-3",
           studentName: "Grace Hopper",
           studentEmail: "grace@wisc.edu",
           day: "sun",
@@ -38,9 +43,22 @@ describe("buildChangeDigestEmail", () => {
     expect(text).toContain("- Fri close: Please add me here.");
     expect(text).toContain("Grace Hopper (grace@wisc.edu)");
     expect(text).toContain("- Sun 2p to 5p: Swap request.");
-    // One review link per student, into the admin per-student view.
-    expect(text).toContain("https://muster.test/admin/students/ada%40wisc.edu");
-    expect(text).toContain("https://muster.test/admin/students/grace%40wisc.edu");
+  });
+
+  it("gives every request its own deep link into the admin view", () => {
+    const { text, html } = buildChangeDigestEmail(
+      [
+        req(),
+        req({ id: "req-2", studentName: "Grace Hopper", studentEmail: "grace@wisc.edu" }),
+      ],
+      "https://muster.test",
+    );
+    const ada = "https://muster.test/admin/students/ada%40wisc.edu#change-request-req-1";
+    const grace = "https://muster.test/admin/students/grace%40wisc.edu#change-request-req-2";
+    expect(text).toContain(ada);
+    expect(text).toContain(grace);
+    expect(html).toContain(`href="${ada}"`);
+    expect(html).toContain(`href="${grace}"`);
   });
 
   it("escapes student-controlled text in the html body", () => {

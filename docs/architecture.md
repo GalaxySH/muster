@@ -64,10 +64,15 @@ the student). Pure rules in `domain/change-requests.ts` (TDD: validation + a rol
 `src/lib/changes/`: `data.ts` (one `listChangeRequests` drives both the student and
 admin lists, plus the pending-digest batch), student `actions.ts` (create/withdraw-own-
 open; gate = session + roster row only), `admin-actions.ts` (resolve/reopen; withdrawn
-stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD). Student UI is the
-`components/changes/ChangeRequestsPanel.tsx` island; the admin per-student page renders
-the requests **independent of the submission** with the `ChangeRequestResolveButton`
-island. The **daily digest email** goes ONLY to the v0.47 admin-configured recipients
+stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD), and pure deep-link
+helpers in `links.ts` (`changeRequestAnchor`/`changeRequestAdminPath`). Student UI is
+the `components/changes/ChangeRequestsPanel.tsx` island. Admin surfaces (v0.49): the
+per-student page renders the requests **independent of the submission**, each anchored
+as `#change-request-<id>`, and the **unresolved queue** at `/admin/change-requests`
+lists open requests oldest first with rows deep-linking to that anchor; both use the
+`ChangeRequestResolvedCheckbox` island (checked = resolved, uncheck reopens; withdrawn
+shows no control). The **daily digest email** carries an inline deep link on every
+request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
 idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
 rows unstamped so requests are never silently lost) and is triggered by host cron:

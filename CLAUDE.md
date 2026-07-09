@@ -36,12 +36,13 @@ CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, v
 against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
 DB switched to the host's central MariaDB + scripted nightly backups (v0.29). Still
 to do: install the backup cron on the box + the production deploy dry-run.
-**Schedule change requests done** (roadmap 3.1, v0.48): the always-available
+**Schedule change requests done** (roadmap 3.1, v0.48-0.49): the always-available
 `/change-requests` mini-flow (not window-gated; rolling 3-per-24h cap; withdrawable),
-admin review + resolve on the per-student page, and a daily digest email to the
-admin-configured recipients, triggered by host cron via the token-authenticated
-`POST /api/cron/change-digest` (`CRON_SECRET`; install the crontab line on the box,
-docs/deploy.md §7).
+admin review via the **unresolved queue** at `/admin/change-requests` + the per-student
+page (resolved checkboxes on both; rows and digest lines deep-link to the anchored
+request), and a daily digest email to the admin-configured recipients, triggered by
+host cron via the token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`;
+install the crontab line on the box, docs/deploy.md §7).
 
 **Per-subsystem architecture notes live in `docs/architecture.md`** — feature layering
 and module seams for the Tier 2 features (2.1–2.5), SL weekend-close picking (3.2),

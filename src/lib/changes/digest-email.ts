@@ -1,11 +1,14 @@
 /**
  * Pure builder for the daily schedule-change digest email (roadmap 3.1): new
- * requests grouped by student, with a review link into the admin per-student
- * view. No I/O; `./digest.ts` feeds it the pending batch and the base URL.
+ * requests grouped by student, each carrying its own deep link into the admin
+ * per-student view (anchored to the request). No I/O; `./digest.ts` feeds it
+ * the pending batch and the base URL.
  */
 import { DAY_LABEL, type Day } from "@/lib/domain/types";
+import { changeRequestAdminPath } from "./links";
 
 export interface DigestEmailRequest {
+  id: string;
   studentName: string;
   studentEmail: string;
   day: Day;
@@ -45,18 +48,20 @@ export function buildChangeDigestEmail(
   const htmlBlocks: string[] = [];
   for (const [email, list] of byStudent) {
     const name = list[0]!.studentName;
-    const link = `${baseUrl}/admin/students/${encodeURIComponent(email)}`;
-    const lines = list.map((r) => `- ${DAY_LABEL[r.day]} ${r.shiftText}: ${r.comment}`);
-    textBlocks.push(`${name} (${email})\n${lines.join("\n")}\nReview: ${link}`);
+    const link = (r: DigestEmailRequest) => `${baseUrl}${changeRequestAdminPath(email, r.id)}`;
+    const lines = list.map(
+      (r) => `- ${DAY_LABEL[r.day]} ${r.shiftText}: ${r.comment}\n  ${link(r)}`,
+    );
+    textBlocks.push(`${name} (${email})\n${lines.join("\n")}`);
     htmlBlocks.push(
       `<p><strong>${escapeHtml(name)}</strong> (${escapeHtml(email)})</p>` +
         `<ul>${list
           .map(
             (r) =>
-              `<li>${DAY_LABEL[r.day]} ${escapeHtml(r.shiftText)}: ${escapeHtml(r.comment)}</li>`,
+              `<li>${DAY_LABEL[r.day]} ${escapeHtml(r.shiftText)}: ${escapeHtml(r.comment)} · ` +
+              `<a href="${link(r)}">Review request</a></li>`,
           )
-          .join("")}</ul>` +
-        `<p><a href="${link}">Review ${escapeHtml(name)}</a></p>`,
+          .join("")}</ul>`,
     );
   }
 

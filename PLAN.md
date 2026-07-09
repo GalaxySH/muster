@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.48
+- **Version:** 0.49
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -460,8 +460,11 @@ columns from the roster.
   (§12) — the latter readable by folder members without the app and serving as a
   recovery copy. Both come from the same export matrix.
 - **Schedule change requests:** ✅ render on the per-student page (independent of the
-  submission) with open/withdrawn/resolved badges and a mark-resolved/reopen control;
-  new ones arrive via the daily digest email (roadmap 3.1, §4.1).
+  submission, each anchored as `#change-request-<id>`) and in the **unresolved queue**
+  at `/admin/change-requests` (open requests oldest first; a row deep-links to the
+  anchored request on the student's page). A **resolved checkbox** appears wherever a
+  request is shown (withdrawn ones show no control); new requests arrive via the daily
+  digest email, whose every line links straight to its request (roadmap 3.1, §4.1).
 - **Delete response:** ✅ admins can permanently delete a submission from the response
   list (per-row) or the per-student header. The submission row is removed (cascading its
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
@@ -925,6 +928,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.49 (2026-07-10)** — **Change-request queue + per-request deep links (§10).** New
+  admin page **`/admin/change-requests`**: every unresolved (open) request, oldest
+  first; a row links to the student's response page **anchored at the request**
+  (`#change-request-<id>`; pure `changes/links.ts`), and a **resolved checkbox** works
+  the queue down in place. The per-student section uses the same checkbox
+  (`ChangeRequestResolvedCheckbox`, replacing the 0.48 button; withdrawn requests still
+  show no control) and anchors each request. The digest email now carries an **inline
+  deep link on every request line** (text + html), replacing the per-student review
+  link. Resolved/unresolved state is the existing `status` column (`open` = unresolved,
+  the default); no schema change.
 - **0.48 (2026-07-10)** — **Schedule change requests (roadmap 3.1; §4.1, §9, §10).** An
   always-available mini-flow outside the wizard and its window gates: any known student
   can send requests at **`/change-requests`** (linked from a `/me` card) — day + shift

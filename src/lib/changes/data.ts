@@ -49,7 +49,7 @@ export async function recentChangeRequestTimes(email: string, now: Date): Promis
   return rows.map((r) => r.createdAt);
 }
 
-export interface PendingDigestRequest {
+export interface OpenChangeRequest {
   id: string;
   studentEmail: string;
   studentName: string;
@@ -59,21 +59,32 @@ export interface PendingDigestRequest {
   createdAt: Date;
 }
 
+const openRequestColumns = () => ({
+  id: changeRequests.id,
+  studentEmail: changeRequests.studentEmail,
+  studentName: students.displayName,
+  day: changeRequests.day,
+  shiftText: changeRequests.shiftText,
+  comment: changeRequests.comment,
+  createdAt: changeRequests.createdAt,
+});
+
+/** Every unresolved (open) request, oldest first: the admin queue. */
+export async function listUnresolvedChangeRequests(): Promise<OpenChangeRequest[]> {
+  return getDb()
+    .select(openRequestColumns())
+    .from(changeRequests)
+    .innerJoin(students, eq(changeRequests.studentEmail, students.email))
+    .where(eq(changeRequests.status, "open"))
+    .orderBy(changeRequests.createdAt);
+}
+
 /** Open requests not yet reported in a digest, oldest first (§roadmap 3.1). */
-export async function loadPendingDigestRequests(): Promise<PendingDigestRequest[]> {
-  const rows = await getDb()
-    .select({
-      id: changeRequests.id,
-      studentEmail: changeRequests.studentEmail,
-      studentName: students.displayName,
-      day: changeRequests.day,
-      shiftText: changeRequests.shiftText,
-      comment: changeRequests.comment,
-      createdAt: changeRequests.createdAt,
-    })
+export async function loadPendingDigestRequests(): Promise<OpenChangeRequest[]> {
+  return getDb()
+    .select(openRequestColumns())
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
     .where(and(eq(changeRequests.status, "open"), isNull(changeRequests.digestSentAt)))
     .orderBy(changeRequests.createdAt);
-  return rows;
 }

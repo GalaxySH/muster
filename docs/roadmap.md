@@ -248,7 +248,11 @@ tick them off; the digest is idempotent via `change_requests.digestSentAt` and
 skipped runs (digest off, no recipients, master email switch off) leave rows
 unstamped so they surface in the next successful digest. Cron setup lives in
 docs/deploy.md §7 (`CRON_SECRET` + crontab line); the endpoint refuses while
-`CRON_SECRET` is unset.
+`CRON_SECRET` is unset. *Extended (2026-07-10, v0.49, owner's direction):* an
+**unresolved-queue** admin page at `/admin/change-requests` (rows deep-link to
+the anchored request on the per-student page), resolved **checkboxes** on every
+admin surface showing a request, and an inline per-request deep link on every
+digest email line.
 
 Original spec:
 - Form: pick day + shift time(s) + comment → submit. New `change_requests`

@@ -37,5 +37,6 @@ export async function setChangeRequestResolved(
     .where(and(eq(changeRequests.id, id), ne(changeRequests.status, "withdrawn")));
 
   revalidatePath(`/admin/students/${encodeURIComponent(row.studentEmail)}`);
+  revalidatePath("/admin/change-requests");
   return { ok: true };
 }
