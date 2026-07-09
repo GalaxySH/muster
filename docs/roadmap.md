@@ -239,9 +239,18 @@ Original spec:
   - *Late/added SLs:* someone promoted mid-window (see 0.1!) needs pool
     capacity re-checked.
 
-### 3.1 Schedule change requests — **L**
-A second, always-available mini-flow from `/me` (not window-gated —
-explicitly usable all semester by any known student):
+### 3.1 Schedule change requests — **L** — ✅ DONE (2026-07-10, v0.48)
+
+Shipped as specced below. Notes vs. the spec: the rate cap landed as a rolling
+3 per 24 hours (created rows count; withdrawing doesn't refund); requests also
+carry an admin `resolved` state (open/withdrawn/resolved) so the scheduler can
+tick them off; the digest is idempotent via `change_requests.digestSentAt` and
+skipped runs (digest off, no recipients, master email switch off) leave rows
+unstamped so they surface in the next successful digest. Cron setup lives in
+docs/deploy.md §7 (`CRON_SECRET` + crontab line); the endpoint refuses while
+`CRON_SECRET` is unset.
+
+Original spec:
 - Form: pick day + shift time(s) + comment → submit. New `change_requests`
   table (id, studentEmail, day/shift fields, comment, status, createdAt);
   modest per-student rate cap; students can withdraw their own open requests.

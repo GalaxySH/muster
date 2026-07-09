@@ -92,6 +92,21 @@ version tag deploys to the production box over SSH — automating the same
    **copy it to `/usr/local/sbin` root-owned** rather than running it from
    the deploy-user-writable clone, then add the root crontab line. Restore
    and verification commands are in the header too.
+7. **Change-request digest cron** (roadmap 3.1) — the daily digest of new
+   schedule change requests is triggered from host cron, not an in-process
+   scheduler. Set `CRON_SECRET` in the app env (`openssl rand -base64 32`),
+   then add a crontab line for whichever user you prefer (the endpoint is
+   loopback-reachable):
+
+   ```
+   0 13 * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/change-digest >/dev/null
+   ```
+
+   (13:00 UTC = 7/8 am Central.) The run is a no-op unless there are new
+   requests AND the digest is enabled with recipients on
+   `/admin/email-settings`; skipped runs leave requests unstamped so they
+   appear in the next successful digest. With `CRON_SECRET` unset the route
+   always refuses (503).
 
 ## Releasing
 

@@ -8,22 +8,14 @@ import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/resp
 import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
 import { formatTime } from "@/lib/domain/time";
-import type { Day, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
+import { ChangeRequestResolveButton } from "@/components/admin/ChangeRequestResolveButton";
+import { listChangeRequests } from "@/lib/changes/data";
 import { Page } from "@/components/ui";
-
-const DAY_LABEL: Record<Day, string> = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-  sat: "Sat",
-  sun: "Sun",
-};
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -97,6 +89,7 @@ export default async function StudentDetailPage({
   }
 
   const nav = await getResponseNeighbors(email, filters);
+  const changeRequests = await listChangeRequests(detail.email);
   const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
 
   const validation =
@@ -359,9 +352,48 @@ export default async function StudentDetailPage({
           </div>
         </>
       )}
+
+      {/* Schedule change requests (roadmap 3.1): independent of the submission,
+          so they render even for students without one. */}
+      {changeRequests.length > 0 && (
+        <section style={{ ...panel, maxWidth: 620, marginTop: 14 }}>
+          <SectionLabel>Schedule change requests</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {changeRequests.map((r) => (
+              <div key={r.id} style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {DAY_LABEL[r.day]} · {r.shiftText}
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span style={changeStatusBadge(r.status)}>{r.status}</span>
+                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                      {fmtDate(r.createdAt)}
+                    </span>
+                    <ChangeRequestResolveButton id={r.id} status={r.status} />
+                  </span>
+                </div>
+                <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </Page>
   );
 }
+
+const changeStatusBadge = (status: "open" | "withdrawn" | "resolved"): React.CSSProperties => ({
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontSize: 12,
+  fontWeight: 600,
+  ...(status === "open"
+    ? { background: "var(--color-background-info)", color: "var(--color-text-info)" }
+    : status === "resolved"
+      ? { background: "#e6f4ea", color: "var(--color-text-success)" }
+      : { background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }),
+});
 
 // --- presentational helpers (server) ---
 

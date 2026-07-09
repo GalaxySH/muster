@@ -52,6 +52,29 @@ sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
 (`requireEditableStudent`, used by availability/evidence/closes actions), and the old
 `ResponsesToolbar` folded into the shared `components/admin/SheetControls.tsx`.
 
+## Schedule change requests (roadmap 3.1, PLAN §4.1, v0.48)
+
+An always-available mini-flow **outside** the wizard and its group/window gates: any
+known student (a `students` row; test accounts included) can send requests all semester
+at **`/change-requests`**, linked from a card on `/me`. Table `change_requests`
+(migration `0012`: day enum + free-text `shiftText`/`comment` since the actual W2W
+schedule isn't modeled, status `open|withdrawn|resolved`, `digestSentAt`, cascades with
+the student). Pure rules in `domain/change-requests.ts` (TDD: validation + a rolling
+3-per-24h rate cap on created rows — withdrawing doesn't refund). Server layer
+`src/lib/changes/`: `data.ts` (one `listChangeRequests` drives both the student and
+admin lists, plus the pending-digest batch), student `actions.ts` (create/withdraw-own-
+open; gate = session + roster row only), `admin-actions.ts` (resolve/reopen; withdrawn
+stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD). Student UI is the
+`components/changes/ChangeRequestsPanel.tsx` island; the admin per-student page renders
+the requests **independent of the submission** with the `ChangeRequestResolveButton`
+island. The **daily digest email** goes ONLY to the v0.47 admin-configured recipients
+and honors the digest toggle plus the master email switch; `runChangeDigest` is
+idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
+rows unstamped so requests are never silently lost) and is triggered by host cron:
+`POST /api/cron/change-digest` with `Authorization: Bearer $CRON_SECRET` (new
+`CRON_SECRET` env; unset ⇒ the route refuses; crontab example in docs/deploy.md §7).
+The shared `DAY_LABEL` map now lives in `domain/types.ts` (grids, exports, emails).
+
 ## Edit-window enforcement (PLAN §13)
 
 Gates the student form on **admin-configured student groups** with open/close
@@ -246,7 +269,8 @@ recipient list, stored in `app_settings` (`change_digest_enabled`,
 `getChangeDigestRecipients`). Digest recipients come **only** from that list — the
 `ADMIN_EMAILS` env allowlist and the `admin_users` table play no part — and any
 well-formed address is accepted (`isEmailShaped`; `parseEmailList` now takes an optional
-validity check). The digest sender itself is unbuilt (ships with 3.1). Server
+validity check). The digest sender is `runChangeDigest` (see the schedule change
+requests section). Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the

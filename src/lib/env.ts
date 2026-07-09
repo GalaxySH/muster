@@ -33,6 +33,9 @@ const schema = z.object({
     }),
   // Destination Drive folder for evidence relay (a Shared Drive folder id; §12).
   DRIVE_FOLDER_ID: z.string().default(""),
+  // Bearer token for the host-cron endpoints (the change-request digest). The
+  // route refuses every request while this is unset, so the feature is opt-in.
+  CRON_SECRET: z.string().default(""),
   // DEV ONLY: enable the no-OAuth dev-login bypass ("1"/"true"). Never honored
   // in production (see isDevLoginEnabled). Leave empty everywhere but local.
   DEV_LOGIN_ENABLED: z.string().default(""),

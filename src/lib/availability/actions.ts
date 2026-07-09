@@ -36,7 +36,7 @@ import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
 import { trySyncSheet, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
-import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+import { DAY_LABEL, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 
 /** Drizzle transaction handle (extracted so the selection writer can share a tx). */
 type DbTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
@@ -70,16 +70,6 @@ export interface FinalizeResult {
   fixHref?: string;
   autoAssigned?: AutoAssignedShift | null;
 }
-
-const DAY_LABEL: Record<Day, string> = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-  sat: "Sat",
-  sun: "Sun",
-};
 
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);

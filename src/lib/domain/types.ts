@@ -14,6 +14,17 @@ export const WEEKDAY_DAYS: readonly Day[] = ["mon", "tue", "wed", "thu", "fri"];
 export const WEEKEND_DAYS: readonly Day[] = ["sat", "sun"];
 export const ALL_DAYS: readonly Day[] = [...WEEKDAY_DAYS, ...WEEKEND_DAYS];
 
+/** Short human label per day ("Mon".."Sun"), shared by grids, exports, and emails. */
+export const DAY_LABEL: Record<Day, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
+
 /** The day-type whose block template applies to a given calendar day. */
 export function dayTypeOf(day: Day): DayType {
   return day === "sat" || day === "sun" ? "weekend" : "weekday";

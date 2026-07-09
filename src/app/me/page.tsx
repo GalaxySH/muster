@@ -135,6 +135,15 @@ export default async function MePage() {
         </div>
       )}
 
+      {flow.onRoster && (
+        <InfoCard title="Schedule changes" style={{ marginTop: 20 }}>
+          <p style={{ margin: 0 }}>
+            Need a change to your work schedule during the semester?{" "}
+            <Link href="/change-requests">Send a change request</Link>.
+          </p>
+        </InfoCard>
+      )}
+
       <p style={{ marginTop: 20 }}>
         For any questions, contact <strong>{CONTACT_EMAIL}</strong> or come into the office.
       </p>

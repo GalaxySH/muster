@@ -11,20 +11,10 @@ import {
 } from "@/lib/availability/selection";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { hourCap } from "@/lib/domain/caps";
-import type { Day, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+import { DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
 import { ActionButton } from "@/components/ui";
 import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
-
-const DAY_LABEL: Record<Day, string> = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-  sat: "Sat",
-  sun: "Sun",
-};
 
 /** The user-editable fields, snapshotted at load/save to detect unsaved edits. */
 interface FormSnapshot {

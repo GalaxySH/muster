@@ -10,7 +10,7 @@
  */
 import { computeCapacity, distinctSelectedDays } from "@/lib/domain/capacity";
 import { formatTime } from "@/lib/domain/time";
-import { ALL_DAYS, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import { ALL_DAYS, DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { hourCap } from "./summary";
 
 export interface ExportTravel {
@@ -72,15 +72,6 @@ export const EXPORT_HEADERS = [
   "Travel",
 ] as const;
 
-const DAY_LABEL: Record<Day, string> = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-  sat: "Sat",
-  sun: "Sun",
-};
 const DAY_INDEX = new Map<Day, number>(ALL_DAYS.map((d, i) => [d, i]));
 
 const driveLink = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;

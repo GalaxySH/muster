@@ -209,6 +209,29 @@ export const appSettings = mysqlTable("app_settings", {
   value: text("value").notNull(),
 });
 
+export const changeRequestStatusEnum = ["open", "withdrawn", "resolved"] as const;
+
+/**
+ * A student's self-service schedule change request (roadmap 3.1). A second,
+ * always-available mini-flow: NOT window-gated and independent of the
+ * availability submission (it refers to their actual W2W schedule, which
+ * Muster doesn't model, so day/shift are the student's own words). Students
+ * withdraw their own open requests; admins mark them resolved. `digestSentAt`
+ * marks inclusion in the daily digest email (null = not yet reported).
+ */
+export const changeRequests = mysqlTable("change_requests", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  studentEmail: varchar("student_email", { length: 255 })
+    .notNull()
+    .references(() => students.email, { onDelete: "cascade" }),
+  day: mysqlEnum("day", dayEnum).notNull(),
+  shiftText: varchar("shift_text", { length: 200 }).notNull(),
+  comment: text("comment").notNull(),
+  status: mysqlEnum("status", changeRequestStatusEnum).notNull().default("open"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  digestSentAt: datetime("digest_sent_at", { mode: "date" }),
+});
+
 export const closeSlotKindEnum = ["fri", "sat"] as const;
 
 /**
