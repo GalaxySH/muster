@@ -10,7 +10,6 @@ import {
   signInAsTestAccount,
   type TestAccountError,
 } from "@/lib/test-accounts/actions";
-import { TEST_ACCOUNT_DOMAIN } from "@/lib/test-accounts/email";
 import { POSITIONS } from "@/lib/config/positions";
 
 // DB-backed (the test-account list); never statically prerender.
@@ -54,14 +53,11 @@ export default async function AdminTestUsersPage({
       <h1>Test accounts</h1>
       <p style={{ color: "#555" }}>
         Create throwaway accounts to walk through the app. Fill out the details, sign in as
-        the student, and navigate the flow. Test accounts stay off the roster and live in
-        the <strong>Test accounts</strong> group; edit that group&apos;s form window on{" "}
-        <Link href="/admin/groups">Groups &amp; form windows</Link>.
+        the student, and preview the form as they would see it. The accounts are not tracked and are in the <strong>Test accounts</strong> group. Edit the group&apos;s form window on{" "}<Link href="/admin/groups">Groups &amp; form windows</Link>.
       </p>
       <p style={banner}>
         <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign
-        back in with Google. Test-account emails end in <code>@{TEST_ACCOUNT_DOMAIN}</code>{" "}
-        and can only be signed into from this page.
+        back in with Google.
       </p>
 
       {errorMessage && <p style={errorBanner}>{errorMessage}</p>}
@@ -70,10 +66,6 @@ export default async function AdminTestUsersPage({
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Create a test account</h2>
         <form action={createTestAccount} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
           <input type="text" name="name" placeholder="Display name, e.g. Training Barista" required style={field} />
-          <p style={{ margin: 0, fontSize: 13, color: "#777" }}>
-            The sign-in email is derived from the name, e.g.{" "}
-            <code>training-barista@{TEST_ACCOUNT_DOMAIN}</code>.
-          </p>
           <select name="position" defaultValue={POSITIONS[0]?.id} style={field}>
             {POSITIONS.map((p) => (
               <option key={p.id} value={p.id}>
