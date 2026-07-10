@@ -40,8 +40,10 @@ capacity, feasibility, `REQUIRED_CLOSE_CLAIMS`); server layer in `src/lib/closes
 inside one transaction, PK backstop, losers get "just filled" + the refreshed board;
 `admin-actions.ts` idempotent inventory generation that never removes claimed slots).
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
-board via `components/closes/CloseClaimBoard.tsx`, counts polled every 10 s, dormant
-until an admin generates slots); the step list is **position-aware** (`wizardSteps` /
+board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
+dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
+the student board's `CloseSlotView` carries a server-computed `full` boolean instead of
+`capacity`/`claimedCount`, so SLs only ever see whether a slot is still open (v0.52); the step list is **position-aware** (`wizardSteps` /
 `loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
 `finalizeSubmission` refuses an SL with ≠ 3 claims; `/me` shows a red warning card +
 a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead

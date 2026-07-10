@@ -56,7 +56,7 @@ export default async function ClosesPage() {
       <p style={{ color: "#555" }}>
         Every Shift Lead holds {REQUIRED_CLOSE_CLAIMS} weekend close shifts for the semester.
         Pick {REQUIRED_CLOSE_CLAIMS} shifts below. Each shift has a limited number of spots,
-        first come first served, and the counts update as other leads pick.
+        first come first served. A shift shows as full once all its spots are taken.
       </p>
       <CloseClaimBoard initial={board} editable={access.canEdit} submitted={access.submitted} />
     </Page>

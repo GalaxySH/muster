@@ -29,7 +29,7 @@ import { loadCloseBoard, type CloseBoard } from "./data";
 export interface CloseActionResult {
   ok: boolean;
   error?: string;
-  /** The refreshed board (also on errors, so stale counts self-correct). */
+  /** The refreshed board (also on errors, so stale slot status self-corrects). */
   board: CloseBoard | null;
 }
 
@@ -108,7 +108,7 @@ export async function releaseCloseClaim(slotId: string): Promise<CloseActionResu
   return { ok: true, board: await loadCloseBoard(gate.email) };
 }
 
-/** Read-only poll for live remaining counts; any signed-in student may read. */
+/** Read-only poll for live open/full status; any signed-in student may read. */
 export async function refreshCloseBoard(): Promise<CloseBoard | null> {
   const session = await getAppSession();
   if (!session) return null;

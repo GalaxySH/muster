@@ -12,6 +12,7 @@ import {
   SHIFT_LEAD_POSITION_ID,
   closeClaimsComplete,
   closeClaimsFeasibility,
+  remainingCapacity,
   type CloseFeasibility,
   type CloseSlotKind,
 } from "@/lib/domain/close-claims";
@@ -22,13 +23,16 @@ export interface CloseSlotView {
   kind: CloseSlotKind;
   startMinutes: number;
   endMinutes: number;
-  capacity: number;
-  claimedCount: number;
+  /** All spots taken. Capacity and claim counts are admin-only and never sent here. */
+  full: boolean;
   /** The viewing student holds a claim on this slot. */
   mine: boolean;
 }
 
-/** What the student board shows: remaining counts only, never names (PLAN §18a). */
+/**
+ * What the student board shows: open/full per slot, never counts or names
+ * (PLAN §18a). Counts stay server-side; only admins see them.
+ */
 export interface CloseBoard {
   slots: CloseSlotView[];
   myClaimCount: number;
@@ -76,8 +80,7 @@ export async function loadCloseBoard(email: string): Promise<CloseBoard> {
       kind: s.kind,
       startMinutes: s.startMinutes,
       endMinutes: s.endMinutes,
-      capacity: s.capacity,
-      claimedCount: countBySlot.get(s.id) ?? 0,
+      full: remainingCapacity(s.capacity, countBySlot.get(s.id) ?? 0) <= 0,
       mine: mineSet.has(s.id),
     })),
     myClaimCount: mineSet.size,

@@ -2,10 +2,11 @@
 
 /**
  * The SL weekend-close picking board (PLAN §18a). One column per weekend day
- * (Fri/Sat), one row per weekend; each cell shows the live remaining count and
- * a claim/release control. Counts poll every few seconds (and refresh with
- * every action result) so a lost claim race self-corrects with a friendly
- * message instead of a lock. Shows remaining counts only, never names.
+ * (Fri/Sat), one row per weekend; each cell shows whether the slot is still
+ * open and a claim/release control. Status polls every few seconds (and
+ * refreshes with every action result) so a lost claim race self-corrects with
+ * a friendly message instead of a lock. Shows open/full only, never counts or
+ * names; counts are admin-only.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -20,7 +21,6 @@ import {
   closeClaimsComplete,
   closeWeekendKey,
   formatCloseDate,
-  remainingCapacity,
 } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
 import { ActionButton, PrimaryLink } from "@/components/ui";
@@ -80,50 +80,51 @@ export function CloseClaimBoard({
 
   function renderCell(slot: CloseSlotView | undefined) {
     if (!slot) return <td style={cellStyle} />;
-    const remaining = remainingCapacity(slot.capacity, slot.claimedCount);
     const pending = pendingSlot === slot.id;
     return (
       <td style={cellStyle}>
-        <div style={{ fontWeight: 600 }}>{formatCloseDate(slot.date)}</div>
-        <div style={{ fontSize: 13, color: "#555" }}>
-          {formatTime(slot.startMinutes)}–{formatTime(slot.endMinutes)}
-        </div>
-        <div style={{ marginTop: 6 }}>
-          {slot.mine ? (
-            <>
-              <span style={{ color: "#196127", fontWeight: 600 }}>✓ Yours</span>
-              {editable && (
-                <ActionButton
-                  variant="secondary"
-                  pending={pending}
-                  pendingLabel="Releasing…"
-                  onClick={() => run(slot.id, releaseCloseClaim)}
-                  style={smallButton}
-                >
-                  Release
-                </ActionButton>
-              )}
-            </>
-          ) : remaining === 0 ? (
-            <span style={{ color: "#999" }}>Full</span>
-          ) : (
-            <>
-              <span style={{ color: "#555" }}>
-                {remaining} of {slot.capacity} open
-              </span>
-              {editable && (
-                <ActionButton
-                  pending={pending}
-                  pendingLabel="Claiming…"
-                  disabled={complete}
-                  onClick={() => run(slot.id, claimCloseSlot)}
-                  style={smallButton}
-                >
-                  Claim
-                </ActionButton>
-              )}
-            </>
-          )}
+        <div style={rowStyle}>
+          <div>
+            <span style={{ fontWeight: 600 }}>{formatCloseDate(slot.date)}</span>{" "}
+            <span style={{ fontSize: 13, color: "#555" }}>
+              {formatTime(slot.startMinutes)}–{formatTime(slot.endMinutes)}
+            </span>
+          </div>
+          <div style={{ whiteSpace: "nowrap" }}>
+            {slot.mine ? (
+              <>
+                <span style={{ color: "#196127", fontWeight: 600 }}>✓ Yours</span>
+                {editable && (
+                  <ActionButton
+                    variant="secondary"
+                    pending={pending}
+                    pendingLabel="Releasing…"
+                    onClick={() => run(slot.id, releaseCloseClaim)}
+                    style={smallButton}
+                  >
+                    Release
+                  </ActionButton>
+                )}
+              </>
+            ) : slot.full ? (
+              <span style={{ color: "#999" }}>Full</span>
+            ) : (
+              <>
+                <span style={{ color: "#555" }}>Open</span>
+                {editable && (
+                  <ActionButton
+                    pending={pending}
+                    pendingLabel="Claiming…"
+                    disabled={complete}
+                    onClick={() => run(slot.id, claimCloseSlot)}
+                    style={smallButton}
+                  >
+                    Claim
+                  </ActionButton>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </td>
     );
@@ -186,9 +187,17 @@ export function CloseClaimBoard({
 
 const cellStyle: React.CSSProperties = {
   border: "1px solid #e2e2e2",
-  padding: "10px 12px",
-  verticalAlign: "top",
+  padding: "6px 12px",
+  verticalAlign: "middle",
   width: "50%",
+};
+
+const rowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "wrap",
 };
 
 const headStyle: React.CSSProperties = {

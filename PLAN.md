@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.51
+- **Version:** 0.52
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -891,7 +891,9 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 
 - **Rules:** every Shift Lead claims **exactly 3** weekend closes to hold for the
   semester; **Friday/Saturday closes only**; each close slot has **finite capacity**.
-  Backend-enforced SL-only; students see remaining counts only, **never names**.
+  Backend-enforced SL-only; students see only whether a slot is **open or full** —
+  **never counts, never names**. Capacity and claim counts are admin-only (the SL
+  board's view model carries a `full` boolean; the numbers never reach the client).
 - **Inventory:** a real **semester-weekend calendar** of dated Fri/Sat close slots
   (6p–11:30p) with per-slot capacity — admin data, not templated like §6.3. Generated on
   **`/admin/closes`** from a range + capacity (defaults: first September weekend →
@@ -903,7 +905,7 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   transaction locks the student row then the slot row (fixed order, no deadlocks),
   re-counts, and inserts; the composite PK `(closeSlotId, studentEmail)` backstops
   double-claims. A lost race returns a friendly "that shift just filled" plus the
-  refreshed board; the client also polls remaining counts every 10 s. Released claims
+  refreshed board; the client also polls slot open/full status every 10 s. Released claims
   return capacity. (`closes/actions.ts`.)
 - **Flow placement (§4.1 step 8):** the `/closes` wizard step sits between travel and
   exit, appears only for SLs **and** only once an inventory exists (the feature is
@@ -942,6 +944,13 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.52 (2026-07-10)** — **Close-slot counts are admin-only (§18a).** The SL `/closes`
+  board no longer shows how many spots a close has left; each slot reads just **Open**
+  or **Full**. `CloseSlotView` drops `capacity`/`claimedCount` for a server-computed
+  `full` boolean, so the numbers never reach the student client at all (not even in the
+  poll payload). `/admin/closes` and the closes sheet/export keep the full counts.
+  Board cells are compact single rows (date, time, and the status/claim control on
+  one line) instead of three stacked lines.
 - **0.51 (2026-07-10)** — **Change-request kind + supporting proof (§4.1, §9, §10).**
   The form gains a **permanent vs one-time** checkbox (new `change_requests.permanent`
   column, default one-time; shown on the student list, the queue, the per-student page,
