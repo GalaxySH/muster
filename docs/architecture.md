@@ -92,7 +92,11 @@ the `EmployeePicker` type-to-search island (debounced, reuses the admin-gated
 `searchStudentsForPicker` seam from the groups module, capped result dropdown) — whose
 target rides FormData `employee` into `createChangeRequest` (`resolveTargetStudent`:
 admins only, target must be a known student, rate cap skipped since it bounds student
-abuse; an admin without a roster row must pick an employee). The list under the form
+abuse; an admin without a roster row must pick an employee), and an admin-only
+**Mark as resolved on submission** checkbox (default off, FormData `resolved`) that
+creates the request already `resolved` — for logging a change handled on the spot;
+the flag is honored only for admin sessions, and resolved rows never enter the digest
+batch (it selects `open` only). The list under the form
 follows whoever the form targets (admin-gated `adminListChangeRequests` in
 `admin-actions.ts`), and `withdrawChangeRequest` lets admins withdraw **any** open
 request (students still only their own). The per-student admin page header carries a
