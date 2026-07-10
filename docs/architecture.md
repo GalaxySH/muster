@@ -42,7 +42,7 @@ to its own message; `actions.ts` student claims, losers get "just filled" + the
 refreshed board; `admin-actions.ts` idempotent inventory generation that never removes
 claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
 place or pull leads directly, through the same locking insert, and `removeCloseSlot`
-(v0.56) which deletes one shift outright — claims cascade after a client confirm).
+(v0.57) which deletes one shift outright — claims cascade after a client confirm).
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
 board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
@@ -61,7 +61,7 @@ sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
 (`requireEditableStudent`, used by availability/evidence/closes actions), and the old
 `ResponsesToolbar` folded into the shared `components/admin/SheetControls.tsx`.
 
-## Schedule change requests (roadmap 3.1, PLAN §4.1, v0.48–0.51)
+## Schedule change requests (roadmap 3.1, PLAN §4.1, v0.48–0.51, v0.56)
 
 An always-available mini-flow **outside** the wizard and its group/window gates: any
 known student (a `students` row; test accounts included) can send requests all semester
@@ -78,8 +78,8 @@ in `domain/change-requests.ts` (TDD: validation + a rolling
 admin lists, plus the pending-digest batch, `changeRequestFilesByRequest` for the
 per-student proofs, and `collectChangeRequestDriveFileIds` which the test-account
 delete calls to clean Drive — these proofs hang off the student, not the submission),
-student `actions.ts` (create/withdraw-own-
-open; gate = session + roster row only; `createChangeRequest` takes FormData, validates
+student `actions.ts` (create/withdraw-open;
+gate = session + roster row only; `createChangeRequest` takes FormData, validates
 every file before any byte relays, and deletes already-relayed files when one fails),
 `admin-actions.ts` (resolve/reopen; withdrawn
 stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD; each line carries the
@@ -87,7 +87,17 @@ permanent/one-time kind), and pure deep-link
 helpers in `links.ts` (`changeRequestAnchor`/`changeRequestAdminPath`). Student UI is
 the `components/changes/ChangeRequestsPanel.tsx` island (day + shift + permanent
 checkbox + comment + optional proof files, with the events/extracurriculars-need-proof
-note). Admin surfaces (v0.49–0.51):
+note). **Admin on-behalf** (v0.56): the panel gains an admin-only **Employee** field —
+the `EmployeePicker` type-to-search island (debounced, reuses the admin-gated
+`searchStudentsForPicker` seam from the groups module, capped result dropdown) — whose
+target rides FormData `employee` into `createChangeRequest` (`resolveTargetStudent`:
+admins only, target must be a known student, rate cap skipped since it bounds student
+abuse; an admin without a roster row must pick an employee). The list under the form
+follows whoever the form targets (admin-gated `adminListChangeRequests` in
+`admin-actions.ts`), and `withdrawChangeRequest` lets admins withdraw **any** open
+request (students still only their own). The per-student admin page header carries a
+**New change request** quick link to `/change-requests?student=email`, which the page
+resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
 submission, each anchored as `#change-request-<id>`, and the queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
