@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.52
+- **Version:** 0.53
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -915,7 +915,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 - **Admin:** `/admin/closes` — per-slot claims with names, per-lead progress, a
   slots × capacity ≥ 3 × active-SLs **feasibility warning**, the inventory editor, and a
   second backup Google Sheet (`Muster SL Closes`); `sheet-sync.ts` is parametrized by
-  target (name + cached id + matrix builder) rather than copy-pasted.
+  target (name + cached id + matrix builder) rather than copy-pasted. The claims table
+  also has **direct assign/remove controls** (v0.53): the admin can put any active
+  Shift Lead on a slot or take them off without the lead touching the form. Assignment
+  goes through the **same locking insert** as student claims (`closes/claim-write.ts`,
+  shared by `actions.ts` and `admin-actions.ts`), so capacity and the 3-claim limit
+  hold even against a concurrent student pick; removal returns the seat to the pool.
 - **Entities:** `CloseSlot` / `CloseClaim` (§9). Claimed counts are derived (COUNT),
   never stored.
 - **Boundary:** this is *student self-service claiming* of a constrained pool — still
@@ -944,6 +949,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.53 (2026-07-10)** — **Admin assign/unassign for weekend closes (§18a).** The
+  claims-by-shift table on `/admin/closes` gains an "Add a lead" picker per slot and a
+  remove button per claimant, so the admin can place or pull Shift Leads without any
+  lead interacting with the form. New `assignCloseClaim`/`unassignCloseClaim` server
+  actions (admin-gated; assignment validates the target is an active Shift Lead); the
+  concurrency-critical claim insert is extracted to `closes/claim-write.ts` and shared
+  with the student claim action, so both enforce capacity and the 3-claim limit under
+  the same student → slot lock order. Changes revalidate both surfaces and back up the
+  closes sheet, and the SL board reflects them on its next poll.
 - **0.52 (2026-07-10)** — **Close-slot counts are admin-only (§18a).** The SL `/closes`
   board no longer shows how many spots a close has left; each slot reads just **Open**
   or **Full**. `CloseSlotView` drops `capacity`/`claimedCount` for a server-computed

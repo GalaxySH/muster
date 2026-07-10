@@ -36,9 +36,12 @@ unique date, per-slot capacity) + `close_claims` (composite PK `(closeSlotId,
 studentEmail)`, cascading deletes); pure rules in `domain/close-claims.ts` (default
 range = first September weekend → second December weekend, slot generation, remaining
 capacity, feasibility, `REQUIRED_CLOSE_CLAIMS`); server layer in `src/lib/closes/`
-(`data.ts` loaders; `actions.ts` **atomic claims** — student-row → slot-row lock order
-inside one transaction, PK backstop, losers get "just filled" + the refreshed board;
-`admin-actions.ts` idempotent inventory generation that never removes claimed slots).
+(`data.ts` loaders; `claim-write.ts` the **shared atomic claim insert** — student-row →
+slot-row lock order inside one transaction, PK backstop, returns a code the caller maps
+to its own message; `actions.ts` student claims, losers get "just filled" + the
+refreshed board; `admin-actions.ts` idempotent inventory generation that never removes
+claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
+place or pull leads directly, through the same locking insert).
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
 board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
@@ -47,7 +50,10 @@ the student board's `CloseSlotView` carries a server-computed `full` boolean ins
 `loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
 `finalizeSubmission` refuses an SL with ≠ 3 claims; `/me` shows a red warning card +
 a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead
-progress, per-slot claimants, feasibility warning, and a second backup Drive sheet
+progress, per-slot claimants with **assign/remove controls**
+(`components/admin/CloseClaimsTable.tsx`, v0.53 — the picker only offers active leads
+with open picks, the server actions re-check everything), feasibility warning, and a
+second backup Drive sheet
 (`Muster SL Closes`) — `sheet-sync.ts` + `drive/relay.ts` are now **parametrized by
 sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
 `getSheetUrl`), the student-action gate is deduplicated into `groups/gate.ts`

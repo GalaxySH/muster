@@ -1,29 +1,20 @@
 "use server";
 
 /**
- * Claim/release actions for SL weekend closes (PLAN.md §18a).
- *
- * The claim write is the concurrency-critical path: two leads must never take
- * the last seat at once. Strategy (per PLAN §18a): one transaction that locks
- * the student row first (serializing one student's parallel claims), then the
- * slot row (serializing the slot's capacity check), then counts and inserts.
- * The consistent student → slot lock order prevents deadlocks, and the
- * composite PK (slot, email) backstops double-claims. On a lost race the
- * student gets a "just filled" message plus the refreshed board, so the UI
- * self-corrects; there is no global pick lock.
+ * Claim/release actions for SL weekend closes (PLAN.md §18a). The
+ * concurrency-critical claim write lives in `claim-write.ts` (shared with the
+ * admin assign action); on a lost race the student gets a "just filled"
+ * message plus the refreshed board, so the UI self-corrects without a lock.
  */
-import { and, count, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots, students } from "@/lib/db/schema";
+import { closeClaims } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { requireEditableStudent } from "@/lib/groups/gate";
 import { trySyncSheet, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
-import {
-  REQUIRED_CLOSE_CLAIMS,
-  SHIFT_LEAD_POSITION_ID,
-  remainingCapacity,
-} from "@/lib/domain/close-claims";
+import { REQUIRED_CLOSE_CLAIMS, SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { insertCloseClaim } from "./claim-write";
 import { loadCloseBoard, type CloseBoard } from "./data";
 
 export interface CloseActionResult {
@@ -43,50 +34,19 @@ async function gateShiftLead(): Promise<
   return { ok: true, email: gate.email };
 }
 
+const CLAIM_ERROR_MESSAGES = {
+  gone: "That shift is no longer available.",
+  "lead-full": `You already have ${REQUIRED_CLOSE_CLAIMS} closes. Release one first to switch.`,
+  "slot-full": "That shift just filled up. Pick another one.",
+} as const;
+
 export async function claimCloseSlot(slotId: string): Promise<CloseActionResult> {
   const gate = await gateShiftLead();
   if (!gate.ok) return { ok: false, error: gate.error, board: null };
   const email = gate.email;
-  const db = getDb();
 
-  const error = await db.transaction(async (tx) => {
-    // Lock order is student → slot everywhere so parallel claims can't deadlock.
-    await tx
-      .select({ email: students.email })
-      .from(students)
-      .where(eq(students.email, email))
-      .for("update");
-    const [slot] = await tx
-      .select()
-      .from(closeSlots)
-      .where(eq(closeSlots.id, slotId))
-      .for("update");
-    if (!slot) return "That shift is no longer available.";
-
-    const [held] = await tx
-      .select({ slotId: closeClaims.closeSlotId })
-      .from(closeClaims)
-      .where(and(eq(closeClaims.closeSlotId, slotId), eq(closeClaims.studentEmail, email)))
-      .limit(1);
-    if (held) return null; // already theirs; treat the re-click as a no-op
-
-    const [mine] = await tx
-      .select({ n: count() })
-      .from(closeClaims)
-      .where(eq(closeClaims.studentEmail, email));
-    if ((mine?.n ?? 0) >= REQUIRED_CLOSE_CLAIMS)
-      return `You already have ${REQUIRED_CLOSE_CLAIMS} closes. Release one first to switch.`;
-
-    const [claimed] = await tx
-      .select({ n: count() })
-      .from(closeClaims)
-      .where(eq(closeClaims.closeSlotId, slotId));
-    if (remainingCapacity(slot.capacity, claimed?.n ?? 0) <= 0)
-      return "That shift just filled up. Pick another one.";
-
-    await tx.insert(closeClaims).values({ closeSlotId: slotId, studentEmail: email });
-    return null;
-  });
+  const code = await insertCloseClaim(slotId, email);
+  const error = code ? CLAIM_ERROR_MESSAGES[code] : null;
 
   if (!error) {
     revalidatePath("/closes");

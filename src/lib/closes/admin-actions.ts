@@ -8,13 +8,14 @@
  * claim on them (claimed ones are kept and reported instead).
  */
 import { randomUUID } from "node:crypto";
-import { count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots } from "@/lib/db/schema";
+import { closeClaims, closeSlots, students } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import {
   syncSheet,
+  trySyncSheet,
   CLOSES_SHEET,
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
@@ -22,9 +23,12 @@ import {
 import {
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
+  REQUIRED_CLOSE_CLAIMS,
+  SHIFT_LEAD_POSITION_ID,
   generateCloseSlotDates,
   formatCloseDate,
 } from "@/lib/domain/close-claims";
+import { insertCloseClaim } from "./claim-write";
 
 export interface InventorySummary {
   created: number;
@@ -129,6 +133,67 @@ export async function generateCloseInventory(input: {
     console.error("Closes sheet sync after inventory change failed (non-fatal):", e);
   }
   return { ok: true, summary };
+}
+
+export interface CloseAssignResult {
+  ok: boolean;
+  error?: string;
+}
+
+const ASSIGN_ERROR_MESSAGES = {
+  gone: "That shift no longer exists.",
+  "lead-full": `That lead already has ${REQUIRED_CLOSE_CLAIMS} closes. Remove one of theirs first.`,
+  "slot-full": "That shift is already full.",
+} as const;
+
+/** After an admin claim change: refresh both surfaces and back up the sheet. */
+async function afterClaimChange() {
+  revalidatePath("/admin/closes");
+  revalidatePath("/closes");
+  await trySyncSheet(CLOSES_SHEET);
+}
+
+/**
+ * Admin: put a Shift Lead on a close shift, no student interaction needed.
+ * Goes through the same locking insert as student claims, so capacity and the
+ * per-lead limit hold even against a concurrent student pick.
+ */
+export async function assignCloseClaim(
+  slotId: string,
+  email: string,
+): Promise<CloseAssignResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const [lead] = await getDb()
+    .select({ positionId: students.positionId, onRoster: students.onRoster })
+    .from(students)
+    .where(eq(students.email, email))
+    .limit(1);
+  if (!lead || lead.positionId !== SHIFT_LEAD_POSITION_ID || !lead.onRoster)
+    return { ok: false, error: "Pick an active Shift Lead." };
+
+  const code = await insertCloseClaim(slotId, email);
+  if (code) return { ok: false, error: ASSIGN_ERROR_MESSAGES[code] };
+
+  await afterClaimChange();
+  return { ok: true };
+}
+
+/** Admin: take a Shift Lead off a close shift; the spot returns to the pool. */
+export async function unassignCloseClaim(
+  slotId: string,
+  email: string,
+): Promise<CloseAssignResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  await getDb()
+    .delete(closeClaims)
+    .where(and(eq(closeClaims.closeSlotId, slotId), eq(closeClaims.studentEmail, email)));
+
+  await afterClaimChange();
+  return { ok: true };
 }
 
 export interface RebuildClosesSheetResult {
