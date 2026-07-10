@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.53
+- **Version:** 0.54
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -949,6 +949,9 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.54 (2026-07-10)** — **Copy tweaks on the closes admin table (§18a).** Shorter
+  assign picker placeholder ("Pick SL"); the claims table note now reads "Changes made
+  here will be immediately visible to employees."
 - **0.53 (2026-07-10)** — **Admin assign/unassign for weekend closes (§18a).** The
   claims-by-shift table on `/admin/closes` gains an "Add a lead" picker per slot and a
   remove button per claimant, so the admin can place or pull Shift Leads without any

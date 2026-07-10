@@ -114,8 +114,7 @@ export default async function AdminClosesPage() {
         <section style={card}>
           <h2 style={h2}>Claims by shift</h2>
           <p style={{ marginTop: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-            You can assign a lead to a shift or remove them here. Leads see the change on
-            their own picking page right away.
+            Changes made here will be immediately visible to employees.
           </p>
           <CloseClaimsTable slots={view.slots} leads={view.leads} />
         </section>

@@ -150,7 +150,7 @@ function AssignPicker({
         aria-label="Shift Lead to assign"
         style={select}
       >
-        <option value="">Pick a lead</option>
+        <option value="">Pick SL</option>
         {leads.map((l) => (
           <option key={l.email} value={l.email}>
             {l.displayName}
