@@ -91,37 +91,65 @@ export default async function AdminTestUsersPage({
       </section>
 
       {accounts.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, margin: "1.2rem 0 0", display: "grid", gap: 8 }}>
-          {accounts.map((a) => (
-            <li key={a.email} style={row}>
-              <div style={{ fontSize: 14 }}>
-                <strong>{a.displayName}</strong>{" "}
-                <span style={{ color: "#777" }}>
-                  {a.email}
-                  {a.positionName ? ` · ${a.positionName}` : ""}
-                  {a.status ? ` · ${a.status}` : ""}
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Link href={`/admin/students/${encodeURIComponent(a.email)}`} style={{ fontSize: 14 }}>
-                  View response
-                </Link>
-                {a.canSignInAs && (
-                  <form action={signInAsTestAccount}>
-                    <input type="hidden" name="email" value={a.email} />
-                    <button type="submit">Sign in as</button>
-                  </form>
-                )}
-                <form action={deleteTestAccount}>
-                  <input type="hidden" name="email" value={a.email} />
-                  <button type="submit" style={{ color: "#b00" }}>
-                    Delete
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div style={{ overflowX: "auto", marginTop: "1.2rem" }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
+                <th style={th}>Account</th>
+                <th style={th}>Position</th>
+                <th style={th}>Status</th>
+                <th style={{ ...th, textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((a) => (
+                <tr key={a.email} style={{ borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <td style={td}>
+                    <div style={{ fontWeight: 500 }}>{a.displayName}</div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--color-text-tertiary)",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {a.email}
+                    </div>
+                  </td>
+                  <td style={td}>{a.positionName ?? "—"}</td>
+                  <td style={td}>
+                    {a.status ? (
+                      <span style={a.status === "submitted" ? submittedBadge : draftBadge}>
+                        {a.status}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+                      <Link href={`/admin/students/${encodeURIComponent(a.email)}`}>
+                        View response
+                      </Link>
+                      {a.canSignInAs && (
+                        <form action={signInAsTestAccount}>
+                          <input type="hidden" name="email" value={a.email} />
+                          <button type="submit">Sign in as</button>
+                        </form>
+                      )}
+                      <form action={deleteTestAccount}>
+                        <input type="hidden" name="email" value={a.email} />
+                        <button type="submit" style={{ color: "#b00" }}>
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Page>
   );
@@ -148,12 +176,8 @@ const card: React.CSSProperties = {
   marginTop: "1.2rem",
 };
 const field: React.CSSProperties = { padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 14 };
-const row: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  border: "1px solid #e2e2e2",
-  borderRadius: 6,
-  padding: "0.5rem 0.7rem",
-};
+const th: React.CSSProperties = { padding: "6px 10px", whiteSpace: "nowrap" };
+const td: React.CSSProperties = { padding: "8px 10px", verticalAlign: "top" };
+const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontSize: 12 };
+const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", color: "var(--color-text-success)" };
+const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };
