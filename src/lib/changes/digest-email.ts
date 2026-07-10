@@ -14,8 +14,11 @@ export interface DigestEmailRequest {
   day: Day;
   shiftText: string;
   comment: string;
+  permanent: boolean;
   createdAt: Date;
 }
+
+const kindLabel = (r: DigestEmailRequest) => (r.permanent ? "permanent" : "one time");
 
 export interface DigestEmail {
   subject: string;
@@ -50,7 +53,7 @@ export function buildChangeDigestEmail(
     const name = list[0]!.studentName;
     const link = (r: DigestEmailRequest) => `${baseUrl}${changeRequestAdminPath(email, r.id)}`;
     const lines = list.map(
-      (r) => `- ${DAY_LABEL[r.day]} ${r.shiftText}: ${r.comment}\n  ${link(r)}`,
+      (r) => `- ${DAY_LABEL[r.day]} ${r.shiftText} (${kindLabel(r)}): ${r.comment}\n  ${link(r)}`,
     );
     textBlocks.push(`${name} (${email})\n${lines.join("\n")}`);
     htmlBlocks.push(
@@ -58,7 +61,7 @@ export function buildChangeDigestEmail(
         `<ul>${list
           .map(
             (r) =>
-              `<li>${DAY_LABEL[r.day]} ${escapeHtml(r.shiftText)}: ${escapeHtml(r.comment)} · ` +
+              `<li>${DAY_LABEL[r.day]} ${escapeHtml(r.shiftText)} (${kindLabel(r)}): ${escapeHtml(r.comment)} · ` +
               `<a href="${link(r)}">Review request</a></li>`,
           )
           .join("")}</ul>`,

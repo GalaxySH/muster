@@ -52,28 +52,45 @@ sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
 (`requireEditableStudent`, used by availability/evidence/closes actions), and the old
 `ResponsesToolbar` folded into the shared `components/admin/SheetControls.tsx`.
 
-## Schedule change requests (roadmap 3.1, PLAN §4.1, v0.48)
+## Schedule change requests (roadmap 3.1, PLAN §4.1, v0.48–0.51)
 
 An always-available mini-flow **outside** the wizard and its group/window gates: any
 known student (a `students` row; test accounts included) can send requests all semester
 at **`/change-requests`**, linked from a card on `/me`. Table `change_requests`
 (migration `0012`: day enum + free-text `shiftText`/`comment` since the actual W2W
 schedule isn't modeled, status `open|withdrawn|resolved`, `digestSentAt`, cascades with
-the student). Pure rules in `domain/change-requests.ts` (TDD: validation + a rolling
+the student; migration `0013` adds `permanent` — false = one-time — plus the
+`change_request_files` table: up to `MAX_CHANGE_REQUEST_FILES` (3) optional
+supporting-proof fileIds per request, relayed through the same `relayUpload` seam as
+all evidence (`ProofKind` "change-request"), cascading with the request). Pure rules
+in `domain/change-requests.ts` (TDD: validation + a rolling
 3-per-24h rate cap on created rows — withdrawing doesn't refund). Server layer
 `src/lib/changes/`: `data.ts` (one `listChangeRequests` drives both the student and
-admin lists, plus the pending-digest batch), student `actions.ts` (create/withdraw-own-
-open; gate = session + roster row only), `admin-actions.ts` (resolve/reopen; withdrawn
-stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD), and pure deep-link
+admin lists, plus the pending-digest batch, `changeRequestFilesByRequest` for the
+per-student proofs, and `collectChangeRequestDriveFileIds` which the test-account
+delete calls to clean Drive — these proofs hang off the student, not the submission),
+student `actions.ts` (create/withdraw-own-
+open; gate = session + roster row only; `createChangeRequest` takes FormData, validates
+every file before any byte relays, and deletes already-relayed files when one fails),
+`admin-actions.ts` (resolve/reopen; withdrawn
+stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD; each line carries the
+permanent/one-time kind), and pure deep-link
 helpers in `links.ts` (`changeRequestAnchor`/`changeRequestAdminPath`). Student UI is
-the `components/changes/ChangeRequestsPanel.tsx` island. Admin surfaces (v0.49–0.50):
+the `components/changes/ChangeRequestsPanel.tsx` island (day + shift + permanent
+checkbox + comment + optional proof files, with the events/extracurriculars-need-proof
+note). Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
 submission, each anchored as `#change-request-<id>`, and the queue at
-`/admin/change-requests` lists open requests oldest first (name + email per row) with
+`/admin/change-requests` lists open requests oldest first (name + email +
+permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
 (`ShowResolvedToggle`, state in `?resolved=1` so the server page drives the query)
 mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withdrawn
-never appears). Resolved requests read as done everywhere: green-tinted row + the
+never appears). Proof files render only on the per-student page, as inline
+`EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches bytes through
+the Drive proxy, so only the newest `CHANGE_PREVIEW_ROWS` (3) file-bearing requests get
+thumbnails and older ones fall back to plain proof links. Every request row is an
+outline box; resolved requests read as done everywhere: green-tinted row + the
 shared `ChangeStatusBadge` (check icon). Both surfaces use the
 `ChangeRequestResolvedCheckbox` island (checked = resolved, uncheck reopens; withdrawn
 shows no control), and the per-student header email is a `SelectableEmail` island

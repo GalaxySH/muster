@@ -12,11 +12,14 @@ export const CHANGE_REQUEST_DAILY_CAP = 3;
 export const CHANGE_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const MAX_SHIFT_TEXT_LENGTH = 200;
 export const MAX_COMMENT_LENGTH = 2000;
+export const MAX_CHANGE_REQUEST_FILES = 3;
 
 export interface ChangeRequestValue {
   day: Day;
   shiftText: string;
   comment: string;
+  /** True = a permanent schedule change; false = a one-time change. */
+  permanent: boolean;
 }
 
 export type ChangeRequestValidation =
@@ -27,6 +30,7 @@ export function validateChangeRequest(input: {
   day: string;
   shiftText: string;
   comment: string;
+  permanent: boolean;
 }): ChangeRequestValidation {
   if (!(ALL_DAYS as readonly string[]).includes(input.day)) {
     return { ok: false, error: "Pick the day of the shift." };
@@ -41,7 +45,7 @@ export function validateChangeRequest(input: {
   if (comment.length > MAX_COMMENT_LENGTH) {
     return { ok: false, error: `Keep the comment under ${MAX_COMMENT_LENGTH} characters.` };
   }
-  return { ok: true, value: { day: input.day as Day, shiftText, comment } };
+  return { ok: true, value: { day: input.day as Day, shiftText, comment, permanent: input.permanent } };
 }
 
 export interface ChangeRequestRate {

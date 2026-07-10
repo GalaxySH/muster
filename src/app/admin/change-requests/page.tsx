@@ -65,7 +65,8 @@ export default async function AdminChangeRequestsPage({
                   <span style={{ fontWeight: 600 }}>{r.studentName}</span>
                   <span style={{ color: "var(--color-text-secondary)" }}>
                     {" "}
-                    {r.studentEmail} · {DAY_LABEL[r.day]} · {r.shiftText}
+                    {r.studentEmail} · {DAY_LABEL[r.day]} · {r.shiftText} ·{" "}
+                    {r.permanent ? "permanent" : "one time"}
                   </span>
                 </div>
                 <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-primary)", whiteSpace: "pre-wrap" }}>

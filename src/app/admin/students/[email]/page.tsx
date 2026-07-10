@@ -16,7 +16,7 @@ import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
-import { listChangeRequests } from "@/lib/changes/data";
+import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
 
@@ -93,6 +93,15 @@ export default async function StudentDetailPage({
 
   const nav = await getResponseNeighbors(email, filters);
   const changeRequests = await listChangeRequests(detail.email);
+  const changeFiles = await changeRequestFilesByRequest(detail.email);
+  // Thumbnails fetch bytes through the Drive proxy, so only the newest few
+  // file-bearing requests get previews; older ones fall back to plain links.
+  const previewIds = new Set(
+    changeRequests
+      .filter((r) => (changeFiles.get(r.id) ?? []).length > 0)
+      .slice(0, CHANGE_PREVIEW_ROWS)
+      .map((r) => r.id),
+  );
   const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
 
   const validation =
@@ -362,27 +371,56 @@ export default async function StudentDetailPage({
         <section style={{ ...panel, maxWidth: 620, marginTop: 14 }}>
           <SectionLabel>Schedule change requests</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {changeRequests.map((r) => (
-              <div
-                key={r.id}
-                id={changeRequestAnchor(r.id)}
-                style={r.status === "resolved" ? resolvedChangeRow : changeRow}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
-                  <span style={{ fontWeight: 600 }}>
-                    {DAY_LABEL[r.day]} · {r.shiftText}
-                  </span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <ChangeStatusBadge status={r.status} />
-                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                      {fmtDate(r.createdAt)}
+            {changeRequests.map((r) => {
+              const files = changeFiles.get(r.id) ?? [];
+              return (
+                <div
+                  key={r.id}
+                  id={changeRequestAnchor(r.id)}
+                  style={r.status === "resolved" ? resolvedChangeRow : changeRow}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {DAY_LABEL[r.day]} · {r.shiftText}
+                      <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
+                        {" "}
+                        · {r.permanent ? "permanent" : "one time"}
+                      </span>
                     </span>
-                    <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
-                  </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <ChangeStatusBadge status={r.status} />
+                      <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                        {fmtDate(r.createdAt)}
+                      </span>
+                      <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
+                    </span>
+                  </div>
+                  <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
+                  {files.length > 0 &&
+                    (previewIds.has(r.id) ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                        {files.map((fileId) => (
+                          <EvidenceThumb key={fileId} fileId={fileId} label="Change request proof" size={56} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 6, fontSize: 13 }}>
+                        {files.map((fileId, i) => (
+                          <a
+                            key={fileId}
+                            href={`/api/evidence/${encodeURIComponent(fileId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ marginRight: 12, color: "var(--color-text-info)" }}
+                          >
+                            proof {i + 1}
+                          </a>
+                        ))}
+                      </div>
+                    ))}
                 </div>
-                <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -390,10 +428,15 @@ export default async function StudentDetailPage({
   );
 }
 
+/** Only the newest few file-bearing requests render thumbnail previews. */
+const CHANGE_PREVIEW_ROWS = 3;
+
+/** Unresolved (and withdrawn) requests: an untinted outline box, aligned with resolved rows. */
 const changeRow: React.CSSProperties = {
-  borderTop: "0.5px solid var(--color-border-tertiary)",
-  paddingTop: 8,
   scrollMarginTop: 20,
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  padding: "8px 10px",
 };
 /** Resolved requests read as done at a glance: green tint plus the badge icon. */
 const resolvedChangeRow: React.CSSProperties = {

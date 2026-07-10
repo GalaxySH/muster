@@ -2,18 +2,20 @@
 
 /**
  * The schedule change-request mini-flow (roadmap 3.1): a small form (day +
- * shift time + comment) over the student's own request list. Always available
- * (no window gate); creation is rate-capped server-side, and open requests
- * can be withdrawn.
+ * shift time + permanent flag + comment + optional proof files) over the
+ * student's own request list. Always available (no window gate); creation is
+ * rate-capped server-side, and open requests can be withdrawn.
  */
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import {
   createChangeRequest,
   withdrawChangeRequest,
   type ChangeRequestActionResult,
 } from "@/lib/changes/actions";
 import type { ChangeRequestRow, ChangeRequestStatus } from "@/lib/changes/data";
+import { MAX_CHANGE_REQUEST_FILES } from "@/lib/domain/change-requests";
 import { DAY_LABEL, ALL_DAYS, type Day } from "@/lib/domain/types";
+import { ACCEPT } from "@/components/evidence/shared";
 import { ActionButton } from "@/components/ui";
 
 const FULL_DAY: Record<Day, string> = {
@@ -31,6 +33,8 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
   const [day, setDay] = useState<Day>("mon");
   const [shiftText, setShiftText] = useState("");
   const [comment, setComment] = useState("");
+  const [permanent, setPermanent] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingSubmit, startSubmit] = useTransition();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
@@ -44,11 +48,19 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
   function submit() {
     setMsg(null);
     startSubmit(async () => {
-      const res = await createChangeRequest({ day, shiftText, comment });
+      const fd = new FormData();
+      fd.set("day", day);
+      fd.set("shiftText", shiftText);
+      fd.set("comment", comment);
+      if (permanent) fd.set("permanent", "1");
+      for (const file of fileInput.current?.files ?? []) fd.append("files", file);
+      const res = await createChangeRequest(fd);
       applyResult(res, "Request sent. The scheduler will review it.");
       if (res.ok) {
         setShiftText("");
         setComment("");
+        setPermanent(false);
+        if (fileInput.current) fileInput.current.value = "";
       }
     });
   }
@@ -100,7 +112,18 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
             style={{ ...input, fontFamily: "inherit" }}
           />
         </label>
-        <div style={{ marginTop: 10 }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
+          This is a permanent change (leave unchecked for a one-time change)
+        </label>
+        <label style={{ ...field, marginTop: 12 }}>
+          Supporting docs (optional, up to {MAX_CHANGE_REQUEST_FILES} files)
+          <input ref={fileInput} type="file" accept={ACCEPT} multiple style={{ fontSize: 14 }} />
+        </label>
+        <p style={{ margin: "6px 0 0", fontSize: 13, color: "#946c00" }}>
+          Changes because of an event or extracurricular activity must include supporting proof.
+        </p>
+        <div style={{ marginTop: 12 }}>
           <ActionButton onClick={submit} pending={pendingSubmit} pendingLabel="Sending…">
             Send request
           </ActionButton>
@@ -123,6 +146,10 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ fontWeight: 600 }}>
                   {DAY_LABEL[r.day]} · {r.shiftText}
+                  <span style={{ fontWeight: 400, color: "#777" }}>
+                    {" "}
+                    · {r.permanent ? "permanent" : "one time"}
+                  </span>
                 </span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                   <StatusBadge status={r.status} />

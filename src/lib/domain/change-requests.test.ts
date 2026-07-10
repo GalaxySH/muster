@@ -9,14 +9,25 @@ import {
 } from "./change-requests";
 
 describe("validateChangeRequest", () => {
-  const good = { day: "tue", shiftText: "2p to 5p", comment: "I can no longer work this shift." };
+  const good = {
+    day: "tue",
+    shiftText: "2p to 5p",
+    comment: "I can no longer work this shift.",
+    permanent: false,
+  };
 
   it("accepts a complete request and returns the trimmed value", () => {
     const r = validateChangeRequest({ ...good, shiftText: "  2p to 5p  ", comment: " x " });
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.value).toEqual({ day: "tue", shiftText: "2p to 5p", comment: "x" });
+      expect(r.value).toEqual({ day: "tue", shiftText: "2p to 5p", comment: "x", permanent: false });
     }
+  });
+
+  it("carries the permanent flag through", () => {
+    const r = validateChangeRequest({ ...good, permanent: true });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.permanent).toBe(true);
   });
 
   it("rejects an unknown day", () => {

@@ -8,6 +8,7 @@ const req = (over: Partial<DigestEmailRequest> = {}): DigestEmailRequest => ({
   day: "tue",
   shiftText: "2p to 5p",
   comment: "I can no longer work this shift.",
+  permanent: false,
   createdAt: new Date("2026-10-01T15:00:00Z"),
   ...over,
 });
@@ -23,11 +24,17 @@ describe("buildChangeDigestEmail", () => {
     expect(three.subject).toBe("3 new schedule change requests");
   });
 
-  it("groups requests by student with day, shift, and comment", () => {
+  it("groups requests by student with day, shift, kind, and comment", () => {
     const { text } = buildChangeDigestEmail(
       [
         req(),
-        req({ id: "req-2", day: "fri", shiftText: "close", comment: "Please add me here." }),
+        req({
+          id: "req-2",
+          day: "fri",
+          shiftText: "close",
+          comment: "Please add me here.",
+          permanent: true,
+        }),
         req({
           id: "req-3",
           studentName: "Grace Hopper",
@@ -39,10 +46,10 @@ describe("buildChangeDigestEmail", () => {
       "https://muster.test",
     );
     expect(text).toContain("Ada Lovelace (ada@wisc.edu)");
-    expect(text).toContain("- Tue 2p to 5p: I can no longer work this shift.");
-    expect(text).toContain("- Fri close: Please add me here.");
+    expect(text).toContain("- Tue 2p to 5p (one time): I can no longer work this shift.");
+    expect(text).toContain("- Fri close (permanent): Please add me here.");
     expect(text).toContain("Grace Hopper (grace@wisc.edu)");
-    expect(text).toContain("- Sun 2p to 5p: Swap request.");
+    expect(text).toContain("- Sun 2p to 5p (one time): Swap request.");
   });
 
   it("gives every request its own deep link into the admin view", () => {

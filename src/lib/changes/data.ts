@@ -7,7 +7,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { changeRequests, students } from "@/lib/db/schema";
+import { changeRequestFiles, changeRequests, students } from "@/lib/db/schema";
 import { CHANGE_REQUEST_WINDOW_MS } from "@/lib/domain/change-requests";
 import type { Day } from "@/lib/domain/types";
 
@@ -18,6 +18,7 @@ export interface ChangeRequestRow {
   day: Day;
   shiftText: string;
   comment: string;
+  permanent: boolean;
   status: ChangeRequestStatus;
   createdAt: Date;
 }
@@ -30,6 +31,7 @@ export async function listChangeRequests(email: string): Promise<ChangeRequestRo
       day: changeRequests.day,
       shiftText: changeRequests.shiftText,
       comment: changeRequests.comment,
+      permanent: changeRequests.permanent,
       status: changeRequests.status,
       createdAt: changeRequests.createdAt,
     })
@@ -37,6 +39,42 @@ export async function listChangeRequests(email: string): Promise<ChangeRequestRo
     .where(eq(changeRequests.studentEmail, email))
     .orderBy(desc(changeRequests.createdAt));
   return rows;
+}
+
+/**
+ * Supporting-proof fileIds for one student's requests, keyed by request id
+ * (only the per-student admin page renders them).
+ */
+export async function changeRequestFilesByRequest(
+  email: string,
+): Promise<Map<string, string[]>> {
+  const rows = await getDb()
+    .select({ requestId: changeRequestFiles.changeRequestId, fileId: changeRequestFiles.fileId })
+    .from(changeRequestFiles)
+    .innerJoin(changeRequests, eq(changeRequestFiles.changeRequestId, changeRequests.id))
+    .where(eq(changeRequests.studentEmail, email))
+    .orderBy(changeRequestFiles.id);
+  const byRequest = new Map<string, string[]>();
+  for (const r of rows) {
+    const list = byRequest.get(r.requestId) ?? [];
+    list.push(r.fileId);
+    byRequest.set(r.requestId, list);
+  }
+  return byRequest;
+}
+
+/**
+ * Every Drive fileId attached to a student's change requests. Callers deleting
+ * the student gather these BEFORE the delete cascades the rows away, then
+ * best-effort relayDelete each (same pattern as submission proofs).
+ */
+export async function collectChangeRequestDriveFileIds(email: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ fileId: changeRequestFiles.fileId })
+    .from(changeRequestFiles)
+    .innerJoin(changeRequests, eq(changeRequestFiles.changeRequestId, changeRequests.id))
+    .where(eq(changeRequests.studentEmail, email));
+  return rows.map((r) => r.fileId);
 }
 
 /** Creation times inside the rolling rate window (for the pure rate check). */
@@ -56,6 +94,7 @@ export interface AdminChangeRequest {
   day: Day;
   shiftText: string;
   comment: string;
+  permanent: boolean;
   status: ChangeRequestStatus;
   createdAt: Date;
 }
@@ -67,6 +106,7 @@ const adminRequestColumns = () => ({
   day: changeRequests.day,
   shiftText: changeRequests.shiftText,
   comment: changeRequests.comment,
+  permanent: changeRequests.permanent,
   status: changeRequests.status,
   createdAt: changeRequests.createdAt,
 });

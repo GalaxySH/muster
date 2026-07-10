@@ -227,9 +227,19 @@ export const changeRequests = mysqlTable("change_requests", {
   day: mysqlEnum("day", dayEnum).notNull(),
   shiftText: varchar("shift_text", { length: 200 }).notNull(),
   comment: text("comment").notNull(),
+  permanent: boolean("permanent").notNull().default(false),
   status: mysqlEnum("status", changeRequestStatusEnum).notNull().default("open"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   digestSentAt: datetime("digest_sent_at", { mode: "date" }),
+});
+
+/** Optional supporting proof for one change request (Drive fileIds; never bytes). */
+export const changeRequestFiles = mysqlTable("change_request_files", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  changeRequestId: varchar("change_request_id", { length: 36 })
+    .notNull()
+    .references(() => changeRequests.id, { onDelete: "cascade" }),
+  fileId: varchar("file_id", { length: 255 }).notNull(),
 });
 
 export const closeSlotKindEnum = ["fri", "sat"] as const;

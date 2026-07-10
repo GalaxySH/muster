@@ -21,6 +21,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { issueMagicLink } from "@/lib/auth/magic-link-store";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
+import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { relayDelete } from "@/lib/drive/relay";
 import { POSITIONS } from "@/lib/config/positions";
 import {
@@ -127,7 +128,11 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
     for (const fileId of fileIds) await relayDelete(fileId);
   }
   await db.delete(magicLinks).where(eq(magicLinks.studentEmail, email)); // no FK; sign-in-as mints these
+  // Change-request proofs hang off the student (not the submission): gather
+  // before the student delete cascades their rows away, then best-effort delete.
+  const changeProofIds = await collectChangeRequestDriveFileIds(email);
   await db.delete(students).where(eq(students.email, email));
+  for (const fileId of changeProofIds) await relayDelete(fileId);
   // No sheet resync: test accounts are off-roster and never in the sheet/export.
 
   revalidatePath("/admin/test-users");

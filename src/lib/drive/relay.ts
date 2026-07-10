@@ -36,7 +36,7 @@ export class NoDriveGrantError extends Error {
   }
 }
 
-export type ProofKind = "course" | "extracurricular" | "travel";
+export type ProofKind = "course" | "extracurricular" | "travel" | "change-request";
 
 export interface RelayUploadInput {
   studentEmail: string;
