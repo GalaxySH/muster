@@ -14,6 +14,8 @@ import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
+import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
+import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { listChangeRequests } from "@/lib/changes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
@@ -129,7 +131,7 @@ export default async function StudentDetailPage({
               studentHref={studentHref}
             />
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-              {detail.email}
+              <SelectableEmail email={detail.email} />
               {position && <> &nbsp;·&nbsp; <span style={chip}>{position.name}</span></>}
             </div>
           </div>
@@ -364,14 +366,14 @@ export default async function StudentDetailPage({
               <div
                 key={r.id}
                 id={changeRequestAnchor(r.id)}
-                style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 8, scrollMarginTop: 20 }}
+                style={r.status === "resolved" ? resolvedChangeRow : changeRow}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
                   <span style={{ fontWeight: 600 }}>
                     {DAY_LABEL[r.day]} · {r.shiftText}
                   </span>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <span style={changeStatusBadge(r.status)}>{r.status}</span>
+                    <ChangeStatusBadge status={r.status} />
                     <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
                       {fmtDate(r.createdAt)}
                     </span>
@@ -388,17 +390,19 @@ export default async function StudentDetailPage({
   );
 }
 
-const changeStatusBadge = (status: "open" | "withdrawn" | "resolved"): React.CSSProperties => ({
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  fontWeight: 600,
-  ...(status === "open"
-    ? { background: "var(--color-background-info)", color: "var(--color-text-info)" }
-    : status === "resolved"
-      ? { background: "#e6f4ea", color: "var(--color-text-success)" }
-      : { background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }),
-});
+const changeRow: React.CSSProperties = {
+  borderTop: "0.5px solid var(--color-border-tertiary)",
+  paddingTop: 8,
+  scrollMarginTop: 20,
+};
+/** Resolved requests read as done at a glance: green tint plus the badge icon. */
+const resolvedChangeRow: React.CSSProperties = {
+  scrollMarginTop: 20,
+  background: "#f3faf5",
+  border: "1px solid #cbe6d3",
+  borderRadius: "var(--border-radius-md)",
+  padding: "8px 10px",
+};
 
 // --- presentational helpers (server) ---
 

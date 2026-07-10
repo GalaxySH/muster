@@ -5,7 +5,7 @@
  * submission and are never window-gated.
  */
 import "server-only";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { changeRequests, students } from "@/lib/db/schema";
 import { CHANGE_REQUEST_WINDOW_MS } from "@/lib/domain/change-requests";
@@ -49,40 +49,52 @@ export async function recentChangeRequestTimes(email: string, now: Date): Promis
   return rows.map((r) => r.createdAt);
 }
 
-export interface OpenChangeRequest {
+export interface AdminChangeRequest {
   id: string;
   studentEmail: string;
   studentName: string;
   day: Day;
   shiftText: string;
   comment: string;
+  status: ChangeRequestStatus;
   createdAt: Date;
 }
 
-const openRequestColumns = () => ({
+const adminRequestColumns = () => ({
   id: changeRequests.id,
   studentEmail: changeRequests.studentEmail,
   studentName: students.displayName,
   day: changeRequests.day,
   shiftText: changeRequests.shiftText,
   comment: changeRequests.comment,
+  status: changeRequests.status,
   createdAt: changeRequests.createdAt,
 });
 
-/** Every unresolved (open) request, oldest first: the admin queue. */
-export async function listUnresolvedChangeRequests(): Promise<OpenChangeRequest[]> {
+/**
+ * The admin queue, oldest first: open requests, plus resolved ones when the
+ * show-resolved toggle is on. Withdrawn requests never appear (the student
+ * pulled them back).
+ */
+export async function listChangeRequestQueue(
+  includeResolved: boolean,
+): Promise<AdminChangeRequest[]> {
   return getDb()
-    .select(openRequestColumns())
+    .select(adminRequestColumns())
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
-    .where(eq(changeRequests.status, "open"))
+    .where(
+      includeResolved
+        ? ne(changeRequests.status, "withdrawn")
+        : eq(changeRequests.status, "open"),
+    )
     .orderBy(changeRequests.createdAt);
 }
 
 /** Open requests not yet reported in a digest, oldest first (§roadmap 3.1). */
-export async function loadPendingDigestRequests(): Promise<OpenChangeRequest[]> {
+export async function loadPendingDigestRequests(): Promise<AdminChangeRequest[]> {
   return getDb()
-    .select(openRequestColumns())
+    .select(adminRequestColumns())
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
     .where(and(eq(changeRequests.status, "open"), isNull(changeRequests.digestSentAt)))

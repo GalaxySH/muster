@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.49
+- **Version:** 0.50
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -460,11 +460,14 @@ columns from the roster.
   (§12) — the latter readable by folder members without the app and serving as a
   recovery copy. Both come from the same export matrix.
 - **Schedule change requests:** ✅ render on the per-student page (independent of the
-  submission, each anchored as `#change-request-<id>`) and in the **unresolved queue**
-  at `/admin/change-requests` (open requests oldest first; a row deep-links to the
-  anchored request on the student's page). A **resolved checkbox** appears wherever a
-  request is shown (withdrawn ones show no control); new requests arrive via the daily
-  digest email, whose every line links straight to its request (roadmap 3.1, §4.1).
+  submission, each anchored as `#change-request-<id>`; resolved ones stay listed with a
+  green highlight + check-icon badge) and in the queue at `/admin/change-requests`
+  (open requests oldest first, each row showing name **and email**; an off-by-default
+  **Show resolved** toggle mixes resolved rows back in, marked the same way; a row
+  deep-links to the anchored request on the student's page). A **resolved checkbox**
+  appears wherever a request is shown (withdrawn ones show no control); new requests
+  arrive via the daily digest email, whose every line links straight to its request
+  (roadmap 3.1, §4.1).
 - **Delete response:** ✅ admins can permanently delete a submission from the response
   list (per-row) or the per-student header. The submission row is removed (cascading its
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
@@ -928,6 +931,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.50 (2026-07-10)** — **Change-request review polish (§10).** The queue shows the
+  student's **email next to the name**, and gains an off-by-default **Show resolved**
+  toggle (`?resolved=1`, so the view survives refresh; withdrawn rows never appear).
+  Resolved requests are marked wherever they render — green-tinted row + a
+  check-icon badge (shared `ChangeStatusBadge`, replacing the per-student page's local
+  badge) — on both the queue and the per-student section, which lists all of a
+  student's requests as before. On the per-student header the email is now a
+  **click-to-select** span (`SelectableEmail`): one click selects the whole address
+  for copying.
 - **0.49 (2026-07-10)** — **Change-request queue + per-request deep links (§10).** New
   admin page **`/admin/change-requests`**: every unresolved (open) request, oldest
   first; a row links to the student's response page **anchored at the request**

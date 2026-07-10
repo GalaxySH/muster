@@ -66,12 +66,18 @@ admin lists, plus the pending-digest batch), student `actions.ts` (create/withdr
 open; gate = session + roster row only), `admin-actions.ts` (resolve/reopen; withdrawn
 stays withdrawn), `digest.ts` + pure `digest-email.ts` (TDD), and pure deep-link
 helpers in `links.ts` (`changeRequestAnchor`/`changeRequestAdminPath`). Student UI is
-the `components/changes/ChangeRequestsPanel.tsx` island. Admin surfaces (v0.49): the
-per-student page renders the requests **independent of the submission**, each anchored
-as `#change-request-<id>`, and the **unresolved queue** at `/admin/change-requests`
-lists open requests oldest first with rows deep-linking to that anchor; both use the
+the `components/changes/ChangeRequestsPanel.tsx` island. Admin surfaces (v0.49–0.50):
+the per-student page renders **all** of a student's requests independent of the
+submission, each anchored as `#change-request-<id>`, and the queue at
+`/admin/change-requests` lists open requests oldest first (name + email per row) with
+rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
+(`ShowResolvedToggle`, state in `?resolved=1` so the server page drives the query)
+mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withdrawn
+never appears). Resolved requests read as done everywhere: green-tinted row + the
+shared `ChangeStatusBadge` (check icon). Both surfaces use the
 `ChangeRequestResolvedCheckbox` island (checked = resolved, uncheck reopens; withdrawn
-shows no control). The **daily digest email** carries an inline deep link on every
+shows no control), and the per-student header email is a `SelectableEmail` island
+(click selects the address for copying). The **daily digest email** carries an inline deep link on every
 request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
 idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
