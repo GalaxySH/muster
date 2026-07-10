@@ -49,12 +49,11 @@ export default async function MePage() {
             closesAt={flow.access.closesAt}
           />
 
-          {flow.closes.required && flow.closes.count < REQUIRED_CLOSE_CLAIMS && (
+          {(flow.status.kind === "done" || flow.status.kind === "continue") && flow.closes.required && flow.closes.count < REQUIRED_CLOSE_CLAIMS && (
             <InfoCard tone="danger" title="Weekend closes still needed">
               <p style={{ marginTop: 0 }}>
-                Shift Leads each hold {REQUIRED_CLOSE_CLAIMS} weekend closes for the semester.
-                You have picked {flow.closes.count} of {REQUIRED_CLOSE_CLAIMS}. Spots are first
-                come first served.
+                Shift Leads are required to work {REQUIRED_CLOSE_CLAIMS} weekend closes this semester.
+                You have picked {flow.closes.count}. Spots are first come first served.
               </p>
               {flow.access.canEdit &&
                 (flow.status.kind === "done" ||
@@ -63,7 +62,7 @@ export default async function MePage() {
                   <PrimaryLink href="/closes">Pick your closes</PrimaryLink>
                 ) : (
                   <p style={{ margin: 0, fontSize: 14 }}>
-                    Finish the earlier form steps to unlock close picking.
+                    Finish the earlier form steps first.
                   </p>
                 ))}
             </InfoCard>

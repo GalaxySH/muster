@@ -7,6 +7,7 @@ import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { getTravelCutoff } from "@/lib/settings";
+import Link from "next/link";
 
 /**
  * Orientation step (PLAN §4). Concise scheduling-policy reminders + what the
@@ -60,7 +61,7 @@ export default async function IntroPage() {
             Travel during the semester is only excused if you add it <strong>before {cutoff.toLocaleDateString()}</strong>. The form does not accept <strong>any</strong> travel added after that date.
           </li>
           <li>
-            If your availability changes throughout the semester, contact us by email or come into the office. We will always accept excusal requests for exams throughout the semester, and we will review requests for extenuating circumstances on a case by case basis.
+            If your availability changes throughout the semester, <Link href="/change-requests">submit a change request</Link>. We will always accept excusal requests for exams throughout the semester, and we will review requests for extenuating circumstances on a case by case basis.
           </li>
           <li>
             If you have questions, contact the scheduler (<strong>{CONTACT_EMAIL}</strong>).

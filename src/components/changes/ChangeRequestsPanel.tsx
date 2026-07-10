@@ -33,7 +33,7 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
   const [day, setDay] = useState<Day>("mon");
   const [shiftText, setShiftText] = useState("");
   const [comment, setComment] = useState("");
-  const [permanent, setPermanent] = useState(false);
+  const [permanent, setPermanent] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingSubmit, startSubmit] = useTransition();
@@ -59,7 +59,7 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
       if (res.ok) {
         setShiftText("");
         setComment("");
-        setPermanent(false);
+        setPermanent(true);
         if (fileInput.current) fileInput.current.value = "";
       }
     });
@@ -108,20 +108,20 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
-            placeholder="e.g. I can no longer work this shift because my discussion section moved."
+            placeholder="e.g. I want to move my 9/1 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
             style={{ ...input, fontFamily: "inherit" }}
           />
         </label>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 14, cursor: "pointer" }}>
           <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
-          This is a permanent change (leave unchecked for a one-time change)
+          This is a permanent change (uncheck for a one-time change)
         </label>
         <label style={{ ...field, marginTop: 12 }}>
           Supporting docs (optional, up to {MAX_CHANGE_REQUEST_FILES} files)
           <input ref={fileInput} type="file" accept={ACCEPT} multiple style={{ fontSize: 14 }} />
         </label>
         <p style={{ margin: "6px 0 0", fontSize: 13, color: "#946c00" }}>
-          Changes because of an event or extracurricular activity must include supporting proof.
+          Changes because of a required event or extracurricular activity must include supporting proof.
         </p>
         <div style={{ marginTop: 12 }}>
           <ActionButton onClick={submit} pending={pendingSubmit} pendingLabel="Sending…">

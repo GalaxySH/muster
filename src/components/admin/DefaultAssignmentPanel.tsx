@@ -51,10 +51,7 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
     <section style={card}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Default assignment</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
-        When on, clicking <strong>Save</strong> assigns every ungrouped student (and future
-        self-adds) to the group marked <strong>default</strong> above. Already-grouped or
-        previously auto-assigned students are left alone. Turning this off never un-assigns
-        anyone.
+        When on, clicking <strong>Save</strong> assigns every ungrouped employee to the default group. Turning off does not unassign.
       </p>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         <input

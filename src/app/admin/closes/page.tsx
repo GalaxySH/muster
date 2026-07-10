@@ -46,7 +46,7 @@ export default async function AdminClosesPage() {
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>SL weekend closes</h1>
       <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-        Every Shift Lead claims {REQUIRED_CLOSE_CLAIMS} weekend close shifts for the semester.
+        Manage the weekend close picking feature. As a part of the availability form, all SLs must pick {REQUIRED_CLOSE_CLAIMS} weekend closes.
       </p>
 
       {hasSlots && (
@@ -89,8 +89,8 @@ export default async function AdminClosesPage() {
             <>
               <p style={{ marginTop: 0, color: "var(--color-text-secondary)" }}>
                 {unfinished.length === 0
-                  ? `All ${view.leads.length} Shift Leads have their picks.`
-                  : `${unfinished.length} of ${view.leads.length} Shift Leads still need picks.`}
+                  ? `All ${view.leads.length} SLs have chosen closes.`
+                  : `Missing closes from ${unfinished.length} of ${view.leads.length} SLs.`}
               </p>
               <ul style={leadList}>
                 {view.leads.map((l) => (
@@ -112,7 +112,7 @@ export default async function AdminClosesPage() {
 
       {hasSlots && (
         <section style={card}>
-          <h2 style={h2}>Claims by shift</h2>
+          <h2 style={h2}>Close Shifts</h2>
           <p style={{ marginTop: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
             Changes made here will be immediately visible to employees.
           </p>

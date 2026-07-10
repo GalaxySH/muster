@@ -46,9 +46,7 @@ export function TravelCutoffPanel({
     <section style={card}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Travel excusal cutoff</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
-        Students can add travel entries until <strong>00:00 (midnight)</strong> on this date;
-        after it the travel step stops accepting entries and locks the existing ones. One
-        global date for everyone, independent of the group windows above.
+        Students can add travel entries until <strong>00:00 (midnight)</strong> on this date. This date affects all groups.
         {!isCustom && " Currently the September 1 default."}
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

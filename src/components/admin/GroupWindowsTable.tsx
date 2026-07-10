@@ -36,18 +36,16 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
         accepting new submissions while open but makes each student read-only once they finish.
       </p>
       <div style={{ overflowX: "auto" }}>
-        <table
-          style={{ width: "100%", minWidth: 680, borderCollapse: "collapse", fontSize: 14 }}
-        >
+        <table className="stack-table">
           <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
-              <th style={th}>Group</th>
-              <th style={th}>Members</th>
-              <th style={th}>Opens</th>
-              <th style={th}>Closes</th>
-              <th style={th}>Status</th>
-              <th style={th}>After submit</th>
-              <th style={th} />
+            <tr>
+              <th>Group</th>
+              <th>Members</th>
+              <th>Opens</th>
+              <th>Closes</th>
+              <th>Status</th>
+              <th>After submit</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -137,8 +135,8 @@ function GroupRow({ group }: { group: GroupView }) {
   }
 
   return (
-    <tr style={{ borderTop: "0.5px solid var(--color-border-secondary)" }}>
-      <td style={td}>
+    <tr>
+      <td data-label="Group">
         {editingName ? (
           <span style={{ display: "inline-flex", gap: 6 }}>
             <input value={name} onChange={(e) => setName(e.target.value)} style={input} />
@@ -175,7 +173,7 @@ function GroupRow({ group }: { group: GroupView }) {
           </>
         )}
       </td>
-      <td style={{ ...td, whiteSpace: "nowrap" }}>
+      <td data-label="Members" style={{ whiteSpace: "nowrap" }}>
         {group.memberCount}
         {group.memberEmails.length > 0 && (
           <>
@@ -184,7 +182,7 @@ function GroupRow({ group }: { group: GroupView }) {
           </>
         )}
       </td>
-      <td style={td}>
+      <td data-label="Opens">
         <input
           type="date"
           value={opens}
@@ -192,7 +190,7 @@ function GroupRow({ group }: { group: GroupView }) {
           style={input}
         />
       </td>
-      <td style={td}>
+      <td data-label="Closes">
         <input
           type="date"
           value={closes}
@@ -200,11 +198,19 @@ function GroupRow({ group }: { group: GroupView }) {
           style={input}
         />
       </td>
-      <td style={td}>
+      <td data-label="Status">
         <StatusChip state={state} />
       </td>
-      <td style={td}>
-        <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+      <td data-label="After submit">
+        <label
+          style={{
+            display: "inline-flex",
+            gap: 6,
+            alignItems: "center",
+            fontSize: 13,
+            whiteSpace: "nowrap",
+          }}
+        >
           <input
             type="checkbox"
             checked={lockAfterSubmit}
@@ -214,7 +220,7 @@ function GroupRow({ group }: { group: GroupView }) {
           No edit
         </label>
       </td>
-      <td style={{ ...td, whiteSpace: "nowrap" }}>
+      <td style={{ whiteSpace: "nowrap" }}>
         <button type="button" disabled={pending} onClick={saveWindow}>
           Save window
         </button>{" "}
@@ -322,8 +328,6 @@ const card: React.CSSProperties = {
   margin: "1.2rem 0",
 };
 const h2: React.CSSProperties = { fontSize: 16, marginTop: 0 };
-const th: React.CSSProperties = { padding: "4px 8px", fontWeight: 500 };
-const td: React.CSSProperties = { padding: "8px", verticalAlign: "top" };
 const input: React.CSSProperties = {
   padding: 6,
   borderRadius: "var(--border-radius-md)",

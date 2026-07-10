@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.54
+- **Version:** 0.55
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -949,7 +949,20 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
-- **0.54 (2026-07-10)** — **Copy tweaks on the closes admin table (§18a).** Shorter
+- **0.55 (2026-07-10)** — **Excusal policy box, responsive groups admin, copy pass.**
+  `/change-requests` opens with a tinted info card ("Send an email if you are requesting
+  an excusal"): the excusal policy, will/won't-excuse lists, and the W2W trade-board
+  warning, so the form below is clearly for schedule changes; the **permanent** checkbox
+  now defaults to **checked** (UI default only; the DB column default is unchanged), and
+  the intro step links to `/change-requests` instead of "email or come into the office".
+  `/admin/groups` goes **full-bleed** (`Page width="full"`), and the groups table moves
+  its inline styles to a shared `.stack-table` class (globals.css): a normal table on
+  wide screens, and below 720px the header row hides and each row stacks into a
+  `data-label`-labeled block, so the Group column and the "No edit" checkbox are never
+  cut off on mobile. Shorter admin copy on the closes page, the change-request queue,
+  the travel list, and the default-assignment / travel-cutoff / email-settings panels;
+  the `/me` weekend-closes warning card now only shows once the form status is
+  done/continue.
   assign picker placeholder ("Pick SL"); the claims table note now reads "Changes made
   here will be immediately visible to employees."
 - **0.53 (2026-07-10)** — **Admin assign/unassign for weekend closes (§18a).** The

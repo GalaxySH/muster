@@ -55,8 +55,62 @@ body {
 .page--wide {
   max-width: 1000px;
 }
-/* Full-bleed: the response-review dashboard is the deliberate exception; it
-   fills the screen so a reviewer can glance the whole response without scroll. */
+/* Full-bleed: wide admin surfaces (the response-review dashboard, groups &
+   form windows) fill the screen so their tables never need sideways scroll. */
 .page--full {
   max-width: none;
+}
+
+/* Responsive admin table. A normal table on wide screens (the min-width keeps
+   columns readable inside a horizontal-scroll wrapper); under 720px the header
+   row hides and each row stacks into a labeled block, with each cell's column
+   name rendered from its data-label, so nothing gets cut off on mobile. */
+.stack-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.stack-table th {
+  padding: 4px 8px;
+  font-weight: 500;
+  font-size: 13px;
+  text-align: left;
+  color: var(--color-text-secondary);
+}
+.stack-table td {
+  padding: 8px;
+  vertical-align: top;
+}
+.stack-table tbody tr {
+  border-top: 0.5px solid var(--color-border-secondary);
+}
+@media (min-width: 720px) {
+  .stack-table {
+    min-width: 680px;
+  }
+}
+@media (max-width: 719.98px) {
+  .stack-table thead {
+    display: none;
+  }
+  .stack-table,
+  .stack-table tbody,
+  .stack-table tr,
+  .stack-table td {
+    display: block;
+  }
+  .stack-table tbody tr {
+    padding: 8px 0;
+  }
+  .stack-table td {
+    padding: 3px 0;
+  }
+  .stack-table td[data-label]::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 104px;
+    padding-right: 8px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
 }

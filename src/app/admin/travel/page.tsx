@@ -25,7 +25,7 @@ export default async function AdminTravelPage() {
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>Upcoming travel</h1>
       <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-        Students traveling now through the next three weeks. Schedule around these dates.
+        Travel excusals requested for the next three weeks. Schedule around these dates.
       </p>
 
       {weeks.length === 0 ? (

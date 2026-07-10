@@ -25,7 +25,7 @@ export function EmailSettingsPanel({
     if (
       enabled &&
       !confirm(
-        "Turn off all outbound email? Sign-in links and schedule-ready notifications will stop until you turn it back on.",
+        "Turn off all outbound email? Sign-in links and notifications will stop until you turn it back on.",
       )
     ) {
       return;
@@ -42,8 +42,8 @@ export function EmailSettingsPanel({
       <InfoCard tone={enabled ? "success" : "danger"} title={enabled ? "Email sending is on" : "Email sending is off"}>
         <p style={{ marginTop: 0 }}>
           {enabled
-            ? "The app is sending emails normally, including sign-in links and schedule-ready notifications."
-            : "No emails are being sent, including sign-in links and schedule-ready notifications."}
+            ? "The app is sending emails normally."
+            : "Sending emails is currently disabled."}
         </p>
         <ActionButton
           onClick={toggle}

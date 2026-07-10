@@ -41,7 +41,7 @@ export default async function AdminGroupsPage() {
   const positions = POSITIONS.map((p) => ({ id: p.id, name: p.name }));
 
   return (
-    <Page width="wide">
+    <Page width="full">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
       </AppHeader>

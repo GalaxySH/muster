@@ -75,9 +75,7 @@ export function CloseInventoryPanel({
         </ActionButton>
       </div>
       <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "8px 0 0" }}>
-        Creates a Friday and a Saturday close shift for every weekend in the range. Existing
-        claims are always kept; shifts outside the range are removed only when nobody has
-        claimed them.
+        Creates a Fri/Sat close shift for every weekend in range. Assignments will remain even if the range is changed.
       </p>
       {msg && (
         <p

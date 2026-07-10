@@ -46,15 +46,14 @@ export default async function AdminChangeRequestsPage({
         }}
       >
         <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-          Unresolved schedule change requests, oldest first. Open a request to see the
-          student&apos;s full response, and check it off once W2W is updated.
+          Unresolved schedule change request queue. Click a row to view the request in context on the student&apos;s response page. Use the checkbox to mark it resolved.
         </p>
         <ShowResolvedToggle showResolved={showResolved} />
       </div>
 
       {requests.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>
-          {showResolved ? "No requests yet." : "No unresolved requests."}
+          {showResolved ? "No requests yet." : "No unresolved requests. 😁😁😁"}
         </p>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10, maxWidth: 720 }}>
