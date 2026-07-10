@@ -964,7 +964,10 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   markLeft: name/position history and any submission stay). Skipped when the workbook
   also lists the person under a student title. Reported as `movedToAdmin` in the
   `ImportSummary`, the `/admin/roster` panel, and the CLI output. Also: the response
-  list's Updated column now shows date plus time with seconds (was date only).
+  list's Updated column now shows date plus time with seconds (was date only), and the
+  `/admin/test-users` account list is now a proper table (account / position / status /
+  actions columns in the response-dashboard style, horizontal scroll on narrow screens)
+  with trimmed page copy.
 - **0.57 (2026-07-10)** — **Per-shift inventory removal + root sign-in button (§18a).**
   The `/admin/closes` claims table gains a per-row **Remove** button: new
   `removeCloseSlot` admin action deletes that one close shift from the inventory even
