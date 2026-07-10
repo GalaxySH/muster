@@ -3,10 +3,11 @@
 /**
  * Admin claims-by-shift table (PLAN §18a): per-slot claimants plus direct
  * assign/remove controls, so the admin can place a Shift Lead on closes
- * without the lead ever touching the form. The server actions re-check
- * everything (admin gate, lead eligibility, capacity, the per-lead limit);
- * after each change the router refreshes so the whole page re-reads the
- * authoritative view.
+ * without the lead ever touching the form, and a per-row Remove that deletes
+ * the whole shift from the inventory (confirmed; existing claims go with it).
+ * The server actions re-check everything (admin gate, lead eligibility,
+ * capacity, the per-lead limit); after each change the router refreshes so
+ * the whole page re-reads the authoritative view.
  */
 import { useState, useTransition } from "react";
 import Link from "next/link";
@@ -14,6 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   assignCloseClaim,
   unassignCloseClaim,
+  removeCloseSlot,
   type CloseAssignResult,
 } from "@/lib/closes/admin-actions";
 import type { AdminCloseSlot, ShiftLeadProgress } from "@/lib/closes/data";
@@ -68,6 +70,7 @@ export function CloseClaimsTable({
               <th style={th}>Open</th>
               <th style={th}>Claimed by</th>
               <th style={th}>Add a lead</th>
+              <th style={th} />
             </tr>
           </thead>
           <tbody>
@@ -119,6 +122,26 @@ export function CloseClaimsTable({
                         onAssign={(email) => run(`a:${s.id}`, () => assignCloseClaim(s.id, email))}
                       />
                     )}
+                  </td>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      disabled={pendingKey !== null}
+                      onClick={() => {
+                        const n = s.claimants.length;
+                        const consequence =
+                          n === 1
+                            ? ` ${s.claimants[0]?.displayName} has claimed it and will lose that claim.`
+                            : n > 1
+                              ? ` ${n} leads have claimed it and will lose those claims.`
+                              : "";
+                        if (confirm(`Remove the ${formatCloseDate(s.date)} close shift?${consequence}`))
+                          run(`d:${s.id}`, () => removeCloseSlot(s.id));
+                      }}
+                      style={removeShiftButton}
+                    >
+                      {pendingKey === `d:${s.id}` ? "Removing…" : "Remove"}
+                    </button>
                   </td>
                 </tr>
               );
@@ -205,5 +228,14 @@ const removeButton: React.CSSProperties = {
   background: "none",
   color: "var(--color-text-danger)",
   fontSize: 13,
+  cursor: "pointer",
+};
+const removeShiftButton: React.CSSProperties = {
+  padding: "0.2rem 0.6rem",
+  fontSize: 13,
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  background: "none",
+  color: "var(--color-text-danger)",
   cursor: "pointer",
 };

@@ -41,7 +41,8 @@ slot-row lock order inside one transaction, PK backstop, returns a code the call
 to its own message; `actions.ts` student claims, losers get "just filled" + the
 refreshed board; `admin-actions.ts` idempotent inventory generation that never removes
 claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
-place or pull leads directly, through the same locking insert).
+place or pull leads directly, through the same locking insert, and `removeCloseSlot`
+(v0.56) which deletes one shift outright — claims cascade after a client confirm).
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
 board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:

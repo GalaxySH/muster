@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { InfoCard, Page, PrimaryLink } from "@/components/ui";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export default async function Home() {
   const session = await getAppSession();
@@ -17,9 +18,14 @@ export default async function Home() {
           <PrimaryLink href="/me">Continue</PrimaryLink>
         </InfoCard>
       ) : (
-        <p>
-          <Link href="/signin">Sign in</Link>
-        </p>
+        <form
+          action={async () => {
+            "use server";
+            redirect("/signin");
+          }}
+        >
+          <SubmitButton pendingLabel="Loading…">Sign in</SubmitButton>
+        </form>
       )}
     </Page>
   );

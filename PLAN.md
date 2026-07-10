@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.55
+- **Version:** 0.56
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -899,8 +899,11 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   **`/admin/closes`** from a range + capacity (defaults: first September weekend →
   second December weekend, 3 spots); regeneration is idempotent — missing slots are
   created, in-range capacities updated, out-of-range slots removed **only when
-  unclaimed** (claimed ones are kept and reported). Pure calendar/feasibility rules in
-  `domain/close-claims.ts` (TDD).
+  unclaimed** (claimed ones are kept and reported). The claims table additionally lets
+  the admin **remove a single shift outright** (e.g. the Friday of a holiday weekend,
+  v0.56): unlike regeneration this deletes the slot even when claimed — the claims
+  cascade away after a confirm that names the affected leads. Pure
+  calendar/feasibility rules in `domain/close-claims.ts` (TDD).
 - **Concurrency:** claims are **atomic per slot** (no global pick lock): one
   transaction locks the student row then the slot row (fixed order, no deadlocks),
   re-counts, and inserts; the composite PK `(closeSlotId, studentEmail)` backstops
@@ -949,7 +952,13 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
-- **0.55 (2026-07-10)** — **Excusal policy box, responsive groups admin, copy pass.**
+- **0.56 (2026-07-10)** — **Per-shift inventory removal + root sign-in button (§18a).**
+  The `/admin/closes` claims table gains a per-row **Remove** button: new
+  `removeCloseSlot` admin action deletes that one close shift from the inventory even
+  when leads hold claims on it (claims cascade; the confirm dialog names the affected
+  leads), so the admin can drop e.g. the Friday of a holiday weekend after generating.
+  Regeneration semantics are unchanged. The site root's sign-in link becomes the
+  standard primary button with the shared pending style (form action → `/signin`).
   `/change-requests` opens with a tinted info card ("Send an email if you are requesting
   an excusal"): the excusal policy, will/won't-excuse lists, and the W2W trade-board
   warning, so the form below is clearly for schedule changes; the **permanent** checkbox

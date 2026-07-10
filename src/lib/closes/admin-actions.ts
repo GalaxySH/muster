@@ -180,6 +180,30 @@ export async function assignCloseClaim(
   return { ok: true };
 }
 
+/**
+ * Admin: delete a single close shift from the inventory (e.g. drop the Friday
+ * of a holiday weekend). Unlike regeneration, this removes the slot even when
+ * leads hold claims on it; the claims cascade away and those leads fall below
+ * the required count, so the client confirms first.
+ */
+export async function removeCloseSlot(slotId: string): Promise<CloseAssignResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [slot] = await db
+    .select({ id: closeSlots.id })
+    .from(closeSlots)
+    .where(eq(closeSlots.id, slotId))
+    .limit(1);
+  if (!slot) return { ok: false, error: "That shift no longer exists." };
+
+  await db.delete(closeSlots).where(eq(closeSlots.id, slotId));
+
+  await afterClaimChange();
+  return { ok: true };
+}
+
 /** Admin: take a Shift Lead off a close shift; the spot returns to the pool. */
 export async function unassignCloseClaim(
   slotId: string,
