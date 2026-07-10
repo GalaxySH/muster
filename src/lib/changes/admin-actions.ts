@@ -10,6 +10,18 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { changeRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { normalizeEmail } from "@/lib/auth/policy";
+import { listChangeRequests, type ChangeRequestRow } from "./data";
+
+/**
+ * One employee's requests, for the form panel when an admin picks an employee
+ * to act for (the panel's list follows whoever the form targets).
+ */
+export async function adminListChangeRequests(email: string): Promise<ChangeRequestRow[]> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return [];
+  return listChangeRequests(normalizeEmail(email));
+}
 
 export interface ResolveChangeRequestResult {
   ok: boolean;
