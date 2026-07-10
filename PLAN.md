@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.55
+- **Version:** 0.56
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -949,6 +949,18 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.56 (2026-07-10)** — **Admin on-behalf change requests (§4.1).** Admins get an
+  **Employee** field on the `/change-requests` form: a type-to-search picker (reusing the
+  admin-gated `searchStudentsForPicker` seam) that sends the request **on that student's
+  behalf** — `createChangeRequest` accepts an optional `employee` field (admin-only,
+  target must be a known student; the rolling rate cap is skipped, since it bounds
+  student abuse), the request list below the form follows whoever the form targets
+  (new admin-gated `adminListChangeRequests` read), and admins can withdraw **any** open
+  request (to undo an on-behalf mistake); students still withdraw only their own. The
+  page now also renders for admins without a roster row (employee required in that
+  case). The per-student admin page header gains a **New change request** quick link
+  (next to Mark scheduled / Delete response) that opens the form with the employee
+  field pre-seeded via `?student=email`.
 - **0.55 (2026-07-10)** — **Excusal policy box, responsive groups admin, copy pass.**
   `/change-requests` opens with a tinted info card ("Send an email if you are requesting
   an excusal"): the excusal policy, will/won't-excuse lists, and the W2W trade-board

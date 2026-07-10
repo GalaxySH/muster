@@ -3,7 +3,10 @@ import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { listChangeRequests } from "@/lib/changes/data";
-import { ChangeRequestsPanel } from "@/components/changes/ChangeRequestsPanel";
+import {
+  ChangeRequestsPanel,
+  type ChangeRequestsAdminProps,
+} from "@/components/changes/ChangeRequestsPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
 
@@ -12,12 +15,16 @@ import { InfoCard, Page } from "@/components/ui";
  * Deliberately outside the wizard and its window gates: any known student can
  * use it all semester, since it concerns their actual W2W schedule.
  */
-export default async function ChangeRequestsPage() {
+export default async function ChangeRequestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ student?: string }>;
+}) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/change-requests");
 
   const student = await findStudentByEmail(session.email);
-  if (!student) {
+  if (!student && !session.isAdmin) {
     return (
       <Page>
         <h1>Schedule change requests</h1>
@@ -27,7 +34,20 @@ export default async function ChangeRequestsPage() {
     );
   }
 
-  const requests = await listChangeRequests(student.email);
+  // Admins get the on-behalf employee field, optionally pre-seeded by the
+  // quick link on the per-student admin page (?student=email).
+  let admin: ChangeRequestsAdminProps | undefined;
+  if (session.isAdmin) {
+    const { student: studentParam } = await searchParams;
+    const target = studentParam ? await findStudentByEmail(studentParam) : null;
+    admin = {
+      initialEmployee: target ? { email: target.email, displayName: target.displayName } : null,
+      selfEmail: student?.email ?? null,
+    };
+  }
+
+  const listEmail = admin?.initialEmployee?.email ?? student?.email ?? null;
+  const requests = listEmail ? await listChangeRequests(listEmail) : [];
 
   return (
     <Page>
@@ -63,7 +83,7 @@ export default async function ChangeRequestsPage() {
       <p style={{ color: "#555" }}>
         If your request is for a non-permanent change, put the specific date in the description.
       </p>
-      <ChangeRequestsPanel initial={requests} />
+      <ChangeRequestsPanel initial={requests} admin={admin} />
     </Page>
   );
 }

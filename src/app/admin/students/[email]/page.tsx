@@ -155,6 +155,12 @@ export default async function StudentDetailPage({
                 : ` · edited ${fmtDate(submission.updatedAt)}`}
             </span>
           )}
+          <Link
+            href={`/change-requests?student=${encodeURIComponent(detail.email)}`}
+            style={newChangeRequestLink}
+          >
+            New change request
+          </Link>
           {submission && (
             <MarkScheduledButton studentEmail={detail.email} scheduled={submission.scheduled} />
           )}
@@ -721,6 +727,17 @@ function Legend() {
 }
 
 // --- styles ---
+
+/** Quick link to the change-request form, pre-seeded with this student. */
+const newChangeRequestLink: React.CSSProperties = {
+  fontSize: 13,
+  padding: "5px 12px",
+  borderRadius: "var(--border-radius-md)",
+  border: "1px solid var(--color-border-secondary)",
+  background: "var(--color-background-primary)",
+  color: "var(--color-text-primary)",
+  textDecoration: "none",
+};
 
 const card: React.CSSProperties = {
   background: "var(--color-background-primary)",

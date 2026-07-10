@@ -4,7 +4,9 @@
  * The schedule change-request mini-flow (roadmap 3.1): a small form (day +
  * shift time + permanent flag + comment + optional proof files) over the
  * student's own request list. Always available (no window gate); creation is
- * rate-capped server-side, and open requests can be withdrawn.
+ * rate-capped server-side, and open requests can be withdrawn. Admins get an
+ * extra employee field (type-to-search) to send a request on someone's
+ * behalf; the list below follows whoever the form targets.
  */
 import { useRef, useState, useTransition } from "react";
 import {
@@ -12,11 +14,13 @@ import {
   withdrawChangeRequest,
   type ChangeRequestActionResult,
 } from "@/lib/changes/actions";
+import { adminListChangeRequests } from "@/lib/changes/admin-actions";
 import type { ChangeRequestRow, ChangeRequestStatus } from "@/lib/changes/data";
 import { MAX_CHANGE_REQUEST_FILES } from "@/lib/domain/change-requests";
 import { DAY_LABEL, ALL_DAYS, type Day } from "@/lib/domain/types";
 import { ACCEPT } from "@/components/evidence/shared";
 import { ActionButton } from "@/components/ui";
+import { EmployeePicker, type EmployeeOption } from "./EmployeePicker";
 
 const FULL_DAY: Record<Day, string> = {
   mon: "Monday",
@@ -28,8 +32,22 @@ const FULL_DAY: Record<Day, string> = {
   sun: "Sunday",
 };
 
-export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }) {
+export interface ChangeRequestsAdminProps {
+  /** Pre-seeded from the per-student admin page's quick link (?student=). */
+  initialEmployee: EmployeeOption | null;
+  /** The admin's own roster email, or null when they aren't a known student. */
+  selfEmail: string | null;
+}
+
+export function ChangeRequestsPanel({
+  initial,
+  admin,
+}: {
+  initial: ChangeRequestRow[];
+  admin?: ChangeRequestsAdminProps;
+}) {
   const [requests, setRequests] = useState(initial);
+  const [employee, setEmployee] = useState<EmployeeOption | null>(admin?.initialEmployee ?? null);
   const [day, setDay] = useState<Day>("mon");
   const [shiftText, setShiftText] = useState("");
   const [comment, setComment] = useState("");
@@ -39,10 +57,21 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
   const [pendingSubmit, startSubmit] = useTransition();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [, startWithdraw] = useTransition();
+  const [loadingList, startListLoad] = useTransition();
 
   function applyResult(res: ChangeRequestActionResult, successText: string) {
     if (res.requests) setRequests(res.requests);
     setMsg(res.ok ? { ok: true, text: successText } : { ok: false, text: res.error ?? "Something went wrong." });
+  }
+
+  // Admin only: swap the request list to whoever the form now acts for.
+  function selectEmployee(next: EmployeeOption | null) {
+    setEmployee(next);
+    setMsg(null);
+    const email = next?.email ?? admin?.selfEmail ?? null;
+    startListLoad(async () => {
+      setRequests(email ? await adminListChangeRequests(email) : []);
+    });
   }
 
   function submit() {
@@ -53,9 +82,15 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
       fd.set("shiftText", shiftText);
       fd.set("comment", comment);
       if (permanent) fd.set("permanent", "1");
+      if (employee) fd.set("employee", employee.email);
       for (const file of fileInput.current?.files ?? []) fd.append("files", file);
       const res = await createChangeRequest(fd);
-      applyResult(res, "Request sent. The scheduler will review it.");
+      applyResult(
+        res,
+        employee
+          ? `Request sent for ${employee.displayName}.`
+          : "Request sent. The scheduler will review it.",
+      );
       if (res.ok) {
         setShiftText("");
         setComment("");
@@ -80,6 +115,15 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
   return (
     <div>
       <section style={formCard}>
+        {admin && (
+          <div style={{ ...field, marginBottom: 12, maxWidth: 380 }}>
+            Employee
+            <EmployeePicker value={employee} onChange={selectEmployee} />
+            <span style={{ fontWeight: 400, fontSize: 12, color: "#777" }}>
+              Pick who this request is for. Leave it empty to send the request as yourself.
+            </span>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <label style={field}>
             Day
@@ -136,9 +180,15 @@ export function ChangeRequestsPanel({ initial }: { initial: ChangeRequestRow[] }
         )}
       </section>
 
-      <h2 style={{ fontSize: 17, margin: "22px 0 8px" }}>Your requests</h2>
-      {requests.length === 0 ? (
-        <p style={{ color: "#555", fontSize: 14 }}>You haven&apos;t sent any requests yet.</p>
+      <h2 style={{ fontSize: 17, margin: "22px 0 8px" }}>
+        {employee ? `Requests for ${employee.displayName}` : "Your requests"}
+      </h2>
+      {loadingList ? (
+        <p style={{ color: "#555", fontSize: 14 }}>Loading…</p>
+      ) : requests.length === 0 ? (
+        <p style={{ color: "#555", fontSize: 14 }}>
+          {employee ? "No requests yet." : "You haven't sent any requests yet."}
+        </p>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
           {requests.map((r) => (
