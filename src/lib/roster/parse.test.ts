@@ -4,6 +4,7 @@ import {
   parseLeaving,
   parseHireDate,
   reconcileLeaving,
+  reconcileAdmins,
   type RawRosterRow,
   type RawLeavingRow,
 } from "./parse";
@@ -192,5 +193,46 @@ describe("reconcileLeaving", () => {
   it("handles an empty leaving sheet", () => {
     const parsed = parseRoster([row({})]);
     expect(reconcileLeaving(parsed, [])).toEqual({ markLeft: [], movedWithinWorkbook: [] });
+  });
+});
+
+describe("reconcileAdmins", () => {
+  it("moves an on-roster student promoted to an admin title off the student roster", () => {
+    // Boss's case: dishwasher last cycle (students row, onRoster: true), now a
+    // supervisor in People Coming. The admin_users upsert alone would leave the
+    // stale student row active.
+    const parsed = parseRoster([
+      row({ name: "Boss B", email: "boss@wisc.edu", positionTitle: "Office Student Supervisor" }),
+    ]);
+    expect(reconcileAdmins(parsed, new Set(["boss@wisc.edu", "other@wisc.edu"]))).toEqual([
+      "boss@wisc.edu",
+    ]);
+  });
+
+  it("ignores admins with no active student row", () => {
+    const parsed = parseRoster([
+      row({ email: "boss@wisc.edu", positionTitle: "Head Student Supervisor" }),
+    ]);
+    expect(reconcileAdmins(parsed, new Set(["someone-else@wisc.edu"]))).toEqual([]);
+  });
+
+  it("keeps someone the workbook lists as both student and admin on the roster", () => {
+    const parsed = parseRoster([
+      row({ email: "both@wisc.edu", positionTitle: "Office Student Supervisor" }),
+      row({ email: "both@wisc.edu", positionTitle: "Culinary Assistant" }),
+    ]);
+    expect(reconcileAdmins(parsed, new Set(["both@wisc.edu"]))).toEqual([]);
+  });
+
+  it("de-duplicates repeated admin rows and sorts the result", () => {
+    const parsed = parseRoster([
+      row({ email: "zed@wisc.edu", positionTitle: "Office Student Supervisor" }),
+      row({ email: "abe@wisc.edu", positionTitle: "Head Student Supervisor" }),
+      row({ email: "zed@wisc.edu", positionTitle: "Office Student Supervisor" }),
+    ]);
+    expect(reconcileAdmins(parsed, new Set(["zed@wisc.edu", "abe@wisc.edu"]))).toEqual([
+      "abe@wisc.edu",
+      "zed@wisc.edu",
+    ]);
   });
 });

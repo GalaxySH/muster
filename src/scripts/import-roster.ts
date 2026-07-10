@@ -46,6 +46,10 @@ async function main() {
       console.log("\n  in both sheets (promoted/moved, kept on roster):");
       for (const email of summary.movedWithinWorkbook) console.log(`    ${email}`);
     }
+    if (summary.movedToAdmin.length > 0) {
+      console.log("\n  promoted to supervisor (now admin, off the student roster):");
+      for (const email of summary.movedToAdmin) console.log(`    ${email}`);
+    }
     console.log("\n  by position:");
     for (const [pos, n] of Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1])) {
       console.log(`    ${String(n).padStart(3)}  ${pos}`);

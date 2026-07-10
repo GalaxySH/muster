@@ -160,3 +160,24 @@ export function reconcileLeaving(
   }
   return result;
 }
+
+/**
+ * Pure reconciliation of People Coming admins against the current student
+ * roster: someone promoted to a supervisor title is no longer a student
+ * worker, so an active students row of theirs must flip off-roster (their
+ * submission stays, like any People Leaving departure). A person the workbook
+ * also lists under a student title keeps their student row. Returns the
+ * emails to flip, de-duplicated and sorted.
+ */
+export function reconcileAdmins(
+  parsed: RosterParseResult,
+  onRosterEmails: ReadonlySet<string>,
+): string[] {
+  const studentEmails = new Set(parsed.students.map((s) => s.email));
+  const flip = new Set(
+    parsed.admins
+      .map((a) => a.email)
+      .filter((email) => onRosterEmails.has(email) && !studentEmails.has(email)),
+  );
+  return [...flip].sort();
+}

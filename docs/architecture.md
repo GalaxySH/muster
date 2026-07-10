@@ -358,5 +358,9 @@ file path or an in-memory buffer; two entry points share it — the CLI script a
 pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,
 client island `components/admin/RosterImportPanel.tsx`). Title→position
 mapping lives in `position-mapping.ts` (Southeast Cafe Team Member → barista;
-Office/Head Student Supervisor → admin; DAB → skipped). PCPL emails are netid
+Office/Head Student Supervisor → admin; DAB → skipped). Reconciliation is pure and
+tested in `parse.ts`: `reconcileLeaving` (both sheets → People Coming wins) and
+`reconcileAdmins` (a People Coming admin holding an active student row was promoted
+to supervisor → the importer flips that student row off-roster, onRoster only;
+summary field `movedToAdmin`). PCPL emails are netid
 `@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.

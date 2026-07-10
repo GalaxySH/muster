@@ -7,11 +7,11 @@
  * source that is either a file path (CLI) or the uploaded bytes (admin UI).
  */
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import { students, adminUsers, rosterImports } from "@/lib/db/schema";
 import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
-import { parseRoster, parseLeaving, reconcileLeaving } from "./parse";
+import { parseRoster, parseLeaving, reconcileLeaving, reconcileAdmins } from "./parse";
 
 export interface ImportSummary {
   importId: string;
@@ -22,9 +22,16 @@ export interface ImportSummary {
   /**
    * Emails in BOTH sheets: a promotion/position change moves the old row to
    * "People Leaving" and adds a fresh "People Coming" entry. People Coming
-   * wins: they stay on-roster with the new classification; reported here.
+   * wins: they stay on-roster with the new position; reported here. Someone
+   * promoted to a supervisor title is reported under movedToAdmin instead.
    */
   movedWithinWorkbook: string[];
+  /**
+   * Emails classified as admins in People Coming that held an active student
+   * row: promoted to a supervisor title, so the student row was flipped
+   * off-roster (their submission stays; admin access comes from admin_users).
+   */
+  movedToAdmin: string[];
   /**
    * Emails still on-roster in the DB that appear in NEITHER sheet of this
    * workbook. The import never removes them (only "People Leaving" flips a
@@ -70,10 +77,11 @@ export async function importRoster({
     .select({ email: students.email })
     .from(students)
     .where(eq(students.onRoster, true));
-  const unlistedOnRoster = onRosterNow
-    .map((r) => r.email)
-    .filter((email) => !mentioned.has(email))
-    .sort();
+  const onRosterEmails = new Set(onRosterNow.map((r) => r.email));
+  const unlistedOnRoster = [...onRosterEmails].filter((email) => !mentioned.has(email)).sort();
+  // Promoted into a supervisor title: the admin_users upsert alone would leave
+  // their old student row active with a stale position, so flip it off-roster.
+  const movedToAdmin = reconcileAdmins(parsed, onRosterEmails);
 
   await db.transaction(async (tx) => {
     for (const s of parsed.students) {
@@ -120,6 +128,14 @@ export async function importRoster({
         .onDuplicateKeyUpdate({ set: { email: a.email } });
     }
 
+    // Same onRoster-only flip as markLeft: keep their name/position history.
+    if (movedToAdmin.length > 0) {
+      await tx
+        .update(students)
+        .set({ onRoster: false })
+        .where(inArray(students.email, movedToAdmin));
+    }
+
     await tx.insert(rosterImports).values({
       id: importId,
       rowCount: parsed.students.length + parsed.admins.length,
@@ -138,7 +154,11 @@ export async function importRoster({
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
     leftMarked: markLeft.length,
-    movedWithinWorkbook: movedWithinWorkbook.map((m) => m.email).sort(),
+    movedWithinWorkbook: movedWithinWorkbook
+      .map((m) => m.email)
+      .filter((email) => !movedToAdmin.includes(email))
+      .sort(),
+    movedToAdmin,
     unlistedOnRoster,
     sheetRows: { peopleComing: rows.length, peopleLeaving: leavingRows.length },
     skipped: parsed.skipped,

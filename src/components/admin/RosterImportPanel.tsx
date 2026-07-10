@@ -109,6 +109,13 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
         </p>
       )}
 
+      {summary.movedToAdmin.length > 0 && (
+        <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
+          Promoted to supervisor, now an admin and off the student roster:{" "}
+          {summary.movedToAdmin.join(", ")}
+        </p>
+      )}
+
       {positions.length > 0 && (
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
           By position:{" "}

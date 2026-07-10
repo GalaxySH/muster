@@ -129,7 +129,7 @@ export function ResponseList({
                     <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
                   )}
                 </td>
-                <td style={{ ...td, textAlign: "right", color: "var(--color-text-tertiary)", fontSize: 13 }}>
+                <td style={{ ...td, textAlign: "right", color: "var(--color-text-tertiary)", fontSize: 13, whiteSpace: "nowrap" }}>
                   {fmtDate(r.submittedAt ?? r.updatedAt)}
                 </td>
                 <td style={{ ...td, textAlign: "right" }}>
@@ -177,7 +177,13 @@ function compare(a: ResponseRow, b: ResponseRow, key: SortKey): number {
 }
 
 const fmtDate = (d: Date) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  new Date(d).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 
 function Th({
   children,

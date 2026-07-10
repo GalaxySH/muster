@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.57
+- **Version:** 0.58
 - **Last updated:** 2026-07-10
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -142,7 +142,10 @@ token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.m
   (resigned/fired → `onRoster: false`); upsert students. A person in **both** sheets was
   promoted/moved (the old row goes to People Leaving plus a fresh People Coming entry):
   **People Coming wins** — they stay on-roster with the new classification and are
-  reported in the summary as moved. People moved to People Leaving
+  reported in the summary as moved. A promotion into a **supervisor/admin title** also
+  flips any active student row of theirs off-roster (`reconcileAdmins` in
+  `roster/parse.ts`; the admin_users upsert alone would leave the stale student row
+  active) — reported in the summary as moved to admin. People moved to People Leaving
   drop out of listed/required responses; their submission is retained in the DB. The
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
@@ -952,6 +955,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.58 (2026-07-11)** — **Roster import: promotion-to-admin flip (§4.2).** A People
+  Coming row with a supervisor title used to only upsert `admin_users`, leaving any
+  existing student row on-roster with a stale position, so the person kept appearing in
+  responses/non-responses as a student. New pure `reconcileAdmins(parsed, onRosterEmails)`
+  (roster/parse.ts, TDD) computes which admins hold an active student row; the importer
+  flips those rows `onRoster: false` in the same transaction (onRoster only, mirroring
+  markLeft: name/position history and any submission stay). Skipped when the workbook
+  also lists the person under a student title. Reported as `movedToAdmin` in the
+  `ImportSummary`, the `/admin/roster` panel, and the CLI output. Also: the response
+  list's Updated column now shows date plus time with seconds (was date only).
 - **0.57 (2026-07-10)** — **Per-shift inventory removal + root sign-in button (§18a).**
   The `/admin/closes` claims table gains a per-row **Remove** button: new
   `removeCloseSlot` admin action deletes that one close shift from the inventory even
