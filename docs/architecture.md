@@ -339,7 +339,10 @@ The **throwaway test-account manager** is a **production admin feature** at
 in `auth/require-admin.ts` — also used by `admin/actions.ts` + `groups/actions.ts`),
 for walking the student flow in any position (admin training). Create by display
 name — the email is derived as `slug@test.muster.invalid` (pure, TDD-tested
-`test-accounts/email.ts`); accounts are off-roster in the `dev-test` group ("Test
+`test-accounts/email.ts`); position, international, and hire date are settable at
+create (hire date defaults to today in America/Chicago and reuses the importer's
+`parseHireDate` — blank ⇒ null, exercising both the returner greeting and the
+workbook-omitted case); accounts are off-roster in the `dev-test` group ("Test
 accounts", seeded wide-open; window editable on `/admin/groups` like any group), so
 they never show in responses/export/sheet/non-response tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
 via the existing `magic-link` provider (no auth-config changes; replaces the admin's
