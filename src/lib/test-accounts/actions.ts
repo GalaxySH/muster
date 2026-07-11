@@ -21,6 +21,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { issueMagicLink } from "@/lib/auth/magic-link-store";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
+import { parseHireDate } from "@/lib/roster/parse";
 import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { relayDelete } from "@/lib/drive/relay";
 import { POSITIONS } from "@/lib/config/positions";
@@ -54,6 +55,9 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const positionId = String(formData.get("position") ?? "");
   if (!POSITIONS.some((p) => p.id === positionId)) fail("invalid-position");
   const international = formData.get("international") === "on";
+  // Same tolerance as the roster importer: blank or unparseable means no hire
+  // date, useful for testing the workbook-omitted case alongside returners.
+  const hiredOn = parseHireDate(String(formData.get("hiredOn") ?? ""));
   const email = testEmailFromSlug(slug);
 
   const db = getDb();
@@ -86,6 +90,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
       displayName: name,
       positionId,
       international,
+      hiredOn,
       onRoster: false,
       groupId: TEST_GROUP_ID,
       groupAssignedAuto: false,

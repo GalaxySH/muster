@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.60
+- **Version:** 0.61
 - **Last updated:** 2026-07-11
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -945,7 +945,8 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   dev-only `/dev-login` manager (which had replaced the removed `/admin/preview`
   form-preview page); promoted to **`/admin/test-users`** so admins can create/
   sign-in-as/delete throwaway students in any position in production (e.g. to train
-  admins). Accounts live in the test group (id `dev-test`; seeded wide-open, window
+  admins). The create form covers every roster-ingested field: name, position,
+  international, and hire date (default today, blank ⇒ null; 0.61). Accounts live in the test group (id `dev-test`; seeded wide-open, window
   editable on `/admin/groups` like any group since 0.39) under the synthetic
   domain `test.muster.invalid`, stay off-roster (invisible in responses/export/sheet/
   non-response tracking), and are reachable **only** via an admin-minted magic-link token —
@@ -955,6 +956,14 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.61 (2026-07-11)** — **Test accounts: hire date (§18b).** The `/admin/test-users`
+  create form gains a **Hire date** field (defaults to today, America/Chicago) written to
+  `students.hiredOn`, so a test account can exercise the `/me` returner greeting (date
+  before the cycle's June 1) or, cleared, the workbook-omitted case. Parsing reuses the
+  importer's `parseHireDate` (blank/unparseable ⇒ null). With name, position, and
+  international already on the form, every roster-ingested PCPL field is now settable
+  at create; the remaining PCPL columns (Campus ID, phone, onboarding tracking) are
+  excluded by data minimization (§9) and stay out of the app entirely.
 - **0.60 (2026-07-11)** — **App-wide 404 page.** New `src/app/not-found.tsx` (the
   Next.js `not-found` convention) renders unmatched routes in the standard page
   format: the `Page` shell, the `AppHeader` Home crumb, a short message, and a

@@ -15,6 +15,11 @@ import { POSITIONS } from "@/lib/config/positions";
 // DB-backed (the test-account list); never statically prerender.
 export const dynamic = "force-dynamic";
 
+/** Today's calendar date in campus time (America/Chicago) as yyyy-mm-dd, for the hire-date default. */
+function todayIsoChicago(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
+}
+
 const ERROR_COPY: Record<TestAccountError, string> = {
   forbidden: "Admins only.",
   "invalid-name": "Enter a display name with at least one letter or digit.",
@@ -75,6 +80,10 @@ export default async function AdminTestUsersPage({
           </select>
           <label style={{ fontSize: 14 }}>
             <input type="checkbox" name="international" /> International student
+          </label>
+          <label style={{ fontSize: 14, display: "grid", gap: 4 }}>
+            Hire date
+            <input type="date" name="hiredOn" defaultValue={todayIsoChicago()} style={field} />
           </label>
           <button type="submit" style={{ justifySelf: "start" }}>
             Create test account
