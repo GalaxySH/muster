@@ -6,7 +6,8 @@
  * student's own request list. Always available (no window gate); creation is
  * rate-capped server-side, and open requests can be withdrawn. Admins get an
  * extra employee field (type-to-search) to send a request on someone's
- * behalf; the list below follows whoever the form targets.
+ * behalf, plus a resolve-on-submission checkbox for changes already handled;
+ * the list below follows whoever the form targets.
  */
 import { useRef, useState, useTransition } from "react";
 import {
@@ -52,6 +53,7 @@ export function ChangeRequestsPanel({
   const [shiftText, setShiftText] = useState("");
   const [comment, setComment] = useState("");
   const [permanent, setPermanent] = useState(true);
+  const [resolveOnSubmit, setResolveOnSubmit] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingSubmit, startSubmit] = useTransition();
@@ -82,19 +84,24 @@ export function ChangeRequestsPanel({
       fd.set("shiftText", shiftText);
       fd.set("comment", comment);
       if (permanent) fd.set("permanent", "1");
+      if (resolveOnSubmit) fd.set("resolved", "1");
       if (employee) fd.set("employee", employee.email);
       for (const file of fileInput.current?.files ?? []) fd.append("files", file);
       const res = await createChangeRequest(fd);
+      const target = employee ? ` for ${employee.displayName}` : "";
       applyResult(
         res,
-        employee
-          ? `Request sent for ${employee.displayName}.`
-          : "Request sent. The scheduler will review it.",
+        resolveOnSubmit
+          ? `Request recorded${target} and marked resolved.`
+          : employee
+            ? `Request sent${target}.`
+            : "Request sent. The scheduler will review it.",
       );
       if (res.ok) {
         setShiftText("");
         setComment("");
         setPermanent(true);
+        setResolveOnSubmit(false);
         if (fileInput.current) fileInput.current.value = "";
       }
     });
@@ -156,10 +163,20 @@ export function ChangeRequestsPanel({
             style={{ ...input, fontFamily: "inherit" }}
           />
         </label>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 14, cursor: "pointer" }}>
+        <label style={checkboxRow}>
           <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
           This is a permanent change (uncheck for a one-time change)
         </label>
+        {admin && (
+          <label style={{ ...checkboxRow, display: "flex" }}>
+            <input
+              type="checkbox"
+              checked={resolveOnSubmit}
+              onChange={(e) => setResolveOnSubmit(e.target.checked)}
+            />
+            Mark as resolved on submission
+          </label>
+        )}
         <label style={{ ...field, marginTop: 12 }}>
           Supporting docs (optional, up to {MAX_CHANGE_REQUEST_FILES} files)
           <input ref={fileInput} type="file" accept={ACCEPT} multiple style={{ fontSize: 14 }} />
@@ -252,6 +269,14 @@ const requestCard: React.CSSProperties = {
   border: "1px solid #e2e2e2",
   borderRadius: 8,
   padding: "0.7rem 0.9rem",
+};
+const checkboxRow: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  marginTop: 10,
+  fontSize: 14,
+  cursor: "pointer",
 };
 const field: React.CSSProperties = {
   display: "grid",
