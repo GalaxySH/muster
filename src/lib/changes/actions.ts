@@ -37,7 +37,9 @@ export interface ChangeRequestActionResult {
  */
 async function resolveTargetStudent(
   onBehalfOf: string,
-): Promise<{ ok: true; email: string; onBehalf: boolean } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; email: string; onBehalf: boolean; isAdmin: boolean } | { ok: false; error: string }
+> {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
 
@@ -47,7 +49,7 @@ async function resolveTargetStudent(
     }
     const employee = await findStudentByEmail(onBehalfOf);
     if (!employee) return { ok: false, error: "That employee is not a known student." };
-    return { ok: true, email: employee.email, onBehalf: true };
+    return { ok: true, email: employee.email, onBehalf: true, isAdmin: true };
   }
 
   const student = await findStudentByEmail(session.email);
@@ -57,7 +59,7 @@ async function resolveTargetStudent(
       error: session.isAdmin ? "Pick an employee for this request." : "You are not a known student.",
     };
   }
-  return { ok: true, email: student.email, onBehalf: false };
+  return { ok: true, email: student.email, onBehalf: false, isAdmin: session.isAdmin };
 }
 
 export async function createChangeRequest(formData: FormData): Promise<ChangeRequestActionResult> {
@@ -77,6 +79,11 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
     permanent: formData.get("permanent") === "1",
   });
   if (!checked.ok) return fail(checked.error);
+
+  // Admin only: record the request as already handled (e.g. logging a change
+  // that was applied in W2W on the spot). Ignored for students, so a forged
+  // form field can never self-resolve; resolved rows also skip the digest.
+  const markResolved = gate.isAdmin && formData.get("resolved") === "1";
 
   // Optional supporting proof: validate every file before any byte is relayed.
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
@@ -127,6 +134,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
     shiftText: checked.value.shiftText,
     comment: checked.value.comment,
     permanent: checked.value.permanent,
+    status: markResolved ? "resolved" : "open",
   });
   if (fileIds.length > 0) {
     await db.insert(changeRequestFiles).values(

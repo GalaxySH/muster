@@ -24,8 +24,8 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.58
-- **Last updated:** 2026-07-10
+- **Version:** 0.59
+- **Last updated:** 2026-07-11
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -955,6 +955,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.59 (2026-07-11)** — **Resolve-on-submission change requests (§4.1).** The
+  `/change-requests` form gains an admin-only **Mark as resolved on submission**
+  checkbox (default off): the request is created with `status: "resolved"`, for logging
+  a change the admin already applied in W2W. Server-side the FormData `resolved` flag
+  is honored only for admin sessions (a student sending it is ignored), and since the
+  digest batch selects `open` rows only, such requests never hit the daily digest.
 - **0.58 (2026-07-11)** — **Roster import: promotion-to-admin flip (§4.2).** A People
   Coming row with a supervisor title used to only upsert `admin_users`, leaving any
   existing student row on-roster with a stale position, so the person kept appearing in
