@@ -22,7 +22,7 @@ import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 export default async function ResponsesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ group?: string; flag?: string }>;
+  searchParams: Promise<{ group?: string; flag?: string; roster?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/responses");
@@ -61,6 +61,7 @@ export default async function ResponsesPage({
         groups={groups.map((g) => ({ id: g.id, name: g.name }))}
         group={sp.group}
         flag={sp.flag}
+        roster={sp.roster}
       />
       {rows.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>

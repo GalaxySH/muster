@@ -64,7 +64,7 @@ export default async function StudentDetailPage({
   searchParams,
 }: {
   params: Promise<{ email: string }>;
-  searchParams: Promise<{ group?: string; flag?: string }>;
+  searchParams: Promise<{ group?: string; flag?: string; roster?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/responses");

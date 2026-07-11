@@ -150,7 +150,9 @@ export interface ResponseRow {
   status: "draft" | "submitted";
   scheduled: boolean;
   desiredHours: number | null;
-  /** Group membership, for the group filter (null = on-roster but ungrouped). */
+  /** False for responders no longer on the roster (badged in the list). */
+  onRoster: boolean;
+  /** Group membership, for the group filter (null = ungrouped). */
   groupId: string | null;
   /** Flag types on this submission, for the flag filter + count. */
   flagTypes: FlagType[];
@@ -173,6 +175,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       displayName: students.displayName,
       positionId: students.positionId,
       positionName: positions.name,
+      onRoster: students.onRoster,
       groupId: students.groupId,
       status: submissions.status,
       scheduled: submissions.scheduled,
@@ -183,9 +186,8 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .from(submissions)
     .innerJoin(students, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    // Hide responders who have since moved to "People Leaving" (PLAN §4.2):
-    // their submission is retained but no longer listed as an active response.
-    .where(eq(students.onRoster, true))
+    // Roster visibility is a filter concern: applyResponseFilters hides
+    // off-roster responders (PLAN §4.2) unless the show-off-roster switch is on.
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 
   // One follow-up query for the flag types keyed by submission, avoiding a
@@ -222,6 +224,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       status: r.status,
       scheduled: r.scheduled,
       desiredHours: r.desiredHours,
+      onRoster: r.onRoster,
       groupId: r.groupId,
       flagTypes,
       flagCount: flagTypes.length,
