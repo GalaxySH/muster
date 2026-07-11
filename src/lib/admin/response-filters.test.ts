@@ -6,13 +6,19 @@ import {
   type ResponseFilters,
 } from "./response-filters";
 
-type Row = { email: string; groupId: string | null; flagTypes: ("auto_assigned_weekend" | "travel_late")[] };
+type Row = {
+  email: string;
+  groupId: string | null;
+  flagTypes: ("auto_assigned_weekend" | "travel_late")[];
+  onRoster: boolean;
+};
 
 const rows: Row[] = [
-  { email: "a@wisc.edu", groupId: "g1", flagTypes: [] },
-  { email: "b@wisc.edu", groupId: "g1", flagTypes: ["auto_assigned_weekend"] },
-  { email: "c@wisc.edu", groupId: "g2", flagTypes: ["travel_late"] },
-  { email: "d@wisc.edu", groupId: null, flagTypes: ["auto_assigned_weekend", "travel_late"] },
+  { email: "a@wisc.edu", groupId: "g1", flagTypes: [], onRoster: true },
+  { email: "b@wisc.edu", groupId: "g1", flagTypes: ["auto_assigned_weekend"], onRoster: true },
+  { email: "c@wisc.edu", groupId: "g2", flagTypes: ["travel_late"], onRoster: true },
+  { email: "d@wisc.edu", groupId: null, flagTypes: ["auto_assigned_weekend", "travel_late"], onRoster: true },
+  { email: "e@wisc.edu", groupId: null, flagTypes: [], onRoster: false },
 ];
 
 const emails = (r: Row[]) => r.map((x) => x.email);
@@ -42,11 +48,30 @@ describe("parseResponseFilters", () => {
     });
     expect(parseResponseFilters({ flag: "bogus" })).toEqual({});
   });
+
+  it("reads the off-roster switch and rejects other roster values", () => {
+    expect(parseResponseFilters({ roster: "all" })).toEqual({ includeOffRoster: true });
+    expect(parseResponseFilters({ roster: "bogus" })).toEqual({});
+    expect(parseResponseFilters({ roster: "" })).toEqual({});
+  });
 });
 
 describe("applyResponseFilters", () => {
-  it("returns all rows when no filter is set", () => {
+  it("returns only on-roster rows when no filter is set", () => {
     expect(emails(applyResponseFilters(rows, {}))).toEqual(["a", "b", "c", "d"].map((x) => `${x}@wisc.edu`));
+  });
+
+  it("includes off-roster rows when the switch is on", () => {
+    expect(emails(applyResponseFilters(rows, { includeOffRoster: true }))).toEqual(
+      ["a", "b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
+    );
+  });
+
+  it("combines the off-roster switch with other filters", () => {
+    expect(emails(applyResponseFilters(rows, { includeOffRoster: true, groupId: "none" }))).toEqual([
+      "d@wisc.edu",
+      "e@wisc.edu",
+    ]);
   });
 
   it("filters to a specific group", () => {
@@ -87,9 +112,9 @@ describe("serializeResponseFilters", () => {
   });
 
   it("round-trips through parse", () => {
-    const f: ResponseFilters = { groupId: "g2", flag: "travel_late" };
+    const f: ResponseFilters = { groupId: "g2", flag: "travel_late", includeOffRoster: true };
     const qs = serializeResponseFilters(f);
-    expect(qs).toBe("group=g2&flag=travel_late");
+    expect(qs).toBe("group=g2&flag=travel_late&roster=all");
     expect(parseResponseFilters(Object.fromEntries(new URLSearchParams(qs)))).toEqual(f);
   });
 });

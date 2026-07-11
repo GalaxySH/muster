@@ -13,7 +13,9 @@ returners (hired before June of the current cycle; pure `flow/returner.ts`); (2)
 **URL-driven group + flag filters** on `/admin/responses` that follow you into the
 per-student view (pure `admin/response-filters.ts`; `listResponses(filters)` is the
 single source for the list AND the prev/next walk; the per-student name is a jump-to
-dropdown; the flag filter replaces the never-built flags window); (3) an
+dropdown; the flag filter replaces the never-built flags window; a later
+**show-off-roster switch**, `roster=all` in the same seam, reveals badged off-roster
+submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
 Sunday-week, now through +3 weeks); (4) a **batch schedule-ready email**
 `/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
@@ -189,10 +191,12 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware), `getResponseNeighbors(email, filters)` (prev/next + the
 filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). The **group + flag filters** are a pure seam
-(`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
+`loadScheduleEmailPreview` (2.4). The **group + flag + off-roster filters** are a pure
+seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
-`ResponseFilterBar` drives the URL. `actions.ts` ("use server", **admin-gated**) owns
+`ResponseFilterBar` drives the URL. Roster visibility lives in this seam too (not the
+`listResponses` SQL): off-roster responders are hidden unless `roster=all`, then badged
+in the list. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client

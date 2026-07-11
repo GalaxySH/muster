@@ -24,7 +24,7 @@
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
   digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.61
+- **Version:** 0.62
 - **Last updated:** 2026-07-11
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -456,7 +456,9 @@ columns from the roster.
   flag filters live in the URL** (roadmap 2.2) so they survive the hop into the
   per-student view; prev/next walks the filtered list, and the per-student name is a
   jump-to dropdown over it. One canonical `listResponses(filters)` backs both the list
-  and the neighbor computation.
+  and the neighbor computation. A **show-off-roster switch** (`roster=all`, same URL
+  mechanism) reveals retained submissions from off-roster responders (People Leaving,
+  test accounts), badged "off roster"; default stays on-roster only.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -956,6 +958,15 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.62 (2026-07-11)** — **Response list: show-off-roster switch (§10).** The
+  `/admin/responses` filter bar gains a **Show off-roster** checkbox that reveals
+  retained submissions from off-roster responders (People Leaving movers and admin
+  test accounts), each badged "off roster" next to the name. Roster visibility moved
+  from the `listResponses` SQL into the pure filter seam (`response-filters.ts`:
+  `includeOffRoster`, URL param `roster=all`), so like the group/flag filters it
+  follows the admin into the per-student view and the prev/next walk stays in
+  lockstep. Default unchanged: on-roster only; the CSV export and running sheet are
+  untouched.
 - **0.61 (2026-07-11)** — **Test accounts: hire date (§18b).** The `/admin/test-users`
   create form gains a **Hire date** field (defaults to today, America/Chicago) written to
   `students.hiredOn`, so a test account can exercise the `/me` returner greeting (date
