@@ -22,7 +22,13 @@ import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 export default async function ResponsesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ group?: string; flag?: string; roster?: string }>;
+  searchParams: Promise<{
+    group?: string;
+    flag?: string;
+    roster?: string;
+    started?: string;
+    startedDate?: string;
+  }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/responses");
@@ -41,7 +47,7 @@ export default async function ResponsesPage({
   const filtered = filterQuery !== "";
 
   return (
-    <Page width="wide">
+    <Page width="full">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/non-responses" label="Non-responses" />
@@ -62,6 +68,8 @@ export default async function ResponsesPage({
         group={sp.group}
         flag={sp.flag}
         roster={sp.roster}
+        started={sp.started}
+        startedDate={sp.startedDate}
       />
       {rows.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>
