@@ -8,9 +8,13 @@ import {
   createTestAccount,
   deleteTestAccount,
   signInAsTestAccount,
+  mintTestAccountLink,
   type TestAccountError,
 } from "@/lib/test-accounts/actions";
+import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { positionOptions } from "@/lib/positions/data";
+import { MagicLinkCopy } from "@/components/admin/MagicLinkCopy";
+import { env } from "@/lib/env";
 
 // DB-backed (the test-account list); never statically prerender.
 export const dynamic = "force-dynamic";
@@ -40,14 +44,20 @@ const ERROR_COPY: Record<TestAccountError, string> = {
 export default async function AdminTestUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; token?: string; for?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/test-users");
   if (!session.isAdmin) redirect("/me");
 
-  const { error } = await searchParams;
+  const { error, token, for: linkFor } = await searchParams;
   const errorMessage = error ? (ERROR_COPY[error as TestAccountError] ?? "Something went wrong.") : null;
+  // The URL is assembled HERE from our own base + redeem path (the params carry
+  // only token + email), so a crafted query can never plant a foreign link.
+  const magicLinkUrl =
+    token && linkFor && isTestAccountEmail(linkFor)
+      ? `${env.NEXTAUTH_URL}/magic/redeem?token=${encodeURIComponent(token)}&email=${encodeURIComponent(linkFor)}`
+      : null;
   const [accounts, positions] = await Promise.all([listTestAccounts(), positionOptions()]);
 
   return (
@@ -62,10 +72,22 @@ export default async function AdminTestUsersPage({
       </p>
       <p style={banner}>
         <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign
-        back in with Google.
+        back in with Google. To stay signed in here, use <strong>Get link</strong> and open
+        the link in a private or incognito window instead.
       </p>
 
       {errorMessage && <p style={errorBanner}>{errorMessage}</p>}
+
+      {magicLinkUrl && (
+        <section style={card}>
+          <h2 style={{ fontSize: 16, marginTop: 0 }}>Sign-in link for {linkFor}</h2>
+          <p style={{ fontSize: 14, color: "#555", marginTop: 0 }}>
+            Open this link in a private or incognito window to use the test account while
+            staying signed in here as admin. It works once and expires in 30 minutes.
+          </p>
+          <MagicLinkCopy url={magicLinkUrl} />
+        </section>
+      )}
 
       <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Create a test account</h2>
@@ -133,10 +155,16 @@ export default async function AdminTestUsersPage({
                         View response
                       </Link>
                       {a.canSignInAs && (
-                        <form action={signInAsTestAccount}>
-                          <input type="hidden" name="email" value={a.email} />
-                          <button type="submit">Sign in as</button>
-                        </form>
+                        <>
+                          <form action={signInAsTestAccount}>
+                            <input type="hidden" name="email" value={a.email} />
+                            <button type="submit">Sign in as</button>
+                          </form>
+                          <form action={mintTestAccountLink}>
+                            <input type="hidden" name="email" value={a.email} />
+                            <button type="submit">Get link</button>
+                          </form>
+                        </>
                       )}
                       <form action={deleteTestAccount}>
                         <input type="hidden" name="email" value={a.email} />
