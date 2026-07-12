@@ -27,7 +27,7 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.63
+- **Version:** 0.64
 - **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -999,6 +999,19 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.64 (2026-07-13)** — **Response list: full-bleed responsive table, richer flags,
+  change-request pills, start-date filter (§10).** `/admin/responses` goes
+  `width="full"` and the table becomes a `.stack-table` like the groups table (rows
+  stack into labeled blocks under 720px; sortable headers kept). The **Flags** column
+  is width-adaptive: at ≥1100px (and in stacked mobile rows) each flag renders as its
+  own red pill; on mid-width screens it collapses to the compact count with the
+  alert-flag pills (CSS-only, `.flags-expanded`/`.flags-count` in globals.css). A blue
+  **count pill next to the name** shows the student's open change requests (absent at
+  zero; `listResponses` counts `change_requests.status = "open"` in one grouped
+  query). New **Started** filter in the pure seam (`response-filters.ts`:
+  `started`/`startedDate` URL params, before/after strictly or on a calendar day,
+  matched against `students.hiredOn`; rows with no hire date never match) — like the
+  other filters it follows the admin into the per-student view. Export/sheet untouched.
 - **0.63 (2026-07-12)** — **Admin-configurable positions & shift blocks (roadmap 3.3;
   §4.2, §6, §9, §16.2).** New `/admin/positions`: create/edit/deactivate positions,
   per-day-type block editor with live derived open/close tags and warnings (empty

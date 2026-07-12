@@ -10,9 +10,10 @@
  * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
+  changeRequests,
   groups,
   positions,
   shiftBlocks,
@@ -154,9 +155,13 @@ export interface ResponseRow {
   onRoster: boolean;
   /** Group membership, for the group filter (null = ungrouped). */
   groupId: string | null;
+  /** Roster hire date, for the start-date filter (null when unknown). */
+  hiredOn: Date | null;
   /** Flag types on this submission, for the flag filter + count. */
   flagTypes: DbFlagType[];
   flagCount: number;
+  /** Open (unresolved, not withdrawn) change requests, badged next to the name. */
+  openChangeRequests: number;
   submittedAt: Date | null;
   updatedAt: Date;
 }
@@ -177,6 +182,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       positionName: positions.name,
       onRoster: students.onRoster,
       groupId: students.groupId,
+      hiredOn: students.hiredOn,
       status: submissions.status,
       scheduled: submissions.scheduled,
       desiredHours: submissions.desiredHours,
@@ -214,6 +220,18 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     flagTypesBySub.set(f.submissionId, list);
   }
 
+  // Open change-request counts per student, one grouped query (same shape as
+  // the flags lookup above; the list badges the count next to the name).
+  const openRequests = await db
+    .select({
+      email: changeRequests.studentEmail,
+      count: sql<number>`count(*)`,
+    })
+    .from(changeRequests)
+    .where(eq(changeRequests.status, "open"))
+    .groupBy(changeRequests.studentEmail);
+  const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
+
   const mapped: ResponseRow[] = rows.map((r) => {
     const flagTypes = flagTypesBySub.get(idByEmail.get(r.email) ?? "") ?? [];
     return {
@@ -226,8 +244,10 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       desiredHours: r.desiredHours,
       onRoster: r.onRoster,
       groupId: r.groupId,
+      hiredOn: r.hiredOn,
       flagTypes,
       flagCount: flagTypes.length,
+      openChangeRequests: openRequestsByEmail.get(r.email) ?? 0,
       submittedAt: r.submittedAt,
       updatedAt: r.updatedAt,
     };

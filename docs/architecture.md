@@ -189,14 +189,24 @@ auto-assigned cell onto the shared `availability/grid.ts` model as per-cell
 on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 `loadStudentDetail` (student + position + blocks + submission + selection/auto split +
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
-order, now filter-aware), `getResponseNeighbors(email, filters)` (prev/next + the
+order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
+count from one grouped query over `change_requests.status = "open"`),
+`getResponseNeighbors(email, filters)` (prev/next + the
 filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). The **group + flag + off-roster filters** are a pure
+`loadScheduleEmailPreview` (2.4). The **group + flag + off-roster + start-date filters**
+are a pure
 seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
 `ResponseFilterBar` drives the URL. Roster visibility lives in this seam too (not the
 `listResponses` SQL): off-roster responders are hidden unless `roster=all`, then badged
-in the list. `actions.ts` ("use server", **admin-gated**) owns
+in the list. The start-date filter (`started` = before|after|on + `startedDate`,
+applied only when both halves are valid) compares `students.hiredOn` by calendar day;
+rows with no hire date never match. The list itself (`ResponseList`) is a full-bleed
+`.stack-table` on a `width="full"` page (v0.64), matching the groups table: rows stack
+into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
+`.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
+and in stacked mobile rows, the compact count + alert pills between); an open
+change-request count pill sits next to the name (nothing at zero). `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
