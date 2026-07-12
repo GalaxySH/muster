@@ -193,12 +193,16 @@ export default async function StudentDetailPage({
 
       {!detail.onRoster && (
         <div style={{ ...banner, marginTop: 12 }}>
-          Off-roster responder. Position and international status may be self-reported.
+          Responder not on roster. May contain false position details.
         </div>
       )}
 
       {!submission && (
-        <div style={{ ...banner, marginTop: 12 }}>This student hasn&apos;t started a submission.</div>
+        <div style={{ ...banner, marginTop: 12 }}>This employee hasn&apos;t started a submission.</div>
+      )}
+
+      {submission && submission.status === "draft" && (
+        <div style={{ ...banner, marginTop: 12 }}>This is a draft and has not been submitted.</div>
       )}
 
       {submission && validation && (
@@ -206,23 +210,23 @@ export default async function StudentDetailPage({
           {/* Hour summary cards: a full-width glanceable KPI strip */}
           <div style={cardsGrid}>
             <SummaryCard
-              label="hour cap"
-              value={`${cap}h`}
-              sub={detail.international ? "international" : "domestic"}
-            />
-            <SummaryCard
-              label="requested"
-              value={submission.desiredHours ? `${submission.desiredHours}h` : "—"}
+              label="POSITION"
+              value={`${position && position.name}`}
               sub=""
             />
             <SummaryCard
-              label="pref. capacity"
-              value={fmtHours(validation.capacity.weeklyAverageHours)}
-              sub={`floor ${position!.minHours} · cap ${cap}`}
+              label="BOUNDS"
+              value={`floor ${position!.minHours} · cap ${cap}`}
+              sub={detail.international ? "international" : "domestic"}
             />
             <SummaryCard
-              label="days covered"
-              value={`${validation.daysCovered} of 7`}
+              label="REQUESTED"
+              value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
+              sub=""
+            />
+            <SummaryCard
+              label="UNIQUE DAYS"
+              value={`${validation.daysCovered}/7`}
               sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
             />
           </div>
