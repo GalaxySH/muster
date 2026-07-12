@@ -27,8 +27,8 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.65
-- **Last updated:** 2026-07-12
+- **Version:** 0.66
+- **Last updated:** 2026-07-13
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1002,6 +1002,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.66 (2026-07-13)** — **Response page: click-to-mock hours calculator (§10a).**
+  The per-student availability card is now interactive: the admin clicks grid cells
+  to try out a schedule and a readout in the card's upper corner shows the live hours,
+  computed by the same `computeCapacity` (cycle-averaged, weekend ×0.5 under A/B, or
+  full with the every-weekend opt-in) that drives preference capacity. It opens on the
+  student's own picks, so the readout starts at their pref. capacity, and keeps the
+  persisted picks/auto overlay (`buildAdminGrid`) as a reference layer — a trimmed pick
+  reads as "picked, not in trial", an added cell the student never offered gets an amber
+  ring. Reset/Clear controls, below-floor/over-cap cues; pure client state, nothing
+  persists. New island `PrefGridCalculator` (co-located test); the static `PrefTable`
+  and `Legend` on the page are retired into it.
 - **0.65 (2026-07-13)** — **Test accounts: Get link (§18b).** Next to **Sign in as**,
   each test account gains a **Get link** button that mints the same single-use
   magic-link token but skips redemption: the manager page shows the `/magic/redeem`

@@ -210,11 +210,17 @@ change-request count pill sits next to the name (nothing at zero). `actions.ts` 
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
-islands are `MarkScheduledButton`, `SchedulerNotes`, and `EvidenceThumb` (one
+islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
-both through the `/api/evidence/[fileId]` proxy). The flags & checks panel is
-**recomputed live** from `validateAvailability` + the evidence, not read from the
-persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
+one **is** the availability card: the admin clicks grid cells to mock a schedule and a
+corner readout shows the live hours from the same `computeCapacity` (cycle-averaged)
+that drives preference capacity, so the mock recomputes hours identically to entry. It
+seeds from the student's picks (readout opens at their pref. capacity), reads the
+persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a reference
+layer, offers Reset/Clear, and never persists — pure client state. The flags & checks
+panel is **recomputed live** from `validateAvailability` + the evidence, not read from
+the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
