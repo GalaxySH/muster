@@ -6,7 +6,7 @@ import type { ResponseRow } from "@/lib/admin/data";
 import { FLAG_LABELS } from "@/lib/admin/response-filters";
 import { DeleteResponseButton } from "./DeleteResponseButton";
 
-/** Flag types that get their own red pill in the Flags column (roadmap 3.3). */
+/** Flag types that keep their own red pill even in the compact count view. */
 const ALERT_FLAGS = ["position_change", "revalidation_failed"] as const;
 
 type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
@@ -15,6 +15,9 @@ type SortKey = "name" | "position" | "status" | "requested" | "flags" | "schedul
  * The response dashboard table (PLAN §10): all submissions, searchable and
  * sortable, each row opening the per-student view. Client-side filter/sort is
  * fine at roster scale (~400 rows); the server hands the full list once.
+ * Renders as a `.stack-table` (full-bleed like the groups table): rows stack
+ * into labeled blocks under 720px, and the flags cell swaps between individual
+ * pills and a compact count by width (`.flags-expanded` / `.flags-count`).
  */
 export function ResponseList({
   rows,
@@ -68,6 +71,7 @@ export function ResponseList({
           onChange={(e) => setQuery(e.target.value)}
           style={{
             flex: "1 1 280px",
+            maxWidth: 480,
             padding: "8px 10px",
             borderRadius: "var(--border-radius-md)",
             border: "0.5px solid var(--color-border-secondary)",
@@ -80,25 +84,25 @@ export function ResponseList({
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 14 }}>
+        <table className="stack-table" style={{ fontSize: 14 }}>
           <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
+            <tr>
               <Th onClick={() => toggleSort("name")}>Name{arrow("name")}</Th>
               <Th onClick={() => toggleSort("position")}>Position{arrow("position")}</Th>
               <Th onClick={() => toggleSort("status")}>Status{arrow("status")}</Th>
-              <Th onClick={() => toggleSort("requested")} align="right">
+              <Th onClick={() => toggleSort("requested")} className="cell-right">
                 Requested{arrow("requested")}
               </Th>
-              <Th onClick={() => toggleSort("flags")} align="center">
+              <Th onClick={() => toggleSort("flags")} className="cell-center">
                 Flags{arrow("flags")}
               </Th>
-              <Th onClick={() => toggleSort("scheduled")} align="center">
+              <Th onClick={() => toggleSort("scheduled")} className="cell-center">
                 Scheduled{arrow("scheduled")}
               </Th>
-              <Th onClick={() => toggleSort("updated")} align="right">
+              <Th onClick={() => toggleSort("updated")} className="cell-right">
                 Updated{arrow("updated")}
               </Th>
-              <th style={{ padding: "6px 10px" }} aria-label="Actions" />
+              <th aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -106,45 +110,74 @@ export function ResponseList({
               <tr
                 key={r.email}
                 onClick={() => router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)}
-                style={{ borderTop: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}
+                style={{ cursor: "pointer" }}
               >
-                <td style={td}>
+                <td data-label="Name">
                   <div style={{ fontWeight: 500 }}>
                     {r.displayName}
+                    {r.openChangeRequests > 0 && (
+                      <span
+                        style={changeRequestPill}
+                        title={
+                          r.openChangeRequests === 1
+                            ? "1 open change request"
+                            : `${r.openChangeRequests} open change requests`
+                        }
+                      >
+                        {r.openChangeRequests}
+                      </span>
+                    )}
                     {!r.onRoster && <span style={offRosterBadge}>off roster</span>}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{r.email}</div>
                 </td>
-                <td style={td}>{r.positionName ?? "—"}</td>
-                <td style={td}>
+                <td data-label="Position">{r.positionName ?? "—"}</td>
+                <td data-label="Status">
                   <span style={r.status === "submitted" ? submittedBadge : draftBadge}>
                     {r.status}
                   </span>
                 </td>
-                <td style={{ ...td, textAlign: "right" }}>{r.desiredHours ? `${r.desiredHours}h` : "—"}</td>
-                <td style={{ ...td, textAlign: "center" }}>
-                  {r.flagCount > 0 ? (
-                    <span style={flagBadge}>⚠ {r.flagCount}</span>
-                  ) : (
-                    <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
-                  )}
-                  {ALERT_FLAGS.filter((t) => r.flagTypes.includes(t)).map((t) => (
-                    <div key={t} style={{ marginTop: 3 }}>
-                      <span style={alertBadge}>{FLAG_LABELS[t]}</span>
-                    </div>
-                  ))}
+                <td data-label="Requested" className="cell-right">
+                  {r.desiredHours ? `${r.desiredHours}h` : "—"}
                 </td>
-                <td style={{ ...td, textAlign: "center" }}>
+                <td data-label="Flags" className="cell-center">
+                  {r.flagCount === 0 ? (
+                    <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
+                  ) : (
+                    <>
+                      <span className="flags-expanded">
+                        {r.flagTypes.map((t, i) => (
+                          <span key={`${t}-${i}`} style={alertBadge}>
+                            {FLAG_LABELS[t]}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="flags-count">
+                        <span style={flagBadge}>⚠ {r.flagCount}</span>
+                        {ALERT_FLAGS.filter((t) => r.flagTypes.includes(t)).map((t) => (
+                          <div key={t} style={{ marginTop: 3 }}>
+                            <span style={alertBadge}>{FLAG_LABELS[t]}</span>
+                          </div>
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </td>
+                <td data-label="Scheduled" className="cell-center">
                   {r.scheduled ? (
                     <span style={{ color: "var(--color-text-success)" }}>✓</span>
                   ) : (
                     <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
                   )}
                 </td>
-                <td style={{ ...td, textAlign: "right", color: "var(--color-text-tertiary)", fontSize: 13, whiteSpace: "nowrap" }}>
+                <td
+                  data-label="Updated"
+                  className="cell-right"
+                  style={{ color: "var(--color-text-tertiary)", fontSize: 13, whiteSpace: "nowrap" }}
+                >
                   {fmtDate(r.submittedAt ?? r.updatedAt)}
                 </td>
-                <td style={{ ...td, textAlign: "right" }}>
+                <td className="cell-right">
                   <DeleteResponseButton
                     studentEmail={r.email}
                     displayName={r.displayName}
@@ -155,7 +188,7 @@ export function ResponseList({
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ ...td, color: "var(--color-text-tertiary)", textAlign: "center" }}>
+                <td colSpan={8} style={{ color: "var(--color-text-tertiary)", textAlign: "center" }}>
                   No matching responses.
                 </td>
               </tr>
@@ -200,26 +233,34 @@ const fmtDate = (d: Date) =>
 function Th({
   children,
   onClick,
-  align = "left",
+  className,
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  align?: "left" | "right" | "center";
+  className?: string;
 }) {
   return (
     <th
       onClick={onClick}
-      style={{ padding: "6px 10px", cursor: "pointer", textAlign: align, userSelect: "none", whiteSpace: "nowrap" }}
+      className={className}
+      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
     >
       {children}
     </th>
   );
 }
 
-const td: React.CSSProperties = { padding: "8px 10px", verticalAlign: "top" };
 const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontSize: 12 };
 const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", color: "var(--color-text-success)" };
 const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };
 const flagBadge: React.CSSProperties = { ...badge, background: "var(--color-background-warning)", color: "var(--color-text-warning)" };
 const alertBadge: React.CSSProperties = { ...badge, background: "#fce8e6", color: "var(--color-text-danger)", whiteSpace: "nowrap" };
 const offRosterBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontWeight: 400, marginLeft: 6 };
+const changeRequestPill: React.CSSProperties = {
+  ...badge,
+  background: "#e8f0fe",
+  color: "var(--color-text-link, #1a66cc)",
+  fontWeight: 600,
+  marginLeft: 6,
+  padding: "1px 7px",
+};

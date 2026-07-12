@@ -12,6 +12,9 @@ import type { DbFlagType } from "@/lib/db/schema";
 /** A flag filter: "any" = at least one flag, or a specific flag type. */
 export type FlagFilter = "any" | DbFlagType;
 
+/** How a start-date filter compares against the roster hire date. */
+export type StartedMode = "before" | "after" | "on";
+
 export interface ResponseFilters {
   /** A group id, or "none" for responders with no group. */
   groupId?: string | "none";
@@ -19,6 +22,9 @@ export interface ResponseFilters {
   flag?: FlagFilter;
   /** Also list off-roster responders (hidden by default). */
   includeOffRoster?: boolean;
+  /** Restrict by roster start date (`date` is `yyyy-mm-dd`). Rows with no
+   *  recorded start date never match while this is set. */
+  started?: { mode: StartedMode; date: string };
 }
 
 /** The minimal row shape the filters read. */
@@ -26,6 +32,7 @@ export interface FilterableResponse {
   groupId: string | null;
   flagTypes: DbFlagType[];
   onRoster: boolean;
+  hiredOn: Date | null;
 }
 
 /** Short human label per flag type, shared by the filter dropdown and the pills. */
@@ -48,11 +55,25 @@ export const FLAG_FILTER_OPTIONS: { value: string; label: string }[] = [
 /** Sentinel group value for on-roster responders with no group assigned. */
 export const UNGROUPED = "none";
 
+/** Options for the start-date mode dropdown (value "" = no filter). */
+export const STARTED_MODE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Any time" },
+  { value: "before", label: "Before" },
+  { value: "after", label: "After" },
+  { value: "on", label: "On" },
+];
+
+const STARTED_MODES: readonly StartedMode[] = ["before", "after", "on"];
+
+const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+
 /** Read filters from raw query params (unknown/absent values are dropped). */
 export function parseResponseFilters(params: {
   group?: string;
   flag?: string;
   roster?: string;
+  started?: string;
+  startedDate?: string;
 }): ResponseFilters {
   const filters: ResponseFilters = {};
   const group = params.group?.trim();
@@ -62,6 +83,11 @@ export function parseResponseFilters(params: {
     filters.flag = flag as FlagFilter;
   }
   if (params.roster?.trim() === "all") filters.includeOffRoster = true;
+  const mode = params.started?.trim();
+  const date = params.startedDate?.trim();
+  if (mode && date && (STARTED_MODES as readonly string[]).includes(mode) && isIsoDate(date)) {
+    filters.started = { mode: mode as StartedMode, date };
+  }
   return filters;
 }
 
@@ -84,8 +110,26 @@ export function applyResponseFilters<T extends FilterableResponse>(
     } else if (filters.flag && !r.flagTypes.includes(filters.flag)) {
       return false;
     }
+    if (filters.started && !matchesStarted(r.hiredOn, filters.started)) return false;
     return true;
   });
+}
+
+/** Calendar-day comparison against the roster start date (ISO strings sort). */
+function matchesStarted(
+  hiredOn: Date | null,
+  started: { mode: StartedMode; date: string },
+): boolean {
+  if (!hiredOn) return false;
+  const day = hiredOn.toISOString().slice(0, 10);
+  switch (started.mode) {
+    case "before":
+      return day < started.date;
+    case "after":
+      return day > started.date;
+    case "on":
+      return day === started.date;
+  }
 }
 
 /** Serialize to a query string (no leading "?"); empty when no filters are set. */
@@ -94,5 +138,9 @@ export function serializeResponseFilters(filters: ResponseFilters): string {
   if (filters.groupId) params.set("group", filters.groupId);
   if (filters.flag) params.set("flag", filters.flag);
   if (filters.includeOffRoster) params.set("roster", "all");
+  if (filters.started) {
+    params.set("started", filters.started.mode);
+    params.set("startedDate", filters.started.date);
+  }
   return params.toString();
 }

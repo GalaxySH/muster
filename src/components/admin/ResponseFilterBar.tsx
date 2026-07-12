@@ -1,35 +1,53 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FLAG_FILTER_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
+import { FLAG_FILTER_OPTIONS, STARTED_MODE_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
 
 /**
- * Group + flag + off-roster filters for the response dashboard (roadmap 2.2).
- * These live in the URL (not client state) so they survive navigation into the
- * per-student view and drive its prev/next walk. Search + sort stay client-side
- * in the table.
+ * Group + flag + off-roster + start-date filters for the response dashboard
+ * (roadmap 2.2). These live in the URL (not client state) so they survive
+ * navigation into the per-student view and drive its prev/next walk. Search +
+ * sort stay client-side in the table.
  */
 export function ResponseFilterBar({
   groups,
   group,
   flag,
   roster,
+  started,
+  startedDate,
 }: {
   groups: { id: string; name: string }[];
   group?: string;
   flag?: string;
   roster?: string;
+  started?: string;
+  startedDate?: string;
 }) {
   const router = useRouter();
 
-  function navigate(next: { group?: string; flag?: string; roster?: string }) {
+  function navigate(next: {
+    group?: string;
+    flag?: string;
+    roster?: string;
+    started?: string;
+    startedDate?: string;
+  }) {
     const params = new URLSearchParams();
     const g = next.group ?? group ?? "";
     const f = next.flag ?? flag ?? "";
     const r = next.roster ?? roster ?? "";
+    const sm = next.started ?? started ?? "";
+    const sd = next.startedDate ?? startedDate ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
+    // A mode with no date yet stays in the URL so the date picker shows up;
+    // the parser ignores the half-set pair until both halves are present.
+    if (sm) {
+      params.set("started", sm);
+      if (sd) params.set("startedDate", sd);
+    }
     const qs = params.toString();
     router.push(qs ? `/admin/responses?${qs}` : "/admin/responses");
   }
@@ -69,6 +87,32 @@ export function ResponseFilterBar({
       </label>
 
       <label style={labelStyle}>
+        Started
+        <select
+          value={started ?? ""}
+          onChange={(e) =>
+            // Clearing the mode clears the date too, so no stale date lingers.
+            navigate(e.target.value ? { started: e.target.value } : { started: "", startedDate: "" })
+          }
+          style={selectStyle}
+        >
+          {STARTED_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {started && (
+          <input
+            type="date"
+            value={startedDate ?? ""}
+            onChange={(e) => navigate({ startedDate: e.target.value })}
+            style={selectStyle}
+          />
+        )}
+      </label>
+
+      <label style={labelStyle}>
         <input
           type="checkbox"
           checked={roster === "all"}
@@ -94,4 +138,5 @@ const selectStyle: React.CSSProperties = {
   border: "0.5px solid var(--color-border-secondary)",
   fontSize: 14,
   background: "var(--color-background-primary)",
+  fontFamily: "var(--font-sans)",
 };

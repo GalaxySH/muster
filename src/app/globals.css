@@ -114,3 +114,42 @@ body {
     font-size: 12px;
   }
 }
+
+/* Column alignment for stack-tables, applied only in table mode so stacked
+   rows on mobile stay left-aligned under their data-labels. */
+@media (min-width: 720px) {
+  .stack-table .cell-right {
+    text-align: right;
+  }
+  .stack-table .cell-center {
+    text-align: center;
+  }
+}
+
+/* Response-list flags cell: individual pills when there's room (wide table
+   mode, and stacked mobile rows where each cell owns the full width), a
+   compact count on mid-width screens where the column would crowd. */
+.flags-expanded {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .flags-expanded {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .flags-count {
+    display: none;
+  }
+}
+@media (max-width: 719.98px) {
+  .flags-expanded {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .flags-count {
+    display: none;
+  }
+}
