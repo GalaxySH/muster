@@ -28,7 +28,7 @@ export default async function MePage() {
 
       {flow.onRoster && flow.returning && (
         <p style={{ color: "#196127", fontWeight: 600, marginTop: 0 }}>
-          Welcome back! Good to have you back this year.
+          Welcome back to Gordon
         </p>
       )}
 

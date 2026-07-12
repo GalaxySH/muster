@@ -21,7 +21,7 @@ export default async function RedeemPage({
         <h1>Sign-in link</h1>
         <p>This sign-in link is missing or invalid.</p>
         <p>
-          <Link href="/signin">Request a new link →</Link>
+          <Link href="/signin">Request a new link</Link>
         </p>
       </Page>
     );
@@ -51,7 +51,7 @@ export default async function RedeemPage({
       </form>
       {error && (
         <p style={{ marginTop: 14, fontSize: 13 }}>
-          <Link href="/signin">Request a new link →</Link>
+          <Link href="/signin">Request a new link</Link>
         </p>
       )}
     </Page>
