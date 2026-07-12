@@ -128,7 +128,10 @@ async function writeSelectionAndFlags(
   }
   if (rows.length > 0) await tx.insert(shiftSelections).values(rows);
 
-  // Flags are recomputed from scratch on every save; only a submitted form raises them.
+  // Flags are recomputed from scratch on every save; only a submitted form
+  // raises them. The blanket delete is intentional: it also clears any
+  // position_change or revalidation_failed flag (roadmap 3.3), since the
+  // student saving again is exactly the self-heal those flags wait for.
   await tx.delete(flags).where(eq(flags.submissionId, submissionId));
   if (isSubmitted) {
     if (autoAssigned) {

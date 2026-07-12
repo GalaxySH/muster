@@ -1,10 +1,11 @@
 /**
- * Canonical position + shift-block configuration (PLAN.md §6.1, §6.3).
+ * INITIAL position + shift-block seed fixture (PLAN.md §6.1, §6.3).
  *
- * This is the seed/default config. Positions and block sets are data, not
- * hardcoded logic; the admin can edit them and the rules engine reads them at
- * runtime. Times use the `6:45a`/`8p` notation; open/close are DERIVED from the
- * set (see ../domain/blocks), never declared here.
+ * This is only the starting config: `db:seed` inserts it once into an empty
+ * database, and from then on the DB is authoritative (admins edit positions
+ * and blocks on /admin/positions; the rules engine reads them at runtime).
+ * Times use the `6:45a`/`8p` notation; open/close are DERIVED from the set
+ * (see ../domain/blocks), never declared here.
  */
 import { parseTime } from "@/lib/domain/time";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";

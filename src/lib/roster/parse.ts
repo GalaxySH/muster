@@ -3,11 +3,13 @@
  *
  * Maps raw "People Coming" rows to students / admins / skipped, applying data
  * minimization (only name, email, position, international are carried, never
- * Campus ID, phone, or tracking columns). No I/O; unit-tested with synthetic
- * rows. The xlsx reading lives in ./read-workbook.
+ * Campus ID, phone, or tracking columns). The title-to-position map is
+ * injected by the caller (the importer builds it from roster_title_mappings;
+ * see buildEffectiveTitleMap), keeping this module pure. No I/O; unit-tested
+ * with synthetic rows. The xlsx reading lives in ./read-workbook.
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";
-import { TITLE_TO_POSITION, ADMIN_TITLES, SKIP_TITLES, normalizeTitle } from "./position-mapping";
+import { ADMIN_TITLES, SKIP_TITLES, normalizeTitle } from "./position-mapping";
 
 /** A raw row extracted from the workbook (cell values already stringified). */
 export interface RawRosterRow {
@@ -34,11 +36,13 @@ export interface LeavingStudent {
 export interface RosterStudent {
   email: string;
   displayName: string;
-  /** null when the title has no mapping; student self-reports at onboarding. */
+  /** null when the title has no mapping; resolved by an admin on /admin/positions. */
   positionId: string | null;
   international: boolean;
   /** Hire date (midnight UTC), or null when absent/unparseable. */
   hiredOn: Date | null;
+  /** The raw trimmed PCPL title, stored so ghost titles stay traceable. */
+  rosterTitle: string | null;
 }
 
 export interface RosterAdmin {
@@ -72,7 +76,10 @@ export function parseHireDate(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
+export function parseRoster(
+  rows: readonly RawRosterRow[],
+  titleToPosition: ReadonlyMap<string, string>,
+): RosterParseResult {
   const result: RosterParseResult = {
     students: [],
     admins: [],
@@ -83,7 +90,8 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
   for (const row of rows) {
     const email = normalizeEmail(row.email ?? "");
     const displayName = (row.name ?? "").trim();
-    const title = normalizeTitle(row.positionTitle ?? "");
+    const rawTitle = (row.positionTitle ?? "").trim();
+    const title = normalizeTitle(rawTitle);
 
     if (!email) {
       result.skipped.push({ reason: "missing_email", detail: displayName || "(no name)" });
@@ -102,7 +110,7 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
       continue;
     }
 
-    const positionId = TITLE_TO_POSITION[title] ?? null;
+    const positionId = titleToPosition.get(title) ?? null;
     if (positionId === null) {
       result.unmappedTitles.set(title, (result.unmappedTitles.get(title) ?? 0) + 1);
     }
@@ -112,6 +120,7 @@ export function parseRoster(rows: readonly RawRosterRow[]): RosterParseResult {
       positionId,
       international: parseInternational(row.international ?? ""),
       hiredOn: parseHireDate(row.hireDate ?? ""),
+      rosterTitle: rawTitle || null,
     });
   }
 

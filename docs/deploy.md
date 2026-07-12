@@ -119,6 +119,12 @@ Watch the Actions run; it ends by verifying `/api/health`. Rollback = deploy
 the previous tag's commit again (on the server: `git checkout <prev-tag> &&
 docker compose up -d --build`, or push a new tag pointing at it).
 
+**One-time for v0.60:** after the deploy, run `npm run db:seed` once against the
+production DB (or insert the rows by hand) so the new `roster_title_mappings`
+table gets its initial title map. Seeding is insert-only-when-empty, so this is
+safe on a live DB; without it the next roster import reports every title as
+unmapped (ghosts).
+
 ## Monitoring
 
 `GET /api/health` returns `200 {"ok":true}` when the app can reach the DB,

@@ -361,10 +361,54 @@ file path or an in-memory buffer; two entry points share it — the CLI script a
 `/admin/roster` upload (`roster/actions.ts` `importRosterFromUpload`, admin-gated;
 pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,
 client island `components/admin/RosterImportPanel.tsx`). Title→position
-mapping lives in `position-mapping.ts` (Southeast Cafe Team Member → barista;
-Office/Head Student Supervisor → admin; DAB → skipped). Reconciliation is pure and
+mapping is **DB data** since v0.60: the `roster_title_mappings` table, seeded once
+from the `TITLE_TO_POSITION` fixture in `position-mapping.ts`; `importRoster` loads it
+up front, resolves alias chains via `buildEffectiveTitleMap` (pure, tested), and
+injects the effective map into `parseRoster` (which stays pure). Admin titles
+(Office/Head Student Supervisor) and skip titles (DAB) stay code-side in
+`position-mapping.ts` — deliberately not admin-editable. The importer also stores each
+student's raw `rosterTitle` and **detects position changes** on upsert, running
+`positions/apply-change.ts` per changed student inside the import transaction
+(summary field `positionChanges`); unmapped titles become ghosts (see the positions
+config section). Reconciliation is pure and
 tested in `parse.ts`: `reconcileLeaving` (both sheets → People Coming wins) and
 `reconcileAdmins` (a People Coming admin holding an active student row was promoted
 to supervisor → the importer flips that student row off-roster, onRoster only;
 summary field `movedToAdmin`). PCPL emails are netid
 `@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.
+
+## Positions & blocks config (roadmap 3.3, PLAN §6, v0.60)
+
+Pure seams (all TDD, `src/lib/domain/`): `carry-over.ts` (`carryOverSelections` — the
+time-matched keep/drop rule, generic over the row type so DB rows pass through),
+`config-validation.ts` (`validateBlockTimes`, `blockSetWarnings` — empty weekend set,
+unreachable min hours via `capacity.ts`), `position-alias.ts` (`resolveAlias`,
+`canAliasTo`), `time.ts` (`minutesToHHMM`/`hhmmToMinutes`), plus
+`positions/slug.ts` (`slugifyPositionId`). Reads live in `positions/data.ts`
+(server-only): `listPositions`/`positionOptions` (the picker seam every former
+`config/positions.ts` consumer now uses), `listPositionsAdmin` (blocks + reference
+counts), `listGhostTitles` (shared with `roster/status.ts`). The write-side heart is
+`positions/apply-change.ts` (plain server module, CLI-safe): `applyPositionChange(tx,
+{email, from, to})` runs the carry-over inside the caller's transaction (source blocks
+come from the selection rows' own block ids, so a deferred ghost move still carries
+picks when resolved), always writes the `position_change` flag, and calls
+`syncRevalidationFlag(tx, submissionId)` — the **generic revalidation seam** any
+future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
+upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
+and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
+`ActionResult`): position CRUD with reference guards, `setAlias`/`clearAlias`
+(write-time canonicalization: students re-pointed, then `mergedIntoId` set; Shift
+Lead is delete- and alias-protected via `SHIFT_LEAD_POSITION_ID`), block CRUD
+(`validateBlockTimes`; referenced blocks refuse delete, time edits confirm
+client-side), and ghost resolution (`createPositionForTitle`/`mapTitleToPosition` —
+mapping row + assign + carry-over). The UI is `/admin/positions` (server page →
+islands `GhostTitleCard`, `PositionCard`, `BlockEditor`, `AddPositionForm`); the
+block editor parses HH:MM live and re-derives Open/Close tags + warnings per
+keystroke from the pure helpers. Flag read-side: `FLAG_LABELS`/filters in
+`admin/response-filters.ts`, pills in `ResponseList`, per-student flag alerts with
+the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
+`ClearPositionChangeButton`), and the derived no-position pill on
+`/admin/non-responses`. Flags self-heal on save because `writeSelectionAndFlags`
+rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
+(`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
+`TITLE_TO_POSITION` are initial fixtures only.

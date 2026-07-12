@@ -23,7 +23,7 @@ import { normalizeEmail } from "@/lib/auth/policy";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { relayDelete } from "@/lib/drive/relay";
-import { POSITIONS } from "@/lib/config/positions";
+import { positionOptions } from "@/lib/positions/data";
 import {
   TEST_GROUP_ID,
   TEST_GROUP_NAME,
@@ -52,7 +52,8 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const slug = slugFromName(name);
   if (!isValidTestSlug(slug)) fail("invalid-name");
   const positionId = String(formData.get("position") ?? "");
-  if (!POSITIONS.some((p) => p.id === positionId)) fail("invalid-position");
+  const validPositions = await positionOptions();
+  if (!validPositions.some((p) => p.id === positionId)) fail("invalid-position");
   const international = formData.get("international") === "on";
   const email = testEmailFromSlug(slug);
 

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseTime, formatTime, minutesBetween, overlaps, type TimeRange } from "./time";
+import {
+  parseTime,
+  formatTime,
+  minutesToHHMM,
+  hhmmToMinutes,
+  minutesBetween,
+  overlaps,
+  type TimeRange,
+} from "./time";
 
 describe("parseTime", () => {
   it("parses am times", () => {
@@ -31,6 +39,48 @@ describe("formatTime", () => {
   it("round-trips with parseTime", () => {
     for (const t of ["6:45a", "6a", "12:45p", "8p", "11:30p", "12a", "12p"]) {
       expect(formatTime(parseTime(t))).toBe(t);
+    }
+  });
+});
+
+describe("minutesToHHMM", () => {
+  it("formats time-input values with zero padding", () => {
+    expect(minutesToHHMM(0)).toBe("00:00");
+    expect(minutesToHHMM(6 * 60 + 45)).toBe("06:45");
+    expect(minutesToHHMM(23 * 60 + 30)).toBe("23:30");
+  });
+
+  it("formats a midnight end (1440) as 24:00", () => {
+    expect(minutesToHHMM(1440)).toBe("24:00");
+  });
+
+  it("rejects out-of-range or fractional minutes", () => {
+    expect(() => minutesToHHMM(-1)).toThrow();
+    expect(() => minutesToHHMM(1441)).toThrow();
+    expect(() => minutesToHHMM(90.5)).toThrow();
+  });
+});
+
+describe("hhmmToMinutes", () => {
+  it("parses time-input values", () => {
+    expect(hhmmToMinutes("00:00")).toBe(0);
+    expect(hhmmToMinutes("06:45")).toBe(6 * 60 + 45);
+    expect(hhmmToMinutes("6:45")).toBe(6 * 60 + 45);
+    expect(hhmmToMinutes("23:30")).toBe(23 * 60 + 30);
+    expect(hhmmToMinutes("24:00")).toBe(1440);
+  });
+
+  it("returns null for empty or malformed values", () => {
+    expect(hhmmToMinutes("")).toBeNull();
+    expect(hhmmToMinutes("noon")).toBeNull();
+    expect(hhmmToMinutes("12:60")).toBeNull();
+    expect(hhmmToMinutes("25:00")).toBeNull();
+    expect(hhmmToMinutes("12")).toBeNull();
+  });
+
+  it("round-trips with minutesToHHMM", () => {
+    for (const m of [0, 405, 720, 1410, 1440]) {
+      expect(hhmmToMinutes(minutesToHHMM(m))).toBe(m);
     }
   });
 });

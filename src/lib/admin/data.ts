@@ -21,6 +21,7 @@ import {
   shiftSelections,
   travelRequests,
   flags,
+  type DbFlagType,
 } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -29,7 +30,6 @@ import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import { applyResponseFilters, type ResponseFilters } from "./response-filters";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
-import type { FlagType } from "@/lib/domain/validation";
 
 export interface StudentDetail {
   email: string;
@@ -53,7 +53,7 @@ export interface StudentDetail {
   selection: SelectedShift[];
   /** Weekend cell(s) auto-assigned on submit (PLAN §5 #5). */
   autoAssigned: SelectedShift[];
-  flags: { type: FlagType; detail: string }[];
+  flags: { type: DbFlagType; detail: string }[];
   evidence: EvidenceView;
 }
 
@@ -91,7 +91,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
 
   let selection: SelectedShift[] = [];
   let autoAssigned: SelectedShift[] = [];
-  let flagRows: { type: FlagType; detail: string }[] = [];
+  let flagRows: { type: DbFlagType; detail: string }[] = [];
   let submission: StudentDetail["submission"] = null;
 
   if (subRow) {
@@ -153,7 +153,7 @@ export interface ResponseRow {
   /** Group membership, for the group filter (null = on-roster but ungrouped). */
   groupId: string | null;
   /** Flag types on this submission, for the flag filter + count. */
-  flagTypes: FlagType[];
+  flagTypes: DbFlagType[];
   flagCount: number;
   submittedAt: Date | null;
   updatedAt: Date;
@@ -205,7 +205,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
           ),
         )
     : [];
-  const flagTypesBySub = new Map<string, FlagType[]>();
+  const flagTypesBySub = new Map<string, DbFlagType[]>();
   for (const f of allFlags) {
     const list = flagTypesBySub.get(f.submissionId) ?? [];
     list.push(f.type);
@@ -236,7 +236,10 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
 export interface RosterPerson {
   email: string;
   displayName: string;
+  positionId: string | null;
   positionName: string | null;
+  /** Raw PCPL title from the roster import, shown when no position is mapped. */
+  rosterTitle: string | null;
 }
 
 export interface NonResponseReport {
@@ -262,7 +265,9 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       displayName: students.displayName,
       onRoster: students.onRoster,
       groupId: students.groupId,
+      positionId: students.positionId,
       positionName: positions.name,
+      rosterTitle: students.rosterTitle,
       status: submissions.status,
     })
     .from(students)
@@ -280,7 +285,9 @@ export async function listNonResponses(): Promise<NonResponseReport> {
     const person: RosterPerson = {
       email: r.email,
       displayName: r.displayName,
+      positionId: r.positionId,
       positionName: r.positionName ?? null,
+      rosterTitle: r.rosterTitle,
     };
     if (r.onRoster) {
       rosterTotal += 1;

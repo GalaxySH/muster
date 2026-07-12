@@ -8,10 +8,11 @@
  * marks them off-roster.
  */
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { importRosterFromUpload } from "@/lib/roster/actions";
-import type { ImportSummary } from "@/lib/roster/import";
+import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";
 import { validateRosterUpload } from "@/lib/roster/upload-validation";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, InfoCard } from "@/components/ui";
 
 const SKIP_REASON_LABEL: Record<string, string> = {
   missing_email: "no email in the row",
@@ -79,6 +80,13 @@ export function RosterImportPanel() {
   );
 }
 
+/** One line on what the carry-over did for a changed student. */
+function describeChangeOutcome(c: PositionChangeSummary): string {
+  if (c.deferred) return "Shift picks unchanged.";
+  const picks = `${c.carriedOver} shift pick${c.carriedOver === 1 ? "" : "s"} kept, ${c.dropped} dropped.`;
+  return c.revalidationFailed ? `${picks} Now fails checks.` : picks;
+}
+
 function SummaryReport({ summary }: { summary: ImportSummary }) {
   const unmapped = Object.entries(summary.unmappedTitles);
   const positions = Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1]);
@@ -123,19 +131,36 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
         </p>
       )}
 
+      {summary.positionChanges.length > 0 && (
+        <div style={{ fontSize: 14, color: "#444" }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>Position changes:</p>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+            {summary.positionChanges.map((c, i) => (
+              <li key={`${c.email}-${i}`}>
+                {c.email}: {c.from ?? "no position"} to {c.to ?? "no position"}.{" "}
+                {describeChangeOutcome(c)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {unmapped.length > 0 && (
-        <div style={warnBox}>
+        <InfoCard tone="danger" style={{ margin: "0 0 8px", fontSize: 14 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            ⚠ Titles with no position mapping (imported without a position):
+            Titles with no matching position (students imported without one):
           </p>
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
             {unmapped.map(([title, n]) => (
               <li key={title}>
                 “{title}” × {n}
               </li>
             ))}
           </ul>
-        </div>
+          <p style={{ margin: 0 }}>
+            <Link href="/admin/positions">Resolve these titles on the positions page</Link>
+          </p>
+        </InfoCard>
       )}
 
       {summary.unlistedOnRoster.length > 0 && (

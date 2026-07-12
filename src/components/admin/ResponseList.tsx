@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResponseRow } from "@/lib/admin/data";
+import { FLAG_LABELS } from "@/lib/admin/response-filters";
 import { DeleteResponseButton } from "./DeleteResponseButton";
+
+/** Flag types that get their own red pill in the Flags column (roadmap 3.3). */
+const ALERT_FLAGS = ["position_change", "revalidation_failed"] as const;
 
 type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
 
@@ -121,6 +125,11 @@ export function ResponseList({
                   ) : (
                     <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
                   )}
+                  {ALERT_FLAGS.filter((t) => r.flagTypes.includes(t)).map((t) => (
+                    <div key={t} style={{ marginTop: 3 }}>
+                      <span style={alertBadge}>{FLAG_LABELS[t]}</span>
+                    </div>
+                  ))}
                 </td>
                 <td style={{ ...td, textAlign: "center" }}>
                   {r.scheduled ? (
@@ -209,3 +218,4 @@ const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontS
 const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", color: "var(--color-text-success)" };
 const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };
 const flagBadge: React.CSSProperties = { ...badge, background: "var(--color-background-warning)", color: "var(--color-text-warning)" };
+const alertBadge: React.CSSProperties = { ...badge, background: "#fce8e6", color: "var(--color-text-danger)", whiteSpace: "nowrap" };

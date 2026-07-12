@@ -6,10 +6,10 @@
  * admin-gated and operate on the target student's submission. They never touch
  * the student's availability data.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { submissions } from "@/lib/db/schema";
+import { flags, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -112,6 +112,32 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
 
   revalidatePath("/admin/responses");
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
+  return { ok: true };
+}
+
+/**
+ * Admin: dismiss a submission's position_change flag(s) after reviewing the
+ * change (roadmap 3.3). Deletes only that flag type; revalidation_failed has no
+ * manual dismiss, it clears itself when a validation run passes.
+ */
+export async function clearPositionChangeFlag(submissionId: string): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [sub] = await db
+    .select({ email: submissions.studentEmail })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1);
+  if (!sub) return { ok: false, error: "No such submission." };
+
+  await db
+    .delete(flags)
+    .where(and(eq(flags.submissionId, submissionId), eq(flags.type, "position_change")));
+
+  revalidatePath(`/admin/students/${encodeURIComponent(sub.email)}`);
+  revalidatePath("/admin/responses");
   return { ok: true };
 }
 

@@ -273,7 +273,23 @@ Original spec:
   (this item) must honor both settings and send nothing when the list is
   empty.
 
-### 3.3 Admin-configurable positions & shift blocks — **L**
+### 3.3 Admin-configurable positions & shift blocks — **L** — ✅ DONE (2026-07-11, v0.60)
+
+Shipped, substantially revised from the spec below by the owner's direction
+(2026-07-11): **no dedicated merge pathway** — the PCPL roster is the source of
+truth for who holds which position, and consolidations run through **alias mode**
+(`mergedIntoId`; write-time canonicalization) or the roster itself. A shared
+**carry-over rule** applies on any position change (import promotion, alias
+switch, ghost resolution): time-identical selections are kept and re-pointed,
+the rest dropped, the submission revalidated. **Ghost titles** (PCPL titles with
+no mapping) surface on `/admin/roster` + `/admin/positions` with create/map
+resolution; the title map moved to the DB (`roster_title_mappings`, seeded from
+the code fixture). Two new flags with pills + filters: `position_change`
+(admin-dismissable, self-heals on save) and `revalidation_failed` (generic
+revalidation seam, auto-clears). Shift Lead is delete- and alias-protected;
+supervisor titles stay code-side. PLAN §6.1 has the full as-built model.
+
+Original spec:
 The schema is already data-driven (`positions`, `shift_blocks` tables; the
 app reads blocks from the DB) — the work is the admin surface + lifecycle:
 - CRUD UI: add/deactivate positions (min hours/days, weekend-exempt), lay out

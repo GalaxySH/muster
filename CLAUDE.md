@@ -193,8 +193,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   core; every
   module has a co-located `*.test.ts`. The same `validateAvailability` runs on the
   client (live feedback) and server (authority). Keep it pure.
-- `src/lib/config/positions.ts` — canonical positions/blocks as editable data. A
-  test asserts the derived open/close match PLAN §6.3.
+- `src/lib/config/positions.ts` — the **initial seed fixture** for positions/blocks
+  (insert-only-when-empty; once seeded the DB is authoritative and admins edit on
+  `/admin/positions`). A test asserts the fixture's derived open/close match PLAN §6.3.
 - `src/lib/db/` — Drizzle schema + client. `index.ts` is `server-only` (lazy pool);
   `client.ts` is the plain `createDb()` factory CLI scripts (seed/migrate) reuse.
 - `src/lib/env.ts` — zod-validated env; import only from server modules.

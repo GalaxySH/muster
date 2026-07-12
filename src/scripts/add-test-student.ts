@@ -8,9 +8,9 @@
  * Not for production data. The real roster comes from `npm run roster:import`.
  * A later roster import may overwrite or drop this row.
  */
+import { and, eq, isNull } from "drizzle-orm";
 import { createDb } from "../lib/db/client";
-import { students } from "../lib/db/schema";
-import { POSITIONS } from "../lib/config/positions";
+import { positions, students } from "../lib/db/schema";
 import { normalizeEmail } from "../lib/auth/policy";
 
 function parseArgs(argv: string[]) {
@@ -37,17 +37,23 @@ async function main() {
   }
   const normalized = normalizeEmail(email);
 
-  const validIds = POSITIONS.map((p) => p.id);
-  if (!validIds.includes(position)) {
-    throw new Error(`Unknown position "${position}". Valid: ${validIds.join(", ")}`);
-  }
-
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required (see .env.example)");
 
   const displayName = name ?? normalized.split("@")[0]!;
   const { db, pool } = createDb(url);
   try {
+    // Assignable positions come from the DB (admins edit them there); the
+    // static fixture only seeds an empty table.
+    const validRows = await db
+      .select({ id: positions.id })
+      .from(positions)
+      .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)));
+    const validIds = validRows.map((r) => r.id);
+    if (!validIds.includes(position)) {
+      throw new Error(`Unknown position "${position}". Valid: ${validIds.join(", ")}`);
+    }
+
     await db
       .insert(students)
       .values({

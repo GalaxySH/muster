@@ -50,13 +50,24 @@ async function main() {
       console.log("\n  promoted to supervisor (now admin, off the student roster):");
       for (const email of summary.movedToAdmin) console.log(`    ${email}`);
     }
+    if (summary.positionChanges.length > 0) {
+      console.log("\n  position changes (selections carried over where block times match):");
+      for (const c of summary.positionChanges) {
+        const outcome = c.deferred
+          ? "picks unchanged (no target blocks yet)"
+          : `${c.carriedOver} kept, ${c.dropped} dropped${c.revalidationFailed ? ", now fails validation" : ""}`;
+        console.log(
+          `    ${c.email}  ${c.from ?? "(none)"} -> ${c.to ?? "(none)"}  ${outcome}`,
+        );
+      }
+    }
     console.log("\n  by position:");
     for (const [pos, n] of Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1])) {
       console.log(`    ${String(n).padStart(3)}  ${pos}`);
     }
     if (Object.keys(summary.unmappedTitles).length > 0) {
       console.log(
-        "\n  ⚠ unmapped titles (imported with no position, add to position-mapping.ts):",
+        "\n  ⚠ unmapped titles (imported with no position, resolve on /admin/positions):",
       );
       for (const [title, n] of Object.entries(summary.unmappedTitles)) {
         console.log(`    ${String(n).padStart(3)}  "${title}"`);
