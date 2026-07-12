@@ -145,14 +145,12 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
 }
 
 /**
- * Sign the current admin in AS a test account: mint a single-use magic-link
- * token and redeem it through the existing `magic-link` Credentials provider,
- * no new auth surface. Requires BOTH test-group membership AND the synthetic
- * domain, so a real student moved into the group via the /admin/groups picker
- * can never be impersonated. Replaces the admin's session; they return by
- * signing back in with Google.
+ * Shared gate for the two impersonation actions below. Requires BOTH
+ * test-group membership AND the synthetic domain, so a real student moved
+ * into the group via the /admin/groups picker can never be impersonated.
+ * Returns the normalized target email.
  */
-export async function signInAsTestAccount(formData: FormData): Promise<void> {
+async function requireImpersonableTestAccount(formData: FormData): Promise<string> {
   const gate = await requireAdmin();
   if (!gate.ok) fail("forbidden");
   const email = normalizeEmail(String(formData.get("email") ?? ""));
@@ -164,7 +162,17 @@ export async function signInAsTestAccount(formData: FormData): Promise<void> {
     .where(eq(students.email, email))
     .limit(1);
   if (!stu || stu.groupId !== TEST_GROUP_ID || !isTestAccountEmail(email)) fail("not-found");
+  return email;
+}
 
+/**
+ * Sign the current admin in AS a test account: mint a single-use magic-link
+ * token and redeem it through the existing `magic-link` Credentials provider,
+ * no new auth surface. Replaces the admin's session; they return by signing
+ * back in with Google.
+ */
+export async function signInAsTestAccount(formData: FormData): Promise<void> {
+  const email = await requireImpersonableTestAccount(formData);
   const token = await issueMagicLink(email);
   try {
     await signIn(MAGIC_LINK_PROVIDER, { token, email, redirectTo: "/me" });
@@ -173,4 +181,19 @@ export async function signInAsTestAccount(formData: FormData): Promise<void> {
     // Otherwise it's the success NEXT_REDIRECT thrown by signIn; let it through.
     throw error;
   }
+}
+
+/**
+ * Mint a magic link for a test account WITHOUT redeeming it, so the admin can
+ * open it in a private window and keep their own session. Redirects back to
+ * the manager with the raw token; the page assembles the /magic/redeem URL
+ * (never a caller-supplied one) and shows it with a copy button. Same
+ * single-use short-lived token as sign-in-as.
+ */
+export async function mintTestAccountLink(formData: FormData): Promise<void> {
+  const email = await requireImpersonableTestAccount(formData);
+  const token = await issueMagicLink(email);
+  redirect(
+    `/admin/test-users?token=${encodeURIComponent(token)}&for=${encodeURIComponent(email)}`,
+  );
 }

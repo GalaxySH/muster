@@ -7,13 +7,16 @@ import { Page } from "@/components/ui";
  * link (GET) does NOT consume the token; the user re-enters their email and
  * submits, which hands token+email to the `magic-link` provider for atomic
  * single-use redemption. The re-entry also defeats mail-scanner link previews.
+ * An optional `email` param prefills the field (only the admin-minted
+ * test-account links carry it; emailed links never do). Prefill is cosmetic:
+ * redemption still requires the token to be bound to that exact email.
  */
 export default async function RedeemPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string; error?: string }>;
+  searchParams: Promise<{ token?: string; error?: string; email?: string }>;
 }) {
-  const { token, error } = await searchParams;
+  const { token, error, email } = await searchParams;
 
   if (!token) {
     return (
@@ -44,6 +47,7 @@ export default async function RedeemPage({
           type="email"
           name="email"
           placeholder="you@wisc.edu"
+          defaultValue={email ?? ""}
           required
           style={{ padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 14 }}
         />

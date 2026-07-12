@@ -27,7 +27,7 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.64
+- **Version:** 0.65
 - **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -994,11 +994,23 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   domain `test.muster.invalid`, stay off-roster (invisible in responses/export/sheet/
   non-response tracking), and are reachable **only** via an admin-minted magic-link token —
   the synthetic domain fails `isWiscEmail`, so the public magic-link request and Google
-  sign-in can never reach them. `/dev-login` retains only the dev-only OAuth bypass.
+  sign-in can never reach them. Two ways in (0.65): **Sign in as** redeems the token
+  immediately (replacing the admin's session), and **Get link** shows the redeem URL
+  for the admin to open in a private window, keeping their admin session alongside.
+  `/dev-login` retains only the dev-only OAuth bypass.
 
 ---
 
 ## Changelog
+- **0.65 (2026-07-13)** — **Test accounts: Get link (§18b).** Next to **Sign in as**,
+  each test account gains a **Get link** button that mints the same single-use
+  magic-link token but skips redemption: the manager page shows the `/magic/redeem`
+  URL (assembled server-side from `NEXTAUTH_URL`, never from the query) with a copy
+  button, for the admin to open in a private/incognito window — walking the student
+  flow while keeping their admin session. The minted URL carries `&email=`, which
+  `/magic/redeem` now accepts as a cosmetic form prefill (emailed links never include
+  it; redemption stays token+email-bound). Both actions share one gate
+  (`requireImpersonableTestAccount`: test-group membership AND the synthetic domain).
 - **0.64 (2026-07-13)** — **Response list: full-bleed responsive table, richer flags,
   change-request pills, start-date filter (§10).** `/admin/responses` goes
   `width="full"` and the table becomes a `.stack-table` like the groups table (rows

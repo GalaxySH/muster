@@ -360,9 +360,17 @@ workbook-omitted case); accounts are off-roster in the `dev-test` group ("Test
 accounts", seeded wide-open; window editable on `/admin/groups` like any group), so
 they never show in responses/export/sheet/non-response tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
 via the existing `magic-link` provider (no auth-config changes; replaces the admin's
-session — return via Google). The synthetic domain fails `isWiscEmail`, so the
+session — return via Google). **Get link** mints the same token but skips redemption:
+it redirects back to the manager with `?token=&for=`, and the page (not the query)
+assembles the absolute `/magic/redeem` URL from `env.NEXTAUTH_URL` — so a crafted
+query can't plant a foreign link — showing it in a copy field
+(`components/admin/MagicLinkCopy.tsx`) for the admin to open in a private window,
+keeping their own session. The minted URL carries `&email=` which `/magic/redeem`
+uses only as a form prefill (emailed links never include it; redemption stays bound
+to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
-(never upserts); sign-in-as requires test-group membership AND the synthetic domain;
+(never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
+test-group membership AND the synthetic domain);
 delete only ever removes test-group members and also cleans up relayed Drive proofs
 (shared `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
 be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
