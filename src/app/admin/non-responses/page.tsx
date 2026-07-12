@@ -97,6 +97,18 @@ function Group({
                 {p.email}
                 {p.positionName ? ` · ${p.positionName}` : ""}
               </span>
+              {p.positionId === null && (
+                <>
+                  {" "}
+                  <span style={noPositionPill}>No position</span>
+                  {p.rosterTitle && (
+                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
+                      {" "}
+                      {p.rosterTitle}
+                    </span>
+                  )}
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -104,6 +116,16 @@ function Group({
     </section>
   );
 }
+
+/** Derived from positionId being unset (a ghosted roster title), not a stored flag. */
+const noPositionPill: React.CSSProperties = {
+  background: "#fce8e6",
+  color: "var(--color-text-danger)",
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontSize: 12,
+  whiteSpace: "nowrap",
+};
 
 const card: React.CSSProperties = {
   background: "var(--color-background-primary)",

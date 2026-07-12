@@ -11,7 +11,6 @@ import { loadStudentForm } from "@/lib/availability/data";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { type WindowState } from "@/lib/domain/window";
-import { POSITIONS } from "@/lib/config/positions";
 import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
 import {
   flowStatus,
@@ -51,8 +50,6 @@ export type FlowState =
       /** SL close picking (§18a): whether it applies and how many claims are held. */
       closes: { required: boolean; count: number };
     };
-
-const positionName = (id: string | null) => POSITIONS.find((p) => p.id === id)?.name ?? null;
 
 type LoadedForm = NonNullable<Awaited<ReturnType<typeof loadStudentForm>>>;
 
@@ -124,7 +121,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     onRoster: true,
     displayName: form.student.displayName,
     positionId: form.student.positionId,
-    positionName: positionName(form.student.positionId),
+    positionName: form.position?.name ?? null,
     international: form.student.international,
     returning: isReturningStudent(form.student.hiredOn, new Date()),
     access,

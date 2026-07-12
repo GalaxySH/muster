@@ -10,7 +10,7 @@ import {
   signInAsTestAccount,
   type TestAccountError,
 } from "@/lib/test-accounts/actions";
-import { POSITIONS } from "@/lib/config/positions";
+import { positionOptions } from "@/lib/positions/data";
 
 // DB-backed (the test-account list); never statically prerender.
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export default async function AdminTestUsersPage({
 
   const { error } = await searchParams;
   const errorMessage = error ? (ERROR_COPY[error as TestAccountError] ?? "Something went wrong.") : null;
-  const accounts = await listTestAccounts();
+  const [accounts, positions] = await Promise.all([listTestAccounts(), positionOptions()]);
 
   return (
     <Page>
@@ -71,8 +71,8 @@ export default async function AdminTestUsersPage({
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Create a test account</h2>
         <form action={createTestAccount} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
           <input type="text" name="name" placeholder="Display name, e.g. Training Barista" required style={field} />
-          <select name="position" defaultValue={POSITIONS[0]?.id} style={field}>
-            {POSITIONS.map((p) => (
+          <select name="position" defaultValue={positions[0]?.id} style={field}>
+            {positions.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>

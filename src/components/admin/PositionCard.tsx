@@ -1,0 +1,282 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import {
+  clearAlias,
+  deletePosition,
+  setAlias,
+  setPositionActive,
+  updatePosition,
+} from "@/lib/positions/actions";
+import type { AdminPositionItem } from "@/lib/positions/data";
+import { BlockEditor } from "./BlockEditor";
+import type { PositionOption } from "./GhostTitleCard";
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * One position on /admin/positions (roadmap 3.3): the min-config edit form,
+ * the block editor (or the alias note for aliases), the active toggle, the
+ * alias control, and delete when nothing references the position.
+ */
+export function PositionCard({
+  position,
+  aliasTargets,
+}: {
+  position: AdminPositionItem;
+  aliasTargets: PositionOption[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [name, setName] = useState(position.name);
+  const [minHours, setMinHours] = useState(String(position.minHours));
+  const [minDays, setMinDays] = useState(String(position.minDays));
+  const [weekendExempt, setWeekendExempt] = useState(position.weekendExempt);
+  const [aliasTarget, setAliasTarget] = useState("");
+
+  const isShiftLead = position.id === SHIFT_LEAD_POSITION_ID;
+  const isAlias = position.mergedIntoId !== null;
+  const selectionTotal = position.blocks.reduce((n, b) => n + b.selectionCount, 0);
+  const deletable = !isShiftLead && position.studentCount === 0 && selectionTotal === 0;
+  const targets = aliasTargets.filter((t) => t.id !== position.id);
+
+  function act(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await fn();
+      setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
+      if (res.ok) router.refresh();
+    });
+  }
+
+  function saveDetails() {
+    act(
+      () =>
+        updatePosition(position.id, {
+          name,
+          minHours: Number(minHours),
+          minDays: Number(minDays),
+          weekendExempt,
+        }),
+      "Saved.",
+    );
+  }
+
+  function makeAlias() {
+    const target = targets.find((t) => t.id === aliasTarget);
+    if (!target) return;
+    if (
+      !confirm(
+        `Make ${position.name} an alias of ${target.name}? ${plural(position.studentCount, "student")} will move to ${target.name}.`,
+      )
+    ) {
+      return;
+    }
+    setMsg(null);
+    startTransition(async () => {
+      const res = await setAlias(position.id, aliasTarget);
+      if (res.ok) {
+        const fails =
+          res.failing === 0
+            ? "No submissions fail checks."
+            : `${plural(res.failing, "student")} now fail${res.failing === 1 ? "s" : ""} checks.`;
+        setMsg({
+          ok: true,
+          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}`,
+        });
+        setAliasTarget("");
+        router.refresh();
+      } else {
+        setMsg({ ok: false, text: res.error ?? "Failed." });
+      }
+    });
+  }
+
+  return (
+    <section style={{ ...card, opacity: isAlias || !position.active ? 0.75 : 1 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+        <h2 style={{ fontSize: 16, margin: 0 }}>{position.name}</h2>
+        {!position.active && <span style={badge}>inactive</span>}
+        {isAlias && <span style={badge}>alias of {position.mergedIntoName}</span>}
+        <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+          {plural(position.studentCount, "student")}
+        </span>
+      </div>
+
+      <div style={detailsRow}>
+        <label style={label}>
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} style={input} />
+        </label>
+        <label style={label}>
+          Min hours
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={minHours}
+            onChange={(e) => setMinHours(e.target.value)}
+            style={{ ...input, width: 70 }}
+          />
+        </label>
+        <label style={label}>
+          Min days
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={minDays}
+            onChange={(e) => setMinDays(e.target.value)}
+            style={{ ...input, width: 70 }}
+          />
+        </label>
+        <label style={{ ...label, flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={weekendExempt}
+            onChange={(e) => setWeekendExempt(e.target.checked)}
+          />
+          Weekend exempt
+        </label>
+        <button type="button" disabled={pending} onClick={saveDetails}>
+          Save
+        </button>
+      </div>
+
+      {isAlias ? (
+        <div style={{ margin: "12px 0" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 14 }}>
+            Alias of <strong>{position.mergedIntoName}</strong>. Roster titles that map here count
+            as {position.mergedIntoName}.
+          </p>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => act(() => clearAlias(position.id), "Alias removed.")}
+          >
+            Remove alias
+          </button>
+        </div>
+      ) : (
+        <div style={{ margin: "12px 0" }}>
+          <BlockEditor
+            position={{
+              id: position.id,
+              name: position.name,
+              minHours: position.minHours,
+              minDays: position.minDays,
+              weekendExempt: position.weekendExempt,
+            }}
+            blocks={position.blocks}
+          />
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            act(
+              () => setPositionActive(position.id, !position.active),
+              position.active ? "Deactivated." : "Reactivated.",
+            )
+          }
+        >
+          {position.active ? "Deactivate" : "Reactivate"}
+        </button>
+        {deletable && (
+          <button
+            type="button"
+            disabled={pending}
+            style={{ color: "var(--color-text-danger)" }}
+            onClick={() => {
+              if (confirm(`Delete ${position.name}? Its blocks and title mappings go with it.`)) {
+                act(() => deletePosition(position.id), "Deleted.");
+              }
+            }}
+          >
+            Delete
+          </button>
+        )}
+        {isShiftLead ? (
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Shift Lead is built in. It can&apos;t be deleted or turned into an alias.
+          </span>
+        ) : (
+          !isAlias && (
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              <select
+                value={aliasTarget}
+                onChange={(e) => setAliasTarget(e.target.value)}
+                disabled={pending}
+                style={input}
+              >
+                <option value="">Make this an alias of…</option>
+                {targets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" disabled={pending || !aliasTarget} onClick={makeAlias}>
+                Make alias
+              </button>
+            </span>
+          )
+        )}
+      </div>
+
+      {msg && (
+        <p
+          style={{
+            margin: "8px 0 0",
+            fontSize: 13,
+            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
+          }}
+        >
+          {msg.ok ? "✓ " : "✗ "}
+          {msg.text}
+        </p>
+      )}
+    </section>
+  );
+}
+
+const card: React.CSSProperties = {
+  border: "0.5px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-lg)",
+  padding: "1rem 1.2rem",
+  margin: "1.2rem 0",
+};
+const badge: React.CSSProperties = {
+  background: "var(--color-background-secondary, #eef)",
+  color: "var(--color-text-secondary)",
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontSize: 11,
+};
+const detailsRow: React.CSSProperties = {
+  display: "flex",
+  gap: 12,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+  margin: "12px 0",
+};
+const label: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 12,
+  color: "var(--color-text-secondary)",
+};
+const input: React.CSSProperties = {
+  padding: 6,
+  borderRadius: "var(--border-radius-md)",
+  border: "0.5px solid var(--color-border-secondary)",
+  fontFamily: "var(--font-sans)",
+  fontSize: 13,
+};

@@ -53,6 +53,35 @@ export function formatTime(minutes: number): string {
   return `${hour12}${minutePart}${meridiem}`;
 }
 
+/**
+ * Format minutes since midnight as the "HH:MM" value an `<input type="time">`
+ * uses. A block may end exactly at midnight (1440), which formats as "24:00";
+ * a time input can't display that, but the value still round-trips through
+ * hhmmToMinutes.
+ */
+export function minutesToHHMM(minutes: number): string {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) {
+    throw new Error(`Invalid minutes-since-midnight: ${minutes}`);
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+/**
+ * Parse a time input's "HH:MM" value (or "H:MM") into minutes since midnight.
+ * Accepts "24:00" as 1440 (a block's midnight end). Returns null for empty or
+ * malformed values so callers can treat them as "not entered yet".
+ */
+export function hhmmToMinutes(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return total > 1440 ? null : total;
+}
+
 /** Duration of a range in minutes. */
 export function minutesBetween(range: TimeRange): number {
   return range.end - range.start;

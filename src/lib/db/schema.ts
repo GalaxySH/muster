@@ -22,7 +22,19 @@ import {
 export const dayTypeEnum = ["weekday", "weekend"] as const;
 export const dayEnum = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 export const submissionStatusEnum = ["draft", "submitted"] as const;
-export const flagTypeEnum = ["auto_assigned_weekend", "travel_late"] as const;
+export const flagTypeEnum = [
+  "auto_assigned_weekend",
+  "travel_late",
+  "position_change",
+  "revalidation_failed",
+] as const;
+
+/**
+ * Any flag type a stored row can carry. A superset of the validation-produced
+ * union in domain/validation.ts: position_change and revalidation_failed are
+ * written by admin-side lifecycle code, never by validateAvailability.
+ */
+export type DbFlagType = (typeof flagTypeEnum)[number];
 
 /** Selectable availability position (PLAN.md §6.1). Editable config. */
 export const positions = mysqlTable("positions", {
@@ -90,6 +102,9 @@ export const students = mysqlTable("students", {
   // self-add hook (vs. a manual admin assignment). The sweep skips rows already
   // flagged, so an admin's later manual change isn't undone.
   groupAssignedAuto: boolean("group_assigned_auto").notNull().default(false),
+  // Raw PCPL position title stored at import; used to surface ghost positions
+  // (titles with no mapping) on /admin/positions and /admin/roster.
+  rosterTitle: varchar("roster_title", { length: 128 }),
 });
 
 /** One student's availability submission (PLAN.md §9). No image bytes, Drive fileIds only. */
@@ -181,6 +196,19 @@ export const adminGoogleGrants = mysqlTable("admin_google_grants", {
   email: varchar("email", { length: 255 }).primaryKey(),
   refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+});
+
+/**
+ * Admin-editable roster title to position mapping (PLAN.md §16.2). Keys are
+ * NORMALIZED titles (see normalizeTitle in roster/position-mapping.ts). Seeded
+ * from the code fixture when empty; ghost resolution on /admin/positions
+ * inserts rows.
+ */
+export const rosterTitleMappings = mysqlTable("roster_title_mappings", {
+  title: varchar("title", { length: 128 }).primaryKey(),
+  positionId: varchar("position_id", { length: 64 })
+    .notNull()
+    .references(() => positions.id),
 });
 
 /** Audit of roster imports (PLAN.md §9). */

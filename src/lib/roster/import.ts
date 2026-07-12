@@ -3,15 +3,39 @@
  *
  * read workbook → parse/classify → upsert students + admins + audit row, all
  * in one transaction. Idempotent: re-running updates existing rows by email.
- * Takes a Database so it's decoupled from connection setup, and a workbook
- * source that is either a file path (CLI) or the uploaded bytes (admin UI).
+ * Titles map to positions through the DB-owned roster_title_mappings table
+ * (alias chains resolved), and a student whose stored position differs from
+ * the workbook's goes through the shared position-change routine (selection
+ * carry-over + flags + revalidation; roadmap 3.3). Takes a Database so it's
+ * decoupled from connection setup, and a workbook source that is either a
+ * file path (CLI) or the uploaded bytes (admin UI).
  */
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
-import { students, adminUsers, rosterImports } from "@/lib/db/schema";
+import {
+  students,
+  adminUsers,
+  rosterImports,
+  rosterTitleMappings,
+  positions,
+} from "@/lib/db/schema";
+import { applyPositionChange } from "@/lib/positions/apply-change";
 import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
+import { buildEffectiveTitleMap } from "./position-mapping";
 import { parseRoster, parseLeaving, reconcileLeaving, reconcileAdmins } from "./parse";
+
+/** One student whose stored position differed from the workbook's (names, not ids). */
+export interface PositionChangeSummary {
+  email: string;
+  from: string | null;
+  to: string | null;
+  carriedOver: number;
+  dropped: number;
+  /** True when the picks were left untouched: the new title has no position or no blocks yet. */
+  deferred: boolean;
+  revalidationFailed: boolean;
+}
 
 export interface ImportSummary {
   importId: string;
@@ -43,6 +67,13 @@ export interface ImportSummary {
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
+  /**
+   * People Coming students whose stored position differed from the incoming
+   * one (including to/from none): the shared carry-over routine ran for each
+   * (selections re-pointed where a target block has identical times, the rest
+   * dropped, position_change flagged, availability revalidated).
+   */
+  positionChanges: PositionChangeSummary[];
 }
 
 export interface ImportOptions {
@@ -57,13 +88,28 @@ export async function importRoster({
   importedBy,
 }: ImportOptions): Promise<ImportSummary> {
   const rows = await readPeopleComing(workbook);
-  const parsed = parseRoster(rows);
+  // The title map is DB-owned (seeded once from the code fixture, extended by
+  // ghost resolution on /admin/positions); aliases canonicalize before writes.
+  const [mappingRows, positionRows] = await Promise.all([
+    db.select().from(rosterTitleMappings),
+    db
+      .select({ id: positions.id, name: positions.name, mergedIntoId: positions.mergedIntoId })
+      .from(positions),
+  ]);
+  const parsed = parseRoster(rows, buildEffectiveTitleMap(mappingRows, positionRows));
   // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
   const leavingRows = await readPeopleLeaving(workbook);
   const leaving = parseLeaving(leavingRows);
   // A person in both sheets was promoted/moved, not fired: People Coming wins.
   const { markLeft, movedWithinWorkbook } = reconcileLeaving(parsed, leaving);
   const importId = randomUUID();
+
+  // Pre-read the whole roster once: onRoster status feeds the drift check
+  // below, stored positions feed the change detection inside the transaction.
+  const existing = await db
+    .select({ email: students.email, positionId: students.positionId, onRoster: students.onRoster })
+    .from(students);
+  const priorPosition = new Map(existing.map((r) => [r.email, r.positionId]));
 
   // Drift check (computed against the pre-import roster): anyone on-roster but
   // absent from both sheets keeps their status; flag them so a person quietly
@@ -73,15 +119,15 @@ export async function importRoster({
     ...parsed.admins.map((a) => a.email),
     ...leaving.map((l) => l.email),
   ]);
-  const onRosterNow = await db
-    .select({ email: students.email })
-    .from(students)
-    .where(eq(students.onRoster, true));
-  const onRosterEmails = new Set(onRosterNow.map((r) => r.email));
+  const onRosterEmails = new Set(existing.filter((r) => r.onRoster).map((r) => r.email));
   const unlistedOnRoster = [...onRosterEmails].filter((email) => !mentioned.has(email)).sort();
   // Promoted into a supervisor title: the admin_users upsert alone would leave
   // their old student row active with a stale position, so flip it off-roster.
   const movedToAdmin = reconcileAdmins(parsed, onRosterEmails);
+
+  const positionName = new Map(positionRows.map((p) => [p.id, p.name]));
+  const nameOf = (id: string | null) => (id === null ? null : (positionName.get(id) ?? id));
+  const positionChanges: PositionChangeSummary[] = [];
 
   await db.transaction(async (tx) => {
     for (const s of parsed.students) {
@@ -94,6 +140,7 @@ export async function importRoster({
           international: s.international,
           hiredOn: s.hiredOn,
           onRoster: true,
+          rosterTitle: s.rosterTitle,
         })
         .onDuplicateKeyUpdate({
           set: {
@@ -102,8 +149,32 @@ export async function importRoster({
             international: s.international,
             hiredOn: s.hiredOn,
             onRoster: true,
+            rosterTitle: s.rosterTitle,
           },
         });
+
+      // Position change (only ever from People Coming rows; markLeft rows just
+      // flip onRoster): run the shared carry-over + flag + revalidate routine.
+      const hadRow = priorPosition.has(s.email);
+      const before = priorPosition.get(s.email) ?? null;
+      // Keep the in-memory view current so a duplicate row for the same email
+      // compares against what the first row just wrote.
+      priorPosition.set(s.email, s.positionId);
+      if (!hadRow || before === s.positionId) continue;
+      const change = await applyPositionChange(tx, {
+        email: s.email,
+        fromPositionId: before,
+        toPositionId: s.positionId,
+      });
+      positionChanges.push({
+        email: s.email,
+        from: nameOf(before),
+        to: nameOf(s.positionId),
+        carriedOver: change.carriedOver,
+        dropped: change.dropped,
+        deferred: change.deferred,
+        revalidationFailed: change.revalidationFailed,
+      });
     }
 
     // Only people NOT also in People Coming (see reconcileLeaving). On an
@@ -164,5 +235,6 @@ export async function importRoster({
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,
+    positionChanges,
   };
 }

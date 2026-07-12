@@ -4,16 +4,22 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
-import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
+import {
+  parseResponseFilters,
+  serializeResponseFilters,
+  FLAG_LABELS,
+} from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
+import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
@@ -103,6 +109,11 @@ export default async function StudentDetailPage({
       .map((r) => r.id),
   );
   const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
+  // Lifecycle flags written by position changes (roadmap 3.3), rendered with
+  // their stored detail; the live validation checks below cover the rest.
+  const storedAlerts = detail.flags.filter(
+    (f) => f.type === "position_change" || f.type === "revalidation_failed",
+  );
 
   const validation =
     position && submission
@@ -244,6 +255,7 @@ export default async function StudentDetailPage({
                 Flags <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>(automatic)</span>
               </SectionLabel>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+                <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
                 {validation.checks
                   .filter((c) => c.id !== "weekend")
                   .map((c) => (
@@ -309,7 +321,7 @@ export default async function StudentDetailPage({
                       <div style={{ fontSize: 13 }}>
                         <div>
                           {t.startDate} → {t.endDate}{" "}
-                          <span style={t.excused ? excusedBadge : lateBadge}>
+                          <span style={t.excused ? excusedBadge : dangerPill}>
                             {t.excused ? "excused" : "not excused (late)"}
                           </span>
                         </div>
@@ -369,6 +381,17 @@ export default async function StudentDetailPage({
             )}
           </div>
         </>
+      )}
+
+      {/* A responder whose position is unset has no validation to show, but a
+          position_change flag must stay visible and dismissible (roadmap 3.3). */}
+      {submission && !validation && storedAlerts.length > 0 && (
+        <section style={{ ...panel, maxWidth: 620, marginTop: 14 }}>
+          <SectionLabel>Flags</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+            <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
+          </div>
+        </section>
       )}
 
       {/* Schedule change requests (roadmap 3.1): independent of the submission,
@@ -555,6 +578,33 @@ function SubHead({ children }: { children: React.ReactNode }) {
     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6 }}>
       {children}
     </div>
+  );
+}
+
+/**
+ * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
+ * Only position_change gets a dismiss control; revalidation_failed clears
+ * itself when a validation run passes.
+ */
+function StoredFlagAlerts({
+  alerts,
+  submissionId,
+}: {
+  alerts: { type: DbFlagType; detail: string }[];
+  submissionId: string;
+}) {
+  return (
+    <>
+      {alerts.map((f, i) => (
+        <div key={`${f.type}-${i}`} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={dangerPill}>{FLAG_LABELS[f.type]}</span>
+          <span style={{ flex: 1 }}>{f.detail}</span>
+          {f.type === "position_change" && (
+            <ClearPositionChangeButton submissionId={submissionId} />
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -858,10 +908,12 @@ const excusedBadge: React.CSSProperties = {
   padding: "1px 8px",
   fontSize: 12,
 };
-const lateBadge: React.CSSProperties = {
+/** Red pill for anything needing scheduler attention: late travel, stored flags. */
+const dangerPill: React.CSSProperties = {
   background: "#fce8e6",
   color: "var(--color-text-danger)",
   borderRadius: 10,
   padding: "1px 8px",
   fontSize: 12,
+  whiteSpace: "nowrap",
 };

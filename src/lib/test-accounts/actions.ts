@@ -24,7 +24,7 @@ import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { parseHireDate } from "@/lib/roster/parse";
 import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { relayDelete } from "@/lib/drive/relay";
-import { POSITIONS } from "@/lib/config/positions";
+import { positionOptions } from "@/lib/positions/data";
 import {
   TEST_GROUP_ID,
   TEST_GROUP_NAME,
@@ -53,7 +53,8 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const slug = slugFromName(name);
   if (!isValidTestSlug(slug)) fail("invalid-name");
   const positionId = String(formData.get("position") ?? "");
-  if (!POSITIONS.some((p) => p.id === positionId)) fail("invalid-position");
+  const validPositions = await positionOptions();
+  if (!validPositions.some((p) => p.id === positionId)) fail("invalid-position");
   const international = formData.get("international") === "on";
   // Same tolerance as the roster importer: blank or unparseable means no hire
   // date, useful for testing the workbook-omitted case alongside returners.

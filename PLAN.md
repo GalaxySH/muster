@@ -23,9 +23,12 @@
   SL-only `/closes` wizard step, the `/admin/closes` dashboard, and the closes backup
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
-  digest email via the cron-triggered token route. Next: ops.
-- **Version:** 0.62
-- **Last updated:** 2026-07-11
+  digest email via the cron-triggered token route. **Positions & shift blocks admin
+  done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
+  ghost-title resolution, the position-change carry-over rule + flags, and the
+  insert-only seed. Next: ops.
+- **Version:** 0.63
+- **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -169,7 +172,14 @@ token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.m
   the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students).
-- **Config** — positions, shift blocks, form windows.
+- **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
+  add/edit/deactivate positions (min hours/days, weekend-exempt), lay out block times
+  per day-type with a live derived open/close preview and warnings (empty weekend set,
+  unreachable min hours), alias mode for consolidations, and ghost-title resolution
+  (create a position or map the title to an existing one). Lifecycle guards: referenced
+  positions/blocks deactivate rather than delete; Shift Lead can never be deleted or
+  aliased (the §18a close-claims gating keys on its id). Form windows on
+  `/admin/groups` (§13).
 
 ---
 
@@ -217,9 +227,21 @@ attaches to each). Editable config so they can be merged further later.
 > Muster's preference grid — students give one merged "Cashier"/"Stocker" availability,
 > and venue assignment happens scheduler-side in W2W.
 
-> **Planned consolidation (future):** Barista + Cashier + Stocker may collapse into one
-> combined position later. Because positions + block sets are config, that's a data
-> change, not a rewrite.
+> **Consolidation (built — roadmap 3.3):** positions and block sets are admin-editable
+> data on **`/admin/positions`**. The PCPL roster stays the source of truth for who
+> holds which position; consolidations happen via **alias mode**: marking position A an
+> alias of B (`mergedIntoId`) migrates A's students and their selections to B (the
+> carry-over rule below) and future imports resolve A's titles to B. Writes are
+> canonicalized — no student or selection ever references an alias. **Carry-over rule:**
+> on any position change (roster promotion, alias switch, ghost resolution), selections
+> whose block times match a target block exactly (same day-type, identical start/end)
+> are kept and re-pointed; the rest are dropped; the submission is revalidated and
+> flagged (`position_change`, plus `revalidation_failed` when it no longer passes —
+> §9). A PCPL title with no mapping is a **ghost**: the student keeps `positionId:
+> null` (form locked), and the title surfaces on `/admin/roster` and `/admin/positions`
+> for resolution (create a position or map the title to an existing one). Shift Lead is
+> protected: never deletable or aliasable (§18a keys on its id). The supervisor titles
+> (`ADMIN_TITLES`) stay code-side, so admin classification can't be edited away.
 
 ### 6.2 Shift-block model
 - Blocks are **named time ranges**, defined **per position** and **per day-type**.
@@ -237,8 +259,11 @@ attaches to each). Editable config so they can be merged further later.
   `shift_blocks.high_demand` column was retired.)
 
 ### 6.3 Canonical block table
-Authoritative per-position blocks (provided 2026-06). **Open** = earliest-starting
-block of the day-type; **Close** = latest-ending block. Notation: `a`=am, `p`=pm.
+**Initial** per-position blocks (provided 2026-06) — this is the seed fixture
+(`config/positions.ts`), inserted only into an empty database; once seeded, the DB is
+authoritative and admins edit blocks on `/admin/positions` (roadmap 3.3). **Open** =
+earliest-starting block of the day-type; **Close** = latest-ending block. Notation:
+`a`=am, `p`=pm.
 
 **Culinary Assistant**
 | Weekday | Weekend |
@@ -396,13 +421,21 @@ Minimal-by-default. **Do not ingest** Campus ID, phone, or onboarding-tracking
 columns from the roster.
 
 - **Student**: `email` (PK / lookup key — must equal Google sign-in email),
-  `displayName`, `positionId?` (from roster), `international` (from roster or
+  `displayName`, `positionId?` (from roster), `rosterTitle?` (raw PCPL position title,
+  stored at import; surfaces "ghost" titles that map to no position — §6.1),
+  `international` (from roster or
   self-report), `hiredOn?` (date, from People Coming; drives the welcome-back greeting —
   §4.1, roadmap 2.1), `onRoster: bool`, `groupId?` (form-window group — §13; null = no
   access), `groupAssignedAuto: bool` (sticky: set by the default-assignment sweep /
   self-add hook vs. a manual admin assignment).
 - **Position**: `id`, `name`, `minHours`, `minDays`, `weekendExempt: bool` (Barista),
-  `active`, `mergedIntoId?`.
+  `active` (inactive = hidden from pickers/new assignment; still resolves for existing
+  data), `mergedIntoId?` (alias mode — §6.1: writes are canonicalized so no student or
+  selection ever references an alias).
+- **RosterTitleMapping**: `title` (normalized PCPL title, PK) → `positionId`. The
+  importer's title map, seeded once from the code fixture
+  (`roster/position-mapping.ts`); ghost resolution on `/admin/positions` inserts rows,
+  so new roster titles never require a code change.
 - **ShiftBlock**: `id`, `positionId`, `dayType` (`weekday`|`weekend`), `start`,
   `end`. Open/close derived; high-demand is **computed** from selections (§7, roadmap
   2.5), no longer a stored column.
@@ -417,8 +450,14 @@ columns from the roster.
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
   `note?`, `createdAt`, `excused: bool` (always true under the active "refuse" late
   policy; false rows only possible under accept-and-flag — kept for reversibility).
-- **Flag**: `submissionId`, `type` (e.g. `auto_assigned_weekend`, `travel_late`),
-  `detail`.
+- **Flag**: `submissionId`, `type` (`auto_assigned_weekend`, `travel_late`,
+  `position_change`, `revalidation_failed`), `detail`. `position_change` is written on
+  any position modification of a student holding a submission (import, alias switch,
+  ghost resolution; detail carries old/new position + picks kept/dropped) and clears on
+  admin dismiss or the student's next save; `revalidation_failed` is owned by the
+  generic revalidation seam (`positions/apply-change.ts`) — written whenever a re-run
+  of `validateAvailability` fails, deleted the moment a validation run passes, never
+  manually dismissed.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
@@ -834,8 +873,10 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 
 1. **Roster email key** — does PC's `Email` store `netid@wisc.edu` or a `first.last`
    alias? (Affects lookup correctness — §11.)
-2. **Position ↔ title mapping** — map roster `Position Title` strings to the six
-   Muster positions (and which titles map to Cashier vs. Stocker venues).
+2. **Position ↔ title mapping** — ✅ *resolved (v0.63):* the mapping lives in the
+   `roster_title_mappings` table, seeded once from the code fixture; unmapped titles
+   surface as ghosts and are resolved by the admin on `/admin/positions` (§6.1). No
+   code change needed for new titles.
 3. **`drive.file` spike** — ✅ *resolved (confirmed live).* `files.create` + read-back +
    delete work under the per-file scope, **including writing into a pre-existing Shared
    Drive folder by id** — so no app-creates-its-own-folder workaround is needed (§12).
@@ -958,6 +999,29 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.63 (2026-07-12)** — **Admin-configurable positions & shift blocks (roadmap 3.3;
+  §4.2, §6, §9, §16.2).** New `/admin/positions`: create/edit/deactivate positions,
+  per-day-type block editor with live derived open/close tags and warnings (empty
+  weekend set on a non-exempt position, unreachable min hours), delete guards
+  (referenced positions/blocks deactivate or refuse; Shift Lead never deletable or
+  aliasable), **alias mode** (`mergedIntoId`) as the consolidation path — students and
+  time-matching selections migrate to the target, writes are canonicalized — and
+  **ghost-title resolution** (create position / map to existing). The PCPL roster is
+  the source of truth for who holds which position: the importer now reads the title
+  map from the new `roster_title_mappings` table (seeded once from the code fixture),
+  resolves alias chains, stores each student's raw `rosterTitle`, and **detects
+  position changes**, running the shared carry-over routine
+  (`positions/apply-change.ts`): selections with a time-identical block in the new
+  position are kept and re-pointed, the rest dropped, the submission revalidated. Two
+  new flags with red pills + response-list filters: `position_change` (any modified
+  responder; cleared by admin dismiss or the student's next save) and
+  `revalidation_failed` (generic revalidation seam; auto-clears when validation
+  passes). Non-response list shows a "No position" pill with the roster title.
+  `db:seed` is now **insert-only-when-empty** for positions/blocks and title mappings
+  (admin edits are never clobbered; `config/positions.ts` + `TITLE_TO_POSITION` are
+  initial fixtures). Static `POSITIONS` consumers converged onto DB reads
+  (`positions/data.ts`). Migration 0014; **run `db:seed` once after deploying** so the
+  mappings table gets its fixture rows.
 - **0.62 (2026-07-11)** — **Response list: show-off-roster switch (§10).** The
   `/admin/responses` filter bar gains a **Show off-roster** checkbox that reveals
   retained submissions from off-roster responders (People Leaving movers and admin

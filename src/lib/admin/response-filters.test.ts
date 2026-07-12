@@ -3,22 +3,30 @@ import {
   parseResponseFilters,
   applyResponseFilters,
   serializeResponseFilters,
+  FLAG_FILTER_OPTIONS,
   type ResponseFilters,
 } from "./response-filters";
+import type { DbFlagType } from "@/lib/db/schema";
 
-type Row = {
-  email: string;
-  groupId: string | null;
-  flagTypes: ("auto_assigned_weekend" | "travel_late")[];
-  onRoster: boolean;
-};
+type Row = { email: string; groupId: string | null; flagTypes: DbFlagType[]; onRoster: boolean };
 
 const rows: Row[] = [
   { email: "a@wisc.edu", groupId: "g1", flagTypes: [], onRoster: true },
   { email: "b@wisc.edu", groupId: "g1", flagTypes: ["auto_assigned_weekend"], onRoster: true },
   { email: "c@wisc.edu", groupId: "g2", flagTypes: ["travel_late"], onRoster: true },
-  { email: "d@wisc.edu", groupId: null, flagTypes: ["auto_assigned_weekend", "travel_late"], onRoster: true },
-  { email: "e@wisc.edu", groupId: null, flagTypes: [], onRoster: false },
+  {
+    email: "d@wisc.edu",
+    groupId: null,
+    flagTypes: ["auto_assigned_weekend", "travel_late"],
+    onRoster: true,
+  },
+  {
+    email: "e@wisc.edu",
+    groupId: "g2",
+    flagTypes: ["position_change", "revalidation_failed"],
+    onRoster: true,
+  },
+  { email: "f@wisc.edu", groupId: null, flagTypes: [], onRoster: false },
 ];
 
 const emails = (r: Row[]) => r.map((x) => x.email);
@@ -46,6 +54,12 @@ describe("parseResponseFilters", () => {
     expect(parseResponseFilters({ flag: "auto_assigned_weekend" })).toEqual({
       flag: "auto_assigned_weekend",
     });
+    expect(parseResponseFilters({ flag: "position_change" })).toEqual({
+      flag: "position_change",
+    });
+    expect(parseResponseFilters({ flag: "revalidation_failed" })).toEqual({
+      flag: "revalidation_failed",
+    });
     expect(parseResponseFilters({ flag: "bogus" })).toEqual({});
   });
 
@@ -58,19 +72,21 @@ describe("parseResponseFilters", () => {
 
 describe("applyResponseFilters", () => {
   it("returns only on-roster rows when no filter is set", () => {
-    expect(emails(applyResponseFilters(rows, {}))).toEqual(["a", "b", "c", "d"].map((x) => `${x}@wisc.edu`));
+    expect(emails(applyResponseFilters(rows, {}))).toEqual(
+      ["a", "b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
+    );
   });
 
   it("includes off-roster rows when the switch is on", () => {
     expect(emails(applyResponseFilters(rows, { includeOffRoster: true }))).toEqual(
-      ["a", "b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
+      ["a", "b", "c", "d", "e", "f"].map((x) => `${x}@wisc.edu`),
     );
   });
 
   it("combines the off-roster switch with other filters", () => {
     expect(emails(applyResponseFilters(rows, { includeOffRoster: true, groupId: "none" }))).toEqual([
       "d@wisc.edu",
-      "e@wisc.edu",
+      "f@wisc.edu",
     ]);
   });
 
@@ -90,6 +106,7 @@ describe("applyResponseFilters", () => {
       "b@wisc.edu",
       "c@wisc.edu",
       "d@wisc.edu",
+      "e@wisc.edu",
     ]);
   });
 
@@ -98,11 +115,30 @@ describe("applyResponseFilters", () => {
       "b@wisc.edu",
       "d@wisc.edu",
     ]);
+    expect(emails(applyResponseFilters(rows, { flag: "position_change" }))).toEqual([
+      "e@wisc.edu",
+    ]);
+    expect(emails(applyResponseFilters(rows, { flag: "revalidation_failed" }))).toEqual([
+      "e@wisc.edu",
+    ]);
   });
 
   it("combines group and flag filters", () => {
     const f: ResponseFilters = { groupId: "g1", flag: "any" };
     expect(emails(applyResponseFilters(rows, f))).toEqual(["b@wisc.edu"]);
+  });
+});
+
+describe("FLAG_FILTER_OPTIONS", () => {
+  it("offers every flag type with its label", () => {
+    expect(FLAG_FILTER_OPTIONS).toEqual(
+      expect.arrayContaining([
+        { value: "auto_assigned_weekend", label: "Auto-assigned weekend" },
+        { value: "travel_late", label: "Late travel" },
+        { value: "position_change", label: "Position changed" },
+        { value: "revalidation_failed", label: "Fails validation" },
+      ]),
+    );
   });
 });
 

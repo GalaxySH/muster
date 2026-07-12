@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listGroups, getDefaultAutoAssignEnabled } from "@/lib/groups/data";
-import { POSITIONS } from "@/lib/config/positions";
+import { positionOptions } from "@/lib/positions/data";
 import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
 import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPanel";
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
@@ -20,10 +20,11 @@ export default async function AdminGroupsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/groups");
   if (!session.isAdmin) redirect("/me");
 
-  const [groups, autoAssignEnabled, travelCutoff] = await Promise.all([
+  const [groups, autoAssignEnabled, travelCutoff, positions] = await Promise.all([
     listGroups(),
     getDefaultAutoAssignEnabled(),
     getTravelCutoff(),
+    positionOptions(),
   ]);
 
   // Dates → epoch ms so the client can render them in the admin's local timezone.
@@ -38,7 +39,6 @@ export default async function AdminGroupsPage() {
     lockAfterSubmit: g.lockAfterSubmit,
   }));
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
-  const positions = POSITIONS.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <Page width="full">

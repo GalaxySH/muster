@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
-import { Page } from "@/components/ui";
+import { InfoCard, Page } from "@/components/ui";
 import { getRosterStatus } from "@/lib/roster/status";
 import { RosterImportPanel } from "@/components/admin/RosterImportPanel";
 
@@ -43,6 +44,25 @@ export default async function AdminRosterPage() {
           )}
         </p>
       </section>
+
+      {status.ghostTitles.length > 0 && (
+        <InfoCard tone="danger" title="Students without a position" style={{ marginTop: "1.2rem" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 14 }}>
+            These roster titles have no matching position, so the students cannot fill out the
+            availability form:
+          </p>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20, fontSize: 14 }}>
+            {status.ghostTitles.map((g) => (
+              <li key={g.title ?? ""}>
+                {g.title ?? "No title recorded"}: {g.count} student{g.count === 1 ? "" : "s"}
+              </li>
+            ))}
+          </ul>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            <Link href="/admin/positions">Resolve these titles on the positions page</Link>
+          </p>
+        </InfoCard>
+      )}
 
       <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload workbook</h2>

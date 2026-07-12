@@ -7,10 +7,10 @@
  * the rows and the pages read/write the query. Search + sort stay client-side in
  * the list table.
  */
-import type { FlagType } from "@/lib/domain/validation";
+import type { DbFlagType } from "@/lib/db/schema";
 
 /** A flag filter: "any" = at least one flag, or a specific flag type. */
-export type FlagFilter = "any" | FlagType;
+export type FlagFilter = "any" | DbFlagType;
 
 export interface ResponseFilters {
   /** A group id, or "none" for responders with no group. */
@@ -24,18 +24,25 @@ export interface ResponseFilters {
 /** The minimal row shape the filters read. */
 export interface FilterableResponse {
   groupId: string | null;
-  flagTypes: FlagType[];
+  flagTypes: DbFlagType[];
   onRoster: boolean;
 }
 
-const KNOWN_FLAGS: readonly FlagFilter[] = ["any", "auto_assigned_weekend", "travel_late"];
+/** Short human label per flag type, shared by the filter dropdown and the pills. */
+export const FLAG_LABELS: Record<DbFlagType, string> = {
+  auto_assigned_weekend: "Auto-assigned weekend",
+  travel_late: "Late travel",
+  position_change: "Position changed",
+  revalidation_failed: "Fails validation",
+};
+
+const KNOWN_FLAGS: readonly FlagFilter[] = ["any", ...(Object.keys(FLAG_LABELS) as DbFlagType[])];
 
 /** Options for the flag-type dropdown (value "" = no filter). */
 export const FLAG_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "All responses" },
   { value: "any", label: "Any flag" },
-  { value: "auto_assigned_weekend", label: "Auto-assigned weekend" },
-  { value: "travel_late", label: "Late travel" },
+  ...Object.entries(FLAG_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 /** Sentinel group value for on-roster responders with no group assigned. */
