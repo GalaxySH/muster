@@ -13,7 +13,9 @@ returners (hired before June of the current cycle; pure `flow/returner.ts`); (2)
 **URL-driven group + flag filters** on `/admin/responses` that follow you into the
 per-student view (pure `admin/response-filters.ts`; `listResponses(filters)` is the
 single source for the list AND the prev/next walk; the per-student name is a jump-to
-dropdown; the flag filter replaces the never-built flags window); (3) an
+dropdown; the flag filter replaces the never-built flags window; a later
+**show-off-roster switch**, `roster=all` in the same seam, reveals badged off-roster
+submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
 Sunday-week, now through +3 weeks); (4) a **batch schedule-ready email**
 `/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
@@ -189,10 +191,12 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware), `getResponseNeighbors(email, filters)` (prev/next + the
 filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). The **group + flag filters** are a pure seam
-(`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
+`loadScheduleEmailPreview` (2.4). The **group + flag + off-roster filters** are a pure
+seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
-`ResponseFilterBar` drives the URL. `actions.ts` ("use server", **admin-gated**) owns
+`ResponseFilterBar` drives the URL. Roster visibility lives in this seam too (not the
+`listResponses` SQL): off-roster responders are hidden unless `roster=all`, then badged
+in the list. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
@@ -339,7 +343,10 @@ The **throwaway test-account manager** is a **production admin feature** at
 in `auth/require-admin.ts` — also used by `admin/actions.ts` + `groups/actions.ts`),
 for walking the student flow in any position (admin training). Create by display
 name — the email is derived as `slug@test.muster.invalid` (pure, TDD-tested
-`test-accounts/email.ts`); accounts are off-roster in the `dev-test` group ("Test
+`test-accounts/email.ts`); position, international, and hire date are settable at
+create (hire date defaults to today in America/Chicago and reuses the importer's
+`parseHireDate` — blank ⇒ null, exercising both the returner greeting and the
+workbook-omitted case); accounts are off-roster in the `dev-test` group ("Test
 accounts", seeded wide-open; window editable on `/admin/groups` like any group), so
 they never show in responses/export/sheet/non-response tracking. **Sign-in-as** mints a magic-link token (`issueMagicLink`) and redeems it
 via the existing `magic-link` provider (no auth-config changes; replaces the admin's
@@ -361,7 +368,7 @@ file path or an in-memory buffer; two entry points share it — the CLI script a
 `/admin/roster` upload (`roster/actions.ts` `importRosterFromUpload`, admin-gated;
 pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,
 client island `components/admin/RosterImportPanel.tsx`). Title→position
-mapping is **DB data** since v0.60: the `roster_title_mappings` table, seeded once
+mapping is **DB data** since v0.63: the `roster_title_mappings` table, seeded once
 from the `TITLE_TO_POSITION` fixture in `position-mapping.ts`; `importRoster` loads it
 up front, resolves alias chains via `buildEffectiveTitleMap` (pure, tested), and
 injects the effective map into `parseRoster` (which stays pure). Admin titles
@@ -377,7 +384,7 @@ to supervisor → the importer flips that student row off-roster, onRoster only;
 summary field `movedToAdmin`). PCPL emails are netid
 `@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.
 
-## Positions & blocks config (roadmap 3.3, PLAN §6, v0.60)
+## Positions & blocks config (roadmap 3.3, PLAN §6, v0.63)
 
 Pure seams (all TDD, `src/lib/domain/`): `carry-over.ts` (`carryOverSelections` — the
 time-matched keep/drop rule, generic over the row type so DB rows pass through),

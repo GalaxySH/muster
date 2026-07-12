@@ -273,7 +273,7 @@ Original spec:
   (this item) must honor both settings and send nothing when the list is
   empty.
 
-### 3.3 Admin-configurable positions & shift blocks — **L** — ✅ DONE (2026-07-11, v0.60)
+### 3.3 Admin-configurable positions & shift blocks — **L** — ✅ DONE (2026-07-12, v0.63)
 
 Shipped, substantially revised from the spec below by the owner's direction
 (2026-07-11): **no dedicated merge pathway** — the PCPL roster is the source of

@@ -27,8 +27,8 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.60
-- **Last updated:** 2026-07-11
+- **Version:** 0.63
+- **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -495,7 +495,9 @@ columns from the roster.
   flag filters live in the URL** (roadmap 2.2) so they survive the hop into the
   per-student view; prev/next walks the filtered list, and the per-student name is a
   jump-to dropdown over it. One canonical `listResponses(filters)` backs both the list
-  and the neighbor computation.
+  and the neighbor computation. A **show-off-roster switch** (`roster=all`, same URL
+  mechanism) reveals retained submissions from off-roster responders (People Leaving,
+  test accounts), badged "off roster"; default stays on-roster only.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -871,7 +873,7 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 
 1. **Roster email key** — does PC's `Email` store `netid@wisc.edu` or a `first.last`
    alias? (Affects lookup correctness — §11.)
-2. **Position ↔ title mapping** — ✅ *resolved (v0.60):* the mapping lives in the
+2. **Position ↔ title mapping** — ✅ *resolved (v0.63):* the mapping lives in the
    `roster_title_mappings` table, seeded once from the code fixture; unmapped titles
    surface as ghosts and are resolved by the admin on `/admin/positions` (§6.1). No
    code change needed for new titles.
@@ -986,7 +988,8 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   dev-only `/dev-login` manager (which had replaced the removed `/admin/preview`
   form-preview page); promoted to **`/admin/test-users`** so admins can create/
   sign-in-as/delete throwaway students in any position in production (e.g. to train
-  admins). Accounts live in the test group (id `dev-test`; seeded wide-open, window
+  admins). The create form covers every roster-ingested field: name, position,
+  international, and hire date (default today, blank ⇒ null; 0.61). Accounts live in the test group (id `dev-test`; seeded wide-open, window
   editable on `/admin/groups` like any group since 0.39) under the synthetic
   domain `test.muster.invalid`, stay off-roster (invisible in responses/export/sheet/
   non-response tracking), and are reachable **only** via an admin-minted magic-link token —
@@ -996,7 +999,7 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
-- **0.60 (2026-07-11)** — **Admin-configurable positions & shift blocks (roadmap 3.3;
+- **0.63 (2026-07-12)** — **Admin-configurable positions & shift blocks (roadmap 3.3;
   §4.2, §6, §9, §16.2).** New `/admin/positions`: create/edit/deactivate positions,
   per-day-type block editor with live derived open/close tags and warnings (empty
   weekend set on a non-exempt position, unreachable min hours), delete guards
@@ -1019,6 +1022,28 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   initial fixtures). Static `POSITIONS` consumers converged onto DB reads
   (`positions/data.ts`). Migration 0014; **run `db:seed` once after deploying** so the
   mappings table gets its fixture rows.
+- **0.62 (2026-07-11)** — **Response list: show-off-roster switch (§10).** The
+  `/admin/responses` filter bar gains a **Show off-roster** checkbox that reveals
+  retained submissions from off-roster responders (People Leaving movers and admin
+  test accounts), each badged "off roster" next to the name. Roster visibility moved
+  from the `listResponses` SQL into the pure filter seam (`response-filters.ts`:
+  `includeOffRoster`, URL param `roster=all`), so like the group/flag filters it
+  follows the admin into the per-student view and the prev/next walk stays in
+  lockstep. Default unchanged: on-roster only; the CSV export and running sheet are
+  untouched.
+- **0.61 (2026-07-11)** — **Test accounts: hire date (§18b).** The `/admin/test-users`
+  create form gains a **Hire date** field (defaults to today, America/Chicago) written to
+  `students.hiredOn`, so a test account can exercise the `/me` returner greeting (date
+  before the cycle's June 1) or, cleared, the workbook-omitted case. Parsing reuses the
+  importer's `parseHireDate` (blank/unparseable ⇒ null). With name, position, and
+  international already on the form, every roster-ingested PCPL field is now settable
+  at create; the remaining PCPL columns (Campus ID, phone, onboarding tracking) are
+  excluded by data minimization (§9) and stay out of the app entirely.
+- **0.60 (2026-07-11)** — **App-wide 404 page.** New `src/app/not-found.tsx` (the
+  Next.js `not-found` convention) renders unmatched routes in the standard page
+  format: the `Page` shell, the `AppHeader` Home crumb, a short message, and a
+  primary-button link to `/me`. Static and session-free, so it serves signed-in
+  and signed-out visitors alike.
 - **0.59 (2026-07-11)** — **Resolve-on-submission change requests (§4.1).** The
   `/change-requests` form gains an admin-only **Mark as resolved on submission**
   checkbox (default off): the request is created with `status: "resolved"`, for logging

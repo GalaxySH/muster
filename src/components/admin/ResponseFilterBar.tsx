@@ -4,27 +4,32 @@ import { useRouter } from "next/navigation";
 import { FLAG_FILTER_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
 
 /**
- * Group + flag filters for the response dashboard (roadmap 2.2). These live in
- * the URL (not client state) so they survive navigation into the per-student
- * view and drive its prev/next walk. Search + sort stay client-side in the table.
+ * Group + flag + off-roster filters for the response dashboard (roadmap 2.2).
+ * These live in the URL (not client state) so they survive navigation into the
+ * per-student view and drive its prev/next walk. Search + sort stay client-side
+ * in the table.
  */
 export function ResponseFilterBar({
   groups,
   group,
   flag,
+  roster,
 }: {
   groups: { id: string; name: string }[];
   group?: string;
   flag?: string;
+  roster?: string;
 }) {
   const router = useRouter();
 
-  function navigate(next: { group?: string; flag?: string }) {
+  function navigate(next: { group?: string; flag?: string; roster?: string }) {
     const params = new URLSearchParams();
     const g = next.group ?? group ?? "";
     const f = next.flag ?? flag ?? "";
+    const r = next.roster ?? roster ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
+    if (r === "all") params.set("roster", r);
     const qs = params.toString();
     router.push(qs ? `/admin/responses?${qs}` : "/admin/responses");
   }
@@ -61,6 +66,15 @@ export function ResponseFilterBar({
             </option>
           ))}
         </select>
+      </label>
+
+      <label style={labelStyle}>
+        <input
+          type="checkbox"
+          checked={roster === "all"}
+          onChange={(e) => navigate({ roster: e.target.checked ? "all" : "" })}
+        />
+        Show off-roster
       </label>
     </div>
   );

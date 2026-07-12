@@ -109,7 +109,10 @@ export function ResponseList({
                 style={{ borderTop: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}
               >
                 <td style={td}>
-                  <div style={{ fontWeight: 500 }}>{r.displayName}</div>
+                  <div style={{ fontWeight: 500 }}>
+                    {r.displayName}
+                    {!r.onRoster && <span style={offRosterBadge}>off roster</span>}
+                  </div>
                   <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{r.email}</div>
                 </td>
                 <td style={td}>{r.positionName ?? "—"}</td>
@@ -219,3 +222,4 @@ const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", c
 const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };
 const flagBadge: React.CSSProperties = { ...badge, background: "var(--color-background-warning)", color: "var(--color-text-warning)" };
 const alertBadge: React.CSSProperties = { ...badge, background: "#fce8e6", color: "var(--color-text-danger)", whiteSpace: "nowrap" };
+const offRosterBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontWeight: 400, marginLeft: 6 };

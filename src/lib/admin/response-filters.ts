@@ -1,10 +1,11 @@
 /**
  * Pure response-list filters that follow you (PLAN §10, roadmap 2.2).
  *
- * The group and flag filters live in the URL so they survive navigation into the
- * per-student view and drive the prev/next walk there. This module owns the
- * parse ↔ apply ↔ serialize round-trip; `admin/data.ts` fetches the rows and the
- * pages read/write the query. Search + sort stay client-side in the list table.
+ * The group, flag, and off-roster filters live in the URL so they survive
+ * navigation into the per-student view and drive the prev/next walk there. This
+ * module owns the parse ↔ apply ↔ serialize round-trip; `admin/data.ts` fetches
+ * the rows and the pages read/write the query. Search + sort stay client-side in
+ * the list table.
  */
 import type { DbFlagType } from "@/lib/db/schema";
 
@@ -12,16 +13,19 @@ import type { DbFlagType } from "@/lib/db/schema";
 export type FlagFilter = "any" | DbFlagType;
 
 export interface ResponseFilters {
-  /** A group id, or "none" for on-roster responders with no group. */
+  /** A group id, or "none" for responders with no group. */
   groupId?: string | "none";
   /** Restrict to responders carrying a matching flag. */
   flag?: FlagFilter;
+  /** Also list off-roster responders (hidden by default). */
+  includeOffRoster?: boolean;
 }
 
 /** The minimal row shape the filters read. */
 export interface FilterableResponse {
   groupId: string | null;
   flagTypes: DbFlagType[];
+  onRoster: boolean;
 }
 
 /** Short human label per flag type, shared by the filter dropdown and the pills. */
@@ -48,6 +52,7 @@ export const UNGROUPED = "none";
 export function parseResponseFilters(params: {
   group?: string;
   flag?: string;
+  roster?: string;
 }): ResponseFilters {
   const filters: ResponseFilters = {};
   const group = params.group?.trim();
@@ -56,6 +61,7 @@ export function parseResponseFilters(params: {
   if (flag && (KNOWN_FLAGS as readonly string[]).includes(flag)) {
     filters.flag = flag as FlagFilter;
   }
+  if (params.roster?.trim() === "all") filters.includeOffRoster = true;
   return filters;
 }
 
@@ -65,6 +71,9 @@ export function applyResponseFilters<T extends FilterableResponse>(
   filters: ResponseFilters,
 ): T[] {
   return rows.filter((r) => {
+    // Responders who have since moved to "People Leaving" (PLAN §4.2) stay
+    // hidden unless the off-roster switch is on; their submission is retained.
+    if (!r.onRoster && !filters.includeOffRoster) return false;
     if (filters.groupId === UNGROUPED) {
       if (r.groupId !== null) return false;
     } else if (filters.groupId && r.groupId !== filters.groupId) {
@@ -84,5 +93,6 @@ export function serializeResponseFilters(filters: ResponseFilters): string {
   const params = new URLSearchParams();
   if (filters.groupId) params.set("group", filters.groupId);
   if (filters.flag) params.set("flag", filters.flag);
+  if (filters.includeOffRoster) params.set("roster", "all");
   return params.toString();
 }
