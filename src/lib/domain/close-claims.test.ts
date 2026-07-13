@@ -10,6 +10,7 @@ import {
   closeClaimsComplete,
   closeClaimsFeasibility,
   formatCloseDate,
+  formatCloseSlot,
 } from "./close-claims";
 
 describe("close-shift constants", () => {
@@ -117,5 +118,23 @@ describe("formatCloseDate", () => {
   it("renders a short weekday + month + day label", () => {
     expect(formatCloseDate("2026-09-04")).toBe("Fri Sep 4");
     expect(formatCloseDate("2026-12-12")).toBe("Sat Dec 12");
+  });
+});
+
+describe("formatCloseSlot", () => {
+  it("renders the date and the shift times on one line", () => {
+    expect(
+      formatCloseSlot({
+        date: "2026-09-04",
+        startMinutes: CLOSE_START_MINUTES,
+        endMinutes: CLOSE_END_MINUTES,
+      }),
+    ).toBe("Fri Sep 4, 6p–11:30p");
+  });
+
+  it("uses each slot's own times, not the defaults", () => {
+    expect(formatCloseSlot({ date: "2026-12-12", startMinutes: 17 * 60, endMinutes: 23 * 60 })).toBe(
+      "Sat Dec 12, 5p–11p",
+    );
   });
 });

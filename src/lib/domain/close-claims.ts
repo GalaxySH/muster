@@ -8,7 +8,7 @@
  * are YYYY-MM-DD strings, all math in UTC); the atomic claim write lives in
  * the server layer.
  */
-import { parseTime } from "./time";
+import { formatTime, parseTime } from "./time";
 
 /** Every Shift Lead must claim exactly this many closes (PLAN §18a). */
 export const REQUIRED_CLOSE_CLAIMS = 3;
@@ -114,4 +114,13 @@ const MONTH_LABELS = [
 export function formatCloseDate(iso: string): string {
   const d = toUtc(iso);
   return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/** One-line label for a whole slot, e.g. "Fri Sep 4, 6p–11:30p". */
+export function formatCloseSlot(slot: {
+  date: string;
+  startMinutes: number;
+  endMinutes: number;
+}): string {
+  return `${formatCloseDate(slot.date)}, ${formatTime(slot.startMinutes)}–${formatTime(slot.endMinutes)}`;
 }

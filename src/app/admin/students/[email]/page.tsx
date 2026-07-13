@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
+import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import type { DbFlagType } from "@/lib/db/schema";
@@ -24,6 +25,7 @@ import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
+import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
 
@@ -115,7 +117,7 @@ export default async function StudentDetailPage({
       .slice(0, CHANGE_PREVIEW_ROWS)
       .map((r) => r.id),
   );
-  const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
+  const { submission, position, blocks, selection, autoAssigned, evidence, closes } = detail;
   // Lifecycle flags written by position changes (roadmap 3.3), rendered with
   // their stored detail; the live validation checks below cover the rest.
   const storedAlerts = detail.flags.filter(
@@ -280,6 +282,9 @@ export default async function StudentDetailPage({
               </div>
             </section>
 
+            {/* SL weekend closes: the one extra hard requirement the position carries */}
+            {closes && <CloseClaimsCard closes={closes} />}
+
             {/* Course schedule */}
             <section style={panel}>
               <SectionLabel>Course schedule</SectionLabel>
@@ -376,6 +381,12 @@ export default async function StudentDetailPage({
             )}
           </div>
         </>
+      )}
+
+      {/* Claims can be admin-assigned before a lead fills the form, so the card
+          also stands alone when there's no submission to pack it into. */}
+      {!submission && closes && (
+        <CloseClaimsCard closes={closes} style={{ maxWidth: 620, marginTop: 14 }} />
       )}
 
       {/* A responder whose position is unset has no validation to show, but a
@@ -532,6 +543,46 @@ function JumpMenu({
         ))}
       </div>
     </details>
+  );
+}
+
+/**
+ * The Shift Lead's weekend closes (PLAN §18a): the dated slots they hold and
+ * progress toward the required picks. Short of the required count reads red,
+ * complete reads green, matching /admin/closes. Rendered only when
+ * `loadStudentCloseClaims` says the step applies (Shift Lead + an inventory).
+ */
+function CloseClaimsCard({
+  closes,
+  style,
+}: {
+  closes: StudentCloseClaims;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <section style={{ ...panel, ...style }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <SectionLabel>Weekend closes</SectionLabel>
+        <span style={closes.complete ? excusedBadge : dangerPill}>
+          {closes.complete ? "✓ " : ""}
+          {closes.claims.length} of {REQUIRED_CLOSE_CLAIMS}
+        </span>
+      </div>
+      {closes.claims.length > 0 ? (
+        <ul style={closeList}>
+          {closes.claims.map((c) => (
+            <li key={c.id}>{formatCloseSlot(c)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p style={{ fontSize: 13, color: "var(--color-text-warning)", margin: 0 }}>
+          No closes picked.
+        </p>
+      )}
+      <Link href="/admin/closes" style={closesLink}>
+        Manage closes
+      </Link>
+    </section>
   );
 }
 
@@ -725,6 +776,21 @@ const jumpItemCurrent: React.CSSProperties = {
   background: "var(--color-background-info)",
   color: "var(--color-text-info)",
   fontWeight: 600,
+};
+const closeList: React.CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 13,
+};
+const closesLink: React.CSSProperties = {
+  display: "inline-block",
+  marginTop: 8,
+  fontSize: 13,
+  color: "var(--color-text-info)",
 };
 const cardsGrid: React.CSSProperties = {
   display: "grid",

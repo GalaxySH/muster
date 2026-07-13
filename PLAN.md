@@ -26,8 +26,10 @@
   digest email via the cron-triggered token route. **Positions & shift blocks admin
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
-  insert-only seed. Next: ops.
-- **Version:** 0.67
+  insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
+  contradiction, the SL close-claims card on the per-student view, and 44px grid touch
+  targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
+- **Version:** 0.68
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1001,9 +1003,84 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   for the admin to open in a private window, keeping their admin session alongside.
   `/dev-login` retains only the dev-only OAuth bypass.
 
+### 18c. Launch-readiness UX fixes (pre-send evaluation, 2026-07-14)
+
+Findings from walking the student flow on a phone viewport and measuring the admin
+surfaces before the semester send-out. The three items below are code; the operational
+risks that came out of the same pass (roster email/netid mismatch, the Drive grant as a
+single point of failure, the window defaulting to closed) are **not** code changes and
+live in `README.md` § "Before you start" as a pre-send checklist.
+
+- **Window copy contradiction (§13) — ✅ DONE (0.68).** When a group's window is
+  `unconfigured` (either bound null, the seeded default), `/me` shows the banner "Your
+  availability window hasn't been scheduled yet" **and**, directly beneath it, "Check back
+  during the window shown above" — pointing at a window that is not shown. The read-only
+  line must be derived from `windowState` rather than hardcoded, so it never references a
+  window that isn't displayed. For `before`/`closed` the banner does show a real date and
+  the existing framing is fine; for `unconfigured` the line is both wrong and redundant.
+
+- **SL close claims on the per-student page (§10a, §18a) — ✅ DONE (0.68).** `/admin/students/
+  [email]` is specified as the scheduler's single decision-ready view, but it carries no
+  close-claim data at all. Shift Leads must hold exactly 3 weekend closes (§18a), which is
+  the one extra hard requirement any position carries, and today the scheduler has to leave
+  the page for `/admin/closes` and search by name. Add a compact card (SL-only, and only
+  once an inventory exists, mirroring the `/closes` step's own dormancy rule) showing the
+  dated slots held and progress toward 3, short-of-3 in red, linking to `/admin/closes`.
+  The card must stay small: the page currently fits 1920×1080 with no overflow and the
+  whole point of §10a is that it does not scroll.
+
+- **Availability grid touch targets (§7) — ✅ DONE (0.68).** The student grid renders 49 toggle
+  cells at **30×26 CSS px**. That clears the WCAG 2.5.8 floor (24px) but sits well under
+  Apple HIG (44pt) and Material (48dp), and most students fill this form on a phone. A
+  mis-tap silently flips a shift preference with no undo, and the wrong preference then
+  reaches the scheduler as if it were deliberate, so this is a data-quality bug and not
+  only an accessibility one. Raise the cells to ≥44×44 px on touch pointers without
+  introducing horizontal overflow at 390px (or 360px), and without inflating the
+  desktop layout. The admin `PrefGridCalculator` grid is out of scope: it is a
+  mouse-driven desktop tool.
+
 ---
 
 ## Changelog
+- **0.68 (2026-07-14)** — **Launch-readiness UX fixes (§18c) + README.** A pre-send pass
+  over the flow students will actually see (walked on a 390px phone viewport) and the admin
+  surfaces, ahead of the semester send-out. Three code fixes:
+  **(1) Window copy contradiction.** `/me` told a student to "check back during the window
+  shown above" while showing no window, which is exactly what the seeded default group
+  (both bounds null ⇒ `unconfigured`) produces. The read-only line is now the pure
+  `readOnlyNotice(state)` in `groups/window-message.ts`, returning `null` for
+  `unconfigured` (the banner above already states the situation and the action), so the
+  line can only appear where a real date backs it. `/me` shrank; no branch was added
+  alongside the old one. New co-located test pins all four states, including a guard that
+  the `unconfigured` copy can never again mention a window "above".
+  **(2) SL close claims on the per-student page (§10a).** The page is specified as the
+  scheduler's single decision-ready view but held no close data at all, so a Shift Lead's
+  3 mandatory closes (§18a) meant leaving for `/admin/closes` and searching by name. A
+  compact **`Weekend closes`** card now shows the dated slots held and progress toward 3
+  (green `✓ 3 of 3`, red when short) with a link through. `loadStudentCloseClaims` joins
+  claims ⋈ slots and loads in parallel with the evidence; visibility reuses
+  `isCloseStepRequired` (the *same* predicate gating the student `/closes` step), so the
+  card can't drift from the student side, non-leads short-circuit before any query, and it
+  stays dormant until an inventory exists. It also renders standalone for a lead with
+  claims but no submission (admins can assign closes before a lead opens the form).
+  Measured: the page still fits 1920×1080 with **0px overflow**.
+  **(3) Availability grid touch targets (§7).** The 49 student grid cells were 30×26 CSS
+  px, under Apple HIG (44pt) and Material (48dp). Most students fill this on a phone, and a
+  mis-tap silently flips a preference that reaches the scheduler as if deliberate, so this
+  was a data-quality bug and not only an accessibility one. Cells are now **44×44** under
+  `@media (pointer: coarse), (max-width: 640px)`, desktop unchanged. The row-label column
+  was the real constraint, so on touch the ` · open` / ` · close` tag drops to its own line
+  and the label may wrap, making horizontal overflow structurally impossible (verified
+  44×44, zero overflow, at 390px and 360px). The four nested style ternaries collapsed into
+  one `state` value driving one class; the component shed 64 lines of inline styles.
+  Also adds **`README.md`**: a status pill, what Muster is, and a **"Before you start"**
+  pre-send checklist for the operational risks the same pass surfaced, which are *not* code
+  and must not be treated as such: the roster `Email` column must equal the netid Google
+  address or the student dead-ends on "We don't recognize this account" (import only
+  lowercases/trims, so a `first.last@wisc.edu` alias never matches, and the magic-link
+  fallback refuses them silently too); the Drive grant is a single point of failure that
+  blocks the *required* first step for everyone; and a group window with either bound unset
+  is closed, which is the state a fresh group starts in.
 - **0.67 (2026-07-14)** — **Response page: click-to-mock hours calculator (§10a).**
   The per-student availability card is now interactive: the admin clicks grid cells
   to try out a schedule and a readout in the card's upper corner shows the live hours,

@@ -7,6 +7,7 @@
 import type { WindowState } from "@/lib/domain/window";
 import {
   lockedMessage,
+  readOnlyNotice,
   NO_GROUP_MESSAGE,
   SUBMITTED_LOCK_MESSAGE,
 } from "@/lib/groups/window-message";
@@ -56,4 +57,14 @@ export function FormWindowBanner({
       {detail ? ` ${detail}` : ""}
     </div>
   );
+}
+
+/**
+ * The line under the banner telling a locked-out student what they can't do.
+ * Renders nothing when the banner already covers it (no window scheduled).
+ */
+export function ReadOnlyNotice({ state }: { state: WindowState }) {
+  const notice = readOnlyNotice(state);
+  if (!notice) return null;
+  return <p style={{ color: "#555" }}>{notice}</p>;
 }

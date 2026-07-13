@@ -27,6 +27,7 @@ import {
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
+import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import { applyResponseFilters, type ResponseFilters } from "./response-filters";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
@@ -56,6 +57,8 @@ export interface StudentDetail {
   autoAssigned: SelectedShift[];
   flags: { type: DbFlagType; detail: string }[];
   evidence: EvidenceView;
+  /** SL weekend closes (PLAN §18a); null when the step doesn't apply. */
+  closes: StudentCloseClaims | null;
 }
 
 /** Everything the per-student view needs, or null if no such student. */
@@ -126,7 +129,10 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     flagRows = fRows.map((f) => ({ type: f.type, detail: f.detail ?? "" }));
   }
 
-  const evidence = await loadEvidence(email);
+  const [evidence, closes] = await Promise.all([
+    loadEvidence(email),
+    loadStudentCloseClaims(email, student.positionId),
+  ]);
 
   return {
     email: student.email,
@@ -140,6 +146,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     autoAssigned,
     flags: flagRows,
     evidence,
+    closes,
   };
 }
 
