@@ -17,6 +17,7 @@ import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
+import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
@@ -310,7 +311,11 @@ export default async function StudentDetailPage({
 
             {/* Travel */}
             <section style={panel}>
-              <SectionLabel>Travel</SectionLabel>
+              <SectionLabel
+                action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
+              >
+                Travel
+              </SectionLabel>
               {evidence.travel.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {evidence.travel.map((t) => (
@@ -339,7 +344,17 @@ export default async function StudentDetailPage({
 
             {/* Extracurriculars */}
             <section style={panel}>
-              <SectionLabel>Extracurriculars</SectionLabel>
+              <SectionLabel
+                action={
+                  <AddEvidenceButton
+                    kind="extracurricular"
+                    studentEmail={detail.email}
+                    currentNotes={evidence.extracurricularNotes}
+                  />
+                }
+              >
+                Extracurriculars
+              </SectionLabel>
               {evidence.extracurricularNotes ? (
                 <p style={{ fontSize: 13, margin: "0 0 10px" }}>
                   <span style={{ color: "var(--color-text-secondary)" }}>details: </span>
@@ -568,17 +583,29 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub:
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/** A card header. `action` renders as a quiet control on the right (e.g. "Add"). */
+function SectionLabel({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <div
       style={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        gap: 10,
         fontSize: 14,
         fontWeight: 700,
         color: "var(--color-text-primary)",
         marginBottom: 10,
       }}
     >
-      {children}
+      <span>{children}</span>
+      {action}
     </div>
   );
 }

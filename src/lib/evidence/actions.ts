@@ -12,6 +12,8 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
 import { requireEditableStudent } from "@/lib/groups/gate";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
@@ -28,13 +30,37 @@ export interface ActionResult {
   error?: string;
 }
 
-// Gates every mutating evidence action on the shared student gate (PLAN §13):
-// roster + group + open window. Uploading/removing evidence is part of editing
-// the submission, so it locks with the form.
-async function requireStudent(): Promise<{ email: string } | { error: string }> {
+/**
+ * Whose evidence is this? Normally the signed-in student's own, gated on the
+ * shared student gate (PLAN §13): roster + group + open window. Uploading and
+ * removing evidence is part of editing the submission, so it locks with the form.
+ *
+ * An admin may instead name a student to act for (the per-student response page,
+ * mirroring the change-request `employee` seam). They are the scheduler, so that
+ * student's form window doesn't bind them.
+ */
+async function requireStudent(
+  onBehalfOf = "",
+): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
+  if (onBehalfOf) {
+    const admin = await requireAdmin();
+    if (!admin.ok) return { error: admin.error };
+    const student = await findStudentByEmail(onBehalfOf);
+    if (!student) return { error: "That employee is not a known student." };
+    return { email: student.email, onBehalf: true };
+  }
   const gate = await requireEditableStudent();
-  return gate.ok ? { email: gate.email } : { error: gate.error };
+  return gate.ok ? { email: gate.email, onBehalf: false } : { error: gate.error };
 }
+
+/** The student page the entry lives on, plus the admin's view of it when they added it. */
+function revalidateEvidence(studentPath: string, who: { email: string; onBehalf: boolean }) {
+  revalidatePath(studentPath);
+  if (who.onBehalf) revalidatePath(`/admin/students/${encodeURIComponent(who.email)}`);
+}
+
+/** The admin-only "act for this student" field the response-page modal submits. */
+const onBehalfOf = (formData: FormData) => String(formData.get("student") ?? "").trim();
 
 /** Pull a File out of FormData and read it into a Buffer after validation. */
 async function readUpload(
@@ -84,7 +110,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
 }
 
 export async function addExtracurricularFile(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent();
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -110,7 +136,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
       ...upload,
     });
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
-    revalidatePath("/course-schedule");
+    revalidateEvidence("/course-schedule", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -136,8 +162,11 @@ export async function removeExtracurricularFile(rowId: string): Promise<ActionRe
   return { ok: true };
 }
 
-export async function saveExtracurricularNotes(notes: string): Promise<ActionResult> {
-  const who = await requireStudent();
+export async function saveExtracurricularNotes(
+  notes: string,
+  student = "",
+): Promise<ActionResult> {
+  const who = await requireStudent(student);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
@@ -146,25 +175,28 @@ export async function saveExtracurricularNotes(notes: string): Promise<ActionRes
     .update(submissions)
     .set({ extracurricularNotes: notes.slice(0, 2000) })
     .where(eq(submissions.id, submissionId));
-  revalidatePath("/course-schedule");
+  revalidateEvidence("/course-schedule", who);
   return { ok: true };
 }
 
 export async function addTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent();
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
-  // The cutoff hard stop (PLAN §8): under the active "refuse" policy, nothing
-  // is stored on/after the cutoff, so every stored entry is excused.
+  // The cutoff hard stop (PLAN §8) binds students: under the active "refuse"
+  // policy nothing they add on/after the cutoff is stored, so every entry they
+  // make is excused. An admin adding an entry for them IS the excusal call, so
+  // the cutoff doesn't stop it and the entry is stored excused.
   const now = new Date();
   const { cutoff } = await getTravelCutoff(now);
   const decision = decideTravelSubmission(now, cutoff);
-  if (!decision.allowed) {
+  if (!decision.allowed && !who.onBehalf) {
     return {
       ok: false,
       error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed. New travel can no longer be added.`,
     };
   }
+  const excused = decision.allowed ? decision.excused : true;
 
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
@@ -198,9 +230,9 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       note,
-      excused: decision.excused,
+      excused,
     });
-    revalidatePath("/travel");
+    revalidateEvidence("/travel", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };

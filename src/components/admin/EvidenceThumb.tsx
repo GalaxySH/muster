@@ -2,7 +2,8 @@
 
 import { faArrowUpRightFromSquare } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Modal } from "@/components/Modal";
 
 /**
  * A clickable evidence thumbnail that opens a full-screen lightbox (PLAN §10a).
@@ -37,15 +38,6 @@ export function EvidenceThumb({
   const [open, setOpen] = useState(false);
   const [isImage, setIsImage] = useState(true);
   const url = `/api/evidence/${encodeURIComponent(fileId)}`;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   return (
     <>
@@ -110,80 +102,40 @@ export function EvidenceThumb({
       </button>
 
       {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={label}
-          onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1000,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "2rem",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--color-background-primary)",
-              borderRadius: "var(--border-radius-lg)",
-              padding: "0.9rem",
-              maxWidth: "min(900px, 92vw)",
-              maxHeight: "90vh",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
+        <Modal label={label} onClose={() => setOpen(false)}>
+          {isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={url}
+              alt={label}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "78vh",
+                objectFit: "contain",
+                borderRadius: "var(--border-radius-md)",
+              }}
+            />
+          ) : (
+            <iframe
+              src={url}
+              title={label}
+              style={{
+                width: "100%",
+                height: "78vh",
+                border: "none",
+                borderRadius: "var(--border-radius-md)",
+              }}
+            />
+          )}
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 12, color: "var(--color-text-info)" }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{label}</span>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setOpen(false)}
-                style={{ lineHeight: 1, padding: "2px 8px" }}
-              >
-                ✕
-              </button>
-            </div>
-            {isImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={url}
-                alt={label}
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "78vh",
-                  objectFit: "contain",
-                  borderRadius: "var(--border-radius-md)",
-                }}
-              />
-            ) : (
-              <iframe
-                src={url}
-                title={label}
-                style={{
-                  width: "min(820px, 88vw)",
-                  height: "78vh",
-                  border: "none",
-                  borderRadius: "var(--border-radius-md)",
-                }}
-              />
-            )}
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: 12, color: "var(--color-text-info)" }}
-            >
-              Open in new tab <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
-            </a>
-          </div>
-        </div>
+            Open in new tab <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
+          </a>
+        </Modal>
       )}
     </>
   );

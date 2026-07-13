@@ -156,3 +156,41 @@ body {
     display: none;
   }
 }
+
+/* Modal overlay (components/Modal.tsx): the panel always spends the full width
+   it is given, up to the cap its caller sets in --modal-max-width. Under 720px
+   it goes edge to edge: on a phone, width is the scarce axis, so the backdrop
+   margin and the rounded corners give way to it and height follows content. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.6);
+}
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--modal-max-width, 900px);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0.9rem;
+  background: var(--color-background-primary);
+  border-radius: var(--border-radius-lg);
+}
+@media (max-width: 719.98px) {
+  .modal-overlay {
+    padding: 0;
+  }
+  .modal-panel {
+    max-width: none;
+    max-height: 100vh;
+    padding: 0.6rem;
+    border-radius: 0;
+  }
+}
