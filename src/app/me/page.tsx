@@ -38,10 +38,6 @@ export default async function MePage() {
 
       {adminHome ? (
         <InfoCard title="You're signed in as an admin">
-          <p style={{ marginTop: 0 }}>
-            This is the page students see when they sign in. Your tools are in the admin
-            dashboard.
-          </p>
           <PrimaryLink href="/admin">Open the admin dashboard</PrimaryLink>
         </InfoCard>
       ) : !flow.onRoster ? (
