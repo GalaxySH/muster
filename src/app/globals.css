@@ -1,6 +1,5 @@
 :root {
-  --font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   /* Design tokens shared with docs/wireframes/*.html so the admin surfaces use
      one vocabulary. Light theme; values mirror the ad-hoc hex used elsewhere. */
@@ -23,6 +22,7 @@
   --color-border-secondary: #ccd2de;
   --color-border-tertiary: #e2e6ee;
   --color-border-warning: #e0c060;
+  --color-border-danger: #d93025;
 
   --border-radius-md: 6px;
   --border-radius-lg: 10px;
@@ -127,6 +127,22 @@ body {
   .stack-table .cell-center {
     text-align: center;
   }
+}
+
+/* Hover affordance for the admin header controls. These are styled with inline
+   `style` objects, which can't express a pseudo-class, so the hover lives here
+   and each control opts in with the class. Darkening by filter rather than
+   setting a background keeps one rule working on every base colour (the white
+   links, the green "scheduled" toggle, the red delete button). */
+.btn-hover {
+  transition:
+    filter 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.btn-hover:hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.94);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  cursor: pointer;
 }
 
 /* Response-list flags cell: individual pills when there's room (wide table

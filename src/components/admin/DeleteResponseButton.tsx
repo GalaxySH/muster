@@ -48,6 +48,7 @@ export function DeleteResponseButton({
     return (
       <button
         type="button"
+        className="btn-hover"
         onClick={onClick}
         disabled={pending}
         aria-label={`Delete ${displayName}'s response`}
@@ -71,6 +72,7 @@ export function DeleteResponseButton({
   return (
     <button
       type="button"
+      className="btn-hover"
       onClick={onClick}
       disabled={pending}
       style={{

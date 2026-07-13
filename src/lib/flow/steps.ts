@@ -23,9 +23,7 @@ export const WIZARD_STEPS = [
 /** SL-only close-picking step (PLAN §18a), appended after travel. */
 export const CLOSES_STEP = { key: "closes", href: "/closes", label: "Weekend closes" } as const;
 
-export type WizardStepKey =
-  | (typeof WIZARD_STEPS)[number]["key"]
-  | (typeof CLOSES_STEP)["key"];
+export type WizardStepKey = (typeof WIZARD_STEPS)[number]["key"] | (typeof CLOSES_STEP)["key"];
 
 export interface WizardStep {
   key: WizardStepKey;
@@ -48,8 +46,12 @@ export function nextHref(key: WizardStepKey, steps: WizardStep[]): string {
 export interface FlowInputs {
   /** submissions.status === "submitted": the student finished the wizard. */
   submitted: boolean;
-  /** A submission row exists at all (they've started, e.g. confirmed the intro). */
-  hasSubmissionRow: boolean;
+  /**
+   * The student confirmed their roster info on /me (submissions.confirmed_at).
+   * A submission row alone doesn't mean they started: an admin can create one on
+   * their behalf, and the student still owes the confirmation.
+   */
+  hasConfirmed: boolean;
   /** A course schedule has been uploaded. */
   hasCourseSchedule: boolean;
   /** The saved availability passes hard rules AND has desired hours (could "continue"). */
@@ -68,14 +70,18 @@ export type FlowStatus =
 /**
  * Decide what the student sees on /me:
  *  - done         → finished (status submitted); show review links.
- *  - not-started  → no submission row and nothing uploaded; show the confirm box.
+ *  - not-started  → hasn't confirmed their roster info; show the confirm box.
  *  - continue     → partway through; deep-link to the first incomplete step.
+ *
+ * An admin may have started the submission (draft row, course schedule uploaded)
+ * before the student's first sign-in, so "started" means confirmed, never "a row
+ * exists".
  */
 export function flowStatus(i: FlowInputs): FlowStatus {
   if (i.submitted) return { kind: "done" };
-  if (!i.hasSubmissionRow && !i.hasCourseSchedule) return { kind: "not-started" };
-  // Confirmed their info (a draft row exists) but haven't uploaded anything yet;
-  // resume at the intro, which is where confirming sent them, not mid-flow.
+  if (!i.hasConfirmed) return { kind: "not-started" };
+  // Confirmed their info but haven't uploaded anything yet; resume at the intro,
+  // which is where confirming sent them, not mid-flow.
   if (!i.hasCourseSchedule)
     return { kind: "continue", href: "/intro", stepLabel: "the introduction" };
   if (!i.availabilityComplete)

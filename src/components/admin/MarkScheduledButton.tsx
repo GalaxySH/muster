@@ -30,6 +30,7 @@ export function MarkScheduledButton({
   return (
     <button
       type="button"
+      className="btn-hover"
       onClick={toggle}
       disabled={pending}
       aria-pressed={scheduled}
@@ -38,7 +39,9 @@ export function MarkScheduledButton({
         padding: "5px 12px",
         borderRadius: "var(--border-radius-md)",
         cursor: pending ? "default" : "pointer",
-        border: scheduled ? "1px solid var(--color-text-success)" : "1px solid var(--color-border-secondary)",
+        border: scheduled
+          ? "1px solid var(--color-text-success)"
+          : "1px solid var(--color-border-secondary)",
         background: scheduled ? "#e6f4ea" : "var(--color-background-primary)",
         color: scheduled ? "var(--color-text-success)" : "var(--color-text-primary)",
       }}

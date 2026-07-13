@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { FLAG_FILTER_OPTIONS, STARTED_MODE_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
 
 /**
- * Group + flag + off-roster + start-date filters for the response dashboard
- * (roadmap 2.2). These live in the URL (not client state) so they survive
+ * Group + flag + off-roster + all-students + start-date filters for the response
+ * dashboard (roadmap 2.2). These live in the URL (not client state) so they survive
  * navigation into the per-student view and drive its prev/next walk. Search +
  * sort stay client-side in the table.
  */
@@ -14,6 +14,7 @@ export function ResponseFilterBar({
   group,
   flag,
   roster,
+  all,
   started,
   startedDate,
 }: {
@@ -21,6 +22,7 @@ export function ResponseFilterBar({
   group?: string;
   flag?: string;
   roster?: string;
+  all?: string;
   started?: string;
   startedDate?: string;
 }) {
@@ -30,6 +32,7 @@ export function ResponseFilterBar({
     group?: string;
     flag?: string;
     roster?: string;
+    all?: string;
     started?: string;
     startedDate?: string;
   }) {
@@ -37,11 +40,13 @@ export function ResponseFilterBar({
     const g = next.group ?? group ?? "";
     const f = next.flag ?? flag ?? "";
     const r = next.roster ?? roster ?? "";
+    const a = next.all ?? all ?? "";
     const sm = next.started ?? started ?? "";
     const sd = next.startedDate ?? startedDate ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
+    if (a === "1") params.set("all", a);
     // A mode with no date yet stays in the URL so the date picker shows up;
     // the parser ignores the half-set pair until both halves are present.
     if (sm) {
@@ -53,7 +58,15 @@ export function ResponseFilterBar({
   }
 
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "0 0 12px" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+        margin: "0 0 12px",
+      }}
+    >
       <label style={labelStyle}>
         Group
         <select
@@ -92,7 +105,9 @@ export function ResponseFilterBar({
           value={started ?? ""}
           onChange={(e) =>
             // Clearing the mode clears the date too, so no stale date lingers.
-            navigate(e.target.value ? { started: e.target.value } : { started: "", startedDate: "" })
+            navigate(
+              e.target.value ? { started: e.target.value } : { started: "", startedDate: "" },
+            )
           }
           style={selectStyle}
         >
@@ -110,6 +125,15 @@ export function ResponseFilterBar({
             style={selectStyle}
           />
         )}
+      </label>
+
+      <label style={labelStyle}>
+        <input
+          type="checkbox"
+          checked={all === "1"}
+          onChange={(e) => navigate({ all: e.target.checked ? "1" : "" })}
+        />
+        Show all students
       </label>
 
       <label style={labelStyle}>

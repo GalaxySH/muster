@@ -17,6 +17,7 @@ import {
   Section,
   Thumb,
   DriveDisconnectedBanner,
+  OnBehalfField,
   useEvidenceRunner,
   ACCEPT,
   FORMAT_HINT,
@@ -32,11 +33,14 @@ export function CourseScheduleForm({
   initial,
   driveConnected,
   editable = true,
+  onBehalfOf,
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
   /** When false, all uploads/edits are disabled (form window not open, PLAN §13). */
   editable?: boolean;
+  /** Set when an admin is filling this in for a student: their email, carried into every action. */
+  onBehalfOf?: string;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   // Uploads need both an active Drive grant and an open form window.
@@ -47,7 +51,17 @@ export function CourseScheduleForm({
     <div style={{ maxWidth: 720 }}>
       <h1>Course schedule &amp; activities</h1>
       <p style={{ color: "#555" }}>
-        Upload images (preferred) or PDFs of your course schedule and any mandatory regularly occurring academic activities. You can find your course schedule in <a href="https://go.wisc.edu/76k189" target="_blank" rel="noopener noreferrer">MyUW</a> <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" /> or <a href="https://enroll.wisc.edu/my-courses" target="_blank" rel="noopener noreferrer">enroll.wisc.edu</a> <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" />. Only your course schedule is required.
+        Upload images (preferred) or PDFs of your course schedule and any mandatory regularly
+        occurring academic activities. You can find your course schedule in{" "}
+        <a href="https://go.wisc.edu/76k189" target="_blank" rel="noopener noreferrer">
+          MyUW
+        </a>{" "}
+        <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" /> or{" "}
+        <a href="https://enroll.wisc.edu/my-courses" target="_blank" rel="noopener noreferrer">
+          enroll.wisc.edu
+        </a>{" "}
+        <FontAwesomeIcon icon={faArrowUpRightFromSquare} size="xs" />. Only your course schedule is
+        required.
       </p>
 
       {!driveConnected && (
@@ -65,6 +79,7 @@ export function CourseScheduleForm({
           <p style={{ color: "#946c00", fontSize: 14 }}>No course schedule uploaded yet.</p>
         )}
         <form onSubmit={onUpload("course", uploadCourseSchedule)} style={uploadRow}>
+          <OnBehalfField onBehalfOf={onBehalfOf} />
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
           <ActionButton
             type="submit"
@@ -80,7 +95,11 @@ export function CourseScheduleForm({
       </Section>
 
       {/* Mandatory extracurriculars (optional) */}
-      <Section title="Mandatory extracurriculars" hint="We only prioritize excusals for mandatory activities. Add proof and details.">
+      <Section
+        id="extracurriculars"
+        title="Mandatory extracurriculars"
+        hint="We only prioritize excusals for mandatory activities. Add proof and details."
+      >
         <textarea
           value={notes}
           readOnly={!editable}
@@ -95,7 +114,7 @@ export function CourseScheduleForm({
             pending={busy("ecnotes")}
             pendingLabel="Saving…"
             disabled={pending || !editable}
-            onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes))}
+            onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes, onBehalfOf))}
           >
             Save notes
           </ActionButton>
@@ -109,13 +128,14 @@ export function CourseScheduleForm({
                 key={f.id}
                 fileId={f.fileId}
                 label="Extracurricular proof"
-                onRemove={() => run("ec", () => removeExtracurricularFile(f.id))}
+                onRemove={() => run("ec", () => removeExtracurricularFile(f.id, onBehalfOf))}
                 removeDisabled={pending || !editable}
               />
             ))}
           </div>
         )}
         <form onSubmit={onUpload("ec", addExtracurricularFile)} style={uploadRow}>
+          <OnBehalfField onBehalfOf={onBehalfOf} />
           <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
           <ActionButton
             type="submit"

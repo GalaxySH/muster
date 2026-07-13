@@ -53,10 +53,16 @@ export type FlowState =
 
 type LoadedForm = NonNullable<Awaited<ReturnType<typeof loadStudentForm>>>;
 
-/** Derive the wizard inputs from a loaded form, the course-schedule fileId, and closes state. */
+/** The submission columns the wizard reads but the availability form loader doesn't. */
+interface SubmissionProgress {
+  courseScheduleFileId: string | null;
+  confirmedAt: Date | null;
+}
+
+/** Derive the wizard inputs from a loaded form, the submission progress, and closes state. */
 function computeFlowInputs(
   form: LoadedForm,
-  courseScheduleFileId: string | null,
+  progress: SubmissionProgress,
   closes: { required: boolean; count: number },
 ): FlowInputs {
   let availabilityComplete = false;
@@ -71,21 +77,27 @@ function computeFlowInputs(
   }
   return {
     submitted: form.submission?.status === "submitted",
-    hasSubmissionRow: form.submission !== null,
-    hasCourseSchedule: Boolean(courseScheduleFileId),
+    hasConfirmed: progress.confirmedAt !== null,
+    hasCourseSchedule: Boolean(progress.courseScheduleFileId),
     availabilityComplete,
     closesRequired: closes.required,
     closeClaimCount: closes.count,
   };
 }
 
-async function loadCourseScheduleFileId(email: string): Promise<string | null> {
+async function loadSubmissionProgress(email: string): Promise<SubmissionProgress> {
   const [sub] = await getDb()
-    .select({ courseScheduleFileId: submissions.courseScheduleFileId })
+    .select({
+      courseScheduleFileId: submissions.courseScheduleFileId,
+      confirmedAt: submissions.confirmedAt,
+    })
     .from(submissions)
     .where(eq(submissions.studentEmail, email))
     .limit(1);
-  return sub?.courseScheduleFileId ?? null;
+  return {
+    courseScheduleFileId: sub?.courseScheduleFileId ?? null,
+    confirmedAt: sub?.confirmedAt ?? null,
+  };
 }
 
 /** SL close-step state (§18a): does it apply, and how many claims are held. */
@@ -115,7 +127,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
         };
 
   const closes = await loadCloses(form.student.positionId, email);
-  const inputs = computeFlowInputs(form, await loadCourseScheduleFileId(email), closes);
+  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email), closes);
 
   return {
     onRoster: true,
@@ -146,6 +158,6 @@ export async function loadWizardNav(email: string): Promise<WizardNav> {
   const form = await loadStudentForm(email);
   if (!form) return { steps: wizardSteps(false), reachable: ["course-schedule"] };
   const closes = await loadCloses(form.student.positionId, email);
-  const inputs = computeFlowInputs(form, await loadCourseScheduleFileId(email), closes);
+  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email), closes);
   return { steps: wizardSteps(closes.required), reachable: reachableStepKeys(inputs) };
 }
