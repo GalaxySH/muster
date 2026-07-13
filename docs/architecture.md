@@ -221,7 +221,12 @@ persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a ref
 layer, offers Reset/Clear, and never persists — pure client state. The weekend rotation
 pill is part of the trial too: clicking it flips A/B ↔ every-weekend, re-weighting the
 weekend (×0.5 ↔ ×1.0) in the same `computeCapacity` call, and Reset restores the
-student's real rotation along with their picks. The flags & checks
+student's real rotation along with their picks. When the trial's weekend holds **only**
+the auto-assigned shift, the readout becomes a **range**: the upper bound is a second
+`computeCapacity` over picks + the auto cell (so it tracks the rotation), tinted
+`--color-text-auto` because those hours are additional and not the student's own pick.
+Any weekend pick in the trial replaces the auto shift, so the range collapses to the
+single number that pick already counts for. The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
 the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.

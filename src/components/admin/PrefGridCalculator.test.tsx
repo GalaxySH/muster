@@ -158,6 +158,47 @@ describe("PrefGridCalculator", () => {
     expect(cell).toHaveAttribute("title", expect.stringContaining("not one the student picked"));
   });
 
+  describe("auto-assigned weekend range", () => {
+    // Picks: weekday only (8h). The weekend is machine-assigned (we-a, 4h), so it
+    // sits outside preference capacity and shows as an optional upper bound.
+    const weekdayOnly: SelectedShift[] = [
+      { blockId: "wd-a", day: "mon" },
+      { blockId: "wd-a", day: "tue" },
+    ];
+    const autoSat: SelectedShift[] = [{ blockId: "we-a", day: "sat" }];
+
+    it("shows a range while the trial's weekend is auto-only", () => {
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+      expect(screen.getByText("8")).toBeInTheDocument(); // picks alone
+      expect(screen.getByText("–10h")).toBeInTheDocument(); // + 0.5 * 4h auto weekend
+    });
+
+    it("follows the rotation toggle", async () => {
+      const user = userEvent.setup();
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+      expect(screen.getByText("–10h")).toBeInTheDocument(); // A/B: auto weekend at half
+
+      await user.click(screen.getByRole("button", { name: /alternating/i }));
+      expect(screen.getByText("–12h")).toBeInTheDocument(); // every weekend: in full
+    });
+
+    it("collapses to one number once a weekend shift is picked into the trial", async () => {
+      const user = userEvent.setup();
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+
+      // The picked weekend shift replaces the auto one, so it is simply counted.
+      await user.click(screen.getByRole("button", { name: "9a–1p Sat" }));
+      expect(screen.queryByText(/^–/)).not.toBeInTheDocument();
+      expect(screen.getByText("10h")).toBeInTheDocument();
+    });
+
+    it("shows no range when the student picked their own weekend shift", () => {
+      renderCalc(); // picks include we-a Sat, no auto
+      expect(screen.queryByText(/^–/)).not.toBeInTheDocument();
+      expect(screen.getByText("10h")).toBeInTheDocument();
+    });
+  });
+
   it("marks the high-demand cell", () => {
     renderCalc({ highDemand: new Set([demandCellKey("wd-a", "mon")]) });
     expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(

@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import type { AdminGridModel, AdminSubGrid } from "@/lib/admin/summary";
 import { computeCapacity } from "@/lib/domain/capacity";
 import { keysToSelection, selectionKey } from "@/lib/availability/selection";
-import { DAY_LABEL, type Day, type ShiftBlock } from "@/lib/domain/types";
+import { formatTime } from "@/lib/domain/time";
+import {
+  DAY_LABEL,
+  dayTypeOf,
+  type Day,
+  type SelectedShift,
+  type ShiftBlock,
+} from "@/lib/domain/types";
 
 /**
  * Interactive preference grid + live hours calculator for the per-student admin
@@ -21,7 +28,15 @@ import { DAY_LABEL, type Day, type ShiftBlock } from "@/lib/domain/types";
 // Compact fixed cell size; keeps the grid tight instead of stretching wide.
 const CELL = 26;
 
-const fmtHours = (h: number) => `${Math.round(h * 10) / 10}h`;
+const fmtNum = (h: number) => `${Math.round(h * 10) / 10}`;
+const fmtHours = (h: number) => `${fmtNum(h)}h`;
+
+/** e.g. "Sat 8:30a–11a", for the auto-weekend tooltip. */
+function describeCell(cell: SelectedShift, blocks: readonly ShiftBlock[]): string {
+  const block = blocks.find((b) => b.id === cell.blockId);
+  if (!block) return DAY_LABEL[cell.day];
+  return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
+}
 
 export interface PrefGridCalculatorProps {
   grid: AdminGridModel;
@@ -74,6 +89,29 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const hours = capacity.weeklyAverageHours;
   const dayCount = useMemo(() => new Set(selection.map((s) => s.day)).size, [selection]);
 
+  /**
+   * The auto-assigned weekend is hours the student never offered but would work
+   * anyway, so it sits outside preference capacity. While the trial's weekend is
+   * auto-only, the readout shows a range (picks .. picks + auto) with the upper
+   * bound marked as optional; picking any weekend shift replaces the auto shift,
+   * and the range collapses to the single number that pick already counts for.
+   */
+  const autoWeekend = useMemo(
+    () => keysToSelection(auto).filter((s) => validIds.has(s.blockId) && dayTypeOf(s.day) === "weekend"),
+    [auto, validIds],
+  );
+  const trialHasWeekend = selection.some((s) => dayTypeOf(s.day) === "weekend");
+  const showAutoRange = autoWeekend.length > 0 && !trialHasWeekend;
+  const hoursWithAuto = useMemo(
+    () =>
+      showAutoRange
+        ? computeCapacity([...selection, ...autoWeekend], props.blocks, {
+            everyWeekendOptIn: optIn,
+          }).weeklyAverageHours
+        : hours,
+    [showAutoRange, selection, autoWeekend, props.blocks, optIn, hours],
+  );
+
   const belowFloor = mock.size > 0 && hours < props.minHours;
   const overCap = hours > props.cap;
   const dirty =
@@ -115,38 +153,33 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   return (
     <>
-      {/* Header: section label on the left, live hours badge in the upper corner. */}
+      {/* Header: title and the live hours readout on one line. The Reset/Clear
+          controls sit with the legend so the header text never wraps. */}
       <div style={headerRow}>
         <div style={sectionLabel}>Availability preferences</div>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-            {dirty && (
-              <button
-                type="button"
-                onClick={reset}
-                style={miniBtn}
-                title="Reset to the student's picks"
-              >
-                Reset
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setMock(new Set())}
-              style={miniBtn}
-              title="Clear every cell"
-            >
-              Clear
-            </button>
-          </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
           <div style={badge} aria-live="polite">
             <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: accent }}>
-              {fmtHours(hours)}
+              {showAutoRange ? (
+                <>
+                  {fmtNum(hours)}
+                  <span
+                    style={{ color: "var(--color-text-auto)" }}
+                    title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                      .map((s) => describeCell(s, props.blocks))
+                      .join(", ")}`}
+                  >
+                    –{fmtHours(hoursWithAuto)}
+                  </span>
+                </>
+              ) : (
+                fmtHours(hours)
+              )}
             </div>
             <div
               style={{
                 fontSize: 11,
-                marginTop: 2,
+                whiteSpace: "nowrap",
                 color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
               }}
             >
@@ -190,7 +223,26 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         )}
       </div>
 
-      <Legend />
+      <div style={footerRow}>
+        <Legend />
+        {/* marginLeft keeps the controls in the bottom-right corner even when the
+            legend is wide enough to push them onto their own line. */}
+        <div style={{ display: "flex", gap: 4, flex: "none", marginLeft: "auto" }}>
+          {dirty && (
+            <button type="button" onClick={reset} style={miniBtn} title="Reset to the student's picks">
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMock(new Set())}
+            style={miniBtn}
+            title="Clear every cell"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
     </>
   );
 }
@@ -316,11 +368,17 @@ function Legend() {
 
 // --- styles ---
 
+/**
+ * Title, controls, and the hours readout all sit on one line, baseline-aligned, so
+ * the card opens with a single scannable row rather than a stack. It wraps only when
+ * the column gets too narrow to hold them.
+ */
 const headerRow: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "flex-start",
+  alignItems: "baseline",
   gap: 12,
+  flexWrap: "wrap",
   marginBottom: 12,
 };
 const sectionLabel: React.CSSProperties = {
@@ -329,8 +387,9 @@ const sectionLabel: React.CSSProperties = {
   color: "var(--color-text-primary)",
 };
 const badge: React.CSSProperties = {
-  textAlign: "right",
-  minWidth: 96,
+  display: "flex",
+  alignItems: "baseline",
+  gap: 6,
 };
 const miniBtn: React.CSSProperties = {
   fontSize: 11,
@@ -351,11 +410,19 @@ const hotTick: React.CSSProperties = {
   borderRadius: 1,
   pointerEvents: "none",
 };
+/** Legend on the left, the trial controls on the right, sharing the card's last row. */
+const footerRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  marginTop: 12,
+};
 const legendRow: React.CSSProperties = {
   display: "flex",
   gap: 14,
   flexWrap: "wrap",
-  marginTop: 12,
   fontSize: 11,
   color: "var(--color-text-secondary)",
 };
