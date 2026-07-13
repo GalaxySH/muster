@@ -11,6 +11,9 @@
   --color-text-success: #196127;
   --color-text-warning: #946c00;
   --color-text-danger: #b00020;
+  /* Hours a student hasn't offered but would get anyway (the auto-assigned
+     weekend): additional, optional, not their own pick. */
+  --color-text-auto: #d1497a;
 
   --color-background-primary: #ffffff;
   --color-background-secondary: #f4f6fa;
