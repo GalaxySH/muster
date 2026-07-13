@@ -34,6 +34,12 @@ export function AddEvidenceButton({
 
   const title = kind === "travel" ? "Add travel entry" : "Add extracurricular";
 
+  // Reopening starts clean: a failed attempt's error must not greet the next one.
+  function close() {
+    setOpen(false);
+    setError(null);
+  }
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -58,7 +64,7 @@ export function AddEvidenceButton({
           return;
         }
       }
-      setOpen(false);
+      close();
       router.refresh();
     });
   }
@@ -70,54 +76,55 @@ export function AddEvidenceButton({
       </button>
 
       {open && (
-        <Modal label={title} onClose={() => setOpen(false)} width="min(420px, 92vw)">
-          <form onSubmit={submit} style={{ display: "grid", gap: 10, fontSize: 14 }}>
+        <Modal label={title} onClose={close}>
+          <form onSubmit={submit} style={formStyle}>
             <input type="hidden" name="student" value={studentEmail} />
 
-            {kind === "travel" ? (
-              <>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={fieldArea}>
+              {kind === "travel" ? (
+                <>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <label style={field}>
+                      Start
+                      <input type="date" name="startDate" required />
+                    </label>
+                    <label style={field}>
+                      End
+                      <input type="date" name="endDate" required />
+                    </label>
+                  </div>
                   <label style={field}>
-                    Start
-                    <input type="date" name="startDate" required />
+                    Note (optional)
+                    <input type="text" name="note" style={{ padding: 6 }} />
                   </label>
-                  <label style={field}>
-                    End
-                    <input type="date" name="endDate" required />
-                  </label>
-                </div>
-                <label style={field}>
-                  Note (optional)
-                  <input type="text" name="note" style={{ padding: 6 }} />
+                </>
+              ) : (
+                // The details box takes the room travel spends on its date fields.
+                <label style={{ ...field, flex: 1, minHeight: 0, gridTemplateRows: "auto 1fr" }}>
+                  Details
+                  <textarea
+                    name="notes"
+                    defaultValue={currentNotes}
+                    placeholder="The activity, including dates and times"
+                    style={{ padding: 8, width: "100%", boxSizing: "border-box", resize: "none" }}
+                  />
                 </label>
-              </>
-            ) : (
+              )}
+
               <label style={field}>
-                Details
-                <textarea
-                  name="notes"
-                  defaultValue={currentNotes}
-                  rows={3}
-                  placeholder="The activity, including dates and times"
-                  style={{ padding: 8, width: "100%", boxSizing: "border-box" }}
-                />
+                Proof
+                <input type="file" name="file" accept={ACCEPT} required />
+                <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{FORMAT_HINT}</span>
               </label>
-            )}
+            </div>
 
-            <label style={field}>
-              Proof
-              <input type="file" name="file" accept={ACCEPT} required />
-              <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{FORMAT_HINT}</span>
-            </label>
-
-            {error && (
-              <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--color-text-danger)" }}>
-                {error}
-              </p>
-            )}
+            {/* Always rendered, so an error appears in space the box already holds. */}
+            <p role="status" style={errorSlot}>
+              {error}
+            </p>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <ActionButton variant="secondary" disabled={pending} onClick={() => setOpen(false)}>
+              <ActionButton variant="secondary" disabled={pending} onClick={close}>
                 Cancel
               </ActionButton>
               <ActionButton type="submit" pending={pending} pendingLabel="Uploading…">
@@ -140,6 +147,37 @@ const addLink: React.CSSProperties = {
   fontWeight: 500,
   color: "var(--color-text-info)",
   cursor: "pointer",
+};
+
+/**
+ * The box holds one size for its whole life: an error, a long file name, or a
+ * pending button label never move the controls under the pointer. Both kinds of
+ * entry use the same footprint, so the two modals open identically.
+ */
+const formStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  width: "min(380px, 80vw)",
+  height: 300,
+  fontSize: 14,
+};
+/** The fields take whatever the reserved rows below them leave, and scroll if they need more. */
+const fieldArea: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+/** Reserved room for the longest error we raise (the Drive-not-connected one). */
+const errorSlot: React.CSSProperties = {
+  margin: 0,
+  height: 46,
+  overflowY: "auto",
+  fontSize: 13,
+  color: "var(--color-text-danger)",
 };
 
 const field: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13 };

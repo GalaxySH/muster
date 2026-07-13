@@ -3,20 +3,18 @@
 /**
  * The shared modal overlay: dimmed backdrop, click-outside and Escape to close,
  * a labelled header with a close button. Used by the evidence lightbox
- * (EvidenceThumb) and the admin add-entry forms.
+ * (EvidenceThumb) and the admin add-entry forms. The panel sizes to its content,
+ * so a caller that wants a fixed box sizes its own children (AddEvidenceButton).
  */
 import { useEffect } from "react";
 
 export function Modal({
   label,
   onClose,
-  width = "min(900px, 92vw)",
   children,
 }: {
   label: string;
   onClose: () => void;
-  /** CSS max-width of the panel. */
-  width?: string;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -50,7 +48,7 @@ export function Modal({
           background: "var(--color-background-primary)",
           borderRadius: "var(--border-radius-lg)",
           padding: "0.9rem",
-          maxWidth: width,
+          maxWidth: "min(900px, 92vw)",
           maxHeight: "90vh",
           overflowY: "auto",
           display: "flex",
