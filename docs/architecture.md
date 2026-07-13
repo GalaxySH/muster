@@ -105,7 +105,12 @@ request (students still only their own). The per-student admin page header carri
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`, and the queue at
+submission, each anchored as `#change-request-<id>`. It is one card among the others in
+that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
+slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
+a long history never stretches the page below the other cards. That means the dashboard
+container renders unconditionally and the submission-dependent cards are conditional
+children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -206,7 +211,9 @@ rows with no hire date never match. The list itself (`ResponseList`) is a full-b
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
-change-request count pill sits next to the name (nothing at zero). `actions.ts` ("use server", **admin-gated**) owns
+change-request count pill sits next to the name (nothing at zero). The Travel and Extracurriculars cards each carry an **Add** link
+(`AddEvidenceButton`, v0.67) that writes through the student evidence actions; see the
+evidence/Drive section. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
@@ -230,7 +237,7 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
-the persisted `flags` rows. The **`Weekend closes` card** (v0.68, PLAN §18c) closes the
+the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
 last hole in "everything about one student on one page": `loadStudentCloseClaims`
 (`closes/data.ts`) joins `close_claims` ⋈ `close_slots` and `loadStudentDetail` pulls it
 in parallel with the evidence, so it costs no extra latency. Visibility is gated on the
@@ -260,6 +267,30 @@ student UI is split into two client forms — `components/evidence/CourseSchedul
 (course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
 `components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
 styles). They render on the `/course-schedule` and `/travel` server pages.
+
+**Admin on-behalf entry (v0.67).** `requireStudent(onBehalfOf)` in `evidence/actions.ts` is
+the gate seam: empty ⇒ the signed-in student through `requireEditableStudent` (roster +
+group + window); an email ⇒ `requireAdmin` + `findStudentByEmail`, so an admin writes for a
+student without their window binding (the same shape as `resolveTargetStudent` in
+`changes/actions.ts`). `addTravelRequest` and `addExtracurricularFile` read that email from
+FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `revalidateEvidence`
+then also revalidates the admin's per-student page. The **travel cutoff refuses students
+only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
+cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
+Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
+`action` slot): one modal per kind, the same fields as the student form, with the
+extracurricular details box prefilled from the submission so the admin edits rather than
+replaces the student's text (details are one column, not per file). The form holds **one
+size** whatever happens inside it (fixed height, scrolling field area, an always-reserved
+error row), so a failed upload never shifts the buttons under the pointer.
+
+The modal shell is the shared `components/Modal.tsx` (backdrop, Escape, click-outside),
+extracted from `EvidenceThumb`'s lightbox and reused by it. The panel always **spends the
+full width it is given**, capped per caller by `--modal-max-width` (900px for the lightbox,
+420px for the add form); under 720px `.modal-overlay`/`.modal-panel` (globals.css) drop the
+backdrop margin and the rounded corners so it runs **edge to edge on a phone**, where width
+is the scarce axis. Children of a modal therefore size in percentages, never fixed pixel
+widths.
 
 ## Availability form layering
 
@@ -351,7 +382,7 @@ owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPa
 `unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
 `searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;
 `groups/window-message.ts` is the shared (pure) banner/error copy, including
-`readOnlyNotice(state)` (v0.68): the read-only line on `/me` is **derived from
+`readOnlyNotice(state)` (v0.70): the read-only line on `/me` is **derived from
 `WindowState`**, not hardcoded, and returns `null` for `unconfigured`. It used to be one
 fixed string telling the student to "check back during the window shown above" even when
 no window existed to show, which is the first thing a student saw if they arrived before an

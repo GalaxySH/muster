@@ -29,7 +29,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.68
+- **Version:** 0.70
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -399,6 +399,14 @@ scheduler (not auto-parsed).
   `"accept-and-flag"` restores the old behavior end to end (late entries stored
   `excused: false`, "not excused (late)" badges, `travel_late` flag on submit — those
   paths are deliberately kept wired).
+
+**Admin entry on a student's behalf (§10).** Travel entries and extracurriculars can also
+be added by an admin from the per-student response page (an *Add* link in each card
+header). Same actions, same relay, same caps; only the gate differs: the admin is the
+scheduler, so the student's form window doesn't bind them and the travel cutoff doesn't
+refuse them — an admin adding a travel entry *is* the excusal decision, so the entry is
+stored `excused: true`. This covers what a student hands over in person or after their
+window closes.
 
 ---
 
@@ -1011,7 +1019,7 @@ risks that came out of the same pass (roster email/netid mismatch, the Drive gra
 single point of failure, the window defaulting to closed) are **not** code changes and
 live in `README.md` § "Before you start" as a pre-send checklist.
 
-- **Window copy contradiction (§13) — ✅ DONE (0.68).** When a group's window is
+- **Window copy contradiction (§13) — ✅ DONE (0.70).** When a group's window is
   `unconfigured` (either bound null, the seeded default), `/me` shows the banner "Your
   availability window hasn't been scheduled yet" **and**, directly beneath it, "Check back
   during the window shown above" — pointing at a window that is not shown. The read-only
@@ -1019,7 +1027,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   window that isn't displayed. For `before`/`closed` the banner does show a real date and
   the existing framing is fine; for `unconfigured` the line is both wrong and redundant.
 
-- **SL close claims on the per-student page (§10a, §18a) — ✅ DONE (0.68).** `/admin/students/
+- **SL close claims on the per-student page (§10a, §18a) — ✅ DONE (0.70).** `/admin/students/
   [email]` is specified as the scheduler's single decision-ready view, but it carries no
   close-claim data at all. Shift Leads must hold exactly 3 weekend closes (§18a), which is
   the one extra hard requirement any position carries, and today the scheduler has to leave
@@ -1029,7 +1037,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   The card must stay small: the page currently fits 1920×1080 with no overflow and the
   whole point of §10a is that it does not scroll.
 
-- **Availability grid touch targets (§7) — ✅ DONE (0.68).** The student grid renders 49 toggle
+- **Availability grid touch targets (§7) — ✅ DONE (0.70).** The student grid renders 49 toggle
   cells at **30×26 CSS px**. That clears the WCAG 2.5.8 floor (24px) but sits well under
   Apple HIG (44pt) and Material (48dp), and most students fill this form on a phone. A
   mis-tap silently flips a shift preference with no undo, and the wrong preference then
@@ -1042,7 +1050,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.68 (2026-07-14)** — **Launch-readiness UX fixes (§18c) + README.** A pre-send pass
+- **0.70 (2026-07-14)** — **Launch-readiness UX fixes (§18c) + README.** A pre-send pass
   over the flow students will actually see (walked on a 390px phone viewport) and the admin
   surfaces, ahead of the semester send-out. Three code fixes:
   **(1) Window copy contradiction.** `/me` told a student to "check back during the window
@@ -1081,6 +1089,30 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   fallback refuses them silently too); the Drive grant is a single point of failure that
   blocks the *required* first step for everyone; and a group window with either bound unset
   is closed, which is the state a fresh group starts in.
+- **0.69 (2026-07-14)** — **Admin-added travel + extracurriculars (§7b, §10).** The Travel
+  and Extracurriculars cards on `/admin/students/[email]` each gain an **Add** link in the
+  card header, opening a modal with the same fields the student's own form has. No new
+  write path: the modal calls the existing `addTravelRequest` / `addExtracurricularFile` /
+  `saveExtracurricularNotes` actions with the student named in a hidden `student` field,
+  and `requireStudent(onBehalfOf)` in `evidence/actions.ts` grows the same on-behalf seam
+  `createChangeRequest` already uses — admin session + a known student, in place of the
+  roster/group/window gate. The travel cutoff refuses **students** only: an admin adding an
+  entry is the excusal call, so it stores `excused: true` past the cutoff. The add form
+  holds one size whatever happens inside it, so an error never shifts the buttons under the
+  pointer. The lightbox overlay is extracted out of `EvidenceThumb` into a shared
+  `components/Modal.tsx` (backdrop, Escape, click-outside), reused by both: the panel now
+  spends the full width it is given (capped per caller) and runs **edge to edge under
+  720px**, so a phone wastes no width on either the lightbox or the form.
+- **0.68 (2026-07-14)** — **Response page: change requests join the card layout (§10a).**
+  The schedule change requests panel was a full-width block *below* the dashboard, so a
+  student with requests always cost the admin a scroll to the bottom of the page. It is
+  now a card inside the same balanced-column packing as the rest, kept last in DOM order
+  so it still packs into the final slot, and its request list scrolls **inside the card**
+  (capped at 48vh) rather than stretching the card past every other column. The card is a
+  child of the dashboard container in all cases, so it still renders for a student with no
+  submission (as does the position-change flag panel, which moves in with it). Deep links
+  (`#change-request-<id>` from the queue and the digest email) still land on the right row:
+  fragment navigation scrolls the card's own list.
 - **0.67 (2026-07-14)** — **Response page: click-to-mock hours calculator (§10a).**
   The per-student availability card is now interactive: the admin clicks grid cells
   to try out a schedule and a readout in the card's upper corner shows the live hours,

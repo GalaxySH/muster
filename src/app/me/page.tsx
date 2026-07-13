@@ -31,7 +31,7 @@ export default async function MePage() {
       </p>
 
       {flow.onRoster && flow.returning && (
-        <p style={greeting}>Welcome back! Good to have you back this year.</p>
+        <p style={greeting}>Welcome back to Gordon</p>
       )}
 
       {adminHome && <p style={greeting}>{firstName ? `Hi ${firstName}` : "Hi there"}</p>}
