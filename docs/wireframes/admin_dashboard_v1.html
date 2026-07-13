@@ -4,6 +4,14 @@
      carries its own icon sprite so it opens in a browser on its own. The values
      mirror src/app/globals.css. Muster is light-only, so this mockup is too. -->
 <style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .wf {
     --color-text-primary: #1a2233;
     --color-text-secondary: #4a5568;
@@ -120,11 +128,11 @@
   <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
     <div>
       <div style="font-size:22px; font-weight:600;">Admin</div>
-      <div style="font-size:13px; color:var(--color-text-secondary);">dining.admin@wisc.edu &nbsp;·&nbsp; <span style="color:var(--color-text-tertiary);">as of 9:14 AM</span></div>
+      <div style="font-size:13px; color:var(--color-text-secondary);">dining.admin@wisc.edu &nbsp;&middot;&nbsp; <span style="color:var(--color-text-tertiary);">as of 9:14 AM</span></div>
     </div>
     <label class="row" style="background:var(--color-background-primary); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); padding:5px 10px; min-width:280px;">
       <svg style="color:var(--color-text-tertiary)"><use href="#i-search"/></svg>
-      <input placeholder="Find a student by name or email…" style="border:0; outline:0; font-size:14px; font-family:inherit; flex:1; background:transparent;">
+      <input placeholder="Find a student by name or email&hellip;" style="border:0; outline:0; font-size:14px; font-family:inherit; flex:1; background:transparent;">
       <span style="font-size:11px; color:var(--color-text-tertiary); border:0.5px solid var(--color-border-tertiary); border-radius:4px; padding:0 4px;">/</span>
     </label>
   </div>
@@ -133,7 +141,7 @@
   <div class="panel">
     <div class="label">
       <span>Response progress</span>
-      <span class="hint">241 of 380 on roster have submitted &nbsp;·&nbsp; 63%</span>
+      <span class="hint">241 of 380 on roster have submitted &nbsp;&middot;&nbsp; 63%</span>
     </div>
 
     <div class="bar" style="margin-bottom:6px;">
@@ -155,37 +163,37 @@
         <th style="font-weight:400; width:38%;">Responded</th>
       </tr>
       <tr style="border-top:0.5px solid var(--color-border-tertiary);">
-        <td style="padding:7px 0;">Returning staff <span style="color:var(--color-text-tertiary);">· 214</span></td>
-        <td><span class="pill pill-open">open · closes in 6 days</span></td>
+        <td style="padding:7px 0;">Returning staff <span style="color:var(--color-text-tertiary);">&middot; 214</span></td>
+        <td><span class="pill pill-open">open &middot; closes in 6 days</span></td>
         <td>
           <div class="row" style="gap:8px;">
             <div class="bar" style="flex:1;"><div style="width:81%; background:var(--color-text-info);"></div><div style="width:6%; background:var(--color-background-warning);"></div></div>
-            <span style="color:var(--color-text-secondary); white-space:nowrap;">174 · 81%</span>
+            <span style="color:var(--color-text-secondary); white-space:nowrap;">174 &middot; 81%</span>
           </div>
         </td>
       </tr>
       <tr style="border-top:0.5px solid var(--color-border-tertiary);">
-        <td style="padding:7px 0;">New hires <span style="color:var(--color-text-tertiary);">· 148</span></td>
+        <td style="padding:7px 0;">New hires <span style="color:var(--color-text-tertiary);">&middot; 148</span></td>
         <td><span class="pill pill-soon">opens in 4 days</span></td>
         <td>
           <div class="row" style="gap:8px;">
             <div class="bar" style="flex:1;"><div style="width:45%; background:var(--color-text-info);"></div><div style="width:14%; background:var(--color-background-warning);"></div></div>
-            <span style="color:var(--color-text-secondary); white-space:nowrap;">67 · 45%</span>
+            <span style="color:var(--color-text-secondary); white-space:nowrap;">67 &middot; 45%</span>
           </div>
         </td>
       </tr>
       <tr style="border-top:0.5px solid var(--color-border-tertiary);">
-        <td style="padding:7px 0;">Shift Leads <span style="color:var(--color-text-tertiary);">· 18</span></td>
+        <td style="padding:7px 0;">Shift Leads <span style="color:var(--color-text-tertiary);">&middot; 18</span></td>
         <td><span class="pill pill-closed">closed 2 days ago</span></td>
         <td>
           <div class="row" style="gap:8px;">
             <div class="bar" style="flex:1;"><div style="width:100%; background:var(--color-text-info);"></div></div>
-            <span style="color:var(--color-text-secondary); white-space:nowrap;">18 · 100%</span>
+            <span style="color:var(--color-text-secondary); white-space:nowrap;">18 &middot; 100%</span>
           </div>
         </td>
       </tr>
       <tr style="border-top:0.5px solid var(--color-border-tertiary);">
-        <td style="padding:7px 0;" class="danger">No group <span style="color:var(--color-text-tertiary);">· 18</span></td>
+        <td style="padding:7px 0;" class="danger">No group <span style="color:var(--color-text-tertiary);">&middot; 18</span></td>
         <td><span class="pill pill-bad">cannot open the form</span></td>
         <td><a href="#">Assign them a group <svg><use href="#i-arrow"/></svg></a></td>
       </tr>
@@ -196,7 +204,7 @@
   <div class="panel mt">
     <div class="label">
       <span>Needs attention</span>
-      <span class="hint">5 things &nbsp;·&nbsp; worst first</span>
+      <span class="hint">5 things &nbsp;&middot;&nbsp; worst first</span>
     </div>
 
     <div class="alert">
@@ -250,12 +258,12 @@
     <a class="tile" href="#">
       <div class="t-label">Change requests</div>
       <div class="t-value">12</div>
-      <div class="t-sub">3 new &nbsp;·&nbsp; oldest 6 days</div>
+      <div class="t-sub">3 new &nbsp;&middot;&nbsp; oldest 6 days</div>
     </a>
     <a class="tile" href="#">
       <div class="t-label">Flagged</div>
       <div class="t-value">46</div>
-      <div class="t-sub">43 auto weekend &nbsp;·&nbsp; 3 stale</div>
+      <div class="t-sub">43 auto weekend &nbsp;&middot;&nbsp; 3 stale</div>
     </a>
     <a class="tile" href="#">
       <div class="t-label">Travel</div>
@@ -317,7 +325,7 @@
 
   <!-- ─── 5. quiet system status: only speaks up when something is off ─── -->
   <div class="panel mt">
-    <div class="label"><span>System</span><a href="#" class="hint">Status page ↗</a></div>
+    <div class="label"><span>System</span><a href="#" class="hint">Status page &#8599;</a></div>
     <div class="sys">
       <div>
         <div class="s-k">Google Drive</div>
@@ -327,16 +335,16 @@
       <div>
         <div class="s-k">Responses sheet</div>
         <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> synced 8 min ago</div>
-        <div style="font-size:12px;"><a href="#">Open sheet</a> &nbsp;·&nbsp; <a href="#">Download CSV</a></div>
+        <div style="font-size:12px;"><a href="#">Open sheet</a> &nbsp;&middot;&nbsp; <a href="#">Download CSV</a></div>
       </div>
       <div>
         <div class="s-k">Email</div>
-        <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> sending on &nbsp;·&nbsp; digest on</div>
+        <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> sending on &nbsp;&middot;&nbsp; digest on</div>
         <div style="font-size:12px; color:var(--color-text-danger);">digest last ran 3 days ago</div>
       </div>
       <div>
         <div class="s-k">Roster</div>
-        <div class="row" style="gap:6px;">380 on &nbsp;·&nbsp; 12 off</div>
+        <div class="row" style="gap:6px;">380 on &nbsp;&middot;&nbsp; 12 off</div>
         <div style="font-size:12px; color:var(--color-text-tertiary);">imported 4 days ago by you</div>
       </div>
     </div>
