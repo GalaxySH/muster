@@ -146,8 +146,6 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         </div>
       </div>
 
-      <p style={hint}>Click shifts to try out a schedule. The hours update as you go.</p>
-
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div>
           <SubHead>Weekday</SubHead>
@@ -297,17 +295,12 @@ const headerRow: React.CSSProperties = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 12,
-  marginBottom: 6,
+  marginBottom: 12,
 };
 const sectionLabel: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
   color: "var(--color-text-primary)",
-};
-const hint: React.CSSProperties = {
-  margin: "0 0 12px",
-  fontSize: 12,
-  color: "var(--color-text-secondary)",
 };
 const badge: React.CSSProperties = {
   textAlign: "right",
