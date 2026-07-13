@@ -105,7 +105,12 @@ request (students still only their own). The per-student admin page header carri
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`, and the queue at
+submission, each anchored as `#change-request-<id>`. It is one card among the others in
+that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
+slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
+a long history never stretches the page below the other cards. That means the dashboard
+container renders unconditionally and the submission-dependent cards are conditional
+children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle

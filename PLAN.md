@@ -27,7 +27,7 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.67
+- **Version:** 0.68
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1004,6 +1004,16 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.68 (2026-07-14)** — **Response page: change requests join the card layout (§10a).**
+  The schedule change requests panel was a full-width block *below* the dashboard, so a
+  student with requests always cost the admin a scroll to the bottom of the page. It is
+  now a card inside the same balanced-column packing as the rest, kept last in DOM order
+  so it still packs into the final slot, and its request list scrolls **inside the card**
+  (capped at 48vh) rather than stretching the card past every other column. The card is a
+  child of the dashboard container in all cases, so it still renders for a student with no
+  submission (as does the position-change flag panel, which moves in with it). Deep links
+  (`#change-request-<id>` from the queue and the digest email) still land on the right row:
+  fragment navigation scrolls the card's own list.
 - **0.67 (2026-07-14)** — **Response page: click-to-mock hours calculator (§10a).**
   The per-student availability card is now interactive: the admin clicks grid cells
   to try out a schedule and a readout in the card's upper corner shows the live hours,
