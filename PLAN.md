@@ -27,7 +27,7 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.66
+- **Version:** 0.67
 - **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -397,6 +397,14 @@ scheduler (not auto-parsed).
   `"accept-and-flag"` restores the old behavior end to end (late entries stored
   `excused: false`, "not excused (late)" badges, `travel_late` flag on submit — those
   paths are deliberately kept wired).
+
+**Admin entry on a student's behalf (§10).** Travel entries and extracurriculars can also
+be added by an admin from the per-student response page (an *Add* link in each card
+header). Same actions, same relay, same caps; only the gate differs: the admin is the
+scheduler, so the student's form window doesn't bind them and the travel cutoff doesn't
+refuse them — an admin adding a travel entry *is* the excusal decision, so the entry is
+stored `excused: true`. This covers what a student hands over in person or after their
+window closes.
 
 ---
 
@@ -1004,6 +1012,17 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.67 (2026-07-14)** — **Admin-added travel + extracurriculars (§7b, §10).** The Travel
+  and Extracurriculars cards on `/admin/students/[email]` each gain an **Add** link in the
+  card header, opening a modal with the same fields the student's own form has. No new
+  write path: the modal calls the existing `addTravelRequest` / `addExtracurricularFile` /
+  `saveExtracurricularNotes` actions with the student named in a hidden `student` field,
+  and `requireStudent(onBehalfOf)` in `evidence/actions.ts` grows the same on-behalf seam
+  `createChangeRequest` already uses — admin session + a known student, in place of the
+  roster/group/window gate. The travel cutoff refuses **students** only: an admin adding an
+  entry is the excusal call, so it stores `excused: true` past the cutoff. The lightbox
+  overlay is extracted out of `EvidenceThumb` into a shared `components/Modal.tsx`
+  (backdrop, Escape, click-outside), reused by both.
 - **0.66 (2026-07-13)** — **Admin landing on `/me` (§4.1).** Admins are staff, so they have
   no roster row, and `/me` used to greet them with the off-roster "We don't recognize this
   account" notice. They now get a greeting (`Hi <first name>`) and a single card, "You're

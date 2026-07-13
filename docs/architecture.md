@@ -206,7 +206,9 @@ rows with no hire date never match. The list itself (`ResponseList`) is a full-b
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
-change-request count pill sits next to the name (nothing at zero). `actions.ts` ("use server", **admin-gated**) owns
+change-request count pill sits next to the name (nothing at zero). The Travel and Extracurriculars cards each carry an **Add** link
+(`AddEvidenceButton`, v0.67) that writes through the student evidence actions; see the
+evidence/Drive section. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
@@ -233,6 +235,22 @@ student UI is split into two client forms — `components/evidence/CourseSchedul
 (course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
 `components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
 styles). They render on the `/course-schedule` and `/travel` server pages.
+
+**Admin on-behalf entry (v0.67).** `requireStudent(onBehalfOf)` in `evidence/actions.ts` is
+the gate seam: empty ⇒ the signed-in student through `requireEditableStudent` (roster +
+group + window); an email ⇒ `requireAdmin` + `findStudentByEmail`, so an admin writes for a
+student without their window binding (the same shape as `resolveTargetStudent` in
+`changes/actions.ts`). `addTravelRequest` and `addExtracurricularFile` read that email from
+FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `revalidateEvidence`
+then also revalidates the admin's per-student page. The **travel cutoff refuses students
+only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
+cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
+Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
+`action` slot): one modal per kind, the same fields as the student form, with the
+extracurricular details box prefilled from the submission so the admin edits rather than
+replaces the student's text (details are one column, not per file). The modal shell is the
+shared `components/Modal.tsx` (backdrop, Escape, click-outside), extracted from
+`EvidenceThumb`'s lightbox and reused by it.
 
 ## Availability form layering
 
