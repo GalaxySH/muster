@@ -9,7 +9,7 @@ import {
   serializeResponseFilters,
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
-import { buildAdminGrid, hourCap, type AdminSubGrid, type CellState } from "@/lib/admin/summary";
+import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
@@ -20,6 +20,7 @@ import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
+import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
@@ -234,28 +235,16 @@ export default async function StudentDetailPage({
           {/* Dashboard: cards pack into balanced columns so the whole response
               fits the screen without scrolling on a wide display. */}
           <div style={masonry}>
-            {/* Availability preferences (weekday + weekend side by side) */}
+            {/* Availability preferences + click-to-mock hours calculator */}
             {grid && (
               <section style={panel}>
-                <SectionLabel>Availability preferences</SectionLabel>
-                <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
-                  <div>
-                    <SubHead>Weekday</SubHead>
-                    <PrefTable sub={grid.weekday} />
-                  </div>
-                  {grid.weekend && (
-                    <div>
-                      <SubHead>
-                        Weekend
-                        <span style={weekendModeBadge(submission.everyWeekendOptIn)}>
-                          {submission.everyWeekendOptIn ? "EVERY weekend" : "alternating (A/B)"}
-                        </span>
-                      </SubHead>
-                      <PrefTable sub={grid.weekend} />
-                    </div>
-                  )}
-                </div>
-                <Legend />
+                <PrefGridCalculator
+                  grid={grid}
+                  blocks={blocks}
+                  everyWeekendOptIn={submission.everyWeekendOptIn}
+                  minHours={position!.minHours}
+                  cap={cap}
+                />
               </section>
             )}
 
@@ -582,15 +571,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** A small bold sub-heading inside a panel (e.g. Weekday / Weekend). */
-function SubHead({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-      {children}
-    </div>
-  );
-}
-
 /**
  * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
  * Only position_change gets a dismiss control; revalidation_failed clears
@@ -666,123 +646,6 @@ function NavArrow({ href, dir }: { href: string | null; dir: "prev" | "next" }) 
     >
       {glyph}
     </Link>
-  );
-}
-
-function PrefTable({ sub }: { sub: AdminSubGrid }) {
-  return (
-    <table
-      style={{
-        // Intrinsic (compact) width; don't stretch to fill the panel.
-        width: "auto",
-        borderCollapse: "separate",
-        borderSpacing: 3,
-        fontSize: 11,
-      }}
-    >
-      <tbody>
-        <tr style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>
-          <td />
-          {sub.days.map((d) => (
-            <td key={d} style={{ width: CELL, textAlign: "center" }}>
-              {DAY_LABEL[d]}
-            </td>
-          ))}
-        </tr>
-        {sub.rows.map((row) => (
-          <tr key={row.block.id}>
-            <td style={{ whiteSpace: "nowrap" }}>
-              {row.label}{" "}
-              {row.isOpen && <span style={{ color: "var(--color-text-info)" }}>open</span>}
-              {row.isClose && <span style={{ color: "var(--color-text-info)" }}>close</span>}
-            </td>
-            {row.cells.map((state, i) => (
-              <td
-                key={sub.days[i]}
-                title={row.highDemandDays[i] ? "A lot of students picked this shift" : undefined}
-                style={{ ...cellStyle(state), position: "relative" }}
-              >
-                {row.highDemandDays[i] && (
-                  <span
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      top: 1,
-                      right: 1,
-                      width: 3,
-                      height: 7,
-                      background: "var(--color-text-danger)",
-                      borderRadius: 1,
-                    }}
-                  />
-                )}
-                {state === "on" && (
-                  <span style={{ color: "#fff", display: "block", textAlign: "center", fontWeight: 700 }}>
-                    ✓
-                  </span>
-                )}
-                {state === "auto" && (
-                  <span style={{ color: "var(--color-text-warning)", display: "block", textAlign: "center", fontSize: 10 }}>
-                    auto
-                  </span>
-                )}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// Compact fixed cell size; keeps the grid tight instead of stretching wide.
-const CELL = 26;
-
-function cellStyle(state: CellState): React.CSSProperties {
-  const base: React.CSSProperties = { width: CELL, height: 22, borderRadius: 4 };
-  if (state === "on") {
-    return { ...base, background: "var(--color-text-info)" };
-  }
-  if (state === "auto") {
-    return {
-      ...base,
-      background: "var(--color-background-warning)",
-      border: "1.5px dashed var(--color-border-warning)",
-    };
-  }
-  return { ...base, background: "var(--color-background-secondary)", border: "1px solid var(--color-border-tertiary)" };
-}
-
-function Legend() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 14,
-        flexWrap: "wrap",
-        marginTop: 12,
-        fontSize: 11,
-        color: "var(--color-text-secondary)",
-      }}
-    >
-      <span>
-        <span style={{ ...swatch, background: "var(--color-text-info)" }} /> preferred
-      </span>
-      <span>
-        <span
-          style={{
-            ...swatch,
-            background: "var(--color-background-warning)",
-            border: "1px dashed var(--color-border-warning)",
-          }}
-        />{" "}
-        auto-assigned
-      </span>
-      <span>
-        <span style={{ display: "inline-block", width: 3, height: 11, background: "var(--color-text-danger)", verticalAlign: -1 }} />{" "}
-        high-demand
-      </span>
-    </div>
   );
 }
 
@@ -888,29 +751,6 @@ const banner: React.CSSProperties = {
   borderRadius: "var(--border-radius-md)",
   fontSize: 14,
 };
-const swatch: React.CSSProperties = {
-  display: "inline-block",
-  width: 11,
-  height: 11,
-  borderRadius: 3,
-  verticalAlign: -1,
-};
-/** The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet one. */
-const weekendModeBadge = (every: boolean): React.CSSProperties => ({
-  display: "inline-block",
-  marginLeft: 8,
-  padding: "1px 8px",
-  borderRadius: 10,
-  fontSize: 11,
-  fontWeight: 600,
-  ...(every
-    ? { background: "var(--color-text-info)", color: "#fff" }
-    : {
-        background: "var(--color-background-secondary)",
-        color: "var(--color-text-secondary)",
-        border: "1px solid var(--color-border-tertiary)",
-      }),
-});
 const excusedBadge: React.CSSProperties = {
   background: "#e6f4ea",
   color: "var(--color-text-success)",

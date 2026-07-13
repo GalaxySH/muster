@@ -1,0 +1,244 @@
+// @vitest-environment jsdom
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { PrefGridCalculator } from "./PrefGridCalculator";
+import { buildAdminGrid } from "@/lib/admin/summary";
+import { demandCellKey } from "@/lib/domain/demand";
+import { parseTime } from "@/lib/domain/time";
+import type { DayType, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+
+function b(id: string, dt: DayType, s: string, e: string): ShiftBlock {
+  return { id, positionId: "ca", dayType: dt, start: parseTime(s), end: parseTime(e) };
+}
+
+// Round hours keep the assertions readable: each block is 4h.
+const blocks: ShiftBlock[] = [
+  b("wd-a", "weekday", "8a", "12p"),
+  b("wd-b", "weekday", "1p", "5p"),
+  b("we-a", "weekend", "9a", "1p"),
+];
+
+// Two weekday picks (8h) + one weekend pick (4h). Under A/B the weekend halves,
+// so the preference capacity is 8 + 2 = 10h.
+const picks: SelectedShift[] = [
+  { blockId: "wd-a", day: "mon" },
+  { blockId: "wd-a", day: "tue" },
+  { blockId: "we-a", day: "sat" },
+];
+
+function renderCalc(
+  opts: {
+    selection?: SelectedShift[];
+    autoAssigned?: SelectedShift[];
+    highDemand?: Set<string>;
+    everyWeekendOptIn?: boolean;
+    minHours?: number;
+    cap?: number;
+  } = {},
+) {
+  return render(
+    <PrefGridCalculator
+      grid={buildAdminGrid(
+        blocks,
+        opts.selection ?? picks,
+        opts.autoAssigned ?? [],
+        opts.highDemand ?? new Set(),
+      )}
+      blocks={blocks}
+      everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
+      minHours={opts.minHours ?? 10}
+      cap={opts.cap ?? 30}
+    />,
+  );
+}
+
+describe("PrefGridCalculator", () => {
+  it("opens on the student's picks and reads their preference capacity", () => {
+    renderCalc();
+    expect(screen.getByText("10h")).toBeInTheDocument();
+    // Untouched, this is their own selection — not a trial schedule yet. Anchored so
+    // the "in trial schedule" legend entry doesn't satisfy it.
+    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.queryByText(/^trial schedule$/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("reads as a trial schedule once a cell or the rotation is changed, and back after Reset", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add a cell
+    expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("preferred")).toBeInTheDocument();
+
+    // The rotation alone is enough to make it a trial.
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("preferred")).toBeInTheDocument();
+  });
+
+  it("recomputes the hours live as cells are toggled, flagging the floor", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: "8a–12p Tue" })); // remove a pick
+    expect(screen.getByText("6h")).toBeInTheDocument();
+    expect(screen.getByText(/below 10h floor/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "8a–12p Tue" })); // add it back
+    expect(screen.getByText("10h")).toBeInTheDocument();
+  });
+
+  it("cycle-averages the weekend at half under A/B and full with the opt-in", () => {
+    const { unmount } = renderCalc();
+    expect(screen.getByText("10h")).toBeInTheDocument(); // 8h weekday + 0.5 * 4h weekend
+    unmount();
+
+    renderCalc({ everyWeekendOptIn: true });
+    expect(screen.getByText("12h")).toBeInTheDocument(); // 8h weekday + 1.0 * 4h weekend
+    expect(screen.getByText("EVERY weekend")).toBeInTheDocument();
+  });
+
+  it("re-weights the weekend when the rotation pill is clicked", async () => {
+    const user = userEvent.setup();
+    renderCalc(); // A/B: 8h weekday + 0.5 * 4h weekend = 10h
+    expect(screen.getByText("10h")).toBeInTheDocument();
+
+    const pill = screen.getByRole("button", { name: /alternating/i });
+    expect(pill).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(pill); // flip to every-weekend: the weekend now counts in full
+    expect(screen.getByText("12h")).toBeInTheDocument();
+    const flipped = screen.getByRole("button", { name: /EVERY weekend/i });
+    expect(flipped).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(flipped); // and back
+    expect(screen.getByText("10h")).toBeInTheDocument();
+  });
+
+  it("rings the rotation pill only while it deviates from the student's answer", async () => {
+    const user = userEvent.setup();
+    renderCalc(); // student chose alternating
+
+    const ring = () => {
+      const pill = screen.getByRole("button", { name: /alternating|EVERY weekend/i });
+      return pill.style.border;
+    };
+    expect(ring()).not.toContain("dashed"); // matches their answer
+
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(ring()).toContain("dashed"); // trial override
+    expect(screen.getByRole("button", { name: /EVERY weekend/i })).toHaveAttribute(
+      "title",
+      expect.stringContaining("The student chose alternating"),
+    );
+
+    await user.click(screen.getByRole("button", { name: /EVERY weekend/i }));
+    expect(ring()).not.toContain("dashed"); // back to their answer
+  });
+
+  it("rings the pill when an every-weekend student's rotation is flipped down to A/B", async () => {
+    const user = userEvent.setup();
+    renderCalc({ everyWeekendOptIn: true }); // student chose every weekend
+    const pill = () => screen.getByRole("button", { name: /alternating|EVERY weekend/i });
+    expect(pill().style.border).not.toContain("dashed");
+
+    await user.click(pill());
+    expect(pill().style.border).toContain("dashed");
+    expect(pill()).toHaveAttribute(
+      "title",
+      expect.stringContaining("The student chose every weekend"),
+    );
+  });
+
+  it("Reset restores the student's real rotation, not just the picks", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(screen.getByText("12h")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("10h")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /alternating/i })).toBeInTheDocument();
+  });
+
+  it("Clear empties the trial and Reset restores the picks", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("0h")).toBeInTheDocument();
+    expect(screen.getByText(/no shifts picked/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("10h")).toBeInTheDocument();
+  });
+
+  it("flags a cell the student never offered once it is added to the trial", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+    const cell = screen.getByRole("button", { name: "1p–5p Wed" });
+    expect(cell).toHaveAttribute("title", expect.stringContaining("Click to add"));
+
+    await user.click(cell);
+    expect(cell).toHaveAttribute("aria-pressed", "true");
+    expect(cell).toHaveAttribute("title", expect.stringContaining("not one the student picked"));
+  });
+
+  describe("auto-assigned weekend range", () => {
+    // Picks: weekday only (8h). The weekend is machine-assigned (we-a, 4h), so it
+    // sits outside preference capacity and shows as an optional upper bound.
+    const weekdayOnly: SelectedShift[] = [
+      { blockId: "wd-a", day: "mon" },
+      { blockId: "wd-a", day: "tue" },
+    ];
+    const autoSat: SelectedShift[] = [{ blockId: "we-a", day: "sat" }];
+
+    it("shows a range while the trial's weekend is auto-only", () => {
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+      expect(screen.getByText("8")).toBeInTheDocument(); // picks alone
+      expect(screen.getByText("–10h")).toBeInTheDocument(); // + 0.5 * 4h auto weekend
+    });
+
+    it("follows the rotation toggle", async () => {
+      const user = userEvent.setup();
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+      expect(screen.getByText("–10h")).toBeInTheDocument(); // A/B: auto weekend at half
+
+      await user.click(screen.getByRole("button", { name: /alternating/i }));
+      expect(screen.getByText("–12h")).toBeInTheDocument(); // every weekend: in full
+    });
+
+    it("collapses to one number once a weekend shift is picked into the trial", async () => {
+      const user = userEvent.setup();
+      renderCalc({ selection: weekdayOnly, autoAssigned: autoSat });
+
+      // The picked weekend shift replaces the auto one, so it is simply counted.
+      await user.click(screen.getByRole("button", { name: "9a–1p Sat" }));
+      expect(screen.queryByText(/^–/)).not.toBeInTheDocument();
+      expect(screen.getByText("10h")).toBeInTheDocument();
+    });
+
+    it("shows no range when the student picked their own weekend shift", () => {
+      renderCalc(); // picks include we-a Sat, no auto
+      expect(screen.queryByText(/^–/)).not.toBeInTheDocument();
+      expect(screen.getByText("10h")).toBeInTheDocument();
+    });
+  });
+
+  it("marks the high-demand cell", () => {
+    renderCalc({ highDemand: new Set([demandCellKey("wd-a", "mon")]) });
+    expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
+      "title",
+      expect.stringContaining("a lot of students picked this shift"),
+    );
+  });
+});

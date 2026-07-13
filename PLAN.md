@@ -27,8 +27,8 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.66
-- **Last updated:** 2026-07-12
+- **Version:** 0.67
+- **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1004,6 +1004,27 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.67 (2026-07-14)** — **Response page: click-to-mock hours calculator (§10a).**
+  The per-student availability card is now interactive: the admin clicks grid cells
+  to try out a schedule and a readout in the card's upper corner shows the live hours,
+  computed by the same `computeCapacity` (cycle-averaged, weekend ×0.5 under A/B, or
+  full with the every-weekend opt-in) that drives preference capacity. It opens on the
+  student's own picks, so the readout starts at their pref. capacity, and keeps the
+  persisted picks/auto overlay (`buildAdminGrid`) as a reference layer — a trimmed pick
+  reads as "picked, not in trial", an added cell the student never offered gets an amber
+  ring. The **weekend rotation pill is a toggle**: clicking it flips A/B ↔ every-weekend
+  and re-weights the weekend (×0.5 ↔ ×1.0) in the live math, so the admin can price a
+  rotation change without touching the student's answer. The pill keeps its submitted
+  look (filled blue for an every-weekend opt-in, quiet for A/B) and gains the grid's
+  amber dashed ring once flipped, so a trial rotation never reads as their answer. While the trial's weekend holds
+  **only the auto-assigned shift**, the readout is a **range** (`15.3–16.5h`) whose upper
+  bound folds that shift in at the current rotation and renders in
+  `--color-text-auto` — hours the student never offered but would work anyway, so they
+  sit outside preference capacity. Picking any weekend shift replaces the auto one and
+  the range collapses to a single number. Reset (restores their picks *and* their real
+  rotation) / Clear controls, below-floor/over-cap cues; pure client state, nothing
+  persists. New island `PrefGridCalculator` (co-located test); the static `PrefTable` and
+  `Legend` on the page are retired into it.
 - **0.66 (2026-07-13)** — **Admin landing on `/me` (§4.1).** Admins are staff, so they have
   no roster row, and `/me` used to greet them with the off-roster "We don't recognize this
   account" notice. They now get a greeting (`Hi <first name>`) and a single card, "You're
