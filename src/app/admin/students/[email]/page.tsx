@@ -206,35 +206,34 @@ export default async function StudentDetailPage({
         <div style={{ ...banner, marginTop: 12 }}>This is a draft and has not been submitted.</div>
       )}
 
+      {/* Hour summary cards: a full-width glanceable KPI strip */}
       {submission && validation && (
-        <>
-          {/* Hour summary cards: a full-width glanceable KPI strip */}
-          <div style={cardsGrid}>
-            <SummaryCard
-              label="POSITION"
-              value={`${position && position.name}`}
-              sub=""
-            />
-            <SummaryCard
-              label="BOUNDS"
-              value={`floor ${position!.minHours} · cap ${cap}`}
-              sub={detail.international ? "international" : "domestic"}
-            />
-            <SummaryCard
-              label="REQUESTED"
-              value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
-              sub=""
-            />
-            <SummaryCard
-              label="UNIQUE DAYS"
-              value={`${validation.daysCovered}/7`}
-              sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
-            />
-          </div>
+        <div style={cardsGrid}>
+          <SummaryCard label="POSITION" value={`${position && position.name}`} sub="" />
+          <SummaryCard
+            label="BOUNDS"
+            value={`floor ${position!.minHours} · cap ${cap}`}
+            sub={detail.international ? "international" : "domestic"}
+          />
+          <SummaryCard
+            label="REQUESTED"
+            value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
+            sub=""
+          />
+          <SummaryCard
+            label="UNIQUE DAYS"
+            value={`${validation.daysCovered}/7`}
+            sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
+          />
+        </div>
+      )}
 
-          {/* Dashboard: cards pack into balanced columns so the whole response
-              fits the screen without scrolling on a wide display. */}
-          <div style={masonry}>
+      {/* Dashboard: cards pack into balanced columns so the whole response fits the
+          screen without scrolling on a wide display. Change requests pack in with the
+          rest as the last card, and scroll inside themselves when the list is long. */}
+      <div style={masonry}>
+        {submission && validation && (
+          <>
             {/* Availability preferences + click-to-mock hours calculator */}
             {grid && (
               <section style={panel}>
@@ -378,86 +377,99 @@ export default async function StudentDetailPage({
                 </p>
               </section>
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {/* A responder whose position is unset has no validation to show, but a
-          position_change flag must stay visible and dismissible (roadmap 3.3). */}
-      {submission && !validation && storedAlerts.length > 0 && (
-        <section style={{ ...panel, maxWidth: 620, marginTop: 14 }}>
-          <SectionLabel>Flags</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
-            <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-          </div>
-        </section>
-      )}
+        {/* A responder whose position is unset has no validation to show, but a
+            position_change flag must stay visible and dismissible (roadmap 3.3). */}
+        {submission && !validation && storedAlerts.length > 0 && (
+          <section style={panel}>
+            <SectionLabel>Flags</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+              <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
+            </div>
+          </section>
+        )}
 
-      {/* Schedule change requests (roadmap 3.1): independent of the submission,
-          so they render even for students without one. */}
-      {changeRequests.length > 0 && (
-        <section style={{ ...panel, maxWidth: 620, marginTop: 14 }}>
-          <SectionLabel>Schedule change requests</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {changeRequests.map((r) => {
-              const files = changeFiles.get(r.id) ?? [];
-              return (
-                <div
-                  key={r.id}
-                  id={changeRequestAnchor(r.id)}
-                  style={r.status === "resolved" ? resolvedChangeRow : changeRow}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
-                    <span style={{ fontWeight: 600 }}>
-                      {DAY_LABEL[r.day]} · {r.shiftText}
-                      <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
-                        {" "}
-                        · {r.permanent ? "permanent" : "one time"}
+        {/* Schedule change requests (roadmap 3.1): independent of the submission,
+            so they render even for students without one. Kept last in DOM order so
+            they always pack into the final column slot. */}
+        {changeRequests.length > 0 && (
+          <section style={panel}>
+            <SectionLabel>Schedule change requests</SectionLabel>
+            <div style={changeList}>
+              {changeRequests.map((r) => {
+                const files = changeFiles.get(r.id) ?? [];
+                return (
+                  <div
+                    key={r.id}
+                    id={changeRequestAnchor(r.id)}
+                    style={r.status === "resolved" ? resolvedChangeRow : changeRow}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {DAY_LABEL[r.day]} · {r.shiftText}
+                        <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
+                          {" "}
+                          · {r.permanent ? "permanent" : "one time"}
+                        </span>
                       </span>
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <ChangeStatusBadge status={r.status} />
-                      <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                        {fmtDate(r.createdAt)}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <ChangeStatusBadge status={r.status} />
+                        <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                          {fmtDate(r.createdAt)}
+                        </span>
+                        <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
                       </span>
-                      <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
-                    </span>
+                    </div>
+                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
+                    {files.length > 0 &&
+                      (previewIds.has(r.id) ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                          {files.map((fileId) => (
+                            <EvidenceThumb key={fileId} fileId={fileId} label="Change request proof" size={56} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 6, fontSize: 13 }}>
+                          {files.map((fileId, i) => (
+                            <a
+                              key={fileId}
+                              href={`/api/evidence/${encodeURIComponent(fileId)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ marginRight: 12, color: "var(--color-text-info)" }}
+                            >
+                              proof {i + 1}
+                            </a>
+                          ))}
+                        </div>
+                      ))}
                   </div>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
-                  {files.length > 0 &&
-                    (previewIds.has(r.id) ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                        {files.map((fileId) => (
-                          <EvidenceThumb key={fileId} fileId={fileId} label="Change request proof" size={56} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 6, fontSize: 13 }}>
-                        {files.map((fileId, i) => (
-                          <a
-                            key={fileId}
-                            href={`/api/evidence/${encodeURIComponent(fileId)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ marginRight: 12, color: "var(--color-text-info)" }}
-                          >
-                            proof {i + 1}
-                          </a>
-                        ))}
-                      </div>
-                    ))}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </div>
     </Page>
   );
 }
 
 /** Only the newest few file-bearing requests render thumbnail previews. */
 const CHANGE_PREVIEW_ROWS = 3;
+
+// The request list scrolls inside its own card, so a long history stays inside the
+// dashboard's column heights instead of stretching the page below every other card.
+const changeList: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  maxHeight: "48vh",
+  overflowY: "auto",
+  // Keeps the scrollbar clear of the resolved checkbox at each row's right edge.
+  paddingRight: 4,
+};
 
 /** Unresolved (and withdrawn) requests: an untinted outline box, aligned with resolved rows. */
 const changeRow: React.CSSProperties = {
