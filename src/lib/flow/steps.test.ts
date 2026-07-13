@@ -11,11 +11,7 @@ import {
 
 describe("wizard step lists", () => {
   it("has the three base data steps in order", () => {
-    expect(WIZARD_STEPS.map((s) => s.key)).toEqual([
-      "course-schedule",
-      "availability",
-      "travel",
-    ]);
+    expect(WIZARD_STEPS.map((s) => s.key)).toEqual(["course-schedule", "availability", "travel"]);
   });
 
   it("appends the closes step only for shift leads with an inventory", () => {
@@ -47,7 +43,7 @@ describe("wizard step lists", () => {
 describe("flowStatus", () => {
   const base: FlowInputs = {
     submitted: false,
-    hasSubmissionRow: false,
+    hasConfirmed: false,
     hasCourseSchedule: false,
     availabilityComplete: false,
     closesRequired: false,
@@ -60,31 +56,37 @@ describe("flowStatus", () => {
       flowStatus({
         ...base,
         submitted: true,
-        hasSubmissionRow: true,
+        hasConfirmed: true,
         hasCourseSchedule: true,
         availabilityComplete: true,
       }).kind,
     ).toBe("done");
   });
 
-  it("is not-started with no submission row and nothing uploaded", () => {
+  it("is done when submitted even if the confirmation was never stamped", () => {
+    expect(flowStatus({ ...base, submitted: true, hasCourseSchedule: true }).kind).toBe("done");
+  });
+
+  it("is not-started before the student confirms their info", () => {
     expect(flowStatus(base).kind).toBe("not-started");
   });
 
-  it("resumes at the intro once started (info confirmed) but nothing uploaded", () => {
-    const s = flowStatus({ ...base, hasSubmissionRow: true });
-    expect(s).toMatchObject({ kind: "continue", href: "/intro" });
+  it("is still not-started when an admin started the submission for them", () => {
+    // Admin-created draft row with a course schedule already uploaded: the student
+    // has not confirmed, so they must land on the confirm card, not mid-flow.
+    const s = flowStatus({ ...base, hasCourseSchedule: true });
+    expect(s.kind).toBe("not-started");
   });
 
-  it("treats an uploaded course schedule alone as started (continue, not not-started)", () => {
-    const s = flowStatus({ ...base, hasCourseSchedule: true });
-    expect(s).toMatchObject({ kind: "continue", href: "/availability" });
+  it("resumes at the intro once confirmed but nothing uploaded", () => {
+    const s = flowStatus({ ...base, hasConfirmed: true });
+    expect(s).toMatchObject({ kind: "continue", href: "/intro" });
   });
 
   it("resumes at availability when course schedule is in but availability isn't complete", () => {
     const s = flowStatus({
       ...base,
-      hasSubmissionRow: true,
+      hasConfirmed: true,
       hasCourseSchedule: true,
       availabilityComplete: false,
     });
@@ -94,7 +96,7 @@ describe("flowStatus", () => {
   it("resumes at travel when course schedule + availability are complete", () => {
     const s = flowStatus({
       ...base,
-      hasSubmissionRow: true,
+      hasConfirmed: true,
       hasCourseSchedule: true,
       availabilityComplete: true,
     });
@@ -104,7 +106,7 @@ describe("flowStatus", () => {
   it("still resumes at travel for a shift lead with no claims yet", () => {
     const s = flowStatus({
       ...base,
-      hasSubmissionRow: true,
+      hasConfirmed: true,
       hasCourseSchedule: true,
       availabilityComplete: true,
       closesRequired: true,
@@ -115,7 +117,7 @@ describe("flowStatus", () => {
   it("resumes at closes for a shift lead with picks started but unfinished", () => {
     const s = flowStatus({
       ...base,
-      hasSubmissionRow: true,
+      hasConfirmed: true,
       hasCourseSchedule: true,
       availabilityComplete: true,
       closesRequired: true,
@@ -127,7 +129,7 @@ describe("flowStatus", () => {
   it("resumes at travel once a shift lead's picks are complete", () => {
     const s = flowStatus({
       ...base,
-      hasSubmissionRow: true,
+      hasConfirmed: true,
       hasCourseSchedule: true,
       availabilityComplete: true,
       closesRequired: true,

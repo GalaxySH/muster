@@ -7,14 +7,12 @@
  * is replaced by a "too late" notice once the cutoff passes, and entries lock.
  * The excused/late badges stay wired for the "accept-and-flag" policy.
  */
-import {
-  addTravelRequest,
-  removeTravelRequest,
-} from "@/lib/evidence/actions";
+import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
 import {
   Thumb,
   DriveDisconnectedBanner,
+  OnBehalfField,
   useEvidenceRunner,
   ACCEPT,
   FORMAT_HINT,
@@ -33,6 +31,7 @@ export function TravelForm({
   editable = true,
   cutoffMs,
   canAddTravel,
+  onBehalfOf,
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
@@ -42,6 +41,8 @@ export function TravelForm({
   cutoffMs: number;
   /** False once the cutoff has passed (server-decided): no new entries, entries lock. */
   canAddTravel: boolean;
+  /** Set when an admin is filling this in for a student: their email, carried into every action. */
+  onBehalfOf?: string;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   const canUpload = driveConnected && editable && canAddTravel;
@@ -51,20 +52,20 @@ export function TravelForm({
     <div style={{ maxWidth: 720 }}>
       <h1>Travel excusals</h1>
       <p style={{ color: "#555" }}>
-        Add any planned travel during the semester. Upload proof and a date range for each
-        trip, these will be manually reviewed for eligibility. Travel is only excused if added
-        before {cutoffLabel}. After that date, the form no longer accepts travel entries. We
-        will not accept emails requesting excusal, unless for extenuating circumstances.
+        Add any planned travel during the semester. Upload proof and a date range for each trip,
+        these will be manually reviewed for eligibility. Travel is only excused if added before{" "}
+        {cutoffLabel}. After that date, the form no longer accepts travel entries. We will not
+        accept emails requesting excusal, unless for extenuating circumstances.
       </p>
 
       {!canAddTravel && (
         <InfoCard title="The travel deadline has passed">
           <p style={{ margin: 0 }}>
-            Travel could be excused only if added before <strong>{cutoffLabel}</strong>, so
-            entries can no longer be added or removed.
-            {initial.travel.length > 0 && " Anything you already added is shown below."}{" "}
-            For extenuating circumstances, contact <strong>{CONTACT_EMAIL}</strong> or come
-            into the office.
+            Travel could be excused only if added before <strong>{cutoffLabel}</strong>, so entries
+            can no longer be added or removed.
+            {initial.travel.length > 0 && " Anything you already added is shown below."} For
+            extenuating circumstances, contact <strong>{CONTACT_EMAIL}</strong> or come into the
+            office.
           </p>
         </InfoCard>
       )}
@@ -94,7 +95,7 @@ export function TravelForm({
                 <button
                   type="button"
                   disabled={pending || !editable}
-                  onClick={() => run("travel", () => removeTravelRequest(t.id))}
+                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf))}
                   style={{ color: "#b00" }}
                 >
                   Remove
@@ -107,6 +108,7 @@ export function TravelForm({
 
       {canAddTravel && (
         <form onSubmit={onUpload("travel", addTravelRequest)} style={{ display: "grid", gap: 8 }}>
+          <OnBehalfField onBehalfOf={onBehalfOf} />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <label style={{ fontSize: 14 }}>
               Start <input type="date" name="startDate" required disabled={!editable} />
@@ -115,7 +117,13 @@ export function TravelForm({
               End <input type="date" name="endDate" required disabled={!editable} />
             </label>
           </div>
-          <input type="text" name="note" placeholder="Optional note" style={{ padding: 6 }} disabled={!editable} />
+          <input
+            type="text"
+            name="note"
+            placeholder="Optional note"
+            style={{ padding: 6 }}
+            disabled={!editable}
+          />
           <div style={uploadRow}>
             <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
             <ActionButton

@@ -42,6 +42,9 @@ export interface StudentDetail {
   submission: {
     id: string;
     status: "draft" | "submitted";
+    /** Set when the student confirmed who they are on `/me`; null on an
+     *  admin-created stub. Feed it to `responseStatus`, never `status` alone. */
+    confirmedAt: Date | null;
     everyWeekendOptIn: boolean;
     desiredHours: number | null;
     studentNotes: string;
@@ -99,6 +102,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     submission = {
       id: subRow.id,
       status: subRow.status,
+      confirmedAt: subRow.confirmedAt,
       everyWeekendOptIn: subRow.everyWeekendOptIn,
       desiredHours: subRow.desiredHours,
       studentNotes: subRow.studentNotes ?? "",
@@ -143,15 +147,36 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   };
 }
 
+/** Where a student stands, as the admin surfaces report it. */
+export type ResponseStatus = "draft" | "submitted" | "missing";
+
+/**
+ * The one rule for "has this student engaged with the form?", shared by the
+ * response list, non-response tracking, and the per-student header.
+ *
+ * A submission row alone does not mean the student started: admins can create a
+ * stub (scheduler notes, an uploaded course schedule) for someone who never
+ * showed up. `confirmedAt` is stamped only when the student confirms who they
+ * are on `/me`, so it, not row existence, is the signal.
+ */
+export function responseStatus(
+  row: { status: "draft" | "submitted" | null; confirmedAt: Date | null } | null,
+): ResponseStatus {
+  if (row?.status === "submitted") return "submitted";
+  if (row?.status === "draft" && row.confirmedAt !== null) return "draft";
+  return "missing";
+}
+
 export interface ResponseRow {
   email: string;
   displayName: string;
   positionId: string | null;
   positionName: string | null;
-  status: "draft" | "submitted";
+  /** "missing" = never started (no submission, or an admin-created stub). */
+  status: ResponseStatus;
   scheduled: boolean;
   desiredHours: number | null;
-  /** False for responders no longer on the roster (badged in the list). */
+  /** False for students no longer on the roster (badged in the list). */
   onRoster: boolean;
   /** Group membership, for the group filter (null = ungrouped). */
   groupId: string | null;
@@ -163,55 +188,53 @@ export interface ResponseRow {
   /** Open (unresolved, not withdrawn) change requests, badged next to the name. */
   openChangeRequests: number;
   submittedAt: Date | null;
-  updatedAt: Date;
+  /** Null for students with no submission row. */
+  updatedAt: Date | null;
 }
 
 /**
- * Responders (anyone with a submission) matching `filters`, in the canonical nav
- * order: by display name, then email. This ordering is the source of truth for
- * the per-student prev/next walk, and the group/flag filters (PLAN §10, roadmap
- * 2.2) apply here so the list and the neighbor walk stay in lockstep.
+ * Every student matching `filters`, in the canonical nav order: by display name,
+ * then email. Students with no submission are carried as `status: "missing"` and
+ * are hidden unless the all-students switch is on, so the default view is still
+ * the responses. This ordering is the source of truth for the per-student
+ * prev/next walk, and the filters (PLAN §10, roadmap 2.2) apply here so the list
+ * and the neighbor walk stay in lockstep.
  */
 export async function listResponses(filters: ResponseFilters = {}): Promise<ResponseRow[]> {
   const db = getDb();
   const rows = await db
     .select({
-      email: submissions.studentEmail,
+      email: students.email,
       displayName: students.displayName,
       positionId: students.positionId,
       positionName: positions.name,
       onRoster: students.onRoster,
       groupId: students.groupId,
       hiredOn: students.hiredOn,
+      submissionId: submissions.id,
       status: submissions.status,
+      confirmedAt: submissions.confirmedAt,
       scheduled: submissions.scheduled,
       desiredHours: submissions.desiredHours,
       submittedAt: submissions.submittedAt,
       updatedAt: submissions.updatedAt,
     })
-    .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .from(students)
+    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    // Roster visibility is a filter concern: applyResponseFilters hides
-    // off-roster responders (PLAN §4.2) unless the show-off-roster switch is on.
-    .orderBy(asc(students.displayName), asc(submissions.studentEmail));
+    // Roster + never-started visibility are filter concerns: applyResponseFilters
+    // hides off-roster students (PLAN §4.2) and students with no submission
+    // unless the matching switch is on.
+    .orderBy(asc(students.displayName), asc(students.email));
 
   // One follow-up query for the flag types keyed by submission, avoiding a
-  // GROUP BY round-trip per row. (Response volume is ~400; a single IN is fine.)
-  const subIds = await db
-    .select({ id: submissions.id, email: submissions.studentEmail })
-    .from(submissions);
-  const idByEmail = new Map(subIds.map((s) => [s.email, s.id]));
+  // GROUP BY round-trip per row. (Roster volume is ~400; a single IN is fine.)
+  const subIds = rows.map((r) => r.submissionId).filter((id): id is string => id !== null);
   const allFlags = subIds.length
     ? await db
         .select({ submissionId: flags.submissionId, type: flags.type })
         .from(flags)
-        .where(
-          inArray(
-            flags.submissionId,
-            subIds.map((s) => s.id),
-          ),
-        )
+        .where(inArray(flags.submissionId, subIds))
     : [];
   const flagTypesBySub = new Map<string, DbFlagType[]>();
   for (const f of allFlags) {
@@ -233,14 +256,14 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
   const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
 
   const mapped: ResponseRow[] = rows.map((r) => {
-    const flagTypes = flagTypesBySub.get(idByEmail.get(r.email) ?? "") ?? [];
+    const flagTypes = (r.submissionId && flagTypesBySub.get(r.submissionId)) || [];
     return {
       email: r.email,
       displayName: r.displayName,
       positionId: r.positionId,
       positionName: r.positionName,
-      status: r.status,
-      scheduled: r.scheduled,
+      status: responseStatus({ status: r.status, confirmedAt: r.confirmedAt }),
+      scheduled: r.scheduled ?? false,
       desiredHours: r.desiredHours,
       onRoster: r.onRoster,
       groupId: r.groupId,
@@ -268,7 +291,7 @@ export interface RosterPerson {
 export interface NonResponseReport {
   rosterTotal: number;
   respondedCount: number;
-  /** Roster students with no submission at all. */
+  /** Roster students who never started (no submission, or an admin-created stub). */
   noResponse: RosterPerson[];
   /** Roster students who started but haven't submitted. */
   draftOnly: RosterPerson[];
@@ -278,7 +301,9 @@ export interface NonResponseReport {
 
 /**
  * Non-response tracking (PLAN §10): roster − responders, split into never-started
- * vs. draft-only, plus off-roster responders flagged separately.
+ * vs. draft-only, plus off-roster responders flagged separately. Buckets use the
+ * shared `responseStatus` rule, so a stub row an admin created for a student who
+ * never showed up stays in "no response" and keeps getting chased.
  */
 export async function listNonResponses(): Promise<NonResponseReport> {
   const db = getDb();
@@ -292,6 +317,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       positionName: positions.name,
       rosterTitle: students.rosterTitle,
       status: submissions.status,
+      confirmedAt: submissions.confirmedAt,
     })
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
@@ -312,12 +338,13 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       positionName: r.positionName ?? null,
       rosterTitle: r.rosterTitle,
     };
+    const status = responseStatus({ status: r.status, confirmedAt: r.confirmedAt });
     if (r.onRoster) {
       rosterTotal += 1;
-      if (r.status === "submitted") respondedCount += 1;
-      else if (r.status === "draft") draftOnly.push(person);
+      if (status === "submitted") respondedCount += 1;
+      else if (status === "draft") draftOnly.push(person);
       else noResponse.push(person);
-    } else if (r.status != null && r.groupId !== TEST_GROUP_ID) {
+    } else if (status !== "missing" && r.groupId !== TEST_GROUP_ID) {
       // Admin-created test accounts are off-roster by design, not a roster gap.
       offRoster.push(person);
     }
@@ -327,26 +354,31 @@ export async function listNonResponses(): Promise<NonResponseReport> {
 }
 
 export interface ResponseNeighbors {
-  /** 1-based position in the response list, or 0 if the email isn't a responder. */
+  /** 1-based position in the list, or 0 if the email isn't in it. */
   index: number;
   total: number;
   prevEmail: string | null;
   nextEmail: string | null;
-  /** The filtered responders in nav order, for the header "jump to" menu. */
+  /** The filtered students in nav order, for the header "jump to" menu. */
   people: { email: string; displayName: string }[];
 }
 
 /**
  * Prev/next email + position for the identity header nav (PLAN §10a). Walks the
  * same filtered list the response dashboard shows (roadmap 2.2), so the arrows
- * follow whatever group/flag filter is active.
+ * follow whatever filter is active.
  */
 export async function getResponseNeighbors(
   emailRaw: string,
   filters: ResponseFilters = {},
 ): Promise<ResponseNeighbors> {
   const email = normalizeEmail(emailRaw);
-  const list = await listResponses(filters);
+  let list = await listResponses(filters);
+  // The student you are looking at is always part of the walk: if the active
+  // switches hide them, redo the list with both visibility switches on.
+  if (!list.some((r) => r.email === email)) {
+    list = await listResponses({ ...filters, includeMissing: true, includeOffRoster: true });
+  }
   const people = list.map((r) => ({ email: r.email, displayName: r.displayName }));
   const i = list.findIndex((r) => r.email === email);
   if (i === -1) {

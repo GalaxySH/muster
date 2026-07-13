@@ -2,12 +2,19 @@
 
 /**
  * Wizard navigation server actions (PLAN §4, §18b). `confirmRosterInfo` is the
- * "yes, that's me" gate on /me: it records that the student has started (a draft
- * submission row) so /me resumes the flow rather than re-showing the confirm box,
- * then sends them into the orientation page.
+ * "yes, that's me" gate on /me: it stamps the student's own confirmation on their
+ * (draft) submission so /me resumes the flow rather than re-showing the confirm
+ * box, then sends them into the orientation page.
+ *
+ * This is the only place `confirmed_at` is ever set. Admins can start a submission
+ * on a student's behalf, and that row must not stand in for the student's
+ * confirmation (see flowStatus).
  */
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
+import { getDb } from "@/lib/db";
+import { submissions } from "@/lib/db/schema";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 
@@ -17,8 +24,11 @@ export async function confirmRosterInfo() {
 
   const student = await findStudentByEmail(session.email);
   if (student) {
-    // Mark "started" so a later visit to /me resumes the flow (see flowStatus).
-    await ensureSubmissionId(student.email);
+    const submissionId = await ensureSubmissionId(student.email);
+    await getDb()
+      .update(submissions)
+      .set({ confirmedAt: new Date() })
+      .where(eq(submissions.id, submissionId));
   }
   redirect("/intro");
 }

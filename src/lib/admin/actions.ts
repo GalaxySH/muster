@@ -11,7 +11,8 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { flags, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
+import { collectSubmissionDriveFileIds, ensureSubmissionId } from "@/lib/evidence/data";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
 import {
@@ -36,7 +37,13 @@ export interface AdminActionResult {
   error?: string;
 }
 
-/** Updates the submission and reports whether a row was actually affected. */
+/**
+ * Updates the student's submission, creating an empty draft first if they never
+ * started one: a scheduler must be able to put notes and a "scheduled" mark on
+ * anyone on the roster, whether or not they ever filled the form in. The draft
+ * this creates has no confirmedAt, so the student still counts as a
+ * non-responder everywhere (see `responseStatus` in ./data).
+ */
 async function updateSubmission(
   studentEmail: string,
   patch: Partial<typeof submissions.$inferInsert>,
@@ -44,16 +51,14 @@ async function updateSubmission(
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const db = getDb();
   const email = normalizeEmail(studentEmail);
-  const [sub] = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.studentEmail, email))
-    .limit(1);
-  if (!sub) return { ok: false, error: "No submission exists for this student yet." };
+  // submissions.studentEmail is a foreign key, so an unknown address would fail
+  // as a DB error rather than something we can report.
+  const student = await findStudentByEmail(email);
+  if (!student) return { ok: false, error: "That employee is not a known student." };
 
-  await db.update(submissions).set(patch).where(eq(submissions.id, sub.id));
+  const submissionId = await ensureSubmissionId(email);
+  await getDb().update(submissions).set(patch).where(eq(submissions.id, submissionId));
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
   revalidatePath("/admin/responses");
   return { ok: true };

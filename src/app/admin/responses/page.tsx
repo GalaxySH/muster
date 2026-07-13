@@ -15,9 +15,10 @@ import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
- * view. Lists every submission; the per-student prev/next walks this same order.
- * The group/flag filters (roadmap 2.2) live in the URL so they follow the admin
- * into the per-student view.
+ * view. Lists every submission, plus the students who never started one when the
+ * all-students switch (`all=1`) is on; the per-student prev/next walks this same
+ * order. The filters (roadmap 2.2) live in the URL so they follow the admin into
+ * the per-student view.
  */
 export default async function ResponsesPage({
   searchParams,
@@ -26,6 +27,7 @@ export default async function ResponsesPage({
     group?: string;
     flag?: string;
     roster?: string;
+    all?: string;
     started?: string;
     startedDate?: string;
   }>;
@@ -68,12 +70,13 @@ export default async function ResponsesPage({
         group={sp.group}
         flag={sp.flag}
         roster={sp.roster}
+        all={sp.all}
         started={sp.started}
         startedDate={sp.startedDate}
       />
       {rows.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>
-          {filtered ? "No responses match this filter." : "No submissions yet."}
+          {filtered ? "No one matches this filter." : "No submissions yet."}
         </p>
       ) : (
         <ResponseList rows={rows} filterQuery={filterQuery} />
