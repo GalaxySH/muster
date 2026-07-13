@@ -1020,9 +1020,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   and `requireStudent(onBehalfOf)` in `evidence/actions.ts` grows the same on-behalf seam
   `createChangeRequest` already uses — admin session + a known student, in place of the
   roster/group/window gate. The travel cutoff refuses **students** only: an admin adding an
-  entry is the excusal call, so it stores `excused: true` past the cutoff. The lightbox
-  overlay is extracted out of `EvidenceThumb` into a shared `components/Modal.tsx`
-  (backdrop, Escape, click-outside), reused by both.
+  entry is the excusal call, so it stores `excused: true` past the cutoff. The add form
+  holds one size whatever happens inside it, so an error never shifts the buttons under the
+  pointer. The lightbox overlay is extracted out of `EvidenceThumb` into a shared
+  `components/Modal.tsx` (backdrop, Escape, click-outside), reused by both: the panel now
+  spends the full width it is given (capped per caller) and runs **edge to edge under
+  720px**, so a phone wastes no width on either the lightbox or the form.
 - **0.66 (2026-07-13)** — **Admin landing on `/me` (§4.1).** Admins are staff, so they have
   no roster row, and `/me` used to greet them with the off-roster "We don't recognize this
   account" notice. They now get a greeting (`Hi <first name>`) and a single card, "You're

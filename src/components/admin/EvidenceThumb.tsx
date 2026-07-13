@@ -120,7 +120,7 @@ export function EvidenceThumb({
               src={url}
               title={label}
               style={{
-                width: "min(820px, 88vw)",
+                width: "100%",
                 height: "78vh",
                 border: "none",
                 borderRadius: "var(--border-radius-md)",

@@ -76,7 +76,7 @@ export function AddEvidenceButton({
       </button>
 
       {open && (
-        <Modal label={title} onClose={close}>
+        <Modal label={title} onClose={close} maxWidth="420px">
           <form onSubmit={submit} style={formStyle}>
             <input type="hidden" name="student" value={studentEmail} />
 
@@ -152,13 +152,14 @@ const addLink: React.CSSProperties = {
 /**
  * The box holds one size for its whole life: an error, a long file name, or a
  * pending button label never move the controls under the pointer. Both kinds of
- * entry use the same footprint, so the two modals open identically.
+ * entry use the same footprint, so the two modals open identically. Width comes
+ * from the panel (full width on a phone, capped on a desktop), height is ours.
  */
 const formStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 10,
-  width: "min(380px, 80vw)",
+  width: "100%",
   height: 300,
   fontSize: 14,
 };

@@ -3,18 +3,25 @@
 /**
  * The shared modal overlay: dimmed backdrop, click-outside and Escape to close,
  * a labelled header with a close button. Used by the evidence lightbox
- * (EvidenceThumb) and the admin add-entry forms. The panel sizes to its content,
- * so a caller that wants a fixed box sizes its own children (AddEvidenceButton).
+ * (EvidenceThumb) and the admin add-entry forms.
+ *
+ * The panel fills the width it is given up to `maxWidth`, and goes edge to edge
+ * under 720px (`.modal-overlay` / `.modal-panel` in globals.css) so a phone
+ * spends every pixel of its narrow axis on the content. Children should size
+ * themselves in percentages, not fixed pixel widths.
  */
 import { useEffect } from "react";
 
 export function Modal({
   label,
   onClose,
+  maxWidth = "900px",
   children,
 }: {
   label: string;
   onClose: () => void;
+  /** How wide the panel may grow on a desktop; ignored on phones, which go full width. */
+  maxWidth?: string;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -31,30 +38,12 @@ export function Modal({
       aria-modal="true"
       aria-label={label}
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem",
-      }}
+      className="modal-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--color-background-primary)",
-          borderRadius: "var(--border-radius-lg)",
-          padding: "0.9rem",
-          maxWidth: "min(900px, 92vw)",
-          maxHeight: "90vh",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
+        className="modal-panel"
+        style={{ "--modal-max-width": maxWidth } as React.CSSProperties}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{label}</span>

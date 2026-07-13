@@ -248,9 +248,17 @@ cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link
 Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
 `action` slot): one modal per kind, the same fields as the student form, with the
 extracurricular details box prefilled from the submission so the admin edits rather than
-replaces the student's text (details are one column, not per file). The modal shell is the
-shared `components/Modal.tsx` (backdrop, Escape, click-outside), extracted from
-`EvidenceThumb`'s lightbox and reused by it.
+replaces the student's text (details are one column, not per file). The form holds **one
+size** whatever happens inside it (fixed height, scrolling field area, an always-reserved
+error row), so a failed upload never shifts the buttons under the pointer.
+
+The modal shell is the shared `components/Modal.tsx` (backdrop, Escape, click-outside),
+extracted from `EvidenceThumb`'s lightbox and reused by it. The panel always **spends the
+full width it is given**, capped per caller by `--modal-max-width` (900px for the lightbox,
+420px for the add form); under 720px `.modal-overlay`/`.modal-panel` (globals.css) drop the
+backdrop margin and the rounded corners so it runs **edge to edge on a phone**, where width
+is the scarce axis. Children of a modal therefore size in percentages, never fixed pixel
+widths.
 
 ## Availability form layering
 
