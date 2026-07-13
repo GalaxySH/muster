@@ -105,7 +105,12 @@ request (students still only their own). The per-student admin page header carri
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`, and the queue at
+submission, each anchored as `#change-request-<id>`. It is one card among the others in
+that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
+slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
+a long history never stretches the page below the other cards. That means the dashboard
+container renders unconditionally and the submission-dependent cards are conditional
+children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -212,11 +217,27 @@ evidence/Drive section. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
-islands are `MarkScheduledButton`, `SchedulerNotes`, and `EvidenceThumb` (one
+islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
-both through the `/api/evidence/[fileId]` proxy). The flags & checks panel is
-**recomputed live** from `validateAvailability` + the evidence, not read from the
-persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
+one **is** the availability card: the admin clicks grid cells to mock a schedule and a
+corner readout shows the live hours from the same `computeCapacity` (cycle-averaged)
+that drives preference capacity, so the mock recomputes hours identically to entry. It
+seeds from the student's picks (readout opens at their pref. capacity), reads the
+persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a reference
+layer, offers Reset/Clear, and never persists — pure client state. The weekend rotation
+pill is part of the trial too: clicking it flips A/B ↔ every-weekend, re-weighting the
+weekend (×0.5 ↔ ×1.0) in the same `computeCapacity` call, and Reset restores the
+student's real rotation along with their picks. The pill keeps its submitted look (filled
+blue for an every-weekend opt-in, quiet for A/B) but takes the grid's amber dashed ring
+once flipped, so a trial rotation never reads as the student's answer. When the trial's weekend holds **only**
+the auto-assigned shift, the readout becomes a **range**: the upper bound is a second
+`computeCapacity` over picks + the auto cell (so it tracks the rotation), tinted
+`--color-text-auto` because those hours are additional and not the student's own pick.
+Any weekend pick in the trial replaces the auto shift, so the range collapses to the
+single number that pick already counts for. The flags & checks
+panel is **recomputed live** from `validateAvailability` + the evidence, not read from
+the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
