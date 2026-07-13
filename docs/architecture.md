@@ -276,6 +276,12 @@ input computation (shared `computeFlowInputs`) and returns the position-aware st
 unlocked step keys for the breadcrumb.
 `actions.ts` `confirmRosterInfo()` records a draft row (`ensureSubmissionId`) so `/me`
 resumes, then redirects to `/intro`.
+`app/me/page.tsx` renders one extra branch on top of that flow state: an admin with no
+roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets a
+greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
+and the bottom "Admin access" card is then reserved for admins who are also students.
+This is a render-time branch only: it adds no query, so `loadFlowState` stays the single
+source of hub state.
 
 ## Unified navigation
 

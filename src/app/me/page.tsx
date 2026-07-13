@@ -16,6 +16,10 @@ export default async function MePage() {
   if (!session) redirect("/signin?callbackUrl=/me");
 
   const flow = await loadFlowState(session.email);
+  // Admins are staff, so they have no roster row and no form to fill out. Give them a
+  // greeting and the dashboard rather than the off-roster notice meant for students.
+  const adminHome = !flow.onRoster && session.isAdmin;
+  const firstName = session.name?.trim().split(/\s+/)[0];
 
   return (
     <Page>
@@ -27,12 +31,16 @@ export default async function MePage() {
       </p>
 
       {flow.onRoster && flow.returning && (
-        <p style={{ color: "#196127", fontWeight: 600, marginTop: 0 }}>
-          Welcome back to Gordon
-        </p>
+        <p style={greeting}>Welcome back to Gordon</p>
       )}
 
-      {!flow.onRoster ? (
+      {adminHome && <p style={greeting}>{firstName ? `Hi ${firstName}` : "Hi there"}</p>}
+
+      {adminHome ? (
+        <InfoCard title="You're signed in as an admin">
+          <PrimaryLink href="/admin">Open the admin dashboard</PrimaryLink>
+        </InfoCard>
+      ) : !flow.onRoster ? (
         <InfoCard title="We don't recognize this account">
           <p style={{ margin: 0 }}>
             You&apos;re signed in but are not a known employee. If this is a mistake, contact{" "}
@@ -143,11 +151,13 @@ export default async function MePage() {
         </InfoCard>
       )}
 
-      <p style={{ marginTop: 20 }}>
-        For any questions, contact <strong>{CONTACT_EMAIL}</strong> or come into the office.
-      </p>
+      {!adminHome && (
+        <p style={{ marginTop: 20 }}>
+          For any questions, contact <strong>{CONTACT_EMAIL}</strong> or come into the office.
+        </p>
+      )}
 
-      {session.isAdmin && (
+      {flow.onRoster && session.isAdmin && (
         <InfoCard title="Admin access" style={{ marginTop: 20 }}>
           <p style={{ margin: 0 }}>
             You have admin access. <Link href="/admin">Open the admin dashboard</Link>.
@@ -158,6 +168,8 @@ export default async function MePage() {
     </Page>
   );
 }
+
+const greeting: React.CSSProperties = { color: "#196127", fontWeight: 600, marginTop: 0 };
 
 const reviewList: React.CSSProperties = {
   margin: 0,

@@ -27,7 +27,7 @@
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. Next: ops.
-- **Version:** 0.65
+- **Version:** 0.66
 - **Last updated:** 2026-07-12
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -92,7 +92,9 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
 2. **`/me` hub** branches on the two access gates (§13) then on flow state (returning
    employees, hired before June of the current cycle, also see a short **welcome-back**
    greeting, from `students.hiredOn` — §9):
-   - **Not on roster / no group** → access notice (no flow).
+   - **Not on roster / no group** → access notice (no flow). An **admin** who is not on the
+     roster (the normal case for staff) instead gets a greeting and a card pointing at the
+     admin dashboard, in the same page shell.
    - **Done** (status submitted) → review links to every step (editable until the window
      closes).
    - **In progress** → "Pick up where you left off" → deep-links to the first incomplete
@@ -1002,6 +1004,14 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 ---
 
 ## Changelog
+- **0.66 (2026-07-13)** — **Admin landing on `/me` (§4.1).** Admins are staff, so they have
+  no roster row, and `/me` used to greet them with the off-roster "We don't recognize this
+  account" notice. They now get a greeting (`Hi <first name>`) and a single card, "You're
+  signed in as an admin", with a primary link to the dashboard. Same page shell, same
+  components, same queries: one `session.isAdmin && !flow.onRoster` branch on the existing
+  notice, the student contact line hidden for that case, and the old bottom "Admin access"
+  card kept only for admins who *are* on the roster (it would otherwise duplicate the new
+  one). Off-roster non-admins still see the original notice.
 - **0.65 (2026-07-13)** — **Test accounts: Get link (§18b).** Next to **Sign in as**,
   each test account gains a **Get link** button that mints the same single-use
   magic-link token but skips redemption: the manager page shows the `/magic/redeem`
