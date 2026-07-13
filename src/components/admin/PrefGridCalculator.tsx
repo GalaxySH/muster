@@ -155,44 +155,43 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   return (
     <>
-      {/* Header: title and the live hours readout on one line. The Reset/Clear
-          controls sit with the legend so the header text never wraps. */}
+      {/* Header: title, then the hours readout on its own line. It never shares the
+          title's line, so a wider or narrower number can't shuffle the layout as the
+          admin clicks. The Reset/Clear controls sit with the legend. */}
       <div style={headerRow}>
         <div style={sectionLabel}>Availability preferences</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <div style={badge} aria-live="polite">
-            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: accent }}>
-              {showAutoRange ? (
-                <>
-                  {fmtNum(hours)}
-                  <span
-                    style={{ color: "var(--color-text-auto)" }}
-                    title={`Includes the auto-assigned weekend shift: ${autoWeekend
-                      .map((s) => describeCell(s, props.blocks))
-                      .join(", ")}`}
-                  >
-                    –{fmtHours(hoursWithAuto)}
-                  </span>
-                </>
-              ) : (
-                fmtHours(hours)
-              )}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                whiteSpace: "nowrap",
-                color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
-              }}
-            >
-              {statusText}
-              {mock.size > 0 && !belowFloor && !overCap && (
-                <span style={{ color: "var(--color-text-tertiary)" }}>
-                  {" "}
-                  · {dayCount} day{dayCount === 1 ? "" : "s"}
+        <div style={badge} aria-live="polite">
+          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: accent }}>
+            {showAutoRange ? (
+              <>
+                {fmtNum(hours)}
+                <span
+                  style={{ color: "var(--color-text-auto)" }}
+                  title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                    .map((s) => describeCell(s, props.blocks))
+                    .join(", ")}`}
+                >
+                  –{fmtHours(hoursWithAuto)}
                 </span>
-              )}
-            </div>
+              </>
+            ) : (
+              fmtHours(hours)
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              whiteSpace: "nowrap",
+              color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
+            }}
+          >
+            {statusText}
+            {mock.size > 0 && !belowFloor && !overCap && (
+              <span style={{ color: "var(--color-text-tertiary)" }}>
+                {" "}
+                · {dayCount} day{dayCount === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -373,27 +372,23 @@ function Legend() {
 // --- styles ---
 
 /**
- * Title, controls, and the hours readout all sit on one line, baseline-aligned, so
- * the card opens with a single scannable row rather than a stack. It wraps only when
- * the column gets too narrow to hold them.
+ * The readout always sits on its own line under the title — never inline, even when
+ * it would fit. Inline, a wider or narrower number reflows the header on every click.
  */
 const headerRow: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: 12,
-  flexWrap: "wrap",
-  marginBottom: 12,
+  marginBottom: 10,
 };
 const sectionLabel: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
   color: "var(--color-text-primary)",
 };
+/** Hours and status sit side by side on the readout line, hard against the title. */
 const badge: React.CSSProperties = {
   display: "flex",
   alignItems: "baseline",
   gap: 6,
+  marginTop: 2,
 };
 const miniBtn: React.CSSProperties = {
   fontSize: 11,
