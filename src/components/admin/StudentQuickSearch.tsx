@@ -96,7 +96,7 @@ export function StudentQuickSearch({
       {open && query.trim() !== "" && (
         <div style={menu}>
           {matches.length === 0 ? (
-            <div style={{ ...item, color: "var(--color-text-tertiary)" }}>Nobody matches that.</div>
+            <div style={{ ...item, color: "var(--color-text-tertiary)" }}>No matches.</div>
           ) : (
             matches.map((s, i) => (
               <button

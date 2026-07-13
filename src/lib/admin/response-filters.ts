@@ -51,7 +51,7 @@ export const FLAG_LABELS: Record<DbFlagType, string> = {
   auto_assigned_weekend: "Auto-assigned weekend",
   travel_late: "Late travel",
   position_change: "Position changed",
-  revalidation_failed: "Fails validation",
+  revalidation_failed: "Failed validation",
 };
 
 const KNOWN_FLAGS: readonly FlagFilter[] = ["any", ...(Object.keys(FLAG_LABELS) as DbFlagType[])];

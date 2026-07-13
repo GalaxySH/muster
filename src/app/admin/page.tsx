@@ -147,8 +147,8 @@ export default async function AdminPage() {
             action={
               view.alerts.length > 0 ? (
                 <span style={hint}>
-                  {view.alerts.length} {view.alerts.length === 1 ? "thing" : "things"} &nbsp;·&nbsp;
-                  worst first
+                  {view.alerts.length} {view.alerts.length === 1 ? "issue" : "issues"} &nbsp;·&nbsp;
+                  most urgent first
                 </span>
               ) : null
             }
@@ -161,7 +161,7 @@ export default async function AdminPage() {
                 icon={faCircleCheck}
                 style={{ color: "var(--color-text-success)" }}
               />
-              Nothing needs you right now.
+              Nothing needs attention.
             </div>
           ) : (
             view.alerts.map((a) => <AlertRow key={a.id} alert={a} />)
@@ -193,14 +193,14 @@ export default async function AdminPage() {
           sub={
             tiles.flags.byType.length
               ? tiles.flags.byType.map((f) => `${f.count} ${f.label.toLowerCase()}`).join(" · ")
-              : "nothing flagged"
+              : "none flagged"
           }
           href="/admin/responses?flag=any"
         />
         <StatTile label="Travel" value={tiles.travel} sub="next three weeks" href="/admin/travel" />
         {tiles.closes && (
           <StatTile
-            label="SL closes"
+            label="Shift lead closes"
             value={
               <>
                 {tiles.closes.leadsShort}{" "}
@@ -210,7 +210,7 @@ export default async function AdminPage() {
             sub={
               tiles.closes.overCapacity > 0
                 ? `${tiles.closes.overCapacity} claims over capacity`
-                : "inventory covers them"
+                : "inventory is sufficient"
             }
             subTone={tiles.closes.overCapacity > 0 ? "warning" : undefined}
             href="/admin/closes"
@@ -222,8 +222,8 @@ export default async function AdminPage() {
       <div style={masonryStyle}>
         {coverage.cells.length > 0 && (
           <section style={panelStyle}>
-            <SectionLabel action={<span style={hint}>blocks, by who said yes</span>}>
-              Fewest takers
+            <SectionLabel action={<span style={hint}>students who selected each shift</span>}>
+              Least staffed shifts
             </SectionLabel>
             {coverage.cells.map((c) => (
               <div key={`${c.blockId}-${c.day}`} style={covRow}>
@@ -256,8 +256,8 @@ export default async function AdminPage() {
               </div>
             ))}
             <p style={footnote}>
-              Students&apos; own picks, against {coverage.max} on the healthiest block. Weekend
-              shifts handed out automatically are not counted.
+              The best staffed shift has {coverage.max}. Auto-assigned weekend shifts are not
+              counted.
             </p>
           </section>
         )}
@@ -270,10 +270,10 @@ export default async function AdminPage() {
               </Link>
             }
           >
-            Just submitted
+            Recent submissions
           </SectionLabel>
           {view.recent.length === 0 ? (
-            <p style={{ ...footnote, marginTop: 0 }}>Nobody has submitted yet.</p>
+            <p style={{ ...footnote, marginTop: 0 }}>No submissions yet.</p>
           ) : (
             view.recent.map((r) => (
               <div key={r.email} style={listRow}>
@@ -289,19 +289,21 @@ export default async function AdminPage() {
         </section>
 
         <section style={panelStyle}>
-          <SectionLabel action={<span style={hint}>on roster</span>}>Worth a nudge</SectionLabel>
+          <SectionLabel action={<span style={hint}>on roster</span>}>
+            Students to follow up
+          </SectionLabel>
           <div style={listRow}>
-            <span>Started and stalled</span>
+            <span>Stalled drafts</span>
             <span style={muted}>no edit in {STALLED_DRAFT_DAYS} days</span>
             <strong style={{ marginLeft: "auto" }}>{nudge.stalledDraftEmails.length}</strong>
           </div>
           <div style={listRow}>
-            <span>Never opened the form</span>
+            <span>Never started the form</span>
             <strong style={{ marginLeft: "auto" }}>{nudge.neverStartedEmails.length}</strong>
           </div>
           <div style={listRow}>
-            <span>Missing a course schedule</span>
-            <span style={muted}>draft only</span>
+            <span>No course schedule uploaded</span>
+            <span style={muted}>drafts</span>
             <strong style={{ marginLeft: "auto" }}>{nudge.missingCourseSchedule}</strong>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
@@ -336,7 +338,7 @@ export default async function AdminPage() {
               </a>
             }
           >
-            System
+            System status
           </SectionLabel>
 
           <SystemRow
@@ -391,39 +393,39 @@ export default async function AdminPage() {
           />
         </section>
 
-        <NavGroup title="Review and act">
+        <NavGroup title="Review">
           <NavCard
             icon={faList}
             title="Responses"
-            desc="Everyone who filled the form"
+            desc="Every student who has responded"
             href="/admin/responses"
             count={totals.submitted + totals.draft}
           />
           <NavCard
             icon={faUniversalAccess}
             title="Missing responses"
-            desc="Who still owes you one"
+            desc="Students who have not responded"
             href="/admin/non-responses"
             count={totals.notStarted}
           />
           <NavCard
             icon={faInbox}
             title="Change requests"
-            desc="Shift changes students asked for"
+            desc="Shift changes students have asked for"
             href="/admin/change-requests"
             count={tiles.changeRequests.open}
           />
           <NavCard
             icon={faPlaneDeparture}
             title="Upcoming travel"
-            desc="Who is away in the next weeks"
+            desc="Students away in the coming weeks"
             href="/admin/travel"
             count={tiles.travel}
           />
           <NavCard
             icon={faMoon}
-            title="SL weekend closes"
-            desc={`Claims toward the ${REQUIRED_CLOSE_CLAIMS} each lead needs`}
+            title="Shift lead weekend closes"
+            desc={`Close claims, ${REQUIRED_CLOSE_CLAIMS} per lead`}
             href="/admin/closes"
             count={
               tiles.closes && tiles.closes.leadsShort > 0 ? tiles.closes.leadsShort : undefined
@@ -433,11 +435,11 @@ export default async function AdminPage() {
           />
         </NavGroup>
 
-        <NavGroup title="Tell people things">
+        <NavGroup title="Email">
           <NavCard
             icon={faEnvelope}
             title="Batch schedule email"
-            desc="Tell a group their schedule is up"
+            desc="Notify a group their schedule is ready"
             href="/admin/schedule-email"
           />
           <NavCard
@@ -448,11 +450,11 @@ export default async function AdminPage() {
           />
         </NavGroup>
 
-        <NavGroup title="Set up the cycle">
+        <NavGroup title="Configuration">
           <NavCard
             icon={faCalendar}
-            title="Who can respond and when"
-            desc="Groups and form windows"
+            title="Groups and form windows"
+            desc="Who can respond, and when"
             href="/admin/groups"
             count={view.ungrouped > 0 ? view.ungrouped : undefined}
             countTone="danger"
@@ -461,7 +463,7 @@ export default async function AdminPage() {
           <NavCard
             icon={faTableList}
             title="Positions and shift blocks"
-            desc="What students can pick"
+            desc="The shifts students can select"
             href="/admin/positions"
             count={snapshot.ghostTitles.length > 0 ? snapshot.ghostTitles.length : undefined}
             countTone="warning"
@@ -469,20 +471,20 @@ export default async function AdminPage() {
           />
           <NavCard
             icon={faFileImport}
-            title="Import the PCPL roster"
-            desc="Upload the workbook"
+            title="Roster import"
+            desc="Upload the PCPL workbook"
             href="/admin/roster"
           />
           <NavCard
             icon={faGoogleDrive}
             title="Google Drive"
-            desc="Where the proofs are stored"
+            desc="Where uploaded proofs are stored"
             href="/admin/drive"
           />
           <NavCard
             icon={faUserGear}
             title="Test accounts"
-            desc="Fake students for training"
+            desc="Synthetic accounts for training"
             href="/admin/test-users"
           />
         </NavGroup>
@@ -767,7 +769,7 @@ function since(then: Date, now: Date): string {
 }
 
 function changeRequestSub(cr: { newLast24h: number; oldestDays: number | null }): string {
-  if (cr.oldestDays === null) return "nothing waiting";
+  if (cr.oldestDays === null) return "none open";
   const parts: string[] = [];
   if (cr.newLast24h > 0) parts.push(`${cr.newLast24h} new`);
   parts.push(cr.oldestDays === 0 ? "oldest today" : `oldest ${cr.oldestDays} days`);

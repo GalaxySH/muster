@@ -273,7 +273,7 @@ cannot cheaply probe:
   (`testDriveRelay`) uploads a live file, which must never run on page load. The tile says
   *connected as X*, never *healthy*.
 
-**Fewest takers** counts, per (block, day), how many submitted on-roster students picked
+**Least staffed shifts** counts, per (block, day), how many submitted on-roster students picked
 it **themselves** — machine-assigned weekend cells are excluded, since counting them
 would hide exactly the thin weekend coverage the panel exists to show. Cells nobody
 picked are the whole point and a `GROUP BY` cannot return them, so the block × day grid is

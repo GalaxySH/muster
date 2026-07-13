@@ -1,4 +1,4 @@
-<h2 class="sr-only">Wireframe of Muster's admin dashboard: a student quick-search, a response progress band beside a needs-attention card, a row of daily-work stat tiles, then a masonry of panels covering recent submissions, thinnest shift coverage, who to nudge, system status, and the full launcher grouped by job.</h2>
+<h2 class="sr-only">Wireframe of Muster's admin dashboard: a student quick-search, a response progress band beside a needs-attention card, a row of daily-work stat tiles, then a masonry of panels covering the least staffed shifts, recent submissions, students to follow up, system status, and the full launcher grouped by job.</h2>
 
 <!-- Self-contained on purpose: this file redeclares the globals.css tokens and
      carries its own icon sprite so it opens in a browser on its own. The values
@@ -126,7 +126,7 @@
   .listrow .l-when { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); white-space: nowrap; }
   .btn { font-size: 13px; padding: 3px 10px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); cursor: pointer; font-family: inherit; }
 
-  /* Fewest-takers rows: a count, and a bar showing it against the healthiest block. */
+  /* Least-staffed rows: a count, and a bar showing it against the best staffed shift. */
   .cov { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 6px 0; border-top: 0.5px solid var(--color-border-tertiary); font-size: 13px; }
   .cov:first-of-type { border-top: 0; }
   .cov .c-who { color: var(--color-text-secondary); font-size: 12px; grid-column: 1; }
@@ -227,7 +227,7 @@
     <div class="panel">
       <div class="label">
         <span>Needs attention</span>
-        <span class="hint">5 things &nbsp;&middot;&nbsp; worst first</span>
+        <span class="hint">5 issues &nbsp;&middot;&nbsp; most urgent first</span>
       </div>
 
       <div class="alert">
@@ -301,7 +301,7 @@
       <div class="t-sub">next three weeks</div>
     </a>
     <a class="tile" href="#">
-      <div class="t-label">SL closes</div>
+      <div class="t-label">Shift lead closes</div>
       <div class="t-value">5 <span style="font-size:13px; color:var(--color-text-tertiary); font-weight:400;">of 18 short</span></div>
       <div class="t-sub warn">3 claims over capacity</div>
     </a>
@@ -311,7 +311,7 @@
   <div class="masonry">
 
     <div class="panel">
-      <div class="label"><span>Fewest takers</span><span class="hint">blocks, by who said yes</span></div>
+      <div class="label"><span>Least staffed shifts</span><span class="hint">students who selected each shift</span></div>
       <div class="cov">
         <div>Sun close <span style="color:var(--color-text-tertiary);">8p&ndash;11:30p</span></div>
         <div class="c-n danger">2</div>
@@ -343,13 +343,13 @@
         <div class="c-bar"><div style="width:32%; background:var(--color-border-secondary);"></div></div>
       </div>
       <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:8px;">
-        Bars compare against the healthiest block, 28 takers.
+        The best staffed shift has 28.
         <a href="#">All coverage <svg><use href="#i-arrow"/></svg></a>
       </div>
     </div>
 
     <div class="panel">
-      <div class="label"><span>Just submitted</span><a href="#" class="hint">All responses</a></div>
+      <div class="label"><span>Recent submissions</span><a href="#" class="hint">All responses</a></div>
       <div class="listrow"><a href="#">Jordan Park</a> <span style="color:var(--color-text-tertiary);">Cashier</span> <span class="l-when">14 min ago</span></div>
       <div class="listrow"><a href="#">Ava Nguyen</a> <span style="color:var(--color-text-tertiary);">Barista</span> <span class="l-when">1 hr ago</span></div>
       <div class="listrow"><a href="#">Marcus Bell</a> <span style="color:var(--color-text-tertiary);">Dishwasher</span> <span class="warn" style="font-size:12px;">auto weekend</span> <span class="l-when">2 hr ago</span></div>
@@ -375,10 +375,10 @@
     </div>
 
     <div class="panel">
-      <div class="label"><span>Worth a nudge</span><span class="hint">on roster, window open</span></div>
-      <div class="listrow"><span>Started and stalled</span> <span style="color:var(--color-text-tertiary);">no edit in 3 days</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">11</span></div>
-      <div class="listrow"><span>Never opened the form</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">105</span></div>
-      <div class="listrow"><span>Missing a course schedule</span> <span style="color:var(--color-text-tertiary);">draft only</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">7</span></div>
+      <div class="label"><span>Students to follow up</span><span class="hint">on roster, window open</span></div>
+      <div class="listrow"><span>Stalled drafts</span> <span style="color:var(--color-text-tertiary);">no edit in 3 days</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">11</span></div>
+      <div class="listrow"><span>Never started the form</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">105</span></div>
+      <div class="listrow"><span>No course schedule uploaded</span> <span style="color:var(--color-text-tertiary);">draft only</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">7</span></div>
       <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap;">
         <button class="btn">Copy the 11 stalled emails</button>
         <button class="btn">Copy all 105</button>
@@ -387,7 +387,7 @@
     </div>
 
     <div class="panel">
-      <div class="label"><span>System</span><a href="#" class="hint">Status page &#8599;</a></div>
+      <div class="label"><span>System status</span><a href="#" class="hint">Status page &#8599;</a></div>
       <div class="listrow" style="display:block; border:0; padding-top:0;">
         <div style="font-size:12px; color:var(--color-text-tertiary);">Google Drive</div>
         <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> dining.admin@wisc.edu</div>
@@ -411,27 +411,27 @@
     </div>
 
     <div class="panel">
-      <div class="label"><span>Review and act</span></div>
-      <a class="navcard" href="#"><div><div class="n-title">Responses</div><div class="n-desc">Everyone who filled the form</div></div><span class="n-count">275</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">Missing responses</div><div class="n-desc">Who still owes you one</div></div><span class="n-count">105</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">Change requests</div><div class="n-desc">Shift changes students asked for</div></div><span class="n-count">12</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">Upcoming travel</div><div class="n-desc">Who is away in the next weeks</div></div><span class="n-count">27</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">SL weekend closes</div><div class="n-desc">Claims each shift lead has made</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">5 short</span></a>
+      <div class="label"><span>Review</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Responses</div><div class="n-desc">Every student who has responded</div></div><span class="n-count">275</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Missing responses</div><div class="n-desc">Students who have not responded</div></div><span class="n-count">105</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Change requests</div><div class="n-desc">Shift changes students have asked for</div></div><span class="n-count">12</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Upcoming travel</div><div class="n-desc">Students away in the coming weeks</div></div><span class="n-count">27</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Shift lead weekend closes</div><div class="n-desc">Close claims, 3 per lead</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">5 short</span></a>
     </div>
 
     <div class="panel">
-      <div class="label"><span>Tell people things</span></div>
-      <a class="navcard" href="#"><div><div class="n-title">Batch schedule email</div><div class="n-desc">Tell a group their schedule is up</div></div><span class="n-count">9 ready</span></a>
+      <div class="label"><span>Email</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Batch schedule email</div><div class="n-desc">Notify a group their schedule is ready</div></div><span class="n-count">9 ready</span></a>
       <a class="navcard" href="#"><div><div class="n-title">Email settings</div><div class="n-desc">Sending switch, digest, recipients</div></div></a>
     </div>
 
     <div class="panel">
-      <div class="label"><span>Set up the cycle</span></div>
-      <a class="navcard" href="#"><div><div class="n-title">Who can respond and when</div><div class="n-desc">Groups and form windows</div></div><span class="n-count" style="background:#fce8e6; color:var(--color-text-danger);">18 ungrouped</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">Positions and shift blocks</div><div class="n-desc">What students can pick</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">2 titles</span></a>
-      <a class="navcard" href="#"><div><div class="n-title">Import the PCPL roster</div><div class="n-desc">Upload the workbook</div></div></a>
-      <a class="navcard" href="#"><div><div class="n-title">Google Drive</div><div class="n-desc">Where the proofs are stored</div></div></a>
-      <a class="navcard" href="#"><div><div class="n-title">Test accounts</div><div class="n-desc">Fake students for training</div></div></a>
+      <div class="label"><span>Configuration</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Groups and form windows</div><div class="n-desc">Groups and form windows</div></div><span class="n-count" style="background:#fce8e6; color:var(--color-text-danger);">18 ungrouped</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Positions and shift blocks</div><div class="n-desc">The shifts students can select</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">2 titles</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Roster import</div><div class="n-desc">Upload the PCPL workbook</div></div></a>
+      <a class="navcard" href="#"><div><div class="n-title">Google Drive</div><div class="n-desc">Where uploaded proofs are stored</div></div></a>
+      <a class="navcard" href="#"><div><div class="n-title">Test accounts</div><div class="n-desc">Synthetic accounts for training</div></div></a>
     </div>
 
   </div>
@@ -442,7 +442,7 @@
     <div class="panel" style="max-width:420px;">
       <div class="label"><span>Needs attention</span></div>
       <div class="row" style="gap:8px; font-size:14px;">
-        <span class="ok"><svg><use href="#i-check"/></svg></span> Nothing needs you right now.
+        <span class="ok"><svg><use href="#i-check"/></svg></span> Nothing needs attention.
       </div>
     </div>
   </div>

@@ -272,7 +272,7 @@ describe("FLAG_FILTER_OPTIONS", () => {
         { value: "auto_assigned_weekend", label: "Auto-assigned weekend" },
         { value: "travel_late", label: "Late travel" },
         { value: "position_change", label: "Position changed" },
-        { value: "revalidation_failed", label: "Fails validation" },
+        { value: "revalidation_failed", label: "Failed validation" },
       ]),
     );
   });

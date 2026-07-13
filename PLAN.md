@@ -1016,7 +1016,7 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   human), and **`revalidation_failed`** submissions (stored data that stopped being
   valid when the blocks changed under it). **Tiles**: To review (submitted, not yet
   marked scheduled), change requests + age of the oldest, flags by type, travel in
-  the next three weeks, SL closes short. **Panels**: Fewest takers, Just submitted +
+  the next three weeks, SL closes short. **Panels**: Least staffed shifts, Just submitted +
   a 14-day submissions sparkline, Worth a nudge (stalled drafts / never-started /
   missing course schedule, with copy-emails), System, and the original 13
   destinations grouped by job. **Every count links to the list it came from.**
@@ -1026,7 +1026,7 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   **`change_digest_last_run`** (stamped on *every* digest run, including the no-ops,
   so a never-installed cron stops looking like a quiet week) and
   **`drive_last_ok_at`** (stamped on any successful Drive write, since no token
-  expiry is stored and the only real probe uploads a live file). **Fewest takers**
+  expiry is stored and the only real probe uploads a live file). **Least staffed shifts**
   ranks (block, day) cells by how many students picked them *themselves*
   (machine-assigned weekend cells excluded, or they would mask the very weekend
   thinness it exists to show); it **ranks, it does not alarm**, because no per-block
