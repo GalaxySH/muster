@@ -123,6 +123,41 @@ describe("PrefGridCalculator", () => {
     expect(screen.getByText("10h")).toBeInTheDocument();
   });
 
+  it("rings the rotation pill only while it deviates from the student's answer", async () => {
+    const user = userEvent.setup();
+    renderCalc(); // student chose alternating
+
+    const ring = () => {
+      const pill = screen.getByRole("button", { name: /alternating|EVERY weekend/i });
+      return pill.style.border;
+    };
+    expect(ring()).not.toContain("dashed"); // matches their answer
+
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(ring()).toContain("dashed"); // trial override
+    expect(screen.getByRole("button", { name: /EVERY weekend/i })).toHaveAttribute(
+      "title",
+      expect.stringContaining("The student chose alternating"),
+    );
+
+    await user.click(screen.getByRole("button", { name: /EVERY weekend/i }));
+    expect(ring()).not.toContain("dashed"); // back to their answer
+  });
+
+  it("rings the pill when an every-weekend student's rotation is flipped down to A/B", async () => {
+    const user = userEvent.setup();
+    renderCalc({ everyWeekendOptIn: true }); // student chose every weekend
+    const pill = () => screen.getByRole("button", { name: /alternating|EVERY weekend/i });
+    expect(pill().style.border).not.toContain("dashed");
+
+    await user.click(pill());
+    expect(pill().style.border).toContain("dashed");
+    expect(pill()).toHaveAttribute(
+      "title",
+      expect.stringContaining("The student chose every weekend"),
+    );
+  });
+
   it("Reset restores the student's real rotation, not just the picks", async () => {
     const user = userEvent.setup();
     renderCalc();

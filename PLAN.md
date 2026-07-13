@@ -1012,7 +1012,9 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   reads as "picked, not in trial", an added cell the student never offered gets an amber
   ring. The **weekend rotation pill is a toggle**: clicking it flips A/B ↔ every-weekend
   and re-weights the weekend (×0.5 ↔ ×1.0) in the live math, so the admin can price a
-  rotation change without touching the student's answer. While the trial's weekend holds
+  rotation change without touching the student's answer. The pill keeps its submitted
+  look (filled blue for an every-weekend opt-in, quiet for A/B) and gains the grid's
+  amber dashed ring once flipped, so a trial rotation never reads as their answer. While the trial's weekend holds
   **only the auto-assigned shift**, the readout is a **range** (`15.3–16.5h`) whose upper
   bound folds that shift in at the current rotation and renders in
   `--color-text-auto` — hours the student never offered but would work anyway, so they

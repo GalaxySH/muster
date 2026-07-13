@@ -221,7 +221,9 @@ persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a ref
 layer, offers Reset/Clear, and never persists — pure client state. The weekend rotation
 pill is part of the trial too: clicking it flips A/B ↔ every-weekend, re-weighting the
 weekend (×0.5 ↔ ×1.0) in the same `computeCapacity` call, and Reset restores the
-student's real rotation along with their picks. When the trial's weekend holds **only**
+student's real rotation along with their picks. The pill keeps its submitted look (filled
+blue for an every-weekend opt-in, quiet for A/B) but takes the grid's amber dashed ring
+once flipped, so a trial rotation never reads as the student's answer. When the trial's weekend holds **only**
 the auto-assigned shift, the readout becomes a **range**: the upper bound is a second
 `computeCapacity` over picks + the auto cell (so it tracks the rotation), tinted
 `--color-text-auto` because those hours are additional and not the student's own pick.

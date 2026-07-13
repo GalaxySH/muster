@@ -114,8 +114,10 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   const belowFloor = mock.size > 0 && hours < props.minHours;
   const overCap = hours > props.cap;
+  // The rotation no longer matches the student's answer: the pill is a trial override.
+  const rotationDeviates = optIn !== props.everyWeekendOptIn;
   const dirty =
-    optIn !== props.everyWeekendOptIn ||
+    rotationDeviates ||
     mock.size !== preferred.size ||
     [...mock].some((k) => !preferred.has(k));
 
@@ -208,11 +210,13 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 type="button"
                 aria-pressed={optIn}
                 onClick={() => setOptIn((v) => !v)}
-                style={weekendModeBadge(optIn)}
+                style={weekendModeBadge(optIn, rotationDeviates)}
                 title={
-                  optIn
-                    ? "Every weekend. Click to try alternating (A/B)."
-                    : "Alternating (A/B). Click to try every weekend."
+                  rotationDeviates
+                    ? `Trial only. ${props.everyWeekendOptIn ? "The student chose every weekend." : "The student chose alternating (A/B)."} Click to switch back.`
+                    : optIn
+                      ? "Every weekend. Click to try alternating (A/B)."
+                      : "Alternating (A/B). Click to try every weekend."
                 }
               >
                 {optIn ? "EVERY weekend" : "alternating (A/B)"}
@@ -436,10 +440,11 @@ const swatch: React.CSSProperties = {
 
 /**
  * The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet
- * one. It's also the toggle that re-weights the weekend in the trial, so it
- * carries button affordances.
+ * one. It's also the toggle that re-weights the weekend in the trial, so it carries
+ * button affordances — and, once flipped away from what the student actually chose,
+ * the same amber dashed ring the grid uses for cells they never offered.
  */
-const weekendModeBadge = (every: boolean): React.CSSProperties => ({
+const weekendModeBadge = (every: boolean, deviates: boolean): React.CSSProperties => ({
   display: "inline-block",
   marginLeft: 8,
   padding: "1px 8px",
@@ -456,6 +461,7 @@ const weekendModeBadge = (every: boolean): React.CSSProperties => ({
         color: "var(--color-text-secondary)",
         border: "1px solid var(--color-border-tertiary)",
       }),
+  ...(deviates ? { border: "1.5px dashed var(--color-border-warning)" } : null),
 });
 
 function cellStyle(inMock: boolean, wasPreferred: boolean, wasAuto: boolean): React.CSSProperties {
