@@ -25,6 +25,19 @@ export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 export const SETTING_CHANGE_DIGEST_ENABLED = "change_digest_enabled";
 /** Comma-separated digest recipient emails, admin-set. Absent ⇒ none (nothing sends). */
 export const SETTING_CHANGE_DIGEST_RECIPIENTS = "change_digest_recipients";
+/**
+ * ISO instant of the last digest run, stamped on EVERY run including the ones
+ * that send nothing. Without it a cron that was never installed is
+ * indistinguishable from a quiet week, so the admin hub could never tell the
+ * difference (roadmap 4.1).
+ */
+export const SETTING_CHANGE_DIGEST_LAST_RUN = "change_digest_last_run";
+/**
+ * ISO instant of the last Drive write that succeeded. Only a refresh token is
+ * persisted (no expiry), and the only true probe uploads a live file, so this
+ * is what lets the hub report Drive health without a network call (roadmap 4.1).
+ */
+export const SETTING_DRIVE_LAST_OK_AT = "drive_last_ok_at";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -36,10 +49,7 @@ export async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  await getDb()
-    .insert(appSettings)
-    .values({ key, value })
-    .onDuplicateKeyUpdate({ set: { value } });
+  await getDb().insert(appSettings).values({ key, value }).onDuplicateKeyUpdate({ set: { value } });
 }
 
 export async function deleteSetting(key: string): Promise<void> {
@@ -87,4 +97,34 @@ export async function getChangeDigestEnabled(): Promise<boolean> {
 export async function getChangeDigestRecipients(): Promise<string[]> {
   const raw = await getSetting(SETTING_CHANGE_DIGEST_RECIPIENTS);
   return raw ? raw.split(",").filter(Boolean) : [];
+}
+
+/** Parse a stored ISO instant, treating an unparseable value as absent. */
+async function getInstant(key: string): Promise<Date | null> {
+  const raw = await getSetting(key);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function getChangeDigestLastRun(): Promise<Date | null> {
+  return getInstant(SETTING_CHANGE_DIGEST_LAST_RUN);
+}
+
+/** Record that the digest ran, whether or not it had anything to send. */
+export async function markChangeDigestRun(now: Date = new Date()): Promise<void> {
+  await setSetting(SETTING_CHANGE_DIGEST_LAST_RUN, now.toISOString());
+}
+
+export async function getDriveLastOkAt(): Promise<Date | null> {
+  return getInstant(SETTING_DRIVE_LAST_OK_AT);
+}
+
+/** Record a Drive write that came back clean. Best effort: never fails a relay. */
+export async function markDriveOk(now: Date = new Date()): Promise<void> {
+  try {
+    await setSetting(SETTING_DRIVE_LAST_OK_AT, now.toISOString());
+  } catch (e) {
+    console.error("Could not record the Drive health stamp (non-fatal):", e);
+  }
 }

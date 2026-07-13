@@ -28,6 +28,7 @@ export default async function ResponsesPage({
     roster?: string;
     started?: string;
     startedDate?: string;
+    review?: string;
   }>;
 }) {
   const session = await getAppSession();
@@ -70,6 +71,7 @@ export default async function ResponsesPage({
         roster={sp.roster}
         started={sp.started}
         startedDate={sp.startedDate}
+        review={sp.review}
       />
       {rows.length === 0 ? (
         <p style={{ color: "var(--color-text-secondary)" }}>

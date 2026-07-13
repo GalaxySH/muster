@@ -19,6 +19,7 @@ import {
   getChangeDigestEnabled,
   getChangeDigestRecipients,
   getEmailSendingEnabled,
+  markChangeDigestRun,
 } from "@/lib/settings";
 import { sendEmail } from "@/lib/email/resend";
 import { loadPendingDigestRequests } from "./data";
@@ -34,6 +35,11 @@ export interface ChangeDigestRunResult {
 }
 
 export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDigestRunResult> {
+  // Stamped before any early return, so a run that sends nothing still proves
+  // the cron fired. The admin hub reads this to tell a dead cron from a quiet
+  // week; every `return` below is a run that happened.
+  await markChangeDigestRun(now);
+
   const pending = await loadPendingDigestRequests();
   const base = { sent: false, requestCount: pending.length, recipientCount: 0 };
   if (pending.length === 0) return { ...base, reason: "no-requests" };
