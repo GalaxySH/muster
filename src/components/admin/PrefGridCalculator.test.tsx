@@ -86,6 +86,35 @@ describe("PrefGridCalculator", () => {
     expect(screen.getByText("EVERY weekend")).toBeInTheDocument();
   });
 
+  it("re-weights the weekend when the rotation pill is clicked", async () => {
+    const user = userEvent.setup();
+    renderCalc(); // A/B: 8h weekday + 0.5 * 4h weekend = 10h
+    expect(screen.getByText("10h")).toBeInTheDocument();
+
+    const pill = screen.getByRole("button", { name: /alternating/i });
+    expect(pill).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(pill); // flip to every-weekend: the weekend now counts in full
+    expect(screen.getByText("12h")).toBeInTheDocument();
+    const flipped = screen.getByRole("button", { name: /EVERY weekend/i });
+    expect(flipped).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(flipped); // and back
+    expect(screen.getByText("10h")).toBeInTheDocument();
+  });
+
+  it("Reset restores the student's real rotation, not just the picks", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(screen.getByText("12h")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("10h")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /alternating/i })).toBeInTheDocument();
+  });
+
   it("Clear empties the trial and Reset restores the picks", async () => {
     const user = userEvent.setup();
     renderCalc();

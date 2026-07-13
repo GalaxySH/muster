@@ -55,6 +55,10 @@ function referenceKeys(grid: AdminGridModel): { preferred: Set<string>; auto: Se
 export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const { preferred, auto } = useMemo(() => referenceKeys(props.grid), [props.grid]);
   const [mock, setMock] = useState<Set<string>>(() => new Set(preferred));
+  // The rotation is part of the trial too: flipping the pill re-weights the
+  // weekend (x0.5 under A/B, x1.0 every-weekend) without touching the student's
+  // real answer.
+  const [optIn, setOptIn] = useState(props.everyWeekendOptIn);
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
@@ -64,15 +68,23 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   );
 
   const capacity = useMemo(
-    () => computeCapacity(selection, props.blocks, { everyWeekendOptIn: props.everyWeekendOptIn }),
-    [selection, props.blocks, props.everyWeekendOptIn],
+    () => computeCapacity(selection, props.blocks, { everyWeekendOptIn: optIn }),
+    [selection, props.blocks, optIn],
   );
   const hours = capacity.weeklyAverageHours;
   const dayCount = useMemo(() => new Set(selection.map((s) => s.day)).size, [selection]);
 
   const belowFloor = mock.size > 0 && hours < props.minHours;
   const overCap = hours > props.cap;
-  const dirty = mock.size !== preferred.size || [...mock].some((k) => !preferred.has(k));
+  const dirty =
+    optIn !== props.everyWeekendOptIn ||
+    mock.size !== preferred.size ||
+    [...mock].some((k) => !preferred.has(k));
+
+  function reset() {
+    setMock(new Set(preferred));
+    setOptIn(props.everyWeekendOptIn);
+  }
 
   function toggle(blockId: string, day: Day) {
     setMock((prev) => {
@@ -107,7 +119,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             {dirty && (
               <button
                 type="button"
-                onClick={() => setMock(new Set(preferred))}
+                onClick={reset}
                 style={miniBtn}
                 title="Reset to the student's picks"
               >
@@ -155,9 +167,19 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           <div>
             <SubHead>
               Weekend
-              <span style={weekendModeBadge(props.everyWeekendOptIn)}>
-                {props.everyWeekendOptIn ? "EVERY weekend" : "alternating (A/B)"}
-              </span>
+              <button
+                type="button"
+                aria-pressed={optIn}
+                onClick={() => setOptIn((v) => !v)}
+                style={weekendModeBadge(optIn)}
+                title={
+                  optIn
+                    ? "Every weekend. Click to try alternating (A/B)."
+                    : "Alternating (A/B). Click to try every weekend."
+                }
+              >
+                {optIn ? "EVERY weekend" : "alternating (A/B)"}
+              </button>
             </SubHead>
             <CalcTable sub={props.grid.weekend} mock={mock} preferred={preferred} auto={auto} onToggle={toggle} />
           </div>
@@ -341,7 +363,11 @@ const swatch: React.CSSProperties = {
   verticalAlign: -1,
 };
 
-/** The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet one. */
+/**
+ * The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet
+ * one. It's also the toggle that re-weights the weekend in the trial, so it
+ * carries button affordances.
+ */
 const weekendModeBadge = (every: boolean): React.CSSProperties => ({
   display: "inline-block",
   marginLeft: 8,
@@ -349,8 +375,11 @@ const weekendModeBadge = (every: boolean): React.CSSProperties => ({
   borderRadius: 10,
   fontSize: 11,
   fontWeight: 600,
+  fontFamily: "inherit",
+  lineHeight: 1.6,
+  cursor: "pointer",
   ...(every
-    ? { background: "var(--color-text-info)", color: "#fff" }
+    ? { background: "var(--color-text-info)", color: "#fff", border: "1px solid var(--color-text-info)" }
     : {
         background: "var(--color-background-secondary)",
         color: "var(--color-text-secondary)",

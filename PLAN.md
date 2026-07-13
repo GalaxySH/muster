@@ -1010,9 +1010,12 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   student's own picks, so the readout starts at their pref. capacity, and keeps the
   persisted picks/auto overlay (`buildAdminGrid`) as a reference layer — a trimmed pick
   reads as "picked, not in trial", an added cell the student never offered gets an amber
-  ring. Reset/Clear controls, below-floor/over-cap cues; pure client state, nothing
-  persists. New island `PrefGridCalculator` (co-located test); the static `PrefTable`
-  and `Legend` on the page are retired into it.
+  ring. The **weekend rotation pill is a toggle**: clicking it flips A/B ↔ every-weekend
+  and re-weights the weekend (×0.5 ↔ ×1.0) in the live math, so the admin can price a
+  rotation change without touching the student's answer. Reset (restores their picks
+  *and* their real rotation) / Clear controls, below-floor/over-cap cues; pure client
+  state, nothing persists. New island `PrefGridCalculator` (co-located test); the static
+  `PrefTable` and `Legend` on the page are retired into it.
 - **0.65 (2026-07-13)** — **Test accounts: Get link (§18b).** Next to **Sign in as**,
   each test account gains a **Get link** button that mints the same single-use
   magic-link token but skips redemption: the manager page shows the `/magic/redeem`
