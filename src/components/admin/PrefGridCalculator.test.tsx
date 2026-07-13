@@ -58,10 +58,30 @@ describe("PrefGridCalculator", () => {
   it("opens on the student's picks and reads their preference capacity", () => {
     renderCalc();
     expect(screen.getByText("10h")).toBeInTheDocument();
+    // Untouched, this is their own selection — not a trial schedule yet. Anchored so
+    // the "in trial schedule" legend entry doesn't satisfy it.
+    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.queryByText(/^trial schedule$/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+  });
+
+  it("reads as a trial schedule once a cell or the rotation is changed, and back after Reset", async () => {
+    const user = userEvent.setup();
+    renderCalc();
+
+    await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add a cell
+    expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("preferred")).toBeInTheDocument();
+
+    // The rotation alone is enough to make it a trial.
+    await user.click(screen.getByRole("button", { name: /alternating/i }));
+    expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("preferred")).toBeInTheDocument();
   });
 
   it("recomputes the hours live as cells are toggled, flagging the floor", async () => {

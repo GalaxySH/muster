@@ -96,13 +96,17 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     });
   }
 
+  // Untouched, the readout is just the student's own selection; it only becomes a
+  // "trial schedule" once the admin edits a cell or the rotation.
   const statusText = overCap
     ? `over ${props.cap}h cap`
     : belowFloor
       ? `below ${props.minHours}h floor`
       : mock.size === 0
         ? "no shifts picked"
-        : "trial schedule";
+        : dirty
+          ? "trial schedule"
+          : "preferred";
   const accent = overCap
     ? "var(--color-text-danger)"
     : belowFloor
