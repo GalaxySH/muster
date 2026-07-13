@@ -237,7 +237,18 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
-the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
+last hole in "everything about one student on one page": `loadStudentCloseClaims`
+(`closes/data.ts`) joins `close_claims` ⋈ `close_slots` and `loadStudentDetail` pulls it
+in parallel with the evidence, so it costs no extra latency. Visibility is gated on the
+**same predicate the student `/closes` step uses** (`isCloseStepRequired` = shift-lead **and**
+a non-empty inventory), so the card and the step can never disagree, non-leads
+short-circuit before any query, and it stays invisible while the closes feature is dormant.
+It renders through the pure `formatCloseSlot` (`domain/close-claims.ts`) and is deliberately
+compact (a title+pill row, ≤3 lines, a link) because the page's design constraint is that
+it fits 1920×1080 without scrolling. It also renders standalone when a lead has claims but
+no submission, since an admin can assign closes before the lead ever opens the form.
+New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
@@ -308,6 +319,18 @@ server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and
 `confirm()` on same-tab link clicks, since the App Router can't block route changes);
 the dirty snapshot resets on each successful save.
 
+The grid's cells are styled by the `.avail-*` block in `globals.css` (its only styling
+path; the inline style objects it replaced are gone). Under
+`@media (pointer: coarse), (max-width: 640px)` the cells become **44×44** rather than the
+desktop 30×26, meeting the platform touch-target floor: most students fill this form on a
+phone, and a mis-tap silently flips a preference that then reaches the scheduler as if it
+were deliberate (PLAN §18c). The constraint was the row-label column, not the cells: on
+touch the ` · open` / ` · close` tag drops to its own line (the separator is a `::before`)
+and the label may wrap, so the table's min-content shrinks below any phone width and
+horizontal overflow is structurally impossible (verified 44×44 with zero overflow at 390px
+and 360px). The admin `PrefGridCalculator` keeps its own smaller cells: it is a
+mouse-driven desktop tool.
+
 ## Form-flow layering (`src/lib/flow/` + wizard pages)
 
 `steps.ts` is **pure** (TDD) —
@@ -358,7 +381,13 @@ and `listStudentsForPicker(filters)`. `groups/actions.ts` ("use server", **admin
 owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPaste`/
 `unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
 `searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;
-`groups/window-message.ts` is the shared (pure) banner/error copy. Enforcement lives in
+`groups/window-message.ts` is the shared (pure) banner/error copy, including
+`readOnlyNotice(state)` (v0.70): the read-only line on `/me` is **derived from
+`WindowState`**, not hardcoded, and returns `null` for `unconfigured`. It used to be one
+fixed string telling the student to "check back during the window shown above" even when
+no window existed to show, which is the first thing a student saw if they arrived before an
+admin set a window (PLAN §18c). `before`/`closed` always carry a real date in the banner,
+so only those get a line. Enforcement lives in
 the shared `groups/gate.ts` `requireEditableStudent`, used by `availability/actions.ts`,
 the `requireStudent` adapter in `evidence/actions.ts` (gates all six evidence mutations),
 and the closes claim actions. The admin UI is
