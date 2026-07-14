@@ -1,7 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FLAG_FILTER_OPTIONS, STARTED_MODE_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
+import {
+  FLAG_FILTER_OPTIONS,
+  REVIEW_FILTER_OPTIONS,
+  STARTED_MODE_OPTIONS,
+  UNGROUPED,
+} from "@/lib/admin/response-filters";
 
 /**
  * Group + flag + off-roster + start-date filters for the response dashboard
@@ -16,6 +21,7 @@ export function ResponseFilterBar({
   roster,
   started,
   startedDate,
+  review,
 }: {
   groups: { id: string; name: string }[];
   group?: string;
@@ -23,6 +29,7 @@ export function ResponseFilterBar({
   roster?: string;
   started?: string;
   startedDate?: string;
+  review?: string;
 }) {
   const router = useRouter();
 
@@ -32,6 +39,7 @@ export function ResponseFilterBar({
     roster?: string;
     started?: string;
     startedDate?: string;
+    review?: string;
   }) {
     const params = new URLSearchParams();
     const g = next.group ?? group ?? "";
@@ -39,9 +47,11 @@ export function ResponseFilterBar({
     const r = next.roster ?? roster ?? "";
     const sm = next.started ?? started ?? "";
     const sd = next.startedDate ?? startedDate ?? "";
+    const rv = next.review ?? review ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
+    if (rv) params.set("review", rv);
     // A mode with no date yet stays in the URL so the date picker shows up;
     // the parser ignores the half-set pair until both halves are present.
     if (sm) {
@@ -53,7 +63,15 @@ export function ResponseFilterBar({
   }
 
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "0 0 12px" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+        margin: "0 0 12px",
+      }}
+    >
       <label style={labelStyle}>
         Group
         <select
@@ -87,12 +105,29 @@ export function ResponseFilterBar({
       </label>
 
       <label style={labelStyle}>
+        Review
+        <select
+          value={review ?? ""}
+          onChange={(e) => navigate({ review: e.target.value })}
+          style={selectStyle}
+        >
+          {REVIEW_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label style={labelStyle}>
         Started
         <select
           value={started ?? ""}
           onChange={(e) =>
             // Clearing the mode clears the date too, so no stale date lingers.
-            navigate(e.target.value ? { started: e.target.value } : { started: "", startedDate: "" })
+            navigate(
+              e.target.value ? { started: e.target.value } : { started: "", startedDate: "" },
+            )
           }
           style={selectStyle}
         >

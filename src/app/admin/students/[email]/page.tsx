@@ -29,6 +29,18 @@ import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/d
 import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
+import {
+  StatTile,
+  SectionLabel,
+  cardStyle,
+  panelStyle,
+  chipStyle,
+  bannerStyle,
+  cardsGridStyle,
+  masonryStyle,
+  successPillStyle,
+  dangerPillStyle,
+} from "@/components/admin/ui";
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -147,7 +159,7 @@ export default async function StudentDetailPage({
       </AppHeader>
 
       {/* Identity header */}
-      <div style={card}>
+      <div style={cardStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <NavArrow href={nav.prevEmail ? studentHref(nav.prevEmail) : null} dir="prev" />
           <div style={avatar}>{initials(detail.displayName)}</div>
@@ -162,7 +174,12 @@ export default async function StudentDetailPage({
             />
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
               <SelectableEmail email={detail.email} />
-              {position && <> &nbsp;·&nbsp; <span style={chip}>{position.name}</span></>}
+              {position && (
+                <>
+                  {" "}
+                  &nbsp;·&nbsp; <span style={chipStyle}>{position.name}</span>
+                </>
+              )}
             </div>
           </div>
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
@@ -196,34 +213,38 @@ export default async function StudentDetailPage({
       </div>
 
       {!detail.onRoster && (
-        <div style={{ ...banner, marginTop: 12 }}>
+        <div style={{ ...bannerStyle, marginTop: 12 }}>
           Responder not on roster. May contain false position details.
         </div>
       )}
 
       {!submission && (
-        <div style={{ ...banner, marginTop: 12 }}>This employee hasn&apos;t started a submission.</div>
+        <div style={{ ...bannerStyle, marginTop: 12 }}>
+          This employee hasn&apos;t started a submission.
+        </div>
       )}
 
       {submission && submission.status === "draft" && (
-        <div style={{ ...banner, marginTop: 12 }}>This is a draft and has not been submitted.</div>
+        <div style={{ ...bannerStyle, marginTop: 12 }}>
+          This is a draft and has not been submitted.
+        </div>
       )}
 
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {submission && validation && (
-        <div style={cardsGrid}>
-          <SummaryCard label="POSITION" value={`${position && position.name}`} sub="" />
-          <SummaryCard
+        <div style={cardsGridStyle}>
+          <StatTile label="POSITION" value={`${position && position.name}`} sub="" />
+          <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}
             sub={detail.international ? "international" : "domestic"}
           />
-          <SummaryCard
+          <StatTile
             label="REQUESTED"
             value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
             sub=""
           />
-          <SummaryCard
+          <StatTile
             label="UNIQUE DAYS"
             value={`${validation.daysCovered}/7`}
             sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
@@ -234,12 +255,12 @@ export default async function StudentDetailPage({
       {/* Dashboard: cards pack into balanced columns so the whole response fits the
           screen without scrolling on a wide display. Change requests pack in with the
           rest as the last card, and scroll inside themselves when the list is long. */}
-      <div style={masonry}>
+      <div style={masonryStyle}>
         {submission && validation && (
           <>
             {/* Availability preferences + click-to-mock hours calculator */}
             {grid && (
-              <section style={panel}>
+              <section style={panelStyle}>
                 <PrefGridCalculator
                   grid={grid}
                   blocks={blocks}
@@ -251,9 +272,12 @@ export default async function StudentDetailPage({
             )}
 
             {/* Flags & checks */}
-            <section style={panel}>
+            <section style={panelStyle}>
               <SectionLabel>
-                Flags <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>(automatic)</span>
+                Flags{" "}
+                <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>
+                  (automatic)
+                </span>
               </SectionLabel>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
                 <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
@@ -273,7 +297,10 @@ export default async function StudentDetailPage({
                   ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
                     <CheckLine ok text="Weekend shift selected" />
                   ) : (
-                    <CheckLine ok={false} text="No weekend shift selected. Will auto-assign on submit." />
+                    <CheckLine
+                      ok={false}
+                      text="No weekend shift selected. Will auto-assign on submit."
+                    />
                   ))}
                 {lateTravelCount > 0 && (
                   <CheckLine
@@ -290,7 +317,7 @@ export default async function StudentDetailPage({
             {closes && <CloseClaimsCard closes={closes} />}
 
             {/* Course schedule */}
-            <section style={panel}>
+            <section style={panelStyle}>
               <SectionLabel>Course schedule</SectionLabel>
               {evidence.courseScheduleFileId ? (
                 <EvidenceThumb
@@ -307,7 +334,7 @@ export default async function StudentDetailPage({
             </section>
 
             {/* Scheduler notes (editable) */}
-            <section style={panel}>
+            <section style={panelStyle}>
               <SchedulerNotes
                 studentEmail={detail.email}
                 initialNotes={submission.schedulerNotes}
@@ -315,7 +342,7 @@ export default async function StudentDetailPage({
             </section>
 
             {/* Travel */}
-            <section style={panel}>
+            <section style={panelStyle}>
               <SectionLabel
                 action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
               >
@@ -329,7 +356,7 @@ export default async function StudentDetailPage({
                       <div style={{ fontSize: 13 }}>
                         <div>
                           {t.startDate} → {t.endDate}{" "}
-                          <span style={t.excused ? excusedBadge : dangerPill}>
+                          <span style={t.excused ? successPillStyle : dangerPillStyle}>
                             {t.excused ? "excused" : "not excused (late)"}
                           </span>
                         </div>
@@ -348,7 +375,7 @@ export default async function StudentDetailPage({
             </section>
 
             {/* Extracurriculars */}
-            <section style={panel}>
+            <section style={panelStyle}>
               <SectionLabel
                 action={
                   <AddEvidenceButton
@@ -366,7 +393,9 @@ export default async function StudentDetailPage({
                   &ldquo;{evidence.extracurricularNotes}&rdquo;
                 </p>
               ) : (
-                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}>
+                <p
+                  style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}
+                >
                   No details provided.
                 </p>
               )}
@@ -390,7 +419,7 @@ export default async function StudentDetailPage({
 
             {/* Student's own note about their requested schedule */}
             {submission.studentNotes && (
-              <section style={panel}>
+              <section style={panelStyle}>
                 <SectionLabel>Student notes</SectionLabel>
                 <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
                   {submission.studentNotes}
@@ -407,7 +436,7 @@ export default async function StudentDetailPage({
         {/* A responder whose position is unset has no validation to show, but a
             position_change flag must stay visible and dismissible (roadmap 3.3). */}
         {submission && !validation && storedAlerts.length > 0 && (
-          <section style={panel}>
+          <section style={panelStyle}>
             <SectionLabel>Flags</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
               <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
@@ -419,7 +448,7 @@ export default async function StudentDetailPage({
             so they render even for students without one. Kept last in DOM order so
             they always pack into the final column slot. */}
         {changeRequests.length > 0 && (
-          <section style={panel}>
+          <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
             <div style={changeList}>
               {changeRequests.map((r) => {
@@ -430,7 +459,15 @@ export default async function StudentDetailPage({
                     id={changeRequestAnchor(r.id)}
                     style={r.status === "resolved" ? resolvedChangeRow : changeRow}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 14 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        fontSize: 14,
+                      }}
+                    >
                       <span style={{ fontWeight: 600 }}>
                         {DAY_LABEL[r.day]} · {r.shiftText}
                         <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
@@ -446,12 +483,19 @@ export default async function StudentDetailPage({
                         <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
                       </span>
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{r.comment}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                      {r.comment}
+                    </p>
                     {files.length > 0 &&
                       (previewIds.has(r.id) ? (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                           {files.map((fileId) => (
-                            <EvidenceThumb key={fileId} fileId={fileId} label="Change request proof" size={56} />
+                            <EvidenceThumb
+                              key={fileId}
+                              fileId={fileId}
+                              label="Change request proof"
+                              size={56}
+                            />
                           ))}
                         </div>
                       ) : (
@@ -583,10 +627,17 @@ function JumpMenu({
  */
 function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
   return (
-    <section style={panel}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+    <section style={panelStyle}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
         <SectionLabel>Weekend closes</SectionLabel>
-        <span style={closes.complete ? excusedBadge : dangerPill}>
+        <span style={closes.complete ? successPillStyle : dangerPillStyle}>
           {closes.complete ? "✓ " : ""}
           {closes.claims.length} of {REQUIRED_CLOSE_CLAIMS}
         </span>
@@ -609,49 +660,7 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
   );
 }
 
-function SummaryCard({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div
-      style={{
-        background: "var(--color-background-secondary)",
-        border: "1px solid var(--color-border-secondary)",
-        borderRadius: "var(--border-radius-md)",
-        padding: "0.8rem 0.9rem",
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)" }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 600, color: "var(--color-text-primary)" }}>{value}</div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{sub}</div>
-    </div>
-  );
-}
-
 /** A card header. `action` renders as a quiet control on the right (e.g. "Add"). */
-function SectionLabel({
-  children,
-  action,
-}: {
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        gap: 10,
-        fontSize: 14,
-        fontWeight: 700,
-        color: "var(--color-text-primary)",
-        marginBottom: 10,
-      }}
-    >
-      <span>{children}</span>
-      {action}
-    </div>
-  );
-}
 
 /**
  * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
@@ -669,7 +678,7 @@ function StoredFlagAlerts({
     <>
       {alerts.map((f, i) => (
         <div key={`${f.type}-${i}`} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={dangerPill}>{FLAG_LABELS[f.type]}</span>
+          <span style={dangerPillStyle}>{FLAG_LABELS[f.type]}</span>
           <span style={{ flex: 1 }}>{f.detail}</span>
           {f.type === "position_change" && (
             <ClearPositionChangeButton submissionId={submissionId} />
@@ -744,28 +753,6 @@ const newChangeRequestLink: React.CSSProperties = {
   textDecoration: "none",
 };
 
-const card: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-// A content panel (one dashboard card). Stronger border than the faint default
-// for higher contrast on this review-only screen; `break-inside: avoid` keeps it
-// whole inside the balanced multi-column masonry.
-const panel: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  breakInside: "avoid",
-  marginBottom: 14,
-};
 const avatar: React.CSSProperties = {
   width: 40,
   height: 40,
@@ -776,12 +763,6 @@ const avatar: React.CSSProperties = {
   justifyContent: "center",
   fontWeight: 500,
   color: "var(--color-text-info)",
-};
-const chip: React.CSSProperties = {
-  background: "var(--color-background-secondary)",
-  padding: "1px 8px",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 12,
 };
 const jumpMenu: React.CSSProperties = {
   position: "absolute",
@@ -826,41 +807,4 @@ const closesLink: React.CSSProperties = {
   marginTop: 8,
   fontSize: 13,
   color: "var(--color-text-info)",
-};
-const cardsGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: 12,
-  marginTop: 12,
-};
-// Balanced multi-column packing of the dashboard cards. The browser equalizes
-// column heights, so the whole response tends to fit one screen without scroll;
-// columns collapse to fewer/one as the viewport narrows.
-const masonry: React.CSSProperties = {
-  columnWidth: 360,
-  columnGap: 14,
-  marginTop: 14,
-};
-const banner: React.CSSProperties = {
-  background: "var(--color-background-warning)",
-  color: "var(--color-text-warning)",
-  padding: "0.6rem 0.9rem",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-};
-const excusedBadge: React.CSSProperties = {
-  background: "#e6f4ea",
-  color: "var(--color-text-success)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-};
-/** Red pill for anything needing scheduler attention: late travel, stored flags. */
-const dangerPill: React.CSSProperties = {
-  background: "#fce8e6",
-  color: "var(--color-text-danger)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  whiteSpace: "nowrap",
 };

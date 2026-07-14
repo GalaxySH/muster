@@ -29,7 +29,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.70
+- **Version:** 0.71
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1050,6 +1050,37 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.71 (2026-07-14)** — **Admin hub: a dashboard that carries state (§10b).**
+  `/admin` was 13 bare links and loaded no data. It is now the daily entry point.
+  **Response progress** (submitted / draft / never-started against the on-roster
+  count, overall and per group, each group's window state and days remaining).
+  **Needs attention**: an alert list that renders only what is actually wrong,
+  most urgent first, and collapses to "Nothing needs attention" otherwise. It
+  surfaces three states that were previously **invisible** — students in **no
+  group** and groups whose window is **unconfigured** (both silently lock the form
+  shut; `resolveStudentAccess` / `windowState` already knew, nothing ever told a
+  human), and **`revalidation_failed`** submissions (stored data that stopped being
+  valid when the blocks changed under it). **Tiles**: To review (submitted, not yet
+  marked scheduled), change requests + age of the oldest, flags by type, travel in
+  the next three weeks, SL closes short. **Panels**: Least staffed shifts, Recent submissions +
+  a 14-day submissions sparkline, Students to follow up (stalled drafts / never-started /
+  missing course schedule, with copy-emails), System status, and the original 13
+  destinations grouped by job. **Every count links to the list it came from.**
+  A **student quick-search** (`/` to focus) filters the roster client-side.
+  New: **`review` filter** (`todo` | `done`) on the response list, so the To-review
+  tile has a destination. New state, so the hub can be honest rather than guess:
+  **`change_digest_last_run`** (stamped on *every* digest run, including the no-ops,
+  so a never-installed cron stops looking like a quiet week) and
+  **`drive_last_ok_at`** (stamped on any successful Drive write, since no token
+  expiry is stored and the only real probe uploads a live file). **Least staffed shifts**
+  ranks (block, day) cells by how many students picked them *themselves*
+  (machine-assigned weekend cells excluded, or they would mask the very weekend
+  thinness it exists to show); it **ranks, it does not alarm**, because no per-block
+  headcount target is modeled. Layering: `admin/dashboard.ts` fetches (aggregates
+  only; one thin row per on-roster student so the splits stay consistent with
+  `/admin/non-responses`), the **pure** `admin/dashboard-view.ts` owns all policy
+  (TDD), the page renders. The per-student view's private card/tile primitives moved
+  to `components/admin/ui.tsx` and both surfaces now share them.
 - **0.70 (2026-07-14)** — **Launch-readiness UX fixes (§18c) + README.** A pre-send pass
   over the flow students will actually see (walked on a 390px phone viewport) and the admin
   surfaces, ahead of the semester send-out. Three code fixes:

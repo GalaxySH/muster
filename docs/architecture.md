@@ -251,6 +251,69 @@ no submission, since an admin can assign closes before the lead ever opens the f
 New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
+## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
+
+`/admin` used to be 13 bare links and loaded no data. It is now the daily entry point,
+and it answers "what needs me today?" before it offers navigation.
+
+Three layers, and the split is the point:
+
+- **`dashboard.ts`** (server-only) fetches, and only fetches. Everything runs in one
+  `Promise.all`. Most reads are aggregates (`count`/`GROUP BY`) or reuse the existing
+  cheap status helpers (`getDriveGrantStatus`, `getRosterStatus`, `hasCloseInventory`,
+  `getLastSheetSync`, the email settings); the row-heavy list loaders (`listResponses`,
+  `listNonResponses`) are deliberately **not** reused. The one exception is the student
+  roll: one thin row per **on-roster** student (~400), because it lets every
+  submitted/draft/never-started/ungrouped/stalled/no-schedule split fall out of a single
+  pure pass, and because reusing `listNonResponses`'s exact roster predicate is what
+  keeps the hub's totals from drifting away from `/admin/non-responses`.
+- **`dashboard-view.ts`** is **pure** (TDD, no I/O) and owns every policy decision: what
+  counts as a problem, how bad it is, what order the problems appear in, who is worth
+  nudging, which blocks look thin. `buildDashboardView(snapshot, now)`.
+- **`app/admin/page.tsx`** renders. No derivation.
+
+**The alert list renders only what is actually wrong**, worst first, and collapses to one
+green line otherwise. Rows disappear when fixed; they are never greyed out. The dangers
+are the states that silently stop a student submitting (Drive disconnected, no group, a
+group whose window is `unconfigured`) or that mean stored data is now wrong
+(`revalidation_failed`, a dead digest cron); warnings are things to get to. The
+no-group and unconfigured-window cases were previously **invisible**: `windowState()`
+already returned `unconfigured` and `resolveStudentAccess()` already denied `no-group`,
+but nothing surfaced either to a human.
+
+**Two new `app_settings` keys exist purely so the hub can be honest** about subsystems it
+cannot cheaply probe:
+- `change_digest_last_run` — stamped by `runChangeDigest()` on **every** run, *before*
+  any early return, so a run that sends nothing still proves the cron fired. Without it a
+  never-installed crontab is indistinguishable from a quiet week.
+- `drive_last_ok_at` — stamped after any successful Drive write (`relayUpload`,
+  `upsertManagedSheet`). No token expiry is stored and the only true probe
+  (`testDriveRelay`) uploads a live file, which must never run on page load. The tile says
+  *connected as X*, never *healthy*.
+
+**Least staffed shifts** counts, per (block, day), how many submitted on-roster students picked
+it **themselves** — machine-assigned weekend cells are excluded, since counting them
+would hide exactly the thin weekend coverage the panel exists to show. Cells nobody
+picked are the whole point and a `GROUP BY` cannot return them, so the block × day grid is
+expanded in code and the counts laid over it; only positions with on-roster students are
+included. Open/close come from the per-position per-day-type bounds (PLAN §6.3), never
+hardcoded. **It ranks, it does not alarm**: no per-block headcount target is modeled, so
+a low count is only low *relative to other blocks*. When nobody has picked anything the
+panel does not render at all (every block tied at zero is an empty cycle, not a shortage).
+
+Layout is full-bleed: response progress pairs with the alert card across the top, then the
+tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the panels into as
+many columns as the viewport allows. The admin primitives the per-student view had kept
+private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
+`masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
+both surfaces import them. `StudentQuickSearch` is a client island: the roster is small
+enough to filter locally, so results are instant and there is no request per keystroke
+(`/` focuses it).
+
+The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the To-review
+tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is
+nobody's to review, so it matches neither side.
+
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
 
 The admin grants
