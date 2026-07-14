@@ -11,12 +11,14 @@ import {
 } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
 import { validateAvailability } from "@/lib/domain/validation";
+import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
+import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
@@ -24,6 +26,7 @@ import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
+import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
 import {
@@ -127,7 +130,7 @@ export default async function StudentDetailPage({
       .slice(0, CHANGE_PREVIEW_ROWS)
       .map((r) => r.id),
   );
-  const { submission, position, blocks, selection, autoAssigned, evidence } = detail;
+  const { submission, position, blocks, selection, autoAssigned, evidence, closes } = detail;
   // Lifecycle flags written by position changes (roadmap 3.3), rendered with
   // their stored detail; the live validation checks below cover the rest.
   const storedAlerts = detail.flags.filter(
@@ -211,45 +214,50 @@ export default async function StudentDetailPage({
 
       {!detail.onRoster && (
         <div style={{ ...bannerStyle, marginTop: 12 }}>
-          Off-roster responder. Position and international status may be self-reported.
+          Responder not on roster. May contain false position details.
         </div>
       )}
 
       {!submission && (
         <div style={{ ...bannerStyle, marginTop: 12 }}>
-          This student hasn&apos;t started a submission.
+          This employee hasn&apos;t started a submission.
         </div>
       )}
 
-      {submission && validation && (
-        <>
-          {/* Hour summary cards: a full-width glanceable KPI strip */}
-          <div style={cardsGridStyle}>
-            <StatTile
-              label="hour cap"
-              value={`${cap}h`}
-              sub={detail.international ? "international" : "domestic"}
-            />
-            <StatTile
-              label="requested"
-              value={submission.desiredHours ? `${submission.desiredHours}h` : "—"}
-              sub=""
-            />
-            <StatTile
-              label="pref. capacity"
-              value={fmtHours(validation.capacity.weeklyAverageHours)}
-              sub={`floor ${position!.minHours} · cap ${cap}`}
-            />
-            <StatTile
-              label="days covered"
-              value={`${validation.daysCovered} of 7`}
-              sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
-            />
-          </div>
+      {submission && submission.status === "draft" && (
+        <div style={{ ...bannerStyle, marginTop: 12 }}>
+          This is a draft and has not been submitted.
+        </div>
+      )}
 
-          {/* Dashboard: cards pack into balanced columns so the whole response
-              fits the screen without scrolling on a wide display. */}
-          <div style={masonryStyle}>
+      {/* Hour summary cards: a full-width glanceable KPI strip */}
+      {submission && validation && (
+        <div style={cardsGridStyle}>
+          <StatTile label="POSITION" value={`${position && position.name}`} sub="" />
+          <StatTile
+            label="BOUNDS"
+            value={`floor ${position!.minHours} · cap ${cap}`}
+            sub={detail.international ? "international" : "domestic"}
+          />
+          <StatTile
+            label="REQUESTED"
+            value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
+            sub=""
+          />
+          <StatTile
+            label="UNIQUE DAYS"
+            value={`${validation.daysCovered}/7`}
+            sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
+          />
+        </div>
+      )}
+
+      {/* Dashboard: cards pack into balanced columns so the whole response fits the
+          screen without scrolling on a wide display. Change requests pack in with the
+          rest as the last card, and scroll inside themselves when the list is long. */}
+      <div style={masonryStyle}>
+        {submission && validation && (
+          <>
             {/* Availability preferences + click-to-mock hours calculator */}
             {grid && (
               <section style={panelStyle}>
@@ -305,6 +313,9 @@ export default async function StudentDetailPage({
               </div>
             </section>
 
+            {/* SL weekend closes: the one extra hard requirement the position carries */}
+            {closes && <CloseClaimsCard closes={closes} />}
+
             {/* Course schedule */}
             <section style={panelStyle}>
               <SectionLabel>Course schedule</SectionLabel>
@@ -332,7 +343,11 @@ export default async function StudentDetailPage({
 
             {/* Travel */}
             <section style={panelStyle}>
-              <SectionLabel>Travel</SectionLabel>
+              <SectionLabel
+                action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
+              >
+                Travel
+              </SectionLabel>
               {evidence.travel.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {evidence.travel.map((t) => (
@@ -361,7 +376,17 @@ export default async function StudentDetailPage({
 
             {/* Extracurriculars */}
             <section style={panelStyle}>
-              <SectionLabel>Extracurriculars</SectionLabel>
+              <SectionLabel
+                action={
+                  <AddEvidenceButton
+                    kind="extracurricular"
+                    studentEmail={detail.email}
+                    currentNotes={evidence.extracurricularNotes}
+                  />
+                }
+              >
+                Extracurriculars
+              </SectionLabel>
               {evidence.extracurricularNotes ? (
                 <p style={{ fontSize: 13, margin: "0 0 10px" }}>
                   <span style={{ color: "var(--color-text-secondary)" }}>details: </span>
@@ -401,101 +426,118 @@ export default async function StudentDetailPage({
                 </p>
               </section>
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {/* A responder whose position is unset has no validation to show, but a
-          position_change flag must stay visible and dismissible (roadmap 3.3). */}
-      {submission && !validation && storedAlerts.length > 0 && (
-        <section style={{ ...panelStyle, maxWidth: 620, marginTop: 14 }}>
-          <SectionLabel>Flags</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
-            <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-          </div>
-        </section>
-      )}
+        {/* Claims can be admin-assigned before a lead fills the form, so the card
+            packs in on its own when there's no submission to sit under. */}
+        {!submission && closes && <CloseClaimsCard closes={closes} />}
 
-      {/* Schedule change requests (roadmap 3.1): independent of the submission,
-          so they render even for students without one. */}
-      {changeRequests.length > 0 && (
-        <section style={{ ...panelStyle, maxWidth: 620, marginTop: 14 }}>
-          <SectionLabel>Schedule change requests</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {changeRequests.map((r) => {
-              const files = changeFiles.get(r.id) ?? [];
-              return (
-                <div
-                  key={r.id}
-                  id={changeRequestAnchor(r.id)}
-                  style={r.status === "resolved" ? resolvedChangeRow : changeRow}
-                >
+        {/* A responder whose position is unset has no validation to show, but a
+            position_change flag must stay visible and dismissible (roadmap 3.3). */}
+        {submission && !validation && storedAlerts.length > 0 && (
+          <section style={panelStyle}>
+            <SectionLabel>Flags</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+              <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
+            </div>
+          </section>
+        )}
+
+        {/* Schedule change requests (roadmap 3.1): independent of the submission,
+            so they render even for students without one. Kept last in DOM order so
+            they always pack into the final column slot. */}
+        {changeRequests.length > 0 && (
+          <section style={panelStyle}>
+            <SectionLabel>Schedule change requests</SectionLabel>
+            <div style={changeList}>
+              {changeRequests.map((r) => {
+                const files = changeFiles.get(r.id) ?? [];
+                return (
                   <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      fontSize: 14,
-                    }}
+                    key={r.id}
+                    id={changeRequestAnchor(r.id)}
+                    style={r.status === "resolved" ? resolvedChangeRow : changeRow}
                   >
-                    <span style={{ fontWeight: 600 }}>
-                      {DAY_LABEL[r.day]} · {r.shiftText}
-                      <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
-                        {" "}
-                        · {r.permanent ? "permanent" : "one time"}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        fontSize: 14,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>
+                        {DAY_LABEL[r.day]} · {r.shiftText}
+                        <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
+                          {" "}
+                          · {r.permanent ? "permanent" : "one time"}
+                        </span>
                       </span>
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <ChangeStatusBadge status={r.status} />
-                      <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                        {fmtDate(r.createdAt)}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <ChangeStatusBadge status={r.status} />
+                        <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                          {fmtDate(r.createdAt)}
+                        </span>
+                        <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
                       </span>
-                      <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
-                    </span>
+                    </div>
+                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                      {r.comment}
+                    </p>
+                    {files.length > 0 &&
+                      (previewIds.has(r.id) ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                          {files.map((fileId) => (
+                            <EvidenceThumb
+                              key={fileId}
+                              fileId={fileId}
+                              label="Change request proof"
+                              size={56}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 6, fontSize: 13 }}>
+                          {files.map((fileId, i) => (
+                            <a
+                              key={fileId}
+                              href={`/api/evidence/${encodeURIComponent(fileId)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ marginRight: 12, color: "var(--color-text-info)" }}
+                            >
+                              proof {i + 1}
+                            </a>
+                          ))}
+                        </div>
+                      ))}
                   </div>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
-                    {r.comment}
-                  </p>
-                  {files.length > 0 &&
-                    (previewIds.has(r.id) ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                        {files.map((fileId) => (
-                          <EvidenceThumb
-                            key={fileId}
-                            fileId={fileId}
-                            label="Change request proof"
-                            size={56}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 6, fontSize: 13 }}>
-                        {files.map((fileId, i) => (
-                          <a
-                            key={fileId}
-                            href={`/api/evidence/${encodeURIComponent(fileId)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ marginRight: 12, color: "var(--color-text-info)" }}
-                          >
-                            proof {i + 1}
-                          </a>
-                        ))}
-                      </div>
-                    ))}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </div>
     </Page>
   );
 }
 
 /** Only the newest few file-bearing requests render thumbnail previews. */
 const CHANGE_PREVIEW_ROWS = 3;
+
+// The request list scrolls inside its own card, so a long history stays inside the
+// dashboard's column heights instead of stretching the page below every other card.
+const changeList: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  maxHeight: "48vh",
+  overflowY: "auto",
+  // Keeps the scrollbar clear of the resolved checkbox at each row's right edge.
+  paddingRight: 4,
+};
 
 /** Unresolved (and withdrawn) requests: an untinted outline box, aligned with resolved rows. */
 const changeRow: React.CSSProperties = {
@@ -576,6 +618,49 @@ function JumpMenu({
     </details>
   );
 }
+
+/**
+ * The Shift Lead's weekend closes (PLAN §18a): the dated slots they hold and
+ * progress toward the required picks. Short of the required count reads red,
+ * complete reads green, matching /admin/closes. Rendered only when
+ * `loadStudentCloseClaims` says the step applies (Shift Lead + an inventory).
+ */
+function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
+  return (
+    <section style={panelStyle}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <SectionLabel>Weekend closes</SectionLabel>
+        <span style={closes.complete ? successPillStyle : dangerPillStyle}>
+          {closes.complete ? "✓ " : ""}
+          {closes.claims.length} of {REQUIRED_CLOSE_CLAIMS}
+        </span>
+      </div>
+      {closes.claims.length > 0 ? (
+        <ul style={closeList}>
+          {closes.claims.map((c) => (
+            <li key={c.id}>{formatCloseSlot(c)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p style={{ fontSize: 13, color: "var(--color-text-warning)", margin: 0 }}>
+          No closes picked.
+        </p>
+      )}
+      <Link href="/admin/closes" style={closesLink}>
+        Manage closes
+      </Link>
+    </section>
+  );
+}
+
+/** A card header. `action` renders as a quiet control on the right (e.g. "Add"). */
 
 /**
  * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
@@ -707,4 +792,19 @@ const jumpItemCurrent: React.CSSProperties = {
   background: "var(--color-background-info)",
   color: "var(--color-text-info)",
   fontWeight: 600,
+};
+const closeList: React.CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 13,
+};
+const closesLink: React.CSSProperties = {
+  display: "inline-block",
+  marginTop: 8,
+  fontSize: 13,
+  color: "var(--color-text-info)",
 };

@@ -7,7 +7,7 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { InfoCard, Page, PrimaryLink } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { FormWindowBanner, NoGroupNotice } from "@/components/FormWindowBanner";
+import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 
@@ -31,7 +31,7 @@ export default async function MePage() {
       </p>
 
       {flow.onRoster && flow.returning && (
-        <p style={greeting}>Welcome back! Good to have you back this year.</p>
+        <p style={greeting}>Welcome back to Gordon</p>
       )}
 
       {adminHome && <p style={greeting}>{firstName ? `Hi ${firstName}` : "Hi there"}</p>}
@@ -110,10 +110,7 @@ export default async function MePage() {
               </ul>
             </section>
           ) : !flow.access.canEdit ? (
-            <p style={{ color: "#555" }}>
-              Your access window isn&apos;t open for editing right now. Check back during the window
-              shown above.
-            </p>
+            <ReadOnlyNotice state={flow.access.state} />
           ) : flow.status.kind === "not-started" ? (
             <InfoCard title="First, confirm your info">
               <p style={{ marginTop: 0 }}>Here&apos;s what we have:</p>

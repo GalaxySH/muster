@@ -87,6 +87,35 @@ export async function loadCloseBoard(email: string): Promise<CloseBoard> {
   };
 }
 
+export interface StudentCloseClaims {
+  /** The slots this student holds, earliest first. */
+  claims: { id: string; date: string; startMinutes: number; endMinutes: number }[];
+  complete: boolean;
+}
+
+/**
+ * One student's claimed closes for the admin per-student view, or null when
+ * the step doesn't apply to them (not a Shift Lead, or no inventory yet).
+ */
+export async function loadStudentCloseClaims(
+  email: string,
+  positionId: string | null,
+): Promise<StudentCloseClaims | null> {
+  if (!(await isCloseStepRequired(positionId))) return null;
+  const claims = await getDb()
+    .select({
+      id: closeSlots.id,
+      date: closeSlots.date,
+      startMinutes: closeSlots.startMinutes,
+      endMinutes: closeSlots.endMinutes,
+    })
+    .from(closeClaims)
+    .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
+    .where(eq(closeClaims.studentEmail, email))
+    .orderBy(asc(closeSlots.date));
+  return { claims, complete: closeClaimsComplete(claims.length) };
+}
+
 export interface CloseClaimant {
   email: string;
   displayName: string;

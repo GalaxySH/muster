@@ -105,7 +105,12 @@ request (students still only their own). The per-student admin page header carri
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`, and the queue at
+submission, each anchored as `#change-request-<id>`. It is one card among the others in
+that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
+slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
+a long history never stretches the page below the other cards. That means the dashboard
+container renders unconditionally and the submission-dependent cards are conditional
+children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -206,7 +211,9 @@ rows with no hire date never match. The list itself (`ResponseList`) is a full-b
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
-change-request count pill sits next to the name (nothing at zero). `actions.ts` ("use server", **admin-gated**) owns
+change-request count pill sits next to the name (nothing at zero). The Travel and Extracurriculars cards each carry an **Add** link
+(`AddEvidenceButton`, v0.67) that writes through the student evidence actions; see the
+evidence/Drive section. `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
 `ScheduleEmailPanel` island). The per-student page is a server component; the client
@@ -230,7 +237,18 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
-the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
+last hole in "everything about one student on one page": `loadStudentCloseClaims`
+(`closes/data.ts`) joins `close_claims` ⋈ `close_slots` and `loadStudentDetail` pulls it
+in parallel with the evidence, so it costs no extra latency. Visibility is gated on the
+**same predicate the student `/closes` step uses** (`isCloseStepRequired` = shift-lead **and**
+a non-empty inventory), so the card and the step can never disagree, non-leads
+short-circuit before any query, and it stays invisible while the closes feature is dormant.
+It renders through the pure `formatCloseSlot` (`domain/close-claims.ts`) and is deliberately
+compact (a title+pill row, ≤3 lines, a link) because the page's design constraint is that
+it fits 1920×1080 without scrolling. It also renders standalone when a lead has claims but
+no submission, since an admin can assign closes before the lead ever opens the form.
+New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
 
 ## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
@@ -313,6 +331,30 @@ student UI is split into two client forms — `components/evidence/CourseSchedul
 `components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
 styles). They render on the `/course-schedule` and `/travel` server pages.
 
+**Admin on-behalf entry (v0.67).** `requireStudent(onBehalfOf)` in `evidence/actions.ts` is
+the gate seam: empty ⇒ the signed-in student through `requireEditableStudent` (roster +
+group + window); an email ⇒ `requireAdmin` + `findStudentByEmail`, so an admin writes for a
+student without their window binding (the same shape as `resolveTargetStudent` in
+`changes/actions.ts`). `addTravelRequest` and `addExtracurricularFile` read that email from
+FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `revalidateEvidence`
+then also revalidates the admin's per-student page. The **travel cutoff refuses students
+only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
+cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
+Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
+`action` slot): one modal per kind, the same fields as the student form, with the
+extracurricular details box prefilled from the submission so the admin edits rather than
+replaces the student's text (details are one column, not per file). The form holds **one
+size** whatever happens inside it (fixed height, scrolling field area, an always-reserved
+error row), so a failed upload never shifts the buttons under the pointer.
+
+The modal shell is the shared `components/Modal.tsx` (backdrop, Escape, click-outside),
+extracted from `EvidenceThumb`'s lightbox and reused by it. The panel always **spends the
+full width it is given**, capped per caller by `--modal-max-width` (900px for the lightbox,
+420px for the add form); under 720px `.modal-overlay`/`.modal-panel` (globals.css) drop the
+backdrop margin and the rounded corners so it runs **edge to edge on a phone**, where width
+is the scarce axis. Children of a modal therefore size in percentages, never fixed pixel
+widths.
+
 ## Availability form layering
 
 `src/lib/availability/` has the pure grid view-model
@@ -339,6 +381,18 @@ server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and
 `components/useUnsavedChangesWarning.ts` (a `beforeunload` prompt + a capture-phase
 `confirm()` on same-tab link clicks, since the App Router can't block route changes);
 the dirty snapshot resets on each successful save.
+
+The grid's cells are styled by the `.avail-*` block in `globals.css` (its only styling
+path; the inline style objects it replaced are gone). Under
+`@media (pointer: coarse), (max-width: 640px)` the cells become **44×44** rather than the
+desktop 30×26, meeting the platform touch-target floor: most students fill this form on a
+phone, and a mis-tap silently flips a preference that then reaches the scheduler as if it
+were deliberate (PLAN §18c). The constraint was the row-label column, not the cells: on
+touch the ` · open` / ` · close` tag drops to its own line (the separator is a `::before`)
+and the label may wrap, so the table's min-content shrinks below any phone width and
+horizontal overflow is structurally impossible (verified 44×44 with zero overflow at 390px
+and 360px). The admin `PrefGridCalculator` keeps its own smaller cells: it is a
+mouse-driven desktop tool.
 
 ## Form-flow layering (`src/lib/flow/` + wizard pages)
 
@@ -390,7 +444,13 @@ and `listStudentsForPicker(filters)`. `groups/actions.ts` ("use server", **admin
 owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPaste`/
 `unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
 `searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;
-`groups/window-message.ts` is the shared (pure) banner/error copy. Enforcement lives in
+`groups/window-message.ts` is the shared (pure) banner/error copy, including
+`readOnlyNotice(state)` (v0.70): the read-only line on `/me` is **derived from
+`WindowState`**, not hardcoded, and returns `null` for `unconfigured`. It used to be one
+fixed string telling the student to "check back during the window shown above" even when
+no window existed to show, which is the first thing a student saw if they arrived before an
+admin set a window (PLAN §18c). `before`/`closed` always carry a real date in the banner,
+so only those get a line. Enforcement lives in
 the shared `groups/gate.ts` `requireEditableStudent`, used by `availability/actions.ts`,
 the `requireStudent` adapter in `evidence/actions.ts` (gates all six evidence mutations),
 and the closes claim actions. The admin UI is
