@@ -181,6 +181,11 @@ export default async function AdminPage() {
               href="/admin/email-settings"
             />
           </NavGroup>
+
+          {/* Pinned to the rail's foot; the rail runs the full page height. */}
+          <div style={{ marginTop: "auto" }}>
+            <SignOutButton />
+          </div>
         </AdminNav>
 
         <div className="admin-shell-body">
@@ -505,10 +510,6 @@ export default async function AdminPage() {
             </section>
           </div>
         </div>
-      </div>
-
-      <div style={{ marginTop: 8 }}>
-        <SignOutButton />
       </div>
     </Page>
   );

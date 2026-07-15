@@ -29,7 +29,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.72
+- **Version:** 0.73
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1050,6 +1050,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.73 (2026-07-15)** — **Admin hub: sign out moves into the nav rail (§10b).** The
+  button leaves the page bottom and pins to the rail's foot (drawer bottom on a
+  phone), so the rail is the one place for every leave-the-page action.
 - **0.72 (2026-07-15)** — **Admin hub: nav rail beside the status body (§10b).** The
   three navigation groups (Review / Configuration / Email) no longer float in the
   masonry as separate cards; they join into **one page-height rail on the left**
