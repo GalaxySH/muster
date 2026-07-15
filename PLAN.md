@@ -29,8 +29,8 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.72
-- **Last updated:** 2026-07-14
+- **Version:** 0.73
+- **Last updated:** 2026-07-15
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1050,6 +1050,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.73 (2026-07-15)** — **Digest cron health on /admin/email-settings.** The digest
+  panel no longer claims a bare "on" from the DB toggle alone: the page computes
+  **cron health** server-side (pure `digestCronHealth` in `changes/digest-health.ts`:
+  `no-secret` when `CRON_SECRET` is unset so the endpoint refuses every run,
+  `never-ran` when no run is recorded, `stale` past `DIGEST_STALE_HOURS`, else `ok`)
+  from the v0.71 `change_digest_last_run` stamp. While enabled but unhealthy the card
+  goes danger-toned, titles the specific failure ("the daily job has not run yet" /
+  "has stopped running" / "the server cannot send it"), and shows the **crontab setup
+  steps** (verbatim from docs/deploy.md §7) until the job's first recorded run; a
+  **"Last run"** line renders always. `DIGEST_STALE_HOURS` moved out of
+  `dashboard-view.ts` into the new module so the hub and the settings page share one
+  staleness threshold.
 - **0.72 (2026-07-15)** — **Admin hub: nav rail beside the status body (§10b).** The
   three navigation groups (Review / Configuration / Email) no longer float in the
   masonry as separate cards; they join into **one page-height rail on the left**

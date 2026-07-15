@@ -5,7 +5,9 @@ import {
   getEmailSendingEnabled,
   getChangeDigestEnabled,
   getChangeDigestRecipients,
+  getChangeDigestLastRun,
 } from "@/lib/settings";
+import { digestCronHealth } from "@/lib/changes/digest-health";
 import { env } from "@/lib/env";
 import { EmailSettingsPanel } from "@/components/admin/EmailSettingsPanel";
 import { DigestSettingsPanel } from "@/components/admin/DigestSettingsPanel";
@@ -22,11 +24,17 @@ export default async function EmailSettingsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/email-settings");
   if (!session.isAdmin) redirect("/me");
 
-  const [enabled, digestEnabled, digestRecipients] = await Promise.all([
+  const [enabled, digestEnabled, digestRecipients, digestLastRun] = await Promise.all([
     getEmailSendingEnabled(),
     getChangeDigestEnabled(),
     getChangeDigestRecipients(),
+    getChangeDigestLastRun(),
   ]);
+  const cronHealth = digestCronHealth({
+    secretConfigured: Boolean(env.CRON_SECRET),
+    lastRunAt: digestLastRun,
+    now: new Date(),
+  });
 
   return (
     <Page>
@@ -41,7 +49,12 @@ export default async function EmailSettingsPage() {
       <EmailSettingsPanel enabled={enabled} resendConfigured={Boolean(env.RESEND_API_KEY)} />
 
       <h2 style={{ fontSize: 17, margin: "24px 0 6px" }}>Schedule-change digest</h2>
-      <DigestSettingsPanel enabled={digestEnabled} recipients={digestRecipients} />
+      <DigestSettingsPanel
+        enabled={digestEnabled}
+        recipients={digestRecipients}
+        cronHealth={cronHealth}
+        lastRunAt={digestLastRun?.toISOString() ?? null}
+      />
     </Page>
   );
 }

@@ -12,13 +12,12 @@
  */
 import { windowState, type WindowState } from "@/lib/domain/window";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
 import type { DbFlagType } from "@/lib/db/schema";
 
 /** A draft nobody has touched in this long is stalled, not in progress. */
 export const STALLED_DRAFT_DAYS = 3;
-/** Past this age with requests waiting, the digest cron looks dead, not quiet. */
-export const DIGEST_STALE_HOURS = 36;
 /** How many of the thinnest blocks the coverage panel lists. */
 export const COVERAGE_ROWS = 5;
 

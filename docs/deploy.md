@@ -106,7 +106,11 @@ version tag deploys to the production box over SSH — automating the same
    requests AND the digest is enabled with recipients on
    `/admin/email-settings`; skipped runs leave requests unstamped so they
    appear in the next successful digest. With `CRON_SECRET` unset the route
-   always refuses (503).
+   always refuses (503). Every run (no-ops included) stamps
+   `change_digest_last_run`, and `/admin/email-settings` shows that last-run
+   time plus cron health: until the job's first run lands (or if runs stop, or
+   `CRON_SECRET` is unset) the digest card warns and repeats these setup steps,
+   so you can confirm the cron is live from the UI.
 
 ## Releasing
 

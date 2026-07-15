@@ -490,7 +490,15 @@ recipient list, stored in `app_settings` (`change_digest_enabled`,
 `ADMIN_EMAILS` env allowlist and the `admin_users` table play no part — and any
 well-formed address is accepted (`isEmailShaped`; `parseEmailList` now takes an optional
 validity check). The digest sender is `runChangeDigest` (see the schedule change
-requests section). Server
+requests section). Because delivery depends on a host cron job the deploy does not
+create, the panel also carries **cron health**: the page computes it server-side from
+`Boolean(env.CRON_SECRET)` + `getChangeDigestLastRun()` via the pure
+`digestCronHealth` in `changes/digest-health.ts` (`no-secret` | `never-ran` | `stale` |
+`ok`; `DIGEST_STALE_HOURS` lives there too and the hub's `dashboard-view.ts` imports it,
+one threshold for both surfaces). While enabled but unhealthy the card goes danger-toned
+and its title says the job is not running instead of a bare "on"; a "Last run" line
+renders always, and the crontab setup steps (kept verbatim in sync with deploy.md §7)
+render until health is `ok`. Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the
