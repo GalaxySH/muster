@@ -301,9 +301,13 @@ hardcoded. **It ranks, it does not alarm**: no per-block headcount target is mod
 a low count is only low *relative to other blocks*. When nobody has picked anything the
 panel does not render at all (every block tied at zero is an empty cycle, not a shortage).
 
-Layout is full-bleed: response progress pairs with the alert card across the top, then the
-tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the panels into as
-many columns as the viewport allows. The admin primitives the per-student view had kept
+Layout is full-bleed, split by a two-column shell (`.admin-shell` in `globals.css`): the
+nav rail on the left is **one** page-height panel holding every admin surface, grouped
+under Review / Configuration / Email headers with the live counts as pills; the status
+body on the right runs response progress paired with the alert card across the top, then
+the tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the remaining
+panels into as many columns as the body allows. Under 960px the rail drops **below** the
+body, so what-needs-me-today stays first on a phone. The admin primitives the per-student view had kept
 private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
 `masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
 both surfaces import them. `StudentQuickSearch` is a client island: the roster is small

@@ -29,7 +29,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.71
+- **Version:** 0.72
 - **Last updated:** 2026-07-14
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1050,6 +1050,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.72 (2026-07-15)** — **Admin hub: nav rail beside the status body (§10b).** The
+  three navigation groups (Review / Configuration / Email) no longer float in the
+  masonry as separate cards; they join into **one page-height rail on the left**
+  (same destinations, same headers, same count pills), and the status content
+  (progress + alerts, the tile strip, the panels) becomes the body on the right
+  (`.admin-shell` in `globals.css`). Under 960px the rail drops below the body, so
+  what-needs-me-today stays first on a phone. The group-progress table opts out of
+  the generic 680px stack-table width (`.stack-table--fit`) to fit the narrower
+  hero panel.
 - **0.71 (2026-07-14)** — **Admin hub: a dashboard that carries state (§10b).**
   `/admin` was 13 bare links and loaded no data. It is now the daily entry point.
   **Response progress** (submitted / draft / never-started against the on-roster

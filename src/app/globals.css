@@ -1,6 +1,5 @@
 :root {
-  --font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   /* Design tokens shared with docs/wireframes/*.html so the admin surfaces use
      one vocabulary. Light theme; values mirror the ad-hoc hex used elsewhere. */
@@ -91,6 +90,11 @@ body {
   .stack-table {
     min-width: 680px;
   }
+  /* Narrow tables with few columns (the hub's group-progress table) size to
+     their container instead of forcing the generic table width. */
+  .stack-table--fit {
+    min-width: 0;
+  }
 }
 @media (max-width: 719.98px) {
   .stack-table thead {
@@ -115,6 +119,30 @@ body {
     padding-right: 8px;
     color: var(--color-text-secondary);
     font-size: 12px;
+  }
+}
+
+/* Admin hub shell (app/admin/page.tsx): the nav sidebar beside the status
+   body. Grid items stretch by default, so the nav panel runs the full height
+   of the body column. Under 960px the sidebar drops below the body, keeping
+   the status content first on a phone. */
+.admin-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "body" "nav";
+  gap: 14px;
+}
+.admin-shell-nav {
+  grid-area: nav;
+}
+.admin-shell-body {
+  grid-area: body;
+  min-width: 0;
+}
+@media (min-width: 960px) {
+  .admin-shell {
+    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-areas: "nav body";
   }
 }
 
