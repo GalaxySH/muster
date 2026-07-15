@@ -1055,10 +1055,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   masonry as separate cards; they join into **one page-height rail on the left**
   (same destinations, same headers, same count pills), and the status content
   (progress + alerts, the tile strip, the panels) becomes the body on the right
-  (`.admin-shell` in `globals.css`). Under 960px the rail drops below the body, so
-  what-needs-me-today stays first on a phone. The group-progress table opts out of
-  the generic 680px stack-table width (`.stack-table--fit`) to fit the narrower
-  hero panel.
+  (`.admin-shell` in `globals.css`). Under 960px the rail becomes a **slide-out
+  drawer** behind a floating menu button (`AdminNav`, a thin client shell; the nav
+  content stays server-rendered), so the status content owns a phone screen.
+  Mobile no longer scrolls the page sideways: the hero grid floors its columns at
+  `min(420px, 100%)` instead of a hard 420px, and the group-progress table opts
+  out of the generic 680px stack-table width (`.stack-table--fit`) to fit the
+  narrower hero panel.
 - **0.71 (2026-07-14)** — **Admin hub: a dashboard that carries state (§10b).**
   `/admin` was 13 bare links and loaded no data. It is now the daily entry point.
   **Response progress** (submitted / draft / never-started against the on-roster

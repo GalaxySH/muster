@@ -30,6 +30,7 @@ import {
   cardsGridStyle,
   masonryStyle,
 } from "@/components/admin/ui";
+import { AdminNav } from "@/components/admin/AdminNav";
 import { StudentQuickSearch } from "@/components/admin/StudentQuickSearch";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
 import { loadAdminDashboard } from "@/lib/admin/dashboard";
@@ -84,7 +85,7 @@ export default async function AdminPage() {
 
       <div className="admin-shell">
         {/* One tall nav rail: every admin surface, grouped by what it is for. */}
-        <nav className="admin-shell-nav" style={sidebar} aria-label="Admin sections">
+        <AdminNav>
           <NavGroup title="Review">
             <NavCard
               icon={faList}
@@ -180,7 +181,7 @@ export default async function AdminPage() {
               href="/admin/email-settings"
             />
           </NavGroup>
-        </nav>
+        </AdminNav>
 
         <div className="admin-shell-body">
           {/* Where the cycle stands, beside what to do about it. */}
@@ -811,17 +812,10 @@ const header: React.CSSProperties = {
   marginBottom: 14,
 };
 
-const sidebar: React.CSSProperties = {
-  ...panelStyle,
-  marginBottom: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: 18,
-};
-
 const hero: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+  // min(420px, 100%): a 420px floor would force the page wider than a phone.
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(420px, 100%), 1fr))",
   gap: 12,
 };
 
