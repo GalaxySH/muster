@@ -280,6 +280,20 @@ body {
 .avail-grid--locked .avail-cell {
   cursor: default;
 }
+/* The scheduling week starts on Sunday, so Sat and Sun sit at opposite ends of
+   the week rather than forming one contiguous weekend (PLAN §7). The weekend
+   grid splits its two day columns (Sun is the last column, Sat the one before)
+   with a wider gap plus a thin vertical rule; the admin grid
+   (PrefGridCalculator) draws the same split. Weekday grids are untouched. */
+.avail-grid--weekend th:last-child,
+.avail-grid--weekend td:last-child {
+  border-left: 1px solid #ccc;
+  padding-left: 10px;
+}
+.avail-grid--weekend th:nth-last-child(2),
+.avail-grid--weekend td:nth-last-child(2) {
+  padding-right: 10px;
+}
 /* High-demand mark (roadmap 2.5): advisory, never blocks a pick. */
 .avail-hot {
   position: absolute;

@@ -30,7 +30,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.76
+- **Version:** 0.77
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -377,13 +377,19 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
   graded-intensity view, if ever wanted, stays admin-side.
-- **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
-  adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
-  scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
-  week** (a Sat + Sun pick is two separate week-edge days, not a continuous block).
-  Add a **visual indicator between the two columns** in both weekend grids — the
-  student selection grid (`AvailabilityForm`) and the admin per-student display grid
-  (§10a `PrefTable`) — so the non-adjacency is evident at a glance.
+- **Weekend Sat/Sun separation:** the weekend grids render **Sat and Sun as
+  adjacent columns**, but the scheduling week **starts on Sunday**, so the two days
+  sit at **opposite ends of the week** (a Sat + Sun pick is two separate week-edge
+  days, not a continuous block). Both weekend grids therefore draw a **wider gap plus
+  a thin vertical rule between the two columns** — the student selection grid
+  (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
+  `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
+  evident at a glance. Purely visual, expressed in each grid's own styling
+  convention: the student grid takes an `avail-grid--weekend` table variant whose
+  column rules sit with the other `avail-*` classes in `globals.css`, the admin grid
+  a small `weekSplit` per-column inline style; both amount to extra padding on the
+  Sat/Sun sides plus a `borderLeft` on the Sun column, in that grid's border colour.
+  No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
@@ -1057,6 +1063,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.77 (2026-07-16)** — **Weekend grids: Sat visually separated from Sun (§7, §10a;
+  roadmap 1.8).** The scheduling week starts on Sunday, so Sat and Sun sit at opposite
+  ends of the week — yet both weekend grids drew them as adjacent columns, reading as
+  one contiguous Saturday→Sunday weekend. The two columns are now split by a wider gap
+  plus a thin vertical rule: the student selection grid (`AvailabilityForm` `Grid`)
+  gains an `avail-grid--weekend` table variant whose column rules live with the other
+  grid classes in `globals.css`, and the admin per-student calculator
+  (`PrefGridCalculator` `CalcTable`, which had absorbed the roadmap note's `PrefTable`)
+  gets a small `weekSplit` per-column style matching that component's inline-style
+  convention. Purely visual — extra padding on the Sat/Sun sides plus a `borderLeft`
+  on the Sun column, in each grid's own border colour — with no copy, no model change,
+  and the weekday grid untouched.
 - **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
   The import's skip list moves from code to admin config: `excluded_roster_titles` in
   `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,
