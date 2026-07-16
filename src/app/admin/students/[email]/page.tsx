@@ -278,13 +278,14 @@ export default async function StudentDetailPage({
           screen without scrolling on a wide display. Change requests pack in with the
           rest as the last card, and scroll inside themselves when the list is long. */}
       <div style={masonryStyle}>
-        {/* Availability preferences + click-to-mock hours calculator. With no
-            submission every cell starts empty and the scheduler can still try
-            shifts against the position's floor and cap. */}
+        {/* Availability preferences + click-to-try hours calculator, saveable on the
+            student's behalf. With no submission every cell starts empty and the
+            scheduler can still try shifts against the position's floor and cap. */}
         {grid && validation && (
           <section style={panelStyle}>
             <PrefGridCalculator
               grid={grid}
+              studentEmail={detail.email}
               blocks={blocks}
               everyWeekendOptIn={submission?.everyWeekendOptIn ?? false}
               minHours={position!.minHours}
@@ -350,7 +351,17 @@ export default async function StudentDetailPage({
             starts the student's submission. */}
         {/* Course schedule */}
         <section style={panelStyle}>
-          <SectionLabel>Course schedule</SectionLabel>
+          <SectionLabel
+            action={
+              <AddEvidenceButton
+                kind="course"
+                studentEmail={detail.email}
+                replaces={Boolean(evidence.courseScheduleFileId)}
+              />
+            }
+          >
+            Course schedule
+          </SectionLabel>
           {evidence.courseScheduleFileId ? (
             <EvidenceThumb
               fileId={evidence.courseScheduleFileId}

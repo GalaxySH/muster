@@ -34,7 +34,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.79
+- **Version:** 0.80
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -601,6 +601,16 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
   open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
   any **auto-assigned** weekend cell marked distinctly.
+  - **Editable + saveable on the student's behalf:** the grid doubles as the hours
+    calculator — the scheduler clicks cells (and the rotation pill) to try a schedule and
+    the readout recomputes live. A trial is local until they **Save** it (the button joins
+    Reset/Clear once anything differs, and runs Save → Saving → Saved). Saving writes the
+    **selection + rotation only**: the student's own **requested hours** and **note** are
+    never touched, since the grid doesn't edit them. There is **no hard-rule gate** here —
+    the scheduler may deliberately record a below-floor selection, the same way an admin
+    may add travel past the cutoff. An already-submitted response stays submitted and has
+    its weekend auto-assign + flags re-applied, exactly as the student's own save would
+    (§5 #5); an unstarted one gets the draft row on demand and stays "missing" (§13.1).
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -622,6 +632,11 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   enter details outside the window). The **travel cutoff (§8) still applies**, and the
   Drive relay is unchanged (still no image bytes stored, §12). Same on-behalf pattern as
   the admin-filed change request (§4.1).
+  - **In-place from the card:** Course schedule, Travel, and Extracurriculars each also
+    carry an **Add** control that opens a modal on the response page itself, so the common
+    case (a student handed the scheduler a screenshot) never leaves the view. A course
+    schedule is one file, not a list, so once one is on file the control reads **Replace**
+    and the upload swaps it (the old Drive file is deleted, §12).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
 
 ---
@@ -1109,6 +1124,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.80 (2026-07-16)** — **Availability + course schedule on the student's behalf (§10a).**
+  The response page's grid was a calculator that could never commit: a scheduler could try a
+  schedule but not record it. It now **saves**. Once a trial differs from the student's
+  picks a **Save** joins Reset/Clear (Save → Saving → Saved, then it retires itself), calling
+  the new `saveAvailabilityFor(student, …)`. That action gates through
+  `requireEditableStudent(student)` like the evidence actions, and shares a new private
+  `persistAvailability` with the student's own `saveAvailability`, so an admin edit lands
+  **exactly** how a student's save would: an already-submitted response stays submitted and
+  gets its weekend auto-assign + flags re-applied, an unstarted one gets a draft row and
+  stays "missing" until the student confirms. Two deliberate differences, both because the
+  admin is the authority rather than the window: **no hard-rule gate** (a below-floor
+  selection can be recorded on purpose, as travel can be added past the cutoff), and it
+  writes **selection + rotation only** — the student's requested hours and their note are
+  never touched, since the grid doesn't edit them. The **course schedule** gains the same
+  in-place **Add** the Travel/Extracurricular cards have: `uploadCourseSchedule` already
+  took an on-behalf `student` field, so this is `AddEvidenceButton` learning a third kind,
+  not a new path. With one on file the control reads **Replace** (a schedule is one column,
+  not a list; the old Drive file is relay-deleted as before). No schema change, and the
+  privacy invariant is untouched (no image bytes, still the admin `drive.file` grant).
+  +5 tests (478 total); the save was verified end-to-end against a live DB, including the
+  submitted-response auto-assign path.
 - **0.79 (2026-07-16)** — **Weekend columns run Sun then Sat (§7).** The weekend grids
   ordered their columns Sat | Sun, which reads as one contiguous Sat+Sun weekend — the
   exact misreading 0.42's divider was added to prevent. The scheduling week starts on
