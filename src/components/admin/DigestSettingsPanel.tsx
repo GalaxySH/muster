@@ -6,26 +6,25 @@
  * env allowlist has no role in digest delivery. With no recipients the digest
  * sends nothing even while on.
  *
- * The digest only actually goes out when a host cron job posts to the digest
- * endpoint (docs/deploy.md §7), so the card also carries the server-computed
- * cron health and the last-run stamp: the title never claims plain "on" while
- * the job provably is not running, and the setup steps render until it is.
+ * Delivery is the in-app scheduler (lib/changes/scheduler.ts), so the card
+ * carries the server-computed run health and the last-run stamp: the title
+ * never claims a plain "on" while the scheduler provably is not running.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionButton, InfoCard } from "@/components/ui";
 import { setChangeDigestEnabled, setChangeDigestRecipients } from "@/lib/admin/actions";
-import type { DigestCronHealth } from "@/lib/changes/digest-health";
+import type { DigestRunHealth } from "@/lib/changes/digest-health";
 
 export function DigestSettingsPanel({
   enabled,
   recipients,
-  cronHealth,
+  health,
   lastRunAt,
 }: {
   enabled: boolean;
   recipients: string[];
-  cronHealth: DigestCronHealth;
+  health: DigestRunHealth;
   lastRunAt: string | null;
 }) {
   const router = useRouter();
@@ -62,34 +61,35 @@ export function DigestSettingsPanel({
   }
 
   const configured = recipients.length > 0;
-  const healthy = cronHealth === "ok";
+  const broken = health === "never-ran" || health === "stale";
 
   const title = !enabled
     ? "Change-request digest is off"
-    : healthy
-      ? "Change-request digest is on"
-      : cronHealth === "no-secret"
-        ? "Change-request digest is on, but the server cannot send it"
-        : cronHealth === "never-ran"
-          ? "Change-request digest is on, but the daily job has not run yet"
-          : "Change-request digest is on, but the daily job has stopped running";
+    : health === "never-ran"
+      ? "Change-request digest is on, but it is not running"
+      : health === "stale"
+        ? "Change-request digest is on, but it has stopped running"
+        : "Change-request digest is on";
 
   const healthNote =
-    cronHealth === "no-secret"
-      ? "The app has no CRON_SECRET set, so digest runs are refused. Follow the setup steps below."
-      : cronHealth === "never-ran"
-        ? "The daily job on the server has never run. If you set it up recently, check back after the next scheduled time. Otherwise follow the setup steps below."
-        : cronHealth === "stale"
-          ? `The daily job has not run since ${fmtTime(lastRunAt)}. Check the cron job and CRON_SECRET on the server.`
-          : null;
+    health === "disabled"
+      ? "The digest scheduler only runs in production, so nothing is sent from this environment."
+      : health === "starting"
+        ? "The app just started. The first run happens within a few minutes."
+        : health === "never-ran"
+          ? "The scheduler has not run since the app started. Check the app logs on the server."
+          : health === "stale"
+            ? `The daily run has not happened since ${fmtTime(lastRunAt)}. Check the app logs on the server.`
+            : null;
 
   return (
     <InfoCard
-      tone={!enabled ? "info" : !healthy ? "danger" : configured ? "success" : "info"}
+      tone={!enabled ? "info" : broken ? "danger" : health === "ok" && configured ? "success" : "info"}
       title={title}
     >
       <p style={{ marginTop: 0 }}>
-        A daily email summarizing new schedule change requests.{" "}
+        A daily email summarizing new schedule change requests, sent each morning at 7 AM
+        Central.{" "}
         {enabled
           ? configured
             ? "It goes to the recipients below."
@@ -100,7 +100,13 @@ export function DigestSettingsPanel({
         Last run: {fmtTime(lastRunAt)}
       </p>
       {enabled && healthNote && (
-        <p style={{ fontSize: 14, color: "var(--color-text-danger)", margin: "0 0 10px" }}>
+        <p
+          style={{
+            fontSize: 14,
+            color: broken ? "var(--color-text-danger)" : "var(--color-text-secondary)",
+            margin: "0 0 10px",
+          }}
+        >
           {healthNote}
         </p>
       )}
@@ -151,55 +157,7 @@ export function DigestSettingsPanel({
           </p>
         )}
       </div>
-
-      {!healthy && <CronSetupSteps />}
     </InfoCard>
-  );
-}
-
-/**
- * Rendered until the cron job proves itself with a recorded run. The crontab
- * line must stay verbatim in sync with docs/deploy.md §7.
- */
-function CronSetupSteps() {
-  return (
-    <div
-      style={{
-        marginTop: 16,
-        paddingTop: 12,
-        borderTop: "1px solid var(--color-border-secondary)",
-      }}
-    >
-      <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>Set up the daily job</h3>
-      <p style={{ fontSize: 13, margin: "0 0 8px" }}>
-        The digest is sent by a scheduled job on the server. Deploying the app does not create
-        it. To set it up:
-      </p>
-      <ol style={{ fontSize: 13, margin: "0 0 8px", paddingLeft: 20 }}>
-        <li>Set CRON_SECRET in the app environment on the server, then restart the app.</li>
-        <li style={{ marginTop: 4 }}>
-          Add a crontab line on the server that posts to the digest endpoint once a day:
-        </li>
-      </ol>
-      <pre
-        style={{
-          fontSize: 12,
-          padding: "8px 10px",
-          background: "var(--color-background-secondary, #f5f5f5)",
-          borderRadius: "var(--border-radius-md)",
-          overflowX: "auto",
-          margin: "0 0 8px",
-        }}
-      >
-        {
-          '0 13 * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/change-digest >/dev/null'
-        }
-      </pre>
-      <p style={{ fontSize: 13, margin: 0 }}>
-        Full steps are in docs/deploy.md, section 7. Once the job runs, the last run time above
-        updates and this notice clears.
-      </p>
-    </div>
   );
 }
 

@@ -5,7 +5,7 @@
  * the travel cutoff).
  */
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
@@ -27,9 +27,9 @@ export const SETTING_CHANGE_DIGEST_ENABLED = "change_digest_enabled";
 export const SETTING_CHANGE_DIGEST_RECIPIENTS = "change_digest_recipients";
 /**
  * ISO instant of the last digest run, stamped on EVERY run including the ones
- * that send nothing. Without it a cron that was never installed is
- * indistinguishable from a quiet week, so the admin hub could never tell the
- * difference (roadmap 4.1).
+ * that send nothing. Without it a dead scheduler is indistinguishable from a
+ * quiet week, so the admin surfaces could never tell the difference (roadmap
+ * 4.1). Also the compare-and-set target the scheduler claims runs through.
  */
 export const SETTING_CHANGE_DIGEST_LAST_RUN = "change_digest_last_run";
 /**
@@ -114,6 +114,36 @@ export async function getChangeDigestLastRun(): Promise<Date | null> {
 /** Record that the digest ran, whether or not it had anything to send. */
 export async function markChangeDigestRun(now: Date = new Date()): Promise<void> {
   await setSetting(SETTING_CHANGE_DIGEST_LAST_RUN, now.toISOString());
+}
+
+/**
+ * Atomically claim the digest run for `now`: flips change_digest_last_run
+ * from the exact value the caller read to `now`. Returns false when another
+ * process got there first (the stored value no longer matches), which is what
+ * keeps two scheduler ticks from double-sending. ISO strings round-trip
+ * through Date exactly, so comparing the re-serialized read is safe.
+ */
+export async function claimChangeDigestRun(expected: Date | null, now: Date): Promise<boolean> {
+  const db = getDb();
+  if (expected === null) {
+    // First run ever: insert-if-absent. The no-op duplicate update reports 0
+    // affected rows, so a lost race reads as an unclaimed run.
+    const res = await db
+      .insert(appSettings)
+      .values({ key: SETTING_CHANGE_DIGEST_LAST_RUN, value: now.toISOString() })
+      .onDuplicateKeyUpdate({ set: { key: sql`${appSettings.key}` } });
+    return res[0].affectedRows === 1;
+  }
+  const res = await db
+    .update(appSettings)
+    .set({ value: now.toISOString() })
+    .where(
+      and(
+        eq(appSettings.key, SETTING_CHANGE_DIGEST_LAST_RUN),
+        eq(appSettings.value, expected.toISOString()),
+      ),
+    );
+  return res[0].affectedRows > 0;
 }
 
 export async function getDriveLastOkAt(): Promise<Date | null> {

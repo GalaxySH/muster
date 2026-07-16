@@ -7,8 +7,8 @@ import {
   getChangeDigestRecipients,
   getChangeDigestLastRun,
 } from "@/lib/settings";
-import { digestCronHealth } from "@/lib/changes/digest-health";
-import { env } from "@/lib/env";
+import { digestRunHealth } from "@/lib/changes/digest-health";
+import { digestSchedulerEnabled, env } from "@/lib/env";
 import { EmailSettingsPanel } from "@/components/admin/EmailSettingsPanel";
 import { DigestSettingsPanel } from "@/components/admin/DigestSettingsPanel";
 import { Page } from "@/components/ui";
@@ -30,9 +30,10 @@ export default async function EmailSettingsPage() {
     getChangeDigestRecipients(),
     getChangeDigestLastRun(),
   ]);
-  const cronHealth = digestCronHealth({
-    secretConfigured: Boolean(env.CRON_SECRET),
+  const health = digestRunHealth({
+    schedulerEnabled: digestSchedulerEnabled,
     lastRunAt: digestLastRun,
+    uptimeMs: process.uptime() * 1000,
     now: new Date(),
   });
 
@@ -52,7 +53,7 @@ export default async function EmailSettingsPage() {
       <DigestSettingsPanel
         enabled={digestEnabled}
         recipients={digestRecipients}
-        cronHealth={cronHealth}
+        health={health}
         lastRunAt={digestLastRun?.toISOString() ?? null}
       />
     </Page>

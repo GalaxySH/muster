@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseKey } from "@/lib/crypto/secretbox";
 import { isDevLoginEnabled } from "@/lib/auth/policy";
+import { isDigestSchedulerEnabled } from "@/lib/changes/digest-schedule";
 import {
   DEV_AUTH_SECRET,
   DEV_ENCRYPTION_KEY,
@@ -33,12 +34,15 @@ const schema = z.object({
     }),
   // Destination Drive folder for evidence relay (a Shared Drive folder id; §12).
   DRIVE_FOLDER_ID: z.string().default(""),
-  // Bearer token for the host-cron endpoints (the change-request digest). The
-  // route refuses every request while this is unset, so the feature is opt-in.
+  // Bearer token for the manual digest-trigger endpoint (the daily run is the
+  // in-app scheduler). The route refuses every request while this is unset.
   CRON_SECRET: z.string().default(""),
   // DEV ONLY: enable the no-OAuth dev-login bypass ("1"/"true"). Never honored
   // in production (see isDevLoginEnabled). Leave empty everywhere but local.
   DEV_LOGIN_ENABLED: z.string().default(""),
+  // DEV ONLY: run the in-app change-digest scheduler outside production
+  // ("1"/"true"), e.g. to watch a live run locally. Production always runs it.
+  DIGEST_SCHEDULER_DEV: z.string().default(""),
 });
 
 function tryParseKey(value: string): boolean {
@@ -100,3 +104,9 @@ export const encryptionKey = parseKey(env.ENCRYPTION_KEY);
 
 /** Whether the dev-login bypass is active (flag set AND not production). */
 export const devLoginEnabled = isDevLoginEnabled(env.DEV_LOGIN_ENABLED, process.env.NODE_ENV);
+
+/** Whether the in-app change-digest scheduler runs (always in production). */
+export const digestSchedulerEnabled = isDigestSchedulerEnabled(
+  env.DIGEST_SCHEDULER_DEV,
+  process.env.NODE_ENV,
+);

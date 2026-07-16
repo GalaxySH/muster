@@ -318,7 +318,7 @@ function buildAlerts(
         digestAge === null
           ? "The change-request digest has never run."
           : `The change-request digest has not run in ${Math.floor(digestAge / DAY_MS)} ${plural(Math.floor(digestAge / DAY_MS), "day", "days")}.`,
-      detail: `${s.changeRequests.open} open ${plural(s.changeRequests.open, "request is", "requests are")} waiting. Check the cron job on the server.`,
+      detail: `${s.changeRequests.open} open ${plural(s.changeRequests.open, "request is", "requests are")} waiting. Check the app logs on the server.`,
       href: "/admin/email-settings",
       linkLabel: "Email",
     });
