@@ -34,7 +34,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.78
+- **Version:** 0.79
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -384,18 +384,22 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
   graded-intensity view, if ever wanted, stays admin-side.
-- **Weekend Sat/Sun separation:** the weekend grids render **Sat and Sun as
-  adjacent columns**, but the scheduling week **starts on Sunday**, so the two days
-  sit at **opposite ends of the week** (a Sat + Sun pick is two separate week-edge
-  days, not a continuous block). Both weekend grids therefore draw a **wider gap plus
+- **Weekend Sun/Sat separation:** the weekend grids render **Sun then Sat**, because
+  the scheduling week **starts on Sunday**: Sunday opens the week and Saturday closes
+  it, so the two days sit at **opposite ends of the week** (a Sun + Sat pick is two
+  separate week-edge days, not a continuous block). Column order follows
+  `WEEKEND_DAYS` (`domain/types.ts`), the single source for weekend column order;
+  `ALL_DAYS` is the matching Sunday-start week (Sun, Mon..Fri, Sat) used for day
+  pickers and export ordering. Both weekend grids additionally draw a **wider gap plus
   a thin vertical rule between the two columns** — the student selection grid
   (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
   `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
-  evident at a glance. Purely visual, expressed in each grid's own styling
+  evident at a glance. Expressed in each grid's own styling
   convention: the student grid takes an `avail-grid--weekend` table variant whose
-  column rules sit with the other `avail-*` classes in `globals.css`, the admin grid
-  a small `weekSplit` per-column inline style; both amount to extra padding on the
-  Sat/Sun sides plus a `borderLeft` on the Sun column, in that grid's border colour.
+  column rules sit with the other `avail-*` classes in `globals.css` (positional
+  selectors, so they follow the column order), the admin grid a small `weekSplit`
+  per-column inline style; both amount to extra padding on the Sun side plus a
+  `borderLeft` on the Sat column, in that grid's border colour.
   No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7b. Evidence & excusal pages
@@ -1105,6 +1109,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.79 (2026-07-16)** — **Weekend columns run Sun then Sat (§7).** The weekend grids
+  ordered their columns Sat | Sun, which reads as one contiguous Sat+Sun weekend — the
+  exact misreading 0.42's divider was added to prevent. The scheduling week starts on
+  Sunday, so the columns now run **Sun | Sat**: Sunday opens the week, Saturday closes
+  it, and the divider between them lands on the real week boundary. `WEEKEND_DAYS`
+  (`domain/types.ts`) flips to `["sun", "sat"]` and is now the single source for weekend
+  column order — the student grid, the admin `PrefGridCalculator`, and the admin hub's
+  coverage cells all follow it (the hub's private `WEEKDAYS`/`WEEKEND` copies were
+  deleted in favour of the domain constants). `ALL_DAYS` becomes a coherent Sunday-start
+  week (`Sun, Mon..Fri, Sat`) instead of the incoherent `Mon..Fri, Sun, Sat` the flip
+  would otherwise have produced, so the change-request day picker and the responses
+  export both sort Sun→Sat. `weekSplit` and the `avail-grid--weekend` CSS keep the rule
+  between the two columns (the CSS selectors are positional and needed no change).
+  Visual + ordering only: no schema, no copy, no model change. Weekend auto-assign is
+  unaffected (it picks uniformly at random over the same candidate set; only the
+  enumeration order moved). 473 tests pass.
 - **0.78 (2026-07-16)** — **Roster-wide student pages (§9, §10, §10a, §13.1).** Landed on
   `main` as 0.68 and renumbered here: phase-2 had independently used 0.68–0.77, and this
   merge brings the two lines together. The

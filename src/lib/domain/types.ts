@@ -11,8 +11,14 @@ export type DayType = "weekday" | "weekend";
 export type Day = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 
 export const WEEKDAY_DAYS: readonly Day[] = ["mon", "tue", "wed", "thu", "fri"];
-export const WEEKEND_DAYS: readonly Day[] = ["sat", "sun"];
-export const ALL_DAYS: readonly Day[] = [...WEEKDAY_DAYS, ...WEEKEND_DAYS];
+/**
+ * Sunday first, Saturday last. The scheduling week starts on Sunday (PLAN §7), so
+ * the two weekend days sit at opposite ends of one week and never form a contiguous
+ * Sat+Sun pair. Grids render columns in this order, so a weekend row reads Sun | Sat.
+ */
+export const WEEKEND_DAYS: readonly Day[] = ["sun", "sat"];
+/** Calendar order for a Sunday-start week: Sun, Mon..Fri, Sat. */
+export const ALL_DAYS: readonly Day[] = ["sun", ...WEEKDAY_DAYS, "sat"];
 
 /** Short human label per day ("Mon".."Sun"), shared by grids, exports, and emails. */
 export const DAY_LABEL: Record<Day, string> = {

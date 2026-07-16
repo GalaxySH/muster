@@ -251,15 +251,15 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 }
 
 /**
- * The scheduling week starts on Sunday, so Sat and Sun sit at opposite ends of
- * the week rather than forming one contiguous weekend (PLAN §7). A wider gap
- * plus a thin vertical rule between the two weekend columns makes that visible,
+ * The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
+ * rather than the two forming one contiguous weekend (PLAN §7). A wider gap plus
+ * a thin vertical rule between the two weekend columns makes that visible,
  * mirroring the split in the student grid (AvailabilityForm). The 3px
- * borderSpacing sits on the Sat side of the rule, hence the smaller padding.
+ * borderSpacing sits on the Sun side of the rule, hence the smaller padding.
  */
 function weekSplit(sub: AdminSubGrid, day: Day): React.CSSProperties {
   if (sub.dayType !== "weekend") return {};
-  if (day === "sat") return { paddingRight: 7 };
+  if (day === "sun") return { paddingRight: 7 };
   return { borderLeft: "1px solid var(--color-border-secondary)", paddingLeft: 10 };
 }
 

@@ -28,6 +28,7 @@ import {
   submissions,
   type DbFlagType,
 } from "@/lib/db/schema";
+import { WEEKDAY_DAYS, WEEKEND_DAYS } from "@/lib/domain/types";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { getRosterStatus } from "@/lib/roster/status";
 import { hasCloseInventory, loadCloseAdmin } from "@/lib/closes/data";
@@ -52,9 +53,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const SPARKLINE_DAYS = 14;
 /** How many of the newest submissions the hub lists. */
 const RECENT_LIMIT = 5;
-
-const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"] as const;
-const WEEKEND = ["sat", "sun"] as const;
 
 export async function loadAdminDashboard(now: Date = new Date()): Promise<DashboardSnapshot> {
   const [
@@ -298,7 +296,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
   for (const b of blocks) {
     if (!staffed.has(b.positionId)) continue;
     const bound = bounds.get(`${b.positionId}|${b.dayType}`);
-    const days = b.dayType === "weekday" ? WEEKDAYS : WEEKEND;
+    const days = b.dayType === "weekday" ? WEEKDAY_DAYS : WEEKEND_DAYS;
     for (const day of days) {
       cells.push({
         blockId: b.id,

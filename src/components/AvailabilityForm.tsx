@@ -408,7 +408,7 @@ function Grid({
   editable: boolean;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
-  // The weekend variant splits the Sat and Sun columns with a gap and rule
+  // The weekend variant splits the Sun and Sat columns with a gap and rule
   // (PLAN §7): the scheduling week starts on Sunday, so the two days sit at
   // opposite ends of the week, not side by side.
   const variants =
