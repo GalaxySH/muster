@@ -22,6 +22,7 @@
   --color-border-secondary: #ccd2de;
   --color-border-tertiary: #e2e6ee;
   --color-border-warning: #e0c060;
+  --color-border-danger: #d93025;
 
   --border-radius-md: 6px;
   --border-radius-lg: 10px;
@@ -220,6 +221,22 @@ body {
   }
 }
 
+/* Hover affordance for the admin header controls. These are styled with inline
+   `style` objects, which can't express a pseudo-class, so the hover lives here
+   and each control opts in with the class. Darkening by filter rather than
+   setting a background keeps one rule working on every base colour (the white
+   links, the green "scheduled" toggle, the red delete button). */
+.btn-hover {
+  transition:
+    filter 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.btn-hover:hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.94);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  cursor: pointer;
+}
+
 /* Student availability grid (src/components/AvailabilityForm.tsx). Compact
    checkboxes on a mouse-driven desktop; on touch devices and narrow viewports
    every cell becomes a real 44x44 tap target (Apple HIG / Material), because a
@@ -279,6 +296,20 @@ body {
 }
 .avail-grid--locked .avail-cell {
   cursor: default;
+}
+/* The scheduling week starts on Sunday, so Sat and Sun sit at opposite ends of
+   the week rather than forming one contiguous weekend (PLAN §7). The weekend
+   grid splits its two day columns (Sun is the last column, Sat the one before)
+   with a wider gap plus a thin vertical rule; the admin grid
+   (PrefGridCalculator) draws the same split. Weekday grids are untouched. */
+.avail-grid--weekend th:last-child,
+.avail-grid--weekend td:last-child {
+  border-left: 1px solid #ccc;
+  padding-left: 10px;
+}
+.avail-grid--weekend th:nth-last-child(2),
+.avail-grid--weekend td:nth-last-child(2) {
+  padding-right: 10px;
 }
 /* High-demand mark (roadmap 2.5): advisory, never blocks a pick. */
 .avail-hot {

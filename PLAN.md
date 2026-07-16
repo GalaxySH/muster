@@ -27,10 +27,14 @@
   fallback). **Positions & shift blocks admin
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
-  insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
+  insert-only seed. **Roster-wide student pages done** (§10, §10a): every student on
+  the roster has a working admin page whether or not they ever filled the form in, the
+  scheduler can enter course-schedule and travel details on their behalf, and
+  `submissions.confirmed_at` (§9, §13.1) keeps those admin-created rows out of the
+  response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.77
+- **Version:** 0.79
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -171,9 +175,12 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + flag filters carried in the URL** so they follow the admin into the
-  per-student view and drive its prev/next walk (roadmap 2.2).
+  per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
+  switch widens the list to the whole roster, badging everyone who never started (§10).
 - **Per-student detail** — expanded view + computed stats (§10). The name is a
-  **jump-to dropdown** over the filtered list for direct hops.
+  **jump-to dropdown** over the filtered list for direct hops. The page opens for **any
+  student on the roster**, responder or not, and the scheduler can record notes and
+  enter the student's course schedule / travel for them (§10a).
 - **Flags** — soft-requirement violations (e.g. auto-assigned weekend) are surfaced by
   the **flag filter on the response list** (roadmap 2.2), not a separate page. With
   `travel_late` retired (§8), that filter is effectively the auto-assigned-weekend queue.
@@ -182,7 +189,7 @@ remains as a manual fallback trigger (docs/deploy.md §7).
 - **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
   the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
-  students).
+  students); every name links straight to that student's page.
 - **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
   add/edit/deactivate positions (min hours/days, weekend-exempt), lay out block times
   per day-type with a live derived open/close preview and warnings (empty weekend set,
@@ -377,13 +384,19 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
   graded-intensity view, if ever wanted, stays admin-side.
-- **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
-  adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
-  scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
-  week** (a Sat + Sun pick is two separate week-edge days, not a continuous block).
-  Add a **visual indicator between the two columns** in both weekend grids — the
-  student selection grid (`AvailabilityForm`) and the admin per-student display grid
-  (§10a `PrefTable`) — so the non-adjacency is evident at a glance.
+- **Weekend Sat/Sun separation:** the weekend grids render **Sat and Sun as
+  adjacent columns**, but the scheduling week **starts on Sunday**, so the two days
+  sit at **opposite ends of the week** (a Sat + Sun pick is two separate week-edge
+  days, not a continuous block). Both weekend grids therefore draw a **wider gap plus
+  a thin vertical rule between the two columns** — the student selection grid
+  (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
+  `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
+  evident at a glance. Purely visual, expressed in each grid's own styling
+  convention: the student grid takes an `avail-grid--weekend` table variant whose
+  column rules sit with the other `avail-*` classes in `globals.css`, the admin grid
+  a small `weekSplit` per-column inline style; both amount to extra padding on the
+  Sat/Sun sides plus a `borderLeft` on the Sun column, in that grid's border colour.
+  No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
@@ -460,7 +473,10 @@ columns from the roster.
   no target; feeds the coverage view and, later, the generator — roadmap 5.1).
   Open/close derived; high-demand is **computed** from selections (§7, roadmap
   2.5), no longer a stored column.
-- **Submission**: `id`, `studentEmail`, `submittedAt`, `everyWeekendOptIn: bool`,
+- **Submission**: `id`, `studentEmail`, `submittedAt`, `confirmedAt?` (the engagement
+  signal: stamped **only** when the student clicks "Yes, that's me" on `/me`, since an
+  admin can create the row before the student ever signs in; §13.1),
+  `everyWeekendOptIn: bool`,
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
@@ -518,7 +534,12 @@ columns from the roster.
   jump-to dropdown over it. One canonical `listResponses(filters)` backs both the list
   and the neighbor computation. A **show-off-roster switch** (`roster=all`, same URL
   mechanism) reveals retained submissions from off-roster responders (People Leaving,
-  test accounts), badged "off roster"; default stays on-roster only.
+  test accounts), badged "off roster"; default stays on-roster only. The list is
+  **roster-wide** underneath (students LEFT JOIN submissions): a **show-all-students
+  switch** (`all=1`, default off, so the default view is still the responses) adds
+  everyone who never started, badged red **"missing"**, submission-only cells empty.
+  Whoever is open in the per-student view is always part of the prev/next walk, even
+  when the active switches would hide them.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -526,7 +547,10 @@ columns from the roster.
 - **Flags:** soft-requirement violations (e.g. auto-assigned weekend) are surfaced by
   the response-list **flag filter** (roadmap 2.2), not a dedicated page.
 - **Non-response tracking:** roster (PC) − responders; rows for off-roster
-  responders shown with gaps/missing fields noted.
+  responders shown with gaps/missing fields noted. Every name links to that student's
+  page, and the buckets key off the same three-way status as the response list
+  (submitted / draft / missing; §13.1), so a row an admin created for someone who
+  never showed up keeps them on the chase list.
 - **Export:** ✅ one comprehensive row per submission, available as an **in-app CSV
   download** and as the **running `Muster Responses` Google Sheet** in the Drive folder
   (§12) — the latter readable by folder members without the app and serving as a
@@ -551,17 +575,26 @@ columns from the roster.
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
 
 ### 10a. Per-student view (the primary admin surface)
-The view the scheduler works from. Layout (see wireframe):
+The view the scheduler works from. It opens for **every student on the roster**, not just
+responders: with no submission the cards simply render empty (hour cards, the grid +
+hours calculator against the position's own blocks, scheduler notes, empty evidence
+cards), so the scheduler can record details for someone who has yet to answer. Notes, the
+scheduled mark, and any evidence entered on the student's behalf **create the draft row on
+demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
+with no position gets a notice instead of the calculator. Layout (see wireframe):
 - **Identity header:** name, email, position; **prev/next** nav + full-list jump;
-  **submitted/edited** status; a **"mark scheduled ✓" toggle** (mirrors the roster's
-  "W2W schedule created" column — track progress across ~400 without leaving Muster);
-  a **"delete response"** button (confirm → removes the submission + its Drive proofs,
-  then returns to the list; the roster record is kept — see §10).
+  status: **submitted/edited**, or a **draft** / **missing** badge with the header ringed
+  red until the response is submitted; a **"mark scheduled ✓" toggle** (mirrors the
+  roster's "W2W schedule created" column — track progress across ~400 without leaving
+  Muster); a **"delete response"** button (confirm → removes the submission + its Drive
+  proofs, then returns to the list; the roster record is kept — see §10).
 - **Hour summary cards:** hour **cap** (20/30 + intl), **requested** (`desiredHours`),
   **preference capacity** (covered hours) vs. floor, **days covered**.
 - **Flags & checks (auto-computed):** min reachable; which **open/close** was selected
   (or "none → auto-assign"); days span; **weekend** (or auto-assigned + which);
   **late travel** (post-9/1); **off-roster** banner if position/intl were self-reported.
+  Hidden until the student has started, since against an empty selection every check
+  would read as failing.
 - **Preferences grid:** the quick-read centerpiece — **separate weekday and weekend
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
   open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
@@ -580,6 +613,13 @@ The view the scheduler works from. Layout (see wireframe):
   - Uploads are restricted to **PNG/JPEG/WebP/PDF** (HEIC dropped — won't render in
     `<img>`); the student hint says "PNG/JPEG images only". *Future:* may restrict the
     **course schedule** specifically to images so it always thumbnails beside the grid.
+- **Entering evidence for a student:** each evidence card carries a quick link into the
+  student's **own** form page in admin mode (`/course-schedule?student=<email>`,
+  `/travel?student=<email>`): a banner names the student, the wizard breadcrumb is gone,
+  and the group / form-window / post-submit gates are skipped (an admin must be able to
+  enter details outside the window). The **travel cutoff (§8) still applies**, and the
+  Drive relay is unchanged (still no image bytes stored, §12). Same on-behalf pattern as
+  the admin-filed change request (§4.1).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
 
 ---
@@ -838,6 +878,14 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
   weekend auto-assign (§5 #5), raises the soft-rule flags (§8), stamps `submittedAt`, and
   refreshes the running Drive sheet. A student who fills availability but never reaches the
   exit step is therefore (correctly) still a **non-responder** until they finish.
+- **A submission row does not mean the student started.** Admins work roster-wide (§10a)
+  and can create a student's row before that student has ever signed in (scheduler notes,
+  the scheduled mark, an uploaded course schedule). `submissions.confirmedAt` is stamped
+  **only** when the student clicks "Yes, that's me" on `/me`, so it, not row existence, is
+  the engagement signal. Every admin surface therefore reports one of three states:
+  **submitted**, **draft** (confirmed, not yet submitted), or **missing** (no row at all,
+  or a row the student never confirmed). That is what keeps an admin's note from quietly
+  dropping someone off the non-response chase list.
 
 ---
 
@@ -927,7 +975,7 @@ under-18 test (deferred → fallback, §11).
 - Writing schedules. Generating schedule **recommendations** is no longer a blanket
   non-goal: it is planned, admin-facing and advisory only, in
   `docs/schedule-generation-plan.md` (Phase A, target staffing + coverage, shipped in
-  0.77). The human scheduler still writes the actual schedule in W2W by hand.
+  0.79). The human scheduler still writes the actual schedule in W2W by hand.
 - Any programmatic integration with WhenToWork.
 - Storing FERPA-protected records on the app server (by design — see §12).
 - Replacing the roster workbook (Muster *imports* it; it isn't the system of record).
@@ -1062,7 +1110,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.77 (2026-07-16)** — **Target staffing + schedule coverage (roadmap 5.1; Phase A of
+- **0.79 (2026-07-16)** — **Target staffing + schedule coverage (roadmap 5.1; Phase A of
   `docs/schedule-generation-plan.md`).** Shift blocks gain an optional `desiredCapacity`
   (target headcount per day the block runs), edited inline on `/admin/positions` (a
   number field per block row; `validateDesiredCapacity` allows 1–99 or blank = no
@@ -1074,7 +1122,46 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   `schedule/data.ts`. Coverage counts **include** the auto-assigned weekend cell,
   unlike the demand ranking (§7): coverage asks who *can* work a cell, not who chose
   it. §17 narrowed accordingly: recommendation-only generation is planned; writing
-  schedules and any W2W integration stay out of scope.
+  schedules and any W2W integration stay out of scope. (Numbered 0.77 on its branch;
+  renumbered here because main's merge of phase-2 had already claimed 0.77 and 0.78.)
+- **0.78 (2026-07-16)** — **Roster-wide student pages (§9, §10, §10a, §13.1).** Landed on
+  `main` as 0.68 and renumbered here: phase-2 had independently used 0.68–0.77, and this
+  merge brings the two lines together. The
+  scheduler can now open the page of **any** student on the roster and record scheduling
+  details, whether or not that student ever filled the form in. New
+  `submissions.confirmed_at` (migration `0015`, backfilled from `created_at` for existing
+  rows) is stamped **only** by the "Yes, that's me" confirm on `/me`, so it, not the
+  existence of a row, is the "student engaged" signal: one shared `responseStatus()` rule
+  derives **submitted / draft / missing** for the response list, non-response tracking,
+  and the per-student header, and an admin-created stub therefore never drops someone off
+  the chase list. `/admin/responses` goes roster-wide (students LEFT JOIN submissions)
+  behind a **Show all students** switch (`all=1`, default off, so the view is unchanged),
+  badging never-started students red "missing"; the prev/next walk always includes whoever
+  is open, and the search box is more visible. `/admin/non-responses` links every name to
+  the student's page. The per-student page renders **without a submission**: hour cards,
+  the hours calculator over an empty grid, scheduler notes, and empty evidence cards, each
+  with a quick link to add entries (the Flags panel stays hidden until the student starts,
+  since every check would read as failing against an empty selection; no position ⇒ a
+  notice instead of the calculator), and the header rings red with a draft/missing badge
+  until it's submitted. Scheduler notes and the scheduled mark **create the draft on
+  demand** (`ensureSubmissionId`, roster-gated; delete still refuses when there is nothing
+  to delete). **Admin-on-behalf evidence entry:** `/course-schedule?student=<email>` and
+  `/travel?student=<email>` render for an admin acting for a student (banner, no wizard
+  breadcrumb); `requireEditableStudent(onBehalfOf?)` admin-gates it and skips the group /
+  window / post-submit gates, the travel cutoff (§8) still applies, and the Drive relay +
+  the no-image-bytes invariant are untouched.
+- **0.77 (2026-07-16)** — **Weekend grids: Sat visually separated from Sun (§7, §10a;
+  roadmap 1.8).** The scheduling week starts on Sunday, so Sat and Sun sit at opposite
+  ends of the week — yet both weekend grids drew them as adjacent columns, reading as
+  one contiguous Saturday→Sunday weekend. The two columns are now split by a wider gap
+  plus a thin vertical rule: the student selection grid (`AvailabilityForm` `Grid`)
+  gains an `avail-grid--weekend` table variant whose column rules live with the other
+  grid classes in `globals.css`, and the admin per-student calculator
+  (`PrefGridCalculator` `CalcTable`, which had absorbed the roadmap note's `PrefTable`)
+  gets a small `weekSplit` per-column style matching that component's inline-style
+  convention. Purely visual — extra padding on the Sat/Sun sides plus a `borderLeft`
+  on the Sun column, in each grid's own border colour — with no copy, no model change,
+  and the weekday grid untouched.
 - **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
   The import's skip list moves from code to admin config: `excluded_roster_titles` in
   `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,

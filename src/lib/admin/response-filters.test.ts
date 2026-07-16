@@ -14,7 +14,7 @@ type Row = {
   flagTypes: DbFlagType[];
   onRoster: boolean;
   hiredOn: Date | null;
-  status: "draft" | "submitted";
+  status: "draft" | "submitted" | "missing";
   scheduled: boolean;
 };
 
@@ -73,6 +73,25 @@ const rows: Row[] = [
     status: "submitted",
     scheduled: false,
   },
+  // Roster students who never started a submission (only listed with `all`).
+  {
+    email: "g@wisc.edu",
+    groupId: "g1",
+    flagTypes: [],
+    onRoster: true,
+    hiredOn: iso("2026-01-15"),
+    status: "missing",
+    scheduled: false,
+  },
+  {
+    email: "h@wisc.edu",
+    groupId: null,
+    flagTypes: [],
+    onRoster: true,
+    hiredOn: null,
+    status: "missing",
+    scheduled: false,
+  },
 ];
 
 function iso(day: string): Date {
@@ -117,6 +136,13 @@ describe("parseResponseFilters", () => {
     expect(parseResponseFilters({ roster: "all" })).toEqual({ includeOffRoster: true });
     expect(parseResponseFilters({ roster: "bogus" })).toEqual({});
     expect(parseResponseFilters({ roster: "" })).toEqual({});
+  });
+
+  it("reads the all-students switch and rejects other values", () => {
+    expect(parseResponseFilters({ all: "1" })).toEqual({ includeMissing: true });
+    expect(parseResponseFilters({ all: "0" })).toEqual({});
+    expect(parseResponseFilters({ all: "bogus" })).toEqual({});
+    expect(parseResponseFilters({ all: "" })).toEqual({});
   });
 
   it("reads a start-date filter when both mode and date are valid", () => {
@@ -176,7 +202,7 @@ describe("the review filter", () => {
 });
 
 describe("applyResponseFilters", () => {
-  it("returns only on-roster rows when no filter is set", () => {
+  it("returns only on-roster responders when no filter is set", () => {
     expect(emails(applyResponseFilters(rows, {}))).toEqual(
       ["a", "b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
     );
@@ -186,6 +212,26 @@ describe("applyResponseFilters", () => {
     expect(emails(applyResponseFilters(rows, { includeOffRoster: true }))).toEqual(
       ["a", "b", "c", "d", "e", "f"].map((x) => `${x}@wisc.edu`),
     );
+  });
+
+  it("includes students with no submission when the all-students switch is on", () => {
+    expect(emails(applyResponseFilters(rows, { includeMissing: true }))).toEqual(
+      ["a", "b", "c", "d", "e", "g", "h"].map((x) => `${x}@wisc.edu`),
+    );
+  });
+
+  it("combines the all-students and off-roster switches", () => {
+    expect(
+      emails(applyResponseFilters(rows, { includeMissing: true, includeOffRoster: true })),
+    ).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"].map((x) => `${x}@wisc.edu`));
+  });
+
+  it("combines the all-students switch with other filters", () => {
+    expect(emails(applyResponseFilters(rows, { includeMissing: true, groupId: "g1" }))).toEqual([
+      "a@wisc.edu",
+      "b@wisc.edu",
+      "g@wisc.edu",
+    ]);
   });
 
   it("combines the off-roster switch with other filters", () => {
@@ -288,10 +334,15 @@ describe("serializeResponseFilters", () => {
       groupId: "g2",
       flag: "travel_late",
       includeOffRoster: true,
+      includeMissing: true,
       started: { mode: "on", date: "2026-01-15" },
     };
     const qs = serializeResponseFilters(f);
-    expect(qs).toBe("group=g2&flag=travel_late&roster=all&started=on&startedDate=2026-01-15");
+    expect(qs).toBe("group=g2&flag=travel_late&roster=all&all=1&started=on&startedDate=2026-01-15");
     expect(parseResponseFilters(Object.fromEntries(new URLSearchParams(qs)))).toEqual(f);
+  });
+
+  it("carries the all-students switch on its own", () => {
+    expect(serializeResponseFilters({ includeMissing: true })).toBe("all=1");
   });
 });

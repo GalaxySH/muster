@@ -1,7 +1,7 @@
 /**
  * Pure response-list filters that follow you (PLAN §10, roadmap 2.2).
  *
- * The group, flag, and off-roster filters live in the URL so they survive
+ * The group, flag, off-roster, and all-students filters live in the URL so they survive
  * navigation into the per-student view and drive the prev/next walk there. This
  * module owns the parse ↔ apply ↔ serialize round-trip; `admin/data.ts` fetches
  * the rows and the pages read/write the query. Search + sort stay client-side in
@@ -29,6 +29,8 @@ export interface ResponseFilters {
   flag?: FlagFilter;
   /** Also list off-roster responders (hidden by default). */
   includeOffRoster?: boolean;
+  /** Also list students who never started a submission (hidden by default). */
+  includeMissing?: boolean;
   /** Restrict by roster start date (`date` is `yyyy-mm-dd`). Rows with no
    *  recorded start date never match while this is set. */
   started?: { mode: StartedMode; date: string };
@@ -42,7 +44,8 @@ export interface FilterableResponse {
   flagTypes: DbFlagType[];
   onRoster: boolean;
   hiredOn: Date | null;
-  status: "draft" | "submitted";
+  /** "missing" = a roster student with no submission row at all. */
+  status: "draft" | "submitted" | "missing";
   scheduled: boolean;
 }
 
@@ -92,6 +95,7 @@ export function parseResponseFilters(params: {
   group?: string;
   flag?: string;
   roster?: string;
+  all?: string;
   started?: string;
   startedDate?: string;
   review?: string;
@@ -104,6 +108,7 @@ export function parseResponseFilters(params: {
     filters.flag = flag as FlagFilter;
   }
   if (params.roster?.trim() === "all") filters.includeOffRoster = true;
+  if (params.all?.trim() === "1") filters.includeMissing = true;
   const mode = params.started?.trim();
   const date = params.startedDate?.trim();
   if (mode && date && (STARTED_MODES as readonly string[]).includes(mode) && isIsoDate(date)) {
@@ -125,6 +130,9 @@ export function applyResponseFilters<T extends FilterableResponse>(
     // Responders who have since moved to "People Leaving" (PLAN §4.2) stay
     // hidden unless the off-roster switch is on; their submission is retained.
     if (!r.onRoster && !filters.includeOffRoster) return false;
+    // Students who never started a submission only show under the all-students
+    // switch, so the default dashboard stays a list of responses.
+    if (r.status === "missing" && !filters.includeMissing) return false;
     if (filters.groupId === UNGROUPED) {
       if (r.groupId !== null) return false;
     } else if (filters.groupId && r.groupId !== filters.groupId) {
@@ -166,6 +174,7 @@ export function serializeResponseFilters(filters: ResponseFilters): string {
   if (filters.groupId) params.set("group", filters.groupId);
   if (filters.flag) params.set("flag", filters.flag);
   if (filters.includeOffRoster) params.set("roster", "all");
+  if (filters.includeMissing) params.set("all", "1");
   if (filters.started) {
     params.set("started", filters.started.mode);
     params.set("startedDate", filters.started.date);

@@ -9,8 +9,8 @@ import {
 } from "@/lib/admin/response-filters";
 
 /**
- * Group + flag + off-roster + start-date filters for the response dashboard
- * (roadmap 2.2). These live in the URL (not client state) so they survive
+ * Group + flag + off-roster + all-students + start-date filters for the response
+ * dashboard (roadmap 2.2). These live in the URL (not client state) so they survive
  * navigation into the per-student view and drive its prev/next walk. Search +
  * sort stay client-side in the table.
  */
@@ -19,6 +19,7 @@ export function ResponseFilterBar({
   group,
   flag,
   roster,
+  all,
   started,
   startedDate,
   review,
@@ -27,6 +28,7 @@ export function ResponseFilterBar({
   group?: string;
   flag?: string;
   roster?: string;
+  all?: string;
   started?: string;
   startedDate?: string;
   review?: string;
@@ -37,6 +39,7 @@ export function ResponseFilterBar({
     group?: string;
     flag?: string;
     roster?: string;
+    all?: string;
     started?: string;
     startedDate?: string;
     review?: string;
@@ -45,12 +48,14 @@ export function ResponseFilterBar({
     const g = next.group ?? group ?? "";
     const f = next.flag ?? flag ?? "";
     const r = next.roster ?? roster ?? "";
+    const a = next.all ?? all ?? "";
     const sm = next.started ?? started ?? "";
     const sd = next.startedDate ?? startedDate ?? "";
     const rv = next.review ?? review ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
+    if (a === "1") params.set("all", a);
     if (rv) params.set("review", rv);
     // A mode with no date yet stays in the URL so the date picker shows up;
     // the parser ignores the half-set pair until both halves are present.
@@ -145,6 +150,15 @@ export function ResponseFilterBar({
             style={selectStyle}
           />
         )}
+      </label>
+
+      <label style={labelStyle}>
+        <input
+          type="checkbox"
+          checked={all === "1"}
+          onChange={(e) => navigate({ all: e.target.checked ? "1" : "" })}
+        />
+        Show all students
       </label>
 
       <label style={labelStyle}>

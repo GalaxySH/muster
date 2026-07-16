@@ -51,31 +51,19 @@ export default async function NonResponsesPage() {
         title={`Started, not submitted (${report.draftOnly.length})`}
         hint="Has a draft but hasn't submitted yet."
         people={report.draftOnly}
-        linkToDetail
       />
       {report.offRoster.length > 0 && (
         <Group
           title={`Off-roster responders (${report.offRoster.length})`}
           hint="Submitted but not on the current roster. Position and international status may be self-reported."
           people={report.offRoster}
-          linkToDetail
         />
       )}
     </Page>
   );
 }
 
-function Group({
-  title,
-  hint,
-  people,
-  linkToDetail,
-}: {
-  title: string;
-  hint: string;
-  people: RosterPerson[];
-  linkToDetail?: boolean;
-}) {
+function Group({ title, hint, people }: { title: string; hint: string; people: RosterPerson[] }) {
   return (
     <section style={card}>
       <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>
@@ -88,11 +76,7 @@ function Group({
         <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
           {people.map((p) => (
             <li key={p.email} style={{ fontSize: 14 }}>
-              {linkToDetail ? (
-                <Link href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</Link>
-              ) : (
-                p.displayName
-              )}{" "}
+              <Link href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</Link>{" "}
               <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
                 {p.email}
                 {p.positionName ? ` · ${p.positionName}` : ""}

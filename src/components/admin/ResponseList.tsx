@@ -12,9 +12,11 @@ const ALERT_FLAGS = ["position_change", "revalidation_failed"] as const;
 type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
 
 /**
- * The response dashboard table (PLAN §10): all submissions, searchable and
- * sortable, each row opening the per-student view. Client-side filter/sort is
- * fine at roster scale (~400 rows); the server hands the full list once.
+ * The response dashboard table (PLAN §10): the students the filters selected,
+ * searchable and sortable, each row opening the per-student view. Rows with no
+ * submission ("missing") come through when the all-students switch is on, and
+ * their submission-only cells read as "—". Client-side filter/sort is fine at
+ * roster scale (~400 rows); the server hands the full list once.
  * Renders as a `.stack-table` (full-bleed like the groups table): rows stack
  * into labeled blocks under 720px, and the flags cell swaps between individual
  * pills and a compact count by width (`.flags-expanded` / `.flags-count`).
@@ -63,21 +65,44 @@ export function ResponseList({
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", margin: "0 0 12px" }}>
-        <input
-          type="search"
-          placeholder="Search name, email, position…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          alignItems: "center",
+          flexWrap: "wrap",
+          margin: "0 0 12px",
+        }}
+      >
+        <label
           style={{
-            flex: "1 1 280px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            flex: "1 1 320px",
             maxWidth: 480,
-            padding: "8px 10px",
-            borderRadius: "var(--border-radius-md)",
-            border: "0.5px solid var(--color-border-secondary)",
-            fontSize: 14,
+            fontSize: 13,
+            color: "var(--color-text-secondary)",
           }}
-        />
+        >
+          Search
+          <input
+            type="search"
+            placeholder="Search name or email"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{
+              flex: 1,
+              minWidth: 240,
+              padding: "8px 10px",
+              borderRadius: "var(--border-radius-md)",
+              border: "0.5px solid var(--color-border-secondary)",
+              background: "var(--color-background-primary)",
+              fontFamily: "var(--font-sans)",
+              fontSize: 14,
+            }}
+          />
+        </label>
         <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
           {filtered.length} of {rows.length} · {scheduledCount} scheduled · {flaggedCount} flagged
         </span>
@@ -109,7 +134,9 @@ export function ResponseList({
             {filtered.map((r) => (
               <tr
                 key={r.email}
-                onClick={() => router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)}
+                onClick={() =>
+                  router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)
+                }
                 style={{ cursor: "pointer" }}
               >
                 <td data-label="Name">
@@ -133,9 +160,7 @@ export function ResponseList({
                 </td>
                 <td data-label="Position">{r.positionName ?? "—"}</td>
                 <td data-label="Status">
-                  <span style={r.status === "submitted" ? submittedBadge : draftBadge}>
-                    {r.status}
-                  </span>
+                  <span style={STATUS_BADGE[r.status]}>{r.status}</span>
                 </td>
                 <td data-label="Requested" className="cell-right">
                   {r.desiredHours ? `${r.desiredHours}h` : "—"}
@@ -173,23 +198,33 @@ export function ResponseList({
                 <td
                   data-label="Updated"
                   className="cell-right"
-                  style={{ color: "var(--color-text-tertiary)", fontSize: 13, whiteSpace: "nowrap" }}
+                  style={{
+                    color: "var(--color-text-tertiary)",
+                    fontSize: 13,
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   {fmtDate(r.submittedAt ?? r.updatedAt)}
                 </td>
                 <td className="cell-right">
-                  <DeleteResponseButton
-                    studentEmail={r.email}
-                    displayName={r.displayName}
-                    variant="icon"
-                  />
+                  {/* Nothing to delete for a student who never started. */}
+                  {r.status !== "missing" && (
+                    <DeleteResponseButton
+                      studentEmail={r.email}
+                      displayName={r.displayName}
+                      variant="icon"
+                    />
+                  )}
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ color: "var(--color-text-tertiary)", textAlign: "center" }}>
-                  No matching responses.
+                <td
+                  colSpan={8}
+                  style={{ color: "var(--color-text-tertiary)", textAlign: "center" }}
+                >
+                  Nothing matches your search.
                 </td>
               </tr>
             )}
@@ -215,20 +250,23 @@ function compare(a: ResponseRow, b: ResponseRow, key: SortKey): number {
     case "scheduled":
       return Number(a.scheduled) - Number(b.scheduled);
     case "updated":
-      return (
-        (a.submittedAt ?? a.updatedAt).getTime() - (b.submittedAt ?? b.updatedAt).getTime()
-      );
+      // Students with no submission have no date; they sort to the top.
+      return stamp(a) - stamp(b);
   }
 }
 
-const fmtDate = (d: Date) =>
-  new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+const stamp = (r: ResponseRow) => (r.submittedAt ?? r.updatedAt)?.getTime() ?? 0;
+
+const fmtDate = (d: Date | null) =>
+  d
+    ? new Date(d).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "—";
 
 function Th({
   children,
@@ -251,11 +289,39 @@ function Th({
 }
 
 const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontSize: 12 };
-const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", color: "var(--color-text-success)" };
-const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };
-const flagBadge: React.CSSProperties = { ...badge, background: "var(--color-background-warning)", color: "var(--color-text-warning)" };
-const alertBadge: React.CSSProperties = { ...badge, background: "#fce8e6", color: "var(--color-text-danger)", whiteSpace: "nowrap" };
-const offRosterBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontWeight: 400, marginLeft: 6 };
+const submittedBadge: React.CSSProperties = {
+  ...badge,
+  background: "#e6f4ea",
+  color: "var(--color-text-success)",
+};
+const draftBadge: React.CSSProperties = {
+  ...badge,
+  background: "var(--color-background-secondary)",
+  color: "var(--color-text-secondary)",
+};
+const flagBadge: React.CSSProperties = {
+  ...badge,
+  background: "var(--color-background-warning)",
+  color: "var(--color-text-warning)",
+};
+const alertBadge: React.CSSProperties = {
+  ...badge,
+  background: "#fce8e6",
+  color: "var(--color-text-danger)",
+  whiteSpace: "nowrap",
+};
+const STATUS_BADGE: Record<ResponseRow["status"], React.CSSProperties> = {
+  submitted: submittedBadge,
+  draft: draftBadge,
+  missing: alertBadge,
+};
+const offRosterBadge: React.CSSProperties = {
+  ...badge,
+  background: "var(--color-background-secondary)",
+  color: "var(--color-text-secondary)",
+  fontWeight: 400,
+  marginLeft: 6,
+};
 const changeRequestPill: React.CSSProperties = {
   ...badge,
   background: "#e8f0fe",

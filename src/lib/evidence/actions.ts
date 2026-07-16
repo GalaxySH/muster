@@ -5,6 +5,10 @@
  * and persists only the returned fileId (or text). The server is the authority:
  * it re-validates the file, owns the student↔submission link, and never writes
  * image bytes to the app's storage.
+ *
+ * Every action also runs for an admin acting **on behalf of** a student (the
+ * target email rides in the FormData `student` field, or a second argument for
+ * the ones that don't take FormData); `requireEditableStudent` admin-gates it.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -12,16 +16,10 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
 import { requireEditableStudent } from "@/lib/groups/gate";
-import { requireAdmin } from "@/lib/auth/require-admin";
-import { findStudentByEmail } from "@/lib/roster/lookup";
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
-import {
-  isAtEvidenceCap,
-  MAX_EXTRACURRICULAR_FILES,
-  MAX_TRAVEL_REQUESTS,
-} from "./limits";
+import { isAtEvidenceCap, MAX_EXTRACURRICULAR_FILES, MAX_TRAVEL_REQUESTS } from "./limits";
 import { decideTravelSubmission } from "@/lib/domain/travel";
 import { getTravelCutoff } from "@/lib/settings";
 
@@ -36,21 +34,15 @@ export interface ActionResult {
  * removing evidence is part of editing the submission, so it locks with the form.
  *
  * An admin may instead name a student to act for (the per-student response page,
- * mirroring the change-request `employee` seam). They are the scheduler, so that
- * student's form window doesn't bind them.
+ * mirroring the change-request `employee` seam). The gate owns that rule: it
+ * skips the window checks for an on-behalf target and refuses one for everyone
+ * else.
  */
 async function requireStudent(
   onBehalfOf = "",
 ): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
-  if (onBehalfOf) {
-    const admin = await requireAdmin();
-    if (!admin.ok) return { error: admin.error };
-    const student = await findStudentByEmail(onBehalfOf);
-    if (!student) return { error: "That employee is not a known student." };
-    return { email: student.email, onBehalf: true };
-  }
-  const gate = await requireEditableStudent();
-  return gate.ok ? { email: gate.email, onBehalf: false } : { error: gate.error };
+  const gate = await requireEditableStudent(onBehalfOf);
+  return gate.ok ? { email: gate.email, onBehalf: gate.onBehalf } : { error: gate.error };
 }
 
 /** The student page the entry lives on, plus the admin's view of it when they added it. */
@@ -83,7 +75,7 @@ function relayError(e: unknown): string {
 // types (PNG/JPEG); PDFs can't be shown as a glanceable thumbnail beside the
 // preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent();
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -102,7 +94,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
       .set({ courseScheduleFileId: fileId })
       .where(eq(submissions.id, submissionId));
     if (prev?.courseScheduleFileId) await relayDelete(prev.courseScheduleFileId);
-    revalidatePath("/course-schedule");
+    revalidateEvidence("/course-schedule", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -143,8 +135,11 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
   }
 }
 
-export async function removeExtracurricularFile(rowId: string): Promise<ActionResult> {
-  const who = await requireStudent();
+export async function removeExtracurricularFile(
+  rowId: string,
+  onBehalfOf?: string,
+): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
@@ -152,13 +147,15 @@ export async function removeExtracurricularFile(rowId: string): Promise<ActionRe
   const [row] = await db
     .select({ fileId: extracurricularFiles.fileId })
     .from(extracurricularFiles)
-    .where(and(eq(extracurricularFiles.id, rowId), eq(extracurricularFiles.submissionId, submissionId)))
+    .where(
+      and(eq(extracurricularFiles.id, rowId), eq(extracurricularFiles.submissionId, submissionId)),
+    )
     .limit(1);
   if (!row) return { ok: false, error: "File not found." };
 
   await db.delete(extracurricularFiles).where(eq(extracurricularFiles.id, rowId));
   await relayDelete(row.fileId);
-  revalidatePath("/course-schedule");
+  revalidateEvidence("/course-schedule", who);
   return { ok: true };
 }
 
@@ -239,8 +236,8 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   }
 }
 
-export async function removeTravelRequest(id: string): Promise<ActionResult> {
-  const who = await requireStudent();
+export async function removeTravelRequest(id: string, onBehalfOf?: string): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf);
   if ("error" in who) return { ok: false, error: who.error };
 
   // Travel is locked entirely after the cutoff, removal too, since a removed
@@ -262,6 +259,6 @@ export async function removeTravelRequest(id: string): Promise<ActionResult> {
 
   await db.delete(travelRequests).where(eq(travelRequests.id, id));
   await relayDelete(row.proofFileId);
-  revalidatePath("/travel");
+  revalidateEvidence("/travel", who);
   return { ok: true };
 }

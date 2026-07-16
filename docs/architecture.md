@@ -209,25 +209,50 @@ order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequ
 count from one grouped query over `change_requests.status = "open"`),
 `getResponseNeighbors(email, filters)` (prev/next + the
 filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). The **group + flag + off-roster + start-date filters**
-are a pure
+`loadScheduleEmailPreview` (2.4). `listResponses` is **roster-wide**: `FROM students LEFT
+JOIN submissions`, so a student with no response is a row with null submission fields.
+The three-way status is one exported rule, **`responseStatus(row)`** → `submitted |
+draft | missing`, shared by the list, `listNonResponses`, and the per-student header: a
+submission row alone means nothing (an admin action can create an empty draft), so
+`missing` covers both "no row" and "a draft the student never confirmed"
+(`confirmed_at IS NULL`; see the form-flow section). The **group + flag + off-roster +
+all-students + start-date filters** are a pure
 seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
-`ResponseFilterBar` drives the URL. Roster visibility lives in this seam too (not the
-`listResponses` SQL): off-roster responders are hidden unless `roster=all`, then badged
-in the list. The start-date filter (`started` = before|after|on + `startedDate`,
-applied only when both halves are valid) compares `students.hiredOn` by calendar day;
-rows with no hire date never match. The list itself (`ResponseList`) is a full-bleed
+`ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the
+`listResponses` SQL): off-roster responders are hidden unless `roster=all`, and
+never-started students unless `all=1` (the "Show all students" switch, off by default so
+the dashboard is still a list of responses), each badged in the list.
+`getResponseNeighbors` re-lists with **both** switches on when the student being viewed
+isn't in the filtered list, so the open student is always part of the prev/next walk.
+The start-date filter (`started` = before|after|on + `startedDate`, applied only when
+both halves are valid) compares `students.hiredOn` by calendar day; rows with no hire
+date never match. The list itself (`ResponseList`) is a full-bleed
 `.stack-table` on a `width="full"` page (v0.64), matching the groups table: rows stack
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
-change-request count pill sits next to the name (nothing at zero). The Travel and Extracurriculars cards each carry an **Add** link
-(`AddEvidenceButton`, v0.67) that writes through the student evidence actions; see the
-evidence/Drive section. `actions.ts` ("use server", **admin-gated**) owns
-`setScheduled` / `saveSchedulerNotes`; the batch schedule-ready send is
+change-request count pill sits next to the name (nothing at zero); a `missing` row shows
+the red status badge, dashes for its submission-only cells, and no delete control. The
+Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
+that writes through the student evidence actions; see the evidence/Drive section.
+`actions.ts` ("use server", **admin-gated**) owns
+`setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
+`ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
+notes and a scheduled mark on anyone on the roster (gated on the student existing, since
+`studentEmail` is an FK; `deleteResponse` still refuses when there is no row). The batch
+schedule-ready send is
 `schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
-`ScheduleEmailPanel` island). The per-student page is a server component; the client
+`ScheduleEmailPanel` island). The per-student page is a server component that renders for
+**any** roster student, submission or not: with no submission the selection is simply
+empty, so the KPI cards, the hours calculator over an empty grid, the scheduler-notes
+card, and the empty evidence cards (each with a quick link to add entries on the
+student's behalf; see the evidence section) all still render, while the **Flags panel is
+deliberately hidden until the student has started** (against an empty selection every
+check would read as failing) and a student with no position gets a notice instead of the
+calculator. The header rings red (`--color-border-danger`) with a draft/missing badge
+until the response is submitted; its button-shaped controls opt into the `.btn-hover`
+class in `globals.css`, since inline style objects can't express `:hover`. The client
 islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
 both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
@@ -353,6 +378,18 @@ student UI is split into two client forms — `components/evidence/CourseSchedul
 (course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
 `components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
 styles). They render on the `/course-schedule` and `/travel` server pages.
+**Admin on-behalf entry:** both pages take `?student=<email>` (linked from the evidence
+cards on `/admin/students/[email]`) and, for an admin session, render the target's
+evidence with an `OnBehalfBanner` and no wizard breadcrumb. All six evidence actions
+thread the target into `requireEditableStudent(onBehalfOf)` (`groups/gate.ts`), via the
+`OnBehalfField` hidden FormData `student` field for the upload actions and an optional
+second argument for the rest; the gate admin-gates the path and skips the
+group/window/post-submit gates (the admin is the authority, not the window). The
+travel cutoff (PLAN §8) still applies, `relayUpload` was already identity-agnostic, and
+the privacy invariant is untouched (no image bytes, still the admin `drive.file` grant).
+Uploading this way starts the student's submission via the same `ensureSubmissionId`,
+which leaves `confirmed_at` NULL, so they stay a non-responder. Mirrors the on-behalf
+change-request path.
 
 **Admin on-behalf entry (v0.67).** `requireStudent(onBehalfOf)` in `evidence/actions.ts` is
 the gate seam: empty ⇒ the signed-in student through `requireEditableStudent` (roster +
@@ -426,12 +463,18 @@ not-started | continue(href)` (resume step inferred from data, **no progress col
 schedule, travel and the SL closes step need that + a complete availability; everything
 opens once submitted).
 `data.ts` (server-only) `loadFlowState(email)` resolves the two access gates + the flow
-inputs (`submitted`, `hasSubmissionRow`, `hasCourseSchedule`, `availabilityComplete` via
+inputs (`submitted`, `hasConfirmed`, `hasCourseSchedule`, `availabilityComplete` via
 `validateAvailability`, plus the closes state); `loadWizardNav(email)` reuses the same
 input computation (shared `computeFlowInputs`) and returns the position-aware step list +
 unlocked step keys for the breadcrumb.
-`actions.ts` `confirmRosterInfo()` records a draft row (`ensureSubmissionId`) so `/me`
-resumes, then redirects to `/intro`.
+`actions.ts` `confirmRosterInfo()` stamps `submissions.confirmed_at` on the student's
+(draft) row so `/me` resumes, then redirects to `/intro`. **"Started" means confirmed, not
+"a submission row exists"**: an admin can start a submission on a student's behalf (draft
+row, scheduler notes, an uploaded course schedule) before the student's first sign-in, and
+that must not skip the student past the confirm card. `confirmRosterInfo()` is the only
+writer of `confirmed_at`; `ensureSubmissionId()` and the availability create-if-missing
+path leave it NULL. Migration `0015` backfills `confirmed_at = created_at` for every
+pre-existing submission, since those students already confirmed.
 `app/me/page.tsx` renders one extra branch on top of that flow state: an admin with no
 roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets a
 greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
@@ -474,9 +517,14 @@ fixed string telling the student to "check back during the window shown above" e
 no window existed to show, which is the first thing a student saw if they arrived before an
 admin set a window (PLAN §18c). `before`/`closed` always carry a real date in the banner,
 so only those get a line. Enforcement lives in
-the shared `groups/gate.ts` `requireEditableStudent`, used by `availability/actions.ts`,
-the `requireStudent` adapter in `evidence/actions.ts` (gates all six evidence mutations),
-and the closes claim actions. The admin UI is
+the shared `groups/gate.ts` `requireEditableStudent(onBehalfOf?)`, used by
+`availability/actions.ts`, the `requireStudent` adapter in `evidence/actions.ts` (gates
+all six evidence mutations), and the closes claim actions. Passing `onBehalfOf` switches
+it to the **admin path** (admin session + the target must be a known student), which
+returns the target's email/position and skips the group, window, and post-submit gates,
+since an admin must be able to enter a student's details outside the window. The gate
+carries `onBehalf` back to the caller, which uses it to also revalidate the admin's view
+of that student (`gate.test.ts`). The admin UI is
 `/admin/groups` (server page) with client islands `GroupWindowsTable`,
 `DefaultAssignmentPanel`, `StudentAssigner`; the student pages render
 `components/FormWindowBanner.tsx` (`NoGroupNotice` + `FormWindowBanner`). Window bounds
@@ -621,7 +669,7 @@ rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
 
-## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.77)
+## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.79)
 
 The first slice of the schedule-generation plan: per-block target staffing plus a
 coverage view, no generator yet. Standard layering:

@@ -9,18 +9,32 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { nextHref } from "@/lib/flow/steps";
 import { TravelForm } from "@/components/evidence/TravelForm";
 import { TravelContinue } from "@/components/evidence/TravelContinue";
-import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
+import { OnBehalfBanner } from "@/components/evidence/shared";
+import {
+  FormWindowBanner,
+  NoGroupNotice,
+  SubmittedLockBanner,
+} from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
 import { getTravelCutoff } from "@/lib/settings";
 import { decideTravelSubmission } from "@/lib/domain/travel";
 
-export default async function TravelPage() {
+export default async function TravelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ student?: string }>;
+}) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/travel");
 
-  const student = await findStudentByEmail(session.email);
+  // An admin can fill a student's travel in for them (?student=email, linked
+  // from the per-student admin page). That path loads the target's entries and
+  // skips the group/window gates. The travel cutoff still applies (PLAN §8).
+  const { student: studentParam } = await searchParams;
+  const onBehalf = session.isAdmin && studentParam ? await findStudentByEmail(studentParam) : null;
+  const student = onBehalf ?? (await findStudentByEmail(session.email));
   if (!student) {
     return (
       <Page>
@@ -32,14 +46,33 @@ export default async function TravelPage() {
   }
 
   const now = new Date();
-  const [evidence, drive, access, nav, { cutoff }] = await Promise.all([
+  const [evidence, drive, { cutoff }] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
-    resolveStudentAccess(student.email),
-    loadWizardNav(student.email),
     getTravelCutoff(now),
   ]);
   const canAddTravel = decideTravelSubmission(now, cutoff).allowed;
+
+  if (onBehalf) {
+    return (
+      <Page>
+        <AppHeader />
+        <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
+        <TravelForm
+          initial={evidence}
+          driveConnected={drive.connected}
+          cutoffMs={cutoff.getTime()}
+          canAddTravel={canAddTravel}
+          onBehalfOf={onBehalf.email}
+        />
+      </Page>
+    );
+  }
+
+  const [access, nav] = await Promise.all([
+    resolveStudentAccess(student.email),
+    loadWizardNav(student.email),
+  ]);
 
   if (access.access === "no-group") {
     return (
@@ -61,7 +94,11 @@ export default async function TravelPage() {
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
-        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+        <FormWindowBanner
+          state={access.state}
+          opensAt={access.opensAt}
+          closesAt={access.closesAt}
+        />
       )}
       <TravelForm
         initial={evidence}
@@ -70,7 +107,9 @@ export default async function TravelPage() {
         cutoffMs={cutoff.getTime()}
         canAddTravel={canAddTravel}
       />
-      {editable && !evidence.submitted && <TravelContinue nextHref={nextHref("travel", nav.steps)} />}
+      {editable && !evidence.submitted && (
+        <TravelContinue nextHref={nextHref("travel", nav.steps)} />
+      )}
     </Page>
   );
 }

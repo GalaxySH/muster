@@ -7,16 +7,30 @@ import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadWizardNav } from "@/lib/flow/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
-import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
+import { OnBehalfBanner } from "@/components/evidence/shared";
+import {
+  FormWindowBanner,
+  NoGroupNotice,
+  SubmittedLockBanner,
+} from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
 
-export default async function CourseSchedulePage() {
+export default async function CourseSchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ student?: string }>;
+}) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/course-schedule");
 
-  const student = await findStudentByEmail(session.email);
+  // An admin can fill a student's details in for them (?student=email, linked
+  // from the per-student admin page). That path loads the target's evidence and
+  // skips the group/window gates: the admin is the authority, not the window.
+  const { student: studentParam } = await searchParams;
+  const onBehalf = session.isAdmin && studentParam ? await findStudentByEmail(studentParam) : null;
+  const student = onBehalf ?? (await findStudentByEmail(session.email));
   if (!student) {
     return (
       <Page>
@@ -27,9 +41,23 @@ export default async function CourseSchedulePage() {
     );
   }
 
-  const [evidence, drive, access, nav] = await Promise.all([
-    loadEvidence(student.email),
-    getDriveGrantStatus(),
+  const [evidence, drive] = await Promise.all([loadEvidence(student.email), getDriveGrantStatus()]);
+
+  if (onBehalf) {
+    return (
+      <Page>
+        <AppHeader />
+        <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
+        <CourseScheduleForm
+          initial={evidence}
+          driveConnected={drive.connected}
+          onBehalfOf={onBehalf.email}
+        />
+      </Page>
+    );
+  }
+
+  const [access, nav] = await Promise.all([
     resolveStudentAccess(student.email),
     loadWizardNav(student.email),
   ]);
@@ -54,7 +82,11 @@ export default async function CourseSchedulePage() {
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
-        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+        <FormWindowBanner
+          state={access.state}
+          opensAt={access.opensAt}
+          closesAt={access.closesAt}
+        />
       )}
       <CourseScheduleForm initial={evidence} driveConnected={drive.connected} editable={editable} />
       {editable && !evidence.submitted && (

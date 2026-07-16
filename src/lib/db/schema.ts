@@ -135,6 +135,11 @@ export const submissions = mysqlTable("submissions", {
   // When the batch "your schedule is ready" email was sent (roadmap 2.4). Null =
   // not yet notified; the batch send skips already-stamped rows (idempotent).
   scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
+  // When the student clicked "Yes, that's me" on /me. Null = they still owe the
+  // confirmation, so /me shows the confirm card. The row itself is not proof: an
+  // admin can start a submission on a student's behalf before the student ever
+  // signs in.
+  confirmedAt: datetime("confirmed_at", { mode: "date" }),
   submittedAt: datetime("submitted_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),

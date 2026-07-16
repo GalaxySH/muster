@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
-import { loadStudentDetail, getResponseNeighbors } from "@/lib/admin/data";
+import { loadStudentDetail, getResponseNeighbors, responseStatus } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
 import {
   parseResponseFilters,
@@ -90,6 +90,7 @@ export default async function StudentDetailPage({
     group?: string;
     flag?: string;
     roster?: string;
+    all?: string;
     started?: string;
     startedDate?: string;
   }>;
@@ -131,18 +132,25 @@ export default async function StudentDetailPage({
       .map((r) => r.id),
   );
   const { submission, position, blocks, selection, autoAssigned, evidence, closes } = detail;
+  // "missing" covers both a student with no row at all and one whose only row an
+  // admin created for them, so the status never overstates what the student did.
+  const status = responseStatus(submission);
+  const started = status !== "missing";
   // Lifecycle flags written by position changes (roadmap 3.3), rendered with
   // their stored detail; the live validation checks below cover the rest.
   const storedAlerts = detail.flags.filter(
     (f) => f.type === "position_change" || f.type === "revalidation_failed",
   );
 
-  const validation =
-    position && submission
-      ? validateAvailability(selection, position, blocks, {
-          everyWeekendOptIn: submission.everyWeekendOptIn,
-        })
-      : null;
+  // The dashboard renders for everyone on the roster, not just responders: with
+  // no submission the selection is simply empty, which still gives the scheduler
+  // the position's bounds, an hours calculator to try shifts in, and somewhere to
+  // record details while the student has yet to answer.
+  const validation = position
+    ? validateAvailability(selection, position, blocks, {
+        everyWeekendOptIn: submission?.everyWeekendOptIn ?? false,
+      })
+    : null;
 
   const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
   const grid = position ? buildAdminGrid(blocks, selection, autoAssigned, highDemand) : null;
@@ -158,8 +166,9 @@ export default async function StudentDetailPage({
         <Crumb href={`/admin/responses${suffix}`} label="Responses" />
       </AppHeader>
 
-      {/* Identity header */}
-      <div style={cardStyle}>
+      {/* Identity header. Ringed red until the student has actually submitted, so
+          an unfinished or unstarted response is obvious at a glance. */}
+      <div style={status === "submitted" ? cardStyle : { ...cardStyle, ...cardUnsubmitted }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <NavArrow href={nav.prevEmail ? studentHref(nav.prevEmail) : null} dir="prev" />
           <div style={avatar}>{initials(detail.displayName)}</div>
@@ -185,12 +194,18 @@ export default async function StudentDetailPage({
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {submission && (
+          {status === "submitted" ? (
             <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-              {submission.status === "submitted" ? "submitted" : "draft"}
-              {submission.status === "submitted" && submission.submittedAt
-                ? ` · ${fmtDate(submission.submittedAt)}`
-                : ` · edited ${fmtDate(submission.updatedAt)}`}
+              submitted · {fmtDate(submission!.submittedAt ?? submission!.updatedAt)}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
+              {status === "draft" && (
+                <span style={{ color: "var(--color-text-tertiary)" }}>
+                  edited {fmtDate(submission!.updatedAt)}
+                </span>
+              )}
             </span>
           )}
           <Link
@@ -199,9 +214,10 @@ export default async function StudentDetailPage({
           >
             New change request
           </Link>
-          {submission && (
-            <MarkScheduledButton studentEmail={detail.email} scheduled={submission.scheduled} />
-          )}
+          <MarkScheduledButton
+            studentEmail={detail.email}
+            scheduled={submission?.scheduled ?? false}
+          />
           {submission && (
             <DeleteResponseButton
               studentEmail={detail.email}
@@ -218,22 +234,28 @@ export default async function StudentDetailPage({
         </div>
       )}
 
-      {!submission && (
+      {!started && (
         <div style={{ ...bannerStyle, marginTop: 12 }}>
-          This employee hasn&apos;t started a submission.
+          This student hasn&apos;t started a submission. Anything you add here starts one.
         </div>
       )}
 
-      {submission && submission.status === "draft" && (
+      {status === "draft" && (
         <div style={{ ...bannerStyle, marginTop: 12 }}>
           This is a draft and has not been submitted.
         </div>
       )}
 
+      {!position && (
+        <div style={{ ...bannerStyle, marginTop: 12 }}>
+          No position on the roster, so there are no shift blocks or hour bounds to show.
+        </div>
+      )}
+
       {/* Hour summary cards: a full-width glanceable KPI strip */}
-      {submission && validation && (
+      {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={`${position && position.name}`} sub="" />
+          <StatTile label="POSITION" value={position!.name} sub="" />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}
@@ -241,13 +263,13 @@ export default async function StudentDetailPage({
           />
           <StatTile
             label="REQUESTED"
-            value={`${submission.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
+            value={`${submission?.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
             sub=""
           />
           <StatTile
             label="UNIQUE DAYS"
             value={`${validation.daysCovered}/7`}
-            sub={submission.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
+            sub={submission?.everyWeekendOptIn ? "every weekend" : "alternating weekends"}
           />
         </div>
       )}
@@ -256,22 +278,25 @@ export default async function StudentDetailPage({
           screen without scrolling on a wide display. Change requests pack in with the
           rest as the last card, and scroll inside themselves when the list is long. */}
       <div style={masonryStyle}>
-        {submission && validation && (
-          <>
-            {/* Availability preferences + click-to-mock hours calculator */}
-            {grid && (
-              <section style={panelStyle}>
-                <PrefGridCalculator
-                  grid={grid}
-                  blocks={blocks}
-                  everyWeekendOptIn={submission.everyWeekendOptIn}
-                  minHours={position!.minHours}
-                  cap={cap}
-                />
-              </section>
-            )}
+        {/* Availability preferences + click-to-mock hours calculator. With no
+            submission every cell starts empty and the scheduler can still try
+            shifts against the position's floor and cap. */}
+        {grid && validation && (
+          <section style={panelStyle}>
+            <PrefGridCalculator
+              grid={grid}
+              blocks={blocks}
+              everyWeekendOptIn={submission?.everyWeekendOptIn ?? false}
+              minHours={position!.minHours}
+              cap={cap}
+            />
+          </section>
+        )}
 
-            {/* Flags & checks */}
+        {/* Flags & checks. Only meaningful once the student has actually filled
+            something in: against an empty selection every check would "fail". */}
+        {started && submission && validation && (
+          <>
             <section style={panelStyle}>
               <SectionLabel>
                 Flags{" "}
@@ -312,126 +337,121 @@ export default async function StudentDetailPage({
                 )}
               </div>
             </section>
-
-            {/* SL weekend closes: the one extra hard requirement the position carries */}
-            {closes && <CloseClaimsCard closes={closes} />}
-
-            {/* Course schedule */}
-            <section style={panelStyle}>
-              <SectionLabel>Course schedule</SectionLabel>
-              {evidence.courseScheduleFileId ? (
-                <EvidenceThumb
-                  fileId={evidence.courseScheduleFileId}
-                  label="Course schedule"
-                  fill
-                  fillHeight={320}
-                />
-              ) : (
-                <p style={{ color: "var(--color-text-warning)", fontSize: 13, margin: 0 }}>
-                  No course schedule uploaded.
-                </p>
-              )}
-            </section>
-
-            {/* Scheduler notes (editable) */}
-            <section style={panelStyle}>
-              <SchedulerNotes
-                studentEmail={detail.email}
-                initialNotes={submission.schedulerNotes}
-              />
-            </section>
-
-            {/* Travel */}
-            <section style={panelStyle}>
-              <SectionLabel
-                action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
-              >
-                Travel
-              </SectionLabel>
-              {evidence.travel.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {evidence.travel.map((t) => (
-                    <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
-                      <div style={{ fontSize: 13 }}>
-                        <div>
-                          {t.startDate} → {t.endDate}{" "}
-                          <span style={t.excused ? successPillStyle : dangerPillStyle}>
-                            {t.excused ? "excused" : "not excused (late)"}
-                          </span>
-                        </div>
-                        {t.note && (
-                          <div style={{ color: "var(--color-text-secondary)" }}>{t.note}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
-                  No travel entries.
-                </p>
-              )}
-            </section>
-
-            {/* Extracurriculars */}
-            <section style={panelStyle}>
-              <SectionLabel
-                action={
-                  <AddEvidenceButton
-                    kind="extracurricular"
-                    studentEmail={detail.email}
-                    currentNotes={evidence.extracurricularNotes}
-                  />
-                }
-              >
-                Extracurriculars
-              </SectionLabel>
-              {evidence.extracurricularNotes ? (
-                <p style={{ fontSize: 13, margin: "0 0 10px" }}>
-                  <span style={{ color: "var(--color-text-secondary)" }}>details: </span>
-                  &ldquo;{evidence.extracurricularNotes}&rdquo;
-                </p>
-              ) : (
-                <p
-                  style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}
-                >
-                  No details provided.
-                </p>
-              )}
-              {evidence.extracurricularFiles.length > 0 ? (
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {evidence.extracurricularFiles.map((f, i) => (
-                    <EvidenceThumb
-                      key={f.id}
-                      fileId={f.fileId}
-                      label="Extracurricular proof"
-                      caption={`proof ${i + 1}`}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
-                  No proof attached.
-                </p>
-              )}
-            </section>
-
-            {/* Student's own note about their requested schedule */}
-            {submission.studentNotes && (
-              <section style={panelStyle}>
-                <SectionLabel>Student notes</SectionLabel>
-                <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
-                  {submission.studentNotes}
-                </p>
-              </section>
-            )}
           </>
         )}
 
-        {/* Claims can be admin-assigned before a lead fills the form, so the card
-            packs in on its own when there's no submission to sit under. */}
-        {!submission && closes && <CloseClaimsCard closes={closes} />}
+        {/* SL weekend closes: the one extra hard requirement the position carries.
+            Claims can be admin-assigned before a lead fills the form, so this packs
+            in whether or not there's a submission to sit under. */}
+        {closes && <CloseClaimsCard closes={closes} />}
+
+        {/* Evidence and notes render for everyone on the roster, not just
+            responders: the scheduler can record details, and adding any of them
+            starts the student's submission. */}
+        {/* Course schedule */}
+        <section style={panelStyle}>
+          <SectionLabel>Course schedule</SectionLabel>
+          {evidence.courseScheduleFileId ? (
+            <EvidenceThumb
+              fileId={evidence.courseScheduleFileId}
+              label="Course schedule"
+              fill
+              fillHeight={320}
+            />
+          ) : (
+            <p style={{ color: "var(--color-text-warning)", fontSize: 13, margin: 0 }}>
+              No course schedule uploaded.
+            </p>
+          )}
+        </section>
+
+        {/* Scheduler notes (editable) */}
+        <section style={panelStyle}>
+          <SchedulerNotes
+            studentEmail={detail.email}
+            initialNotes={submission?.schedulerNotes ?? ""}
+          />
+        </section>
+
+        {/* Travel */}
+        <section style={panelStyle}>
+          <SectionLabel action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}>
+            Travel
+          </SectionLabel>
+          {evidence.travel.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {evidence.travel.map((t) => (
+                <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                  <div style={{ fontSize: 13 }}>
+                    <div>
+                      {t.startDate} → {t.endDate}{" "}
+                      <span style={t.excused ? successPillStyle : dangerPillStyle}>
+                        {t.excused ? "excused" : "not excused (late)"}
+                      </span>
+                    </div>
+                    {t.note && <div style={{ color: "var(--color-text-secondary)" }}>{t.note}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
+              No travel entries.
+            </p>
+          )}
+        </section>
+
+        {/* Extracurriculars */}
+        <section style={panelStyle}>
+          <SectionLabel
+            action={
+              <AddEvidenceButton
+                kind="extracurricular"
+                studentEmail={detail.email}
+                currentNotes={evidence.extracurricularNotes}
+              />
+            }
+          >
+            Extracurriculars
+          </SectionLabel>
+          {evidence.extracurricularNotes ? (
+            <p style={{ fontSize: 13, margin: "0 0 10px" }}>
+              <span style={{ color: "var(--color-text-secondary)" }}>details: </span>
+              &ldquo;{evidence.extracurricularNotes}&rdquo;
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}>
+              No details provided.
+            </p>
+          )}
+          {evidence.extracurricularFiles.length > 0 ? (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {evidence.extracurricularFiles.map((f, i) => (
+                <EvidenceThumb
+                  key={f.id}
+                  fileId={f.fileId}
+                  label="Extracurricular proof"
+                  caption={`proof ${i + 1}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
+              No proof attached.
+            </p>
+          )}
+        </section>
+
+        {/* Student's own note about their requested schedule */}
+        {submission?.studentNotes && (
+          <section style={panelStyle}>
+            <SectionLabel>Student notes</SectionLabel>
+            <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
+              {submission.studentNotes}
+            </p>
+          </section>
+        )}
 
         {/* A responder whose position is unset has no validation to show, but a
             position_change flag must stay visible and dismissible (roadmap 3.3). */}
@@ -751,6 +771,30 @@ const newChangeRequestLink: React.CSSProperties = {
   background: "var(--color-background-primary)",
   color: "var(--color-text-primary)",
   textDecoration: "none",
+};
+
+/** Anything short of a submitted response rings the header red. */
+const cardUnsubmitted: React.CSSProperties = {
+  border: "1px solid var(--color-border-danger)",
+  boxShadow: "0 0 0 1px var(--color-border-danger)",
+};
+/** Started but not sent: highlighted, not alarming. */
+const draftPill: React.CSSProperties = {
+  background: "var(--color-background-warning)",
+  color: "var(--color-text-warning)",
+  border: "1px solid var(--color-border-warning)",
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontWeight: 600,
+};
+/** Never started, or started only by an admin. */
+const missingPill: React.CSSProperties = {
+  background: "#fce8e6",
+  color: "var(--color-text-danger)",
+  border: "1px solid var(--color-border-danger)",
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontWeight: 600,
 };
 
 const avatar: React.CSSProperties = {
