@@ -15,7 +15,7 @@ import { getDb } from "@/lib/db";
 import { positions, rosterTitleMappings, shiftBlocks, shiftSelections, students } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
-import { validateBlockTimes } from "@/lib/domain/config-validation";
+import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
 import { canAliasTo } from "@/lib/domain/position-alias";
 import type { DayType } from "@/lib/domain/types";
 import { normalizeTitle } from "@/lib/roster/position-mapping";
@@ -276,6 +276,7 @@ export async function createBlock(
   dayType: DayType,
   startMinutes: number,
   endMinutes: number,
+  desiredCapacity: number | null,
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
@@ -284,6 +285,8 @@ export async function createBlock(
   }
   const timeError = validateBlockTimes(startMinutes, endMinutes);
   if (timeError) return { ok: false, error: timeError };
+  const capacityError = validateDesiredCapacity(desiredCapacity);
+  if (capacityError) return { ok: false, error: capacityError };
 
   const db = getDb();
   const [pos] = await db
@@ -296,7 +299,9 @@ export async function createBlock(
   // Block ids are opaque handles: the prefix keeps them readable, the random
   // suffix keeps them unique without encoding times that would go stale.
   const id = `${positionId}-${dayType}-${randomUUID().slice(0, 8)}`;
-  await db.insert(shiftBlocks).values({ id, positionId, dayType, startMinutes, endMinutes });
+  await db
+    .insert(shiftBlocks)
+    .values({ id, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
   revalidatePositions();
   revalidatePath("/availability");
   return { ok: true };
@@ -306,11 +311,14 @@ export async function updateBlock(
   blockId: string,
   startMinutes: number,
   endMinutes: number,
+  desiredCapacity: number | null,
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
   const timeError = validateBlockTimes(startMinutes, endMinutes);
   if (timeError) return { ok: false, error: timeError };
+  const capacityError = validateDesiredCapacity(desiredCapacity);
+  if (capacityError) return { ok: false, error: capacityError };
 
   const db = getDb();
   const [row] = await db
@@ -320,7 +328,10 @@ export async function updateBlock(
     .limit(1);
   if (!row) return { ok: false, error: "Block not found." };
 
-  await db.update(shiftBlocks).set({ startMinutes, endMinutes }).where(eq(shiftBlocks.id, blockId));
+  await db
+    .update(shiftBlocks)
+    .set({ startMinutes, endMinutes, desiredCapacity })
+    .where(eq(shiftBlocks.id, blockId));
   revalidatePositions();
   revalidatePath("/availability");
   return { ok: true };

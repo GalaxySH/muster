@@ -30,7 +30,7 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.76
+- **Version:** 0.77
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -456,7 +456,9 @@ columns from the roster.
   (`roster/position-mapping.ts`); ghost resolution on `/admin/positions` inserts rows,
   so new roster titles never require a code change.
 - **ShiftBlock**: `id`, `positionId`, `dayType` (`weekday`|`weekend`), `start`,
-  `end`. Open/close derived; high-demand is **computed** from selections (§7, roadmap
+  `end`, `desiredCapacity?` (admin-set target headcount per day the block runs; null =
+  no target; feeds the coverage view and, later, the generator — roadmap 5.1).
+  Open/close derived; high-demand is **computed** from selections (§7, roadmap
   2.5), no longer a stored column.
 - **Submission**: `id`, `studentEmail`, `submittedAt`, `everyWeekendOptIn: bool`,
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
@@ -922,7 +924,10 @@ under-18 test (deferred → fallback, §11).
 
 ## 17. Out of Scope / Non-Goals
 
-- Writing or auto-generating schedules.
+- Writing schedules. Generating schedule **recommendations** is no longer a blanket
+  non-goal: it is planned, admin-facing and advisory only, in
+  `docs/schedule-generation-plan.md` (Phase A, target staffing + coverage, shipped in
+  0.77). The human scheduler still writes the actual schedule in W2W by hand.
 - Any programmatic integration with WhenToWork.
 - Storing FERPA-protected records on the app server (by design — see §12).
 - Replacing the roster workbook (Muster *imports* it; it isn't the system of record).
@@ -1057,6 +1062,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.77 (2026-07-16)** — **Target staffing + schedule coverage (roadmap 5.1; Phase A of
+  `docs/schedule-generation-plan.md`).** Shift blocks gain an optional `desiredCapacity`
+  (target headcount per day the block runs), edited inline on `/admin/positions` (a
+  number field per block row; `validateDesiredCapacity` allows 1–99 or blank = no
+  target; a capacity-only save skips the picked-shift time confirm). New
+  `/admin/schedule` (hub nav: Review) shows supply vs target per (block × day) cell
+  from submitted on-roster availability: pure `domain/coverage.ts` (ok/short/severe
+  grading against the target, severe = under half; lateness tiers Night ≥ 8p /
+  Evening ≥ 5p off the block end; derived Close tag; shortfall summaries) + loader
+  `schedule/data.ts`. Coverage counts **include** the auto-assigned weekend cell,
+  unlike the demand ranking (§7): coverage asks who *can* work a cell, not who chose
+  it. §17 narrowed accordingly: recommendation-only generation is planned; writing
+  schedules and any W2W integration stay out of scope.
 - **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
   The import's skip list moves from code to admin config: `excluded_roster_titles` in
   `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,

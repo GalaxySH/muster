@@ -620,3 +620,36 @@ the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
+
+## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.77)
+
+The first slice of the schedule-generation plan: per-block target staffing plus a
+coverage view, no generator yet. Standard layering:
+
+- **Pure domain** `domain/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
+  produces one row per block (weekday rows first, then by start) with one cell per
+  applicable day; `coverageStatus` grades a cell against the block target (`ok` /
+  `short` / `severe` = under half / `none` when no target), `latenessTier` tiers a
+  block by its end time (`night` >= 8p, `evening` >= 5p) so late shifts stand out the
+  way the future generator will prioritize them, and `summarizeCoverage` totals
+  targeted/short cells and missing people. Close tags reuse `deriveOpenClose`; cell
+  keys reuse `demandCellKey`.
+- **Target staffing** rides the existing positions config path: nullable
+  `shift_blocks.desired_capacity` (migration 0015), mapped by `toDomainBlock` into the
+  optional `ShiftBlock.desiredCapacity`, threaded through `AdminBlockItem`, validated
+  by `validateDesiredCapacity` (`domain/config-validation.ts`, 1..99 or null) in both
+  `createBlock`/`updateBlock` and the `BlockEditor` island (which grew a number input
+  per row; a capacity-only save skips the picked-shift time confirm because times did
+  not move).
+- **Loader** `schedule/data.ts` `loadCoverage()`: active non-alias positions, all
+  blocks, on-roster/responder counts, and per-cell distinct-submission counts filtered
+  to submitted + on-roster. Deliberate difference from `loadHighDemandCells`: coverage
+  **includes** `autoAssigned` cells, because it asks who *can* work a cell, while
+  demand ranks what students *chose*.
+- **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
+  summary `StatTile` row, then per-position panels with weekday/weekend tables,
+  status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
+  "N people short" readout. No client island; the page is read-only.
+
+Later phases (the generator itself, runs/assignments, pins/restore) are specified in
+`docs/schedule-generation-plan.md` and will extend `src/lib/schedule/`.

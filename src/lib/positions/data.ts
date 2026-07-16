@@ -57,6 +57,8 @@ export interface AdminBlockItem {
   dayType: DayType;
   start: number;
   end: number;
+  /** Target staffing per day, or null for no target (roadmap 5.1). */
+  desiredCapacity: number | null;
   /** shift_selections rows referencing this block (delete/edit guards). */
   selectionCount: number;
 }
@@ -112,6 +114,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       dayType: b.dayType,
       start: b.startMinutes,
       end: b.endMinutes,
+      desiredCapacity: b.desiredCapacity,
       selectionCount: selectionCount.get(b.id) ?? 0,
     });
     blocksByPosition.set(b.positionId, list);
