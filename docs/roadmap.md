@@ -112,7 +112,7 @@ Two changes to the same seam (§13's cutoff, currently hardcoded as
   with the flag attached is a one-line policy flip plus UI copy.
 - Amends PLAN §5 #8, §7b, §8, and §13 when it lands.
 
-### 1.7 Configurable excluded roster titles — **S** ✅ *shipped (PLAN 0.74)*
+### 1.7 Configurable excluded roster titles — **S** ✅ *shipped (PLAN 0.76)*
 The import's excluded-titles list (`SKIP_TITLES` in `roster/position-mapping.ts` —
 currently just "Dining Advisor Board Member (DAB)") becomes admin-editable config in
 `app_settings`, shown and editable on `/admin/roster`, seeded from the hardcoded set.

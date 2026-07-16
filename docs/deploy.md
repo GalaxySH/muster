@@ -92,21 +92,26 @@ version tag deploys to the production box over SSH — automating the same
    **copy it to `/usr/local/sbin` root-owned** rather than running it from
    the deploy-user-writable clone, then add the root crontab line. Restore
    and verification commands are in the header too.
-7. **Change-request digest cron** (roadmap 3.1) — the daily digest of new
-   schedule change requests is triggered from host cron, not an in-process
-   scheduler. Set `CRON_SECRET` in the app env (`openssl rand -base64 32`),
-   then add a crontab line for whichever user you prefer (the endpoint is
-   loopback-reachable):
+7. **Change-request digest** (roadmap 3.1) — the daily digest of new schedule
+   change requests is sent by the **in-app scheduler**, started once per server
+   process from `src/instrumentation.ts`. **No host setup is needed**: it ticks
+   every 5 minutes (plus once at boot) and runs when 7:00 America/Chicago has
+   passed without a recorded run, so it catches up after downtime instead of
+   skipping the day. The run is a no-op unless there are new requests AND the
+   digest is enabled with recipients on `/admin/email-settings`; skipped runs
+   leave requests unstamped so they appear in the next successful digest.
+   Every run (no-ops included) stamps `change_digest_last_run`, shown as
+   "Last run" with scheduler health on `/admin/email-settings`, and the run is
+   taken through an atomic compare-and-set on that stamp so concurrent
+   processes cannot double-send. To force a run by hand, set `CRON_SECRET` in
+   the app env (`openssl rand -base64 32`; optional otherwise) and:
 
    ```
-   0 13 * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/change-digest >/dev/null
+   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/change-digest
    ```
 
-   (13:00 UTC = 7/8 am Central.) The run is a no-op unless there are new
-   requests AND the digest is enabled with recipients on
-   `/admin/email-settings`; skipped runs leave requests unstamped so they
-   appear in the next successful digest. With `CRON_SECRET` unset the route
-   always refuses (503).
+   (The manual route skips the due-check; with `CRON_SECRET` unset it always
+   refuses, 503.)
 
 ## Releasing
 

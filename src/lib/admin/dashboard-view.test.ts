@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
 import {
   buildDashboardView,
   STALLED_DRAFT_DAYS,
-  DIGEST_STALE_HOURS,
   COVERAGE_ROWS,
   type DashboardSnapshot,
   type DashboardStudent,

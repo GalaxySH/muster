@@ -23,13 +23,14 @@
   SL-only `/closes` wizard step, the `/admin/closes` dashboard, and the closes backup
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
-  digest email via the cron-triggered token route. **Positions & shift blocks admin
+  digest email via the in-app scheduler (0.75; the token route stays as a manual
+  fallback). **Positions & shift blocks admin
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.74
+- **Version:** 0.76
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -139,8 +140,10 @@ states that changes due to events/extracurriculars must include proof). Pure val
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
 withdrawable by the student. Requests
 render on the admin per-student page (§10) and are batched into a **daily digest email**
-to the admin-configured recipients (0.47), triggered by host cron via the
-token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.md §7).
+to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
+daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
+no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
+remains as a manual fallback trigger (docs/deploy.md §7).
 
 ### 4.2 Admin flow
 - **Roster import** — upload the PCPL workbook on **`/admin/roster`** (file upload →
@@ -1054,7 +1057,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.74 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
+- **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
   The import's skip list moves from code to admin config: `excluded_roster_titles` in
   `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,
   so comparison is case-insensitive), edited in a new panel on `/admin/roster`
@@ -1067,6 +1070,37 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   `npm run roster:import` both honor it. The pure seams (`normalizeExcludedTitles`,
   `effectiveExcludedTitles`) and the setting key live in `roster/position-mapping.ts`,
   tested there. No schema change.
+- **0.75 (2026-07-16)** — **Digest goes in-app: scheduler replaces host cron (roadmap
+  3.1).** The daily change-request digest no longer needs a crontab on the box — the
+  exact setup step that was still uninstalled in prod. `src/instrumentation.ts` (Next
+  server-start hook, Node runtime only) starts a **tick loop** in
+  `changes/scheduler.ts` (5-minute interval plus a boot tick): each tick asks the pure
+  `isDigestDue` in `changes/digest-schedule.ts` (TDD) whether the **7:00
+  America/Chicago** send instant — DST-correct zone math, unlike the fixed-UTC
+  crontab — has passed without a recorded run (never-ran ⇒ due, so the scheduler
+  **catches up after downtime** instead of skipping the day), then takes an **atomic
+  compare-and-set claim** on `change_digest_last_run` (`claimChangeDigestRun`; 0
+  affected rows = lost race) before `runChangeDigest`, so two processes on one DB
+  cannot double-send. Gated by `digestSchedulerEnabled`: **always on in production**,
+  off elsewhere unless `DIGEST_SCHEDULER_DEV=1`, so dev servers and Playwright runs
+  never send spontaneously. The token route `POST /api/cron/change-digest` stays as a
+  **manual fallback trigger** (bypasses due-check + claim; `CRON_SECRET` now optional).
+  The 0.74 health surface adapts: `digestRunHealth` (`disabled` | `starting` |
+  `never-ran` | `stale` | `ok`, with a 15-min startup grace fed by `process.uptime()`)
+  replaces `digestCronHealth`, the `no-secret` state and the crontab setup card are
+  gone, and the panel/hub copy points at the app logs instead of the crontab.
+- **0.74 (2026-07-15)** — **Digest cron health on /admin/email-settings.** The digest
+  panel no longer claims a bare "on" from the DB toggle alone: the page computes
+  **cron health** server-side (pure `digestCronHealth` in `changes/digest-health.ts`:
+  `no-secret` when `CRON_SECRET` is unset so the endpoint refuses every run,
+  `never-ran` when no run is recorded, `stale` past `DIGEST_STALE_HOURS`, else `ok`)
+  from the v0.71 `change_digest_last_run` stamp. While enabled but unhealthy the card
+  goes danger-toned, titles the specific failure ("the daily job has not run yet" /
+  "has stopped running" / "the server cannot send it"), and shows the **crontab setup
+  steps** (verbatim from docs/deploy.md §7) until the job's first recorded run; a
+  **"Last run"** line renders always. `DIGEST_STALE_HOURS` moved out of
+  `dashboard-view.ts` into the new module so the hub and the settings page share one
+  staleness threshold.
 - **0.73 (2026-07-15)** — **Admin hub: sign out moves into the nav rail (§10b).** The
   button leaves the page bottom and pins to the rail's foot (drawer bottom on a
   phone), so the rail is the one place for every leave-the-page action.
