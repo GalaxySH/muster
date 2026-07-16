@@ -58,5 +58,39 @@ export const ADMIN_TITLES: ReadonlySet<string> = new Set([
   "head student supervisor",
 ]);
 
-/** Titles to exclude from the import entirely (neither student nor admin). */
+/**
+ * Titles to exclude from the import entirely (neither student nor admin).
+ * Initial default only: once an admin saves the excluded-titles setting on
+ * /admin/roster, the stored list is authoritative (see effectiveExcludedTitles).
+ */
 export const SKIP_TITLES: ReadonlySet<string> = new Set(["dining advisor board member (dab)"]);
+
+/**
+ * app_settings key for the admin-edited excluded titles, stored one per line.
+ * Lives here (not settings.ts, which is server-only) so the CLI-safe importer
+ * can read the same setting through its own db handle.
+ */
+export const SETTING_EXCLUDED_ROSTER_TITLES = "excluded_roster_titles";
+
+/**
+ * Normalize an excluded-titles input (one title per line): trim, lowercase,
+ * collapse whitespace, drop blank lines, de-duplicate. Used both to store the
+ * setting and to parse it back.
+ */
+export function normalizeExcludedTitles(raw: string): string[] {
+  const titles = new Set<string>();
+  for (const line of raw.split("\n")) {
+    const title = normalizeTitle(line);
+    if (title) titles.add(title);
+  }
+  return [...titles];
+}
+
+/**
+ * The effective excluded-title set parseRoster compares against: the stored
+ * setting when present (an explicitly saved empty list excludes nothing),
+ * else the SKIP_TITLES fixture.
+ */
+export function effectiveExcludedTitles(raw: string | null): ReadonlySet<string> {
+  return raw === null ? SKIP_TITLES : new Set(normalizeExcludedTitles(raw));
+}
