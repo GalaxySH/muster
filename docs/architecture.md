@@ -128,9 +128,20 @@ shows no control), and the per-student header email is a `SelectableEmail` islan
 request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
 idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
-rows unstamped so requests are never silently lost) and is triggered by host cron:
-`POST /api/cron/change-digest` with `Authorization: Bearer $CRON_SECRET` (new
-`CRON_SECRET` env; unset ⇒ the route refuses; crontab example in docs/deploy.md §7).
+rows unstamped so requests are never silently lost) and is triggered by the **in-app
+scheduler** in `changes/scheduler.ts`: started once per server process from
+`src/instrumentation.ts` (Node runtime only; production always, dev only behind
+`DIGEST_SCHEDULER_DEV` so local servers and Playwright runs never send spontaneously),
+it ticks every 5 minutes plus once at boot, asks the pure `isDigestDue` in
+`changes/digest-schedule.ts` (TDD) whether the 7:00 America/Chicago send instant —
+DST-correct via `Intl` zone math — has passed without a recorded run (null last-run ⇒
+due, so downtime catch-up is free), then takes an **atomic compare-and-set claim** on
+`change_digest_last_run` (`claimChangeDigestRun` in `settings.ts`: UPDATE … WHERE
+value = the-value-read, or insert-if-absent for the first run; 0 affected rows = lost
+race) before calling `runChangeDigest`, so two processes on one DB cannot double-send.
+`POST /api/cron/change-digest` with `Authorization: Bearer $CRON_SECRET` remains as a
+**manual fallback trigger** (it bypasses due-check + claim deliberately; unset secret ⇒
+the route refuses; docs/deploy.md §7).
 The shared `DAY_LABEL` map now lives in `domain/types.ts` (grids, exports, emails).
 
 ## Edit-window enforcement (PLAN §13)
@@ -276,7 +287,7 @@ Three layers, and the split is the point:
 green line otherwise. Rows disappear when fixed; they are never greyed out. The dangers
 are the states that silently stop a student submitting (Drive disconnected, no group, a
 group whose window is `unconfigured`) or that mean stored data is now wrong
-(`revalidation_failed`, a dead digest cron); warnings are things to get to. The
+(`revalidation_failed`, a dead digest scheduler); warnings are things to get to. The
 no-group and unconfigured-window cases were previously **invisible**: `windowState()`
 already returned `unconfigured` and `resolveStudentAccess()` already denied `no-group`,
 but nothing surfaced either to a human.
@@ -284,8 +295,9 @@ but nothing surfaced either to a human.
 **Two new `app_settings` keys exist purely so the hub can be honest** about subsystems it
 cannot cheaply probe:
 - `change_digest_last_run` — stamped by `runChangeDigest()` on **every** run, *before*
-  any early return, so a run that sends nothing still proves the cron fired. Without it a
-  never-installed crontab is indistinguishable from a quiet week.
+  any early return, so a run that sends nothing still proves the scheduler fired. Without
+  it a dead scheduler is indistinguishable from a quiet week. It doubles as the
+  compare-and-set target the scheduler claims runs through.
 - `drive_last_ok_at` — stamped after any successful Drive write (`relayUpload`,
   `upsertManagedSheet`). No token expiry is stored and the only true probe
   (`testDriveRelay`) uploads a live file, which must never run on page load. The tile says
@@ -491,7 +503,15 @@ recipient list, stored in `app_settings` (`change_digest_enabled`,
 `ADMIN_EMAILS` env allowlist and the `admin_users` table play no part — and any
 well-formed address is accepted (`isEmailShaped`; `parseEmailList` now takes an optional
 validity check). The digest sender is `runChangeDigest` (see the schedule change
-requests section). Server
+requests section; delivery is the in-app scheduler in `changes/scheduler.ts`). The
+panel also carries **run health**: the page computes it server-side from
+`digestSchedulerEnabled` (env.ts) + `getChangeDigestLastRun()` + `process.uptime()` via
+the pure `digestRunHealth` in `changes/digest-health.ts` (`disabled` | `starting` |
+`never-ran` | `stale` | `ok`; the startup grace keeps a fresh boot from reading as
+broken, and `DIGEST_STALE_HOURS` lives there too — the hub's `dashboard-view.ts`
+imports it, one threshold for both surfaces). While enabled but `never-ran`/`stale`
+the card goes danger-toned and its title says the scheduler is not running instead of
+a bare "on"; a "Last run" line renders always. Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the

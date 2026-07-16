@@ -1,8 +1,10 @@
 /**
- * Cron trigger for the daily schedule-change digest (roadmap 3.1). The host's
- * cron curls this once a day with `Authorization: Bearer $CRON_SECRET`
- * (docs/deploy.md); there is no in-process scheduler. With CRON_SECRET unset
- * the route refuses everything, so the endpoint is inert until ops opts in.
+ * Manual fallback trigger for the schedule-change digest (roadmap 3.1). The
+ * daily run is the in-app scheduler (lib/changes/scheduler.ts); this route
+ * lets ops force a run by hand: curl with `Authorization: Bearer
+ * $CRON_SECRET`. It calls runChangeDigest directly, skipping the scheduler's
+ * due-check and claim, because a manual run must fire even when one is not
+ * owed. With CRON_SECRET unset the route refuses everything.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
