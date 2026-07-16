@@ -29,8 +29,8 @@
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.73
-- **Last updated:** 2026-07-14
+- **Version:** 0.74
+- **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -157,11 +157,15 @@ token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.m
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
   Leaving and re-import. The workbook bytes are parsed in memory and never stored.
-  *Planned:* a configurable **excluded position titles** property on `/admin/roster`
-  (e.g. Dining Advisory Board members). Today the exclusion list is the hardcoded
-  `SKIP_TITLES` set in `roster/position-mapping.ts`; it should move to admin-editable
-  config (`app_settings`), shown and editable on the import page, seeded from the
-  current hardcoded titles — so a new non-worker title never requires a code change.
+  Rows whose position title is on the **excluded titles** list (e.g. Dining Advisory
+  Board members) are skipped outright, neither student nor admin. The list is
+  admin-editable config in `app_settings` (`excluded_roster_titles`, one title per
+  line, compared case-insensitively), shown and edited on `/admin/roster`; until it is
+  first saved the importer falls back to the hardcoded `SKIP_TITLES` fixture in
+  `roster/position-mapping.ts` (initial default only). Both entry points (upload +
+  CLI) read the stored list — the importer loads it like the title map and injects
+  the set into the pure `parseRoster` — so a new non-worker title never requires a
+  code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + flag filters carried in the URL** so they follow the admin into the
   per-student view and drive its prev/next walk (roadmap 2.2).
@@ -1050,6 +1054,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.74 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
+  The import's skip list moves from code to admin config: `excluded_roster_titles` in
+  `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,
+  so comparison is case-insensitive), edited in a new panel on `/admin/roster`
+  (`ExcludedTitlesPanel` + admin action `setExcludedRosterTitles`; accessor
+  `getExcludedRosterTitles` in `settings.ts`). Until first saved the importer falls
+  back to the hardcoded `SKIP_TITLES` fixture, now the initial default only; saving an
+  empty list excludes nothing. `parseRoster` stays pure and takes the excluded set as
+  a parameter; `importRoster` reads the stored value through its own db handle
+  (CLI-safe, like the title map), so the `/admin/roster` upload and
+  `npm run roster:import` both honor it. The pure seams (`normalizeExcludedTitles`,
+  `effectiveExcludedTitles`) and the setting key live in `roster/position-mapping.ts`,
+  tested there. No schema change.
 - **0.73 (2026-07-15)** — **Admin hub: sign out moves into the nav rail (§10b).** The
   button leaves the page bottom and pins to the rail's foot (drawer bottom on a
   phone), so the rail is the one place for every leave-the-page action.

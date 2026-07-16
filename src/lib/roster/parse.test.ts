@@ -30,6 +30,10 @@ const TITLE_MAP: ReadonlyMap<string, string> = new Map([
   ["southeast cafe team member", "barista"],
 ]);
 
+// Injected excluded-title set mirroring the SKIP_TITLES fixture (the importer
+// builds the real one from app_settings via effectiveExcludedTitles).
+const EXCLUDED: ReadonlySet<string> = new Set(["dining advisor board member (dab)"]);
+
 describe("parseRoster", () => {
   it("maps known titles to Muster positions and parses international", () => {
     const { students } = parseRoster(
@@ -39,6 +43,7 @@ describe("parseRoster", () => {
         row({ email: "st1@wisc.edu", positionTitle: "Student Stocker" }),
       ],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students).toEqual([
       {
@@ -72,6 +77,7 @@ describe("parseRoster", () => {
     const { students } = parseRoster(
       [row({ positionTitle: "Southeast Cafe Team Member" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students[0]?.positionId).toBe("barista");
   });
@@ -83,22 +89,39 @@ describe("parseRoster", () => {
         row({ email: "head@wisc.edu", positionTitle: "Head Student Supervisor" }),
       ],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students).toHaveLength(0);
     expect(admins.map((a) => a.email)).toEqual(["boss@wisc.edu", "head@wisc.edu"]);
   });
 
-  it("skips DAB members entirely (neither student nor admin)", () => {
-    const r = parseRoster([row({ positionTitle: "Dining Advisor Board Member (DAB)" })], TITLE_MAP);
+  it("skips rows whose title is in the injected excluded set (neither student nor admin)", () => {
+    const r = parseRoster(
+      [row({ positionTitle: "Dining Advisor Board Member (DAB)" })],
+      TITLE_MAP,
+      EXCLUDED,
+    );
     expect(r.students).toHaveLength(0);
     expect(r.admins).toHaveLength(0);
     expect(r.skipped[0]?.reason).toBe("excluded_title");
+  });
+
+  it("imports a formerly excluded title once it leaves the set", () => {
+    const r = parseRoster(
+      [row({ positionTitle: "Dining Advisor Board Member (DAB)" })],
+      TITLE_MAP,
+      new Set(),
+    );
+    expect(r.skipped).toHaveLength(0);
+    expect(r.students).toHaveLength(1);
+    expect(r.students[0]?.positionId).toBeNull();
   });
 
   it("normalizes email case/whitespace and title casing, keeping the raw trimmed title", () => {
     const { students } = parseRoster(
       [row({ email: "  Stu@WISC.edu ", positionTitle: "  CULINARY   assistant " })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students[0]?.email).toBe("stu@wisc.edu");
     expect(students[0]?.positionId).toBe("culinary-assistant");
@@ -109,6 +132,7 @@ describe("parseRoster", () => {
     const { students, unmappedTitles } = parseRoster(
       [row({ positionTitle: "Mystery Role" }), row({ positionTitle: "Mystery Role" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students).toHaveLength(2);
     expect(students[0]?.positionId).toBeNull();
@@ -117,7 +141,7 @@ describe("parseRoster", () => {
   });
 
   it("maps titles only through the injected map", () => {
-    const { students, unmappedTitles } = parseRoster([row({})], new Map());
+    const { students, unmappedTitles } = parseRoster([row({})], new Map(), EXCLUDED);
     expect(students[0]?.positionId).toBeNull();
     expect(unmappedTitles.get("culinary assistant")).toBe(1);
   });
@@ -126,13 +150,14 @@ describe("parseRoster", () => {
     const { students, skipped } = parseRoster(
       [row({ email: "" }), row({ email: "someone@gmail.com" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(students).toHaveLength(0);
     expect(skipped.map((s) => s.reason)).toEqual(["missing_email", "non_wisc_email"]);
   });
 
   it("carries a parsed hire date onto the student", () => {
-    const { students } = parseRoster([row({ hireDate: "2025-08-20" })], TITLE_MAP);
+    const { students } = parseRoster([row({ hireDate: "2025-08-20" })], TITLE_MAP, EXCLUDED);
     expect(students[0]?.hiredOn?.toISOString()).toBe("2025-08-20T00:00:00.000Z");
   });
 });
@@ -193,6 +218,7 @@ describe("reconcileLeaving", () => {
     const parsed = parseRoster(
       [row({ name: "Ava P", email: "ava@wisc.edu", positionTitle: "Student Shift Lead" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     const { markLeft, movedWithinWorkbook } = reconcileLeaving(
       parsed,
@@ -206,6 +232,7 @@ describe("reconcileLeaving", () => {
     const parsed = parseRoster(
       [row({ name: "Boss B", email: "boss@wisc.edu", positionTitle: "Office Student Supervisor" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     const { markLeft, movedWithinWorkbook } = reconcileLeaving(
       parsed,
@@ -216,7 +243,7 @@ describe("reconcileLeaving", () => {
   });
 
   it("marks people only in People Leaving as left", () => {
-    const parsed = parseRoster([row({ email: "stays@wisc.edu" })], TITLE_MAP);
+    const parsed = parseRoster([row({ email: "stays@wisc.edu" })], TITLE_MAP, EXCLUDED);
     const { markLeft, movedWithinWorkbook } = reconcileLeaving(
       parsed,
       parseLeaving([leaving({ email: "gone@wisc.edu" })]),
@@ -226,7 +253,7 @@ describe("reconcileLeaving", () => {
   });
 
   it("handles an empty leaving sheet", () => {
-    const parsed = parseRoster([row({})], TITLE_MAP);
+    const parsed = parseRoster([row({})], TITLE_MAP, EXCLUDED);
     expect(reconcileLeaving(parsed, [])).toEqual({ markLeft: [], movedWithinWorkbook: [] });
   });
 });
@@ -239,6 +266,7 @@ describe("reconcileAdmins", () => {
     const parsed = parseRoster(
       [row({ name: "Boss B", email: "boss@wisc.edu", positionTitle: "Office Student Supervisor" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(reconcileAdmins(parsed, new Set(["boss@wisc.edu", "other@wisc.edu"]))).toEqual([
       "boss@wisc.edu",
@@ -249,6 +277,7 @@ describe("reconcileAdmins", () => {
     const parsed = parseRoster(
       [row({ email: "boss@wisc.edu", positionTitle: "Head Student Supervisor" })],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(reconcileAdmins(parsed, new Set(["someone-else@wisc.edu"]))).toEqual([]);
   });
@@ -260,6 +289,7 @@ describe("reconcileAdmins", () => {
         row({ email: "both@wisc.edu", positionTitle: "Culinary Assistant" }),
       ],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(reconcileAdmins(parsed, new Set(["both@wisc.edu"]))).toEqual([]);
   });
@@ -272,6 +302,7 @@ describe("reconcileAdmins", () => {
         row({ email: "zed@wisc.edu", positionTitle: "Office Student Supervisor" }),
       ],
       TITLE_MAP,
+      EXCLUDED,
     );
     expect(reconcileAdmins(parsed, new Set(["zed@wisc.edu", "abe@wisc.edu"]))).toEqual([
       "abe@wisc.edu",

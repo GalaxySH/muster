@@ -2,13 +2,17 @@
  * Tiny key/value accessor over the `app_settings` table (PLAN.md §13): runtime
  * state (the Drive proofs-folder id, the running responses-sheet id, the last
  * sheet-sync timestamp) and admin-set app config (default-group auto-assign,
- * the travel cutoff).
+ * the travel cutoff, the excluded roster titles).
  */
 import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
+import {
+  effectiveExcludedTitles,
+  SETTING_EXCLUDED_ROSTER_TITLES,
+} from "@/lib/roster/position-mapping";
 
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
@@ -97,6 +101,17 @@ export async function getChangeDigestEnabled(): Promise<boolean> {
 export async function getChangeDigestRecipients(): Promise<string[]> {
   const raw = await getSetting(SETTING_CHANGE_DIGEST_RECIPIENTS);
   return raw ? raw.split(",").filter(Boolean) : [];
+}
+
+/**
+ * The excluded roster titles (PLAN §4.2, roadmap 1.7): import rows with these
+ * position titles are skipped outright (neither student nor admin). Admin-edited
+ * on /admin/roster; falls back to the SKIP_TITLES fixture until first saved. The
+ * key and parsing live in roster/position-mapping.ts so the CLI-safe importer
+ * can read the same setting without this server-only module.
+ */
+export async function getExcludedRosterTitles(): Promise<string[]> {
+  return [...effectiveExcludedTitles(await getSetting(SETTING_EXCLUDED_ROSTER_TITLES))];
 }
 
 /** Parse a stored ISO instant, treating an unparseable value as absent. */

@@ -545,8 +545,15 @@ client island `components/admin/RosterImportPanel.tsx`). Title→position
 mapping is **DB data** since v0.63: the `roster_title_mappings` table, seeded once
 from the `TITLE_TO_POSITION` fixture in `position-mapping.ts`; `importRoster` loads it
 up front, resolves alias chains via `buildEffectiveTitleMap` (pure, tested), and
-injects the effective map into `parseRoster` (which stays pure). Admin titles
-(Office/Head Student Supervisor) and skip titles (DAB) stay code-side in
+injects the effective map into `parseRoster` (which stays pure). The **excluded-title
+list** is settings data since v0.74 (roadmap 1.7): `excluded_roster_titles` in
+`app_settings` (one title per line), edited on `/admin/roster` (`ExcludedTitlesPanel`
++ `setExcludedRosterTitles` in `admin/actions.ts`), falling back to the `SKIP_TITLES`
+fixture until first saved; `importRoster` reads it through its own db handle (so the
+CLI honors it too) and injects the set into `parseRoster` the same way. The pure seams
+(`normalizeExcludedTitles`, `effectiveExcludedTitles`) and the setting key live in
+`position-mapping.ts`; the server accessor is `getExcludedRosterTitles` in
+`settings.ts`. Admin titles (Office/Head Student Supervisor) stay code-side in
 `position-mapping.ts` — deliberately not admin-editable. The importer also stores each
 student's raw `rosterTitle` and **detects position changes** on upsert, running
 `positions/apply-change.ts` per changed student inside the import transaction
