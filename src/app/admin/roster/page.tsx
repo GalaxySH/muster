@@ -4,14 +4,19 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
 import { getRosterStatus } from "@/lib/roster/status";
+import { getExcludedRosterTitles } from "@/lib/settings";
 import { RosterImportPanel } from "@/components/admin/RosterImportPanel";
+import { ExcludedTitlesPanel } from "@/components/admin/ExcludedTitlesPanel";
 
 export default async function AdminRosterPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/roster");
   if (!session.isAdmin) redirect("/me");
 
-  const status = await getRosterStatus();
+  const [status, excludedTitles] = await Promise.all([
+    getRosterStatus(),
+    getExcludedRosterTitles(),
+  ]);
 
   return (
     <Page>
@@ -21,10 +26,10 @@ export default async function AdminRosterPage() {
       <h1>Roster import</h1>
       <p style={{ color: "#555" }}>
         Upload the current PCPL workbook (.xlsx) to bring the roster up to date. Rows on{" "}
-        <strong>People Coming</strong> are added or refreshed as active students;
-        rows on <strong>People Leaving</strong> are marked off-roster (they drop out of the
-        response list, export, and non-response tracking, though their submission is kept).
-        Re-importing the same workbook is safe.
+        <strong>People Coming</strong> are added or refreshed as active students; rows on{" "}
+        <strong>People Leaving</strong> are marked off-roster (they drop out of the response list,
+        export, and non-response tracking, though their submission is kept). Re-importing the same
+        workbook is safe.
       </p>
 
       <section style={card}>
@@ -67,6 +72,15 @@ export default async function AdminRosterPage() {
       <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload workbook</h2>
         <RosterImportPanel />
+      </section>
+
+      <section style={card}>
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Excluded titles</h2>
+        <p style={{ margin: "0 0 10px", fontSize: 14, color: "#555" }}>
+          People Coming rows with these position titles are skipped by the import. They are not
+          added as students or admins.
+        </p>
+        <ExcludedTitlesPanel titles={excludedTitles} />
       </section>
     </Page>
   );

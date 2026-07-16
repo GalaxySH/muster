@@ -160,11 +160,15 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
   Leaving and re-import. The workbook bytes are parsed in memory and never stored.
-  *Planned:* a configurable **excluded position titles** property on `/admin/roster`
-  (e.g. Dining Advisory Board members). Today the exclusion list is the hardcoded
-  `SKIP_TITLES` set in `roster/position-mapping.ts`; it should move to admin-editable
-  config (`app_settings`), shown and editable on the import page, seeded from the
-  current hardcoded titles — so a new non-worker title never requires a code change.
+  Rows whose position title is on the **excluded titles** list (e.g. Dining Advisory
+  Board members) are skipped outright, neither student nor admin. The list is
+  admin-editable config in `app_settings` (`excluded_roster_titles`, one title per
+  line, compared case-insensitively), shown and edited on `/admin/roster`; until it is
+  first saved the importer falls back to the hardcoded `SKIP_TITLES` fixture in
+  `roster/position-mapping.ts` (initial default only). Both entry points (upload +
+  CLI) read the stored list — the importer loads it like the title map and injects
+  the set into the pure `parseRoster` — so a new non-worker title never requires a
+  code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + flag filters carried in the URL** so they follow the admin into the
   per-student view and drive its prev/next walk (roadmap 2.2).
@@ -1071,6 +1075,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   convention. Purely visual — extra padding on the Sat/Sun sides plus a `borderLeft`
   on the Sun column, in each grid's own border colour — with no copy, no model change,
   and the weekday grid untouched.
+- **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
+  The import's skip list moves from code to admin config: `excluded_roster_titles` in
+  `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,
+  so comparison is case-insensitive), edited in a new panel on `/admin/roster`
+  (`ExcludedTitlesPanel` + admin action `setExcludedRosterTitles`; accessor
+  `getExcludedRosterTitles` in `settings.ts`). Until first saved the importer falls
+  back to the hardcoded `SKIP_TITLES` fixture, now the initial default only; saving an
+  empty list excludes nothing. `parseRoster` stays pure and takes the excluded set as
+  a parameter; `importRoster` reads the stored value through its own db handle
+  (CLI-safe, like the title map), so the `/admin/roster` upload and
+  `npm run roster:import` both honor it. The pure seams (`normalizeExcludedTitles`,
+  `effectiveExcludedTitles`) and the setting key live in `roster/position-mapping.ts`,
+  tested there. No schema change.
 - **0.75 (2026-07-16)** — **Digest goes in-app: scheduler replaces host cron (roadmap
   3.1).** The daily change-request digest no longer needs a crontab on the box — the
   exact setup step that was still uninstalled in prod. `src/instrumentation.ts` (Next

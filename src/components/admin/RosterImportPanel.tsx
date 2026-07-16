@@ -17,7 +17,7 @@ import { ActionButton, InfoCard } from "@/components/ui";
 const SKIP_REASON_LABEL: Record<string, string> = {
   missing_email: "no email in the row",
   non_wisc_email: "not a @wisc.edu email",
-  excluded_title: "excluded title (e.g. DAB)",
+  excluded_title: "excluded title",
 };
 
 export function RosterImportPanel() {
@@ -112,8 +112,8 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
 
       {summary.movedWithinWorkbook.length > 0 && (
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
-          In both sheets, promoted or moved, kept on roster with their “People Coming”
-          position: {summary.movedWithinWorkbook.join(", ")}
+          In both sheets, promoted or moved, kept on roster with their “People Coming” position:{" "}
+          {summary.movedWithinWorkbook.join(", ")}
         </p>
       )}
 
@@ -126,8 +126,7 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
 
       {positions.length > 0 && (
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
-          By position:{" "}
-          {positions.map(([pos, n]) => `${pos} ${n}`).join(" · ")}
+          By position: {positions.map(([pos, n]) => `${pos} ${n}`).join(" · ")}
         </p>
       )}
 
@@ -166,8 +165,8 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
       {summary.unlistedOnRoster.length > 0 && (
         <div style={warnBox}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            ⚠ Still on roster but in neither sheet of this workbook (left unchanged; move
-            them to “People Leaving” and re-import to remove them):
+            ⚠ Still on roster but in neither sheet of this workbook (left unchanged; move them to
+            “People Leaving” and re-import to remove them):
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
             {summary.unlistedOnRoster.map((email) => (

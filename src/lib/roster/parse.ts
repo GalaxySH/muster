@@ -3,13 +3,14 @@
  *
  * Maps raw "People Coming" rows to students / admins / skipped, applying data
  * minimization (only name, email, position, international are carried, never
- * Campus ID, phone, or tracking columns). The title-to-position map is
- * injected by the caller (the importer builds it from roster_title_mappings;
- * see buildEffectiveTitleMap), keeping this module pure. No I/O; unit-tested
+ * Campus ID, phone, or tracking columns). The title-to-position map and the
+ * excluded-title set are injected by the caller (the importer builds them from
+ * roster_title_mappings and app_settings; see buildEffectiveTitleMap and
+ * effectiveExcludedTitles), keeping this module pure. No I/O; unit-tested
  * with synthetic rows. The xlsx reading lives in ./read-workbook.
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";
-import { ADMIN_TITLES, SKIP_TITLES, normalizeTitle } from "./position-mapping";
+import { ADMIN_TITLES, normalizeTitle } from "./position-mapping";
 
 /** A raw row extracted from the workbook (cell values already stringified). */
 export interface RawRosterRow {
@@ -79,6 +80,7 @@ export function parseHireDate(value: string): Date | null {
 export function parseRoster(
   rows: readonly RawRosterRow[],
   titleToPosition: ReadonlyMap<string, string>,
+  excludedTitles: ReadonlySet<string>,
 ): RosterParseResult {
   const result: RosterParseResult = {
     students: [],
@@ -101,7 +103,7 @@ export function parseRoster(
       result.skipped.push({ reason: "non_wisc_email", detail: email });
       continue;
     }
-    if (SKIP_TITLES.has(title)) {
+    if (excludedTitles.has(title)) {
       result.skipped.push({ reason: "excluded_title", detail: `${displayName} · ${title}` });
       continue;
     }
