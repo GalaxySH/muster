@@ -11,7 +11,7 @@
  * file path (CLI) or the uploaded bytes (admin UI).
  */
 import { randomUUID } from "node:crypto";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
   students,
@@ -19,10 +19,15 @@ import {
   rosterImports,
   rosterTitleMappings,
   positions,
+  appSettings,
 } from "@/lib/db/schema";
 import { applyPositionChange } from "@/lib/positions/apply-change";
 import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
-import { buildEffectiveTitleMap } from "./position-mapping";
+import {
+  buildEffectiveTitleMap,
+  effectiveExcludedTitles,
+  SETTING_EXCLUDED_ROSTER_TITLES,
+} from "./position-mapping";
 import { parseRoster, parseLeaving, reconcileLeaving, reconcileAdmins } from "./parse";
 
 /** One student whose stored position differed from the workbook's (names, not ids). */
@@ -90,13 +95,23 @@ export async function importRoster({
   const rows = await readPeopleComing(workbook);
   // The title map is DB-owned (seeded once from the code fixture, extended by
   // ghost resolution on /admin/positions); aliases canonicalize before writes.
-  const [mappingRows, positionRows] = await Promise.all([
+  // The excluded-title list is admin config in app_settings (edited on
+  // /admin/roster), falling back to the SKIP_TITLES fixture until first saved.
+  const [mappingRows, positionRows, [excludedSetting]] = await Promise.all([
     db.select().from(rosterTitleMappings),
     db
       .select({ id: positions.id, name: positions.name, mergedIntoId: positions.mergedIntoId })
       .from(positions),
+    db
+      .select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, SETTING_EXCLUDED_ROSTER_TITLES)),
   ]);
-  const parsed = parseRoster(rows, buildEffectiveTitleMap(mappingRows, positionRows));
+  const parsed = parseRoster(
+    rows,
+    buildEffectiveTitleMap(mappingRows, positionRows),
+    effectiveExcludedTitles(excludedSetting?.value ?? null),
+  );
   // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
   const leavingRows = await readPeopleLeaving(workbook);
   const leaving = parseLeaving(leavingRows);

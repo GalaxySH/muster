@@ -1,7 +1,7 @@
 /**
- * The daily schedule-change digest run (roadmap 3.1), triggered by host cron
- * through the token-authenticated /api/cron/change-digest route (no
- * in-process scheduler, matching the ops posture).
+ * The daily schedule-change digest run (roadmap 3.1), triggered by the
+ * in-app scheduler (scheduler.ts) and, as a manual fallback, by the
+ * token-authenticated /api/cron/change-digest route.
  *
  * Recipients come ONLY from the admin-configured list on
  * /admin/email-settings (never ADMIN_EMAILS or admin_users). The run is
@@ -19,6 +19,7 @@ import {
   getChangeDigestEnabled,
   getChangeDigestRecipients,
   getEmailSendingEnabled,
+  markChangeDigestRun,
 } from "@/lib/settings";
 import { sendEmail } from "@/lib/email/resend";
 import { loadPendingDigestRequests } from "./data";
@@ -34,6 +35,11 @@ export interface ChangeDigestRunResult {
 }
 
 export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDigestRunResult> {
+  // Stamped before any early return, so a run that sends nothing still proves
+  // the scheduler fired. The admin surfaces read this to tell a dead scheduler
+  // from a quiet week; every `return` below is a run that happened.
+  await markChangeDigestRun(now);
+
   const pending = await loadPendingDigestRequests();
   const base = { sent: false, requestCount: pending.length, recipientCount: 0 };
   if (pending.length === 0) return { ...base, reason: "no-requests" };

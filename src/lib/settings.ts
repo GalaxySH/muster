@@ -2,13 +2,17 @@
  * Tiny key/value accessor over the `app_settings` table (PLAN.md §13): runtime
  * state (the Drive proofs-folder id, the running responses-sheet id, the last
  * sheet-sync timestamp) and admin-set app config (default-group auto-assign,
- * the travel cutoff).
+ * the travel cutoff, the excluded roster titles).
  */
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
+import {
+  effectiveExcludedTitles,
+  SETTING_EXCLUDED_ROSTER_TITLES,
+} from "@/lib/roster/position-mapping";
 
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
@@ -25,6 +29,19 @@ export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 export const SETTING_CHANGE_DIGEST_ENABLED = "change_digest_enabled";
 /** Comma-separated digest recipient emails, admin-set. Absent ⇒ none (nothing sends). */
 export const SETTING_CHANGE_DIGEST_RECIPIENTS = "change_digest_recipients";
+/**
+ * ISO instant of the last digest run, stamped on EVERY run including the ones
+ * that send nothing. Without it a dead scheduler is indistinguishable from a
+ * quiet week, so the admin surfaces could never tell the difference (roadmap
+ * 4.1). Also the compare-and-set target the scheduler claims runs through.
+ */
+export const SETTING_CHANGE_DIGEST_LAST_RUN = "change_digest_last_run";
+/**
+ * ISO instant of the last Drive write that succeeded. Only a refresh token is
+ * persisted (no expiry), and the only true probe uploads a live file, so this
+ * is what lets the hub report Drive health without a network call (roadmap 4.1).
+ */
+export const SETTING_DRIVE_LAST_OK_AT = "drive_last_ok_at";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -36,10 +53,7 @@ export async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  await getDb()
-    .insert(appSettings)
-    .values({ key, value })
-    .onDuplicateKeyUpdate({ set: { value } });
+  await getDb().insert(appSettings).values({ key, value }).onDuplicateKeyUpdate({ set: { value } });
 }
 
 export async function deleteSetting(key: string): Promise<void> {
@@ -87,4 +101,75 @@ export async function getChangeDigestEnabled(): Promise<boolean> {
 export async function getChangeDigestRecipients(): Promise<string[]> {
   const raw = await getSetting(SETTING_CHANGE_DIGEST_RECIPIENTS);
   return raw ? raw.split(",").filter(Boolean) : [];
+}
+
+/**
+ * The excluded roster titles (PLAN §4.2, roadmap 1.7): import rows with these
+ * position titles are skipped outright (neither student nor admin). Admin-edited
+ * on /admin/roster; falls back to the SKIP_TITLES fixture until first saved. The
+ * key and parsing live in roster/position-mapping.ts so the CLI-safe importer
+ * can read the same setting without this server-only module.
+ */
+export async function getExcludedRosterTitles(): Promise<string[]> {
+  return [...effectiveExcludedTitles(await getSetting(SETTING_EXCLUDED_ROSTER_TITLES))];
+}
+
+/** Parse a stored ISO instant, treating an unparseable value as absent. */
+async function getInstant(key: string): Promise<Date | null> {
+  const raw = await getSetting(key);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function getChangeDigestLastRun(): Promise<Date | null> {
+  return getInstant(SETTING_CHANGE_DIGEST_LAST_RUN);
+}
+
+/** Record that the digest ran, whether or not it had anything to send. */
+export async function markChangeDigestRun(now: Date = new Date()): Promise<void> {
+  await setSetting(SETTING_CHANGE_DIGEST_LAST_RUN, now.toISOString());
+}
+
+/**
+ * Atomically claim the digest run for `now`: flips change_digest_last_run
+ * from the exact value the caller read to `now`. Returns false when another
+ * process got there first (the stored value no longer matches), which is what
+ * keeps two scheduler ticks from double-sending. ISO strings round-trip
+ * through Date exactly, so comparing the re-serialized read is safe.
+ */
+export async function claimChangeDigestRun(expected: Date | null, now: Date): Promise<boolean> {
+  const db = getDb();
+  if (expected === null) {
+    // First run ever: insert-if-absent. The no-op duplicate update reports 0
+    // affected rows, so a lost race reads as an unclaimed run.
+    const res = await db
+      .insert(appSettings)
+      .values({ key: SETTING_CHANGE_DIGEST_LAST_RUN, value: now.toISOString() })
+      .onDuplicateKeyUpdate({ set: { key: sql`${appSettings.key}` } });
+    return res[0].affectedRows === 1;
+  }
+  const res = await db
+    .update(appSettings)
+    .set({ value: now.toISOString() })
+    .where(
+      and(
+        eq(appSettings.key, SETTING_CHANGE_DIGEST_LAST_RUN),
+        eq(appSettings.value, expected.toISOString()),
+      ),
+    );
+  return res[0].affectedRows > 0;
+}
+
+export async function getDriveLastOkAt(): Promise<Date | null> {
+  return getInstant(SETTING_DRIVE_LAST_OK_AT);
+}
+
+/** Record a Drive write that came back clean. Best effort: never fails a relay. */
+export async function markDriveOk(now: Date = new Date()): Promise<void> {
+  try {
+    await setSetting(SETTING_DRIVE_LAST_OK_AT, now.toISOString());
+  } catch (e) {
+    console.error("Could not record the Drive health stamp (non-fatal):", e);
+  }
 }

@@ -112,14 +112,14 @@ Two changes to the same seam (§13's cutoff, currently hardcoded as
   with the flag attached is a one-line policy flip plus UI copy.
 - Amends PLAN §5 #8, §7b, §8, and §13 when it lands.
 
-### 1.7 Configurable excluded roster titles — **S** *(added 2026-07-09, not yet built)*
+### 1.7 Configurable excluded roster titles — **S** ✅ *shipped (PLAN 0.76)*
 The import's excluded-titles list (`SKIP_TITLES` in `roster/position-mapping.ts` —
 currently just "Dining Advisor Board Member (DAB)") becomes admin-editable config in
 `app_settings`, shown and editable on `/admin/roster`, seeded from the hardcoded set.
 Both import entry points (upload + CLI) read the stored list, so a new non-worker
 title never requires a code change. (PLAN §4.2 notes the plan as of 0.41.)
 
-### 1.8 Weekend grid: separate Sat from Sun visually — **S** *(added 2026-07-09, not yet built)*
+### 1.8 Weekend grid: separate Sat from Sun visually — **S** ✅ *shipped (PLAN 0.77)*
 The weekend grids show Sat and Sun as adjacent columns, which reads as a contiguous
 Saturday→Sunday weekend — but the scheduling week starts on **Sunday**, so the two
 days sit at opposite ends of the week. Add a visual indicator between the two columns

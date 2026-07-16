@@ -105,7 +105,12 @@ request (students still only their own). The per-student admin page header carri
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
 the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`, and the queue at
+submission, each anchored as `#change-request-<id>`. It is one card among the others in
+that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
+slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
+a long history never stretches the page below the other cards. That means the dashboard
+container renders unconditionally and the submission-dependent cards are conditional
+children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -123,9 +128,20 @@ shows no control), and the per-student header email is a `SelectableEmail` islan
 request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
 idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
-rows unstamped so requests are never silently lost) and is triggered by host cron:
-`POST /api/cron/change-digest` with `Authorization: Bearer $CRON_SECRET` (new
-`CRON_SECRET` env; unset ⇒ the route refuses; crontab example in docs/deploy.md §7).
+rows unstamped so requests are never silently lost) and is triggered by the **in-app
+scheduler** in `changes/scheduler.ts`: started once per server process from
+`src/instrumentation.ts` (Node runtime only; production always, dev only behind
+`DIGEST_SCHEDULER_DEV` so local servers and Playwright runs never send spontaneously),
+it ticks every 5 minutes plus once at boot, asks the pure `isDigestDue` in
+`changes/digest-schedule.ts` (TDD) whether the 7:00 America/Chicago send instant —
+DST-correct via `Intl` zone math — has passed without a recorded run (null last-run ⇒
+due, so downtime catch-up is free), then takes an **atomic compare-and-set claim** on
+`change_digest_last_run` (`claimChangeDigestRun` in `settings.ts`: UPDATE … WHERE
+value = the-value-read, or insert-if-absent for the first run; 0 affected rows = lost
+race) before calling `runChangeDigest`, so two processes on one DB cannot double-send.
+`POST /api/cron/change-digest` with `Authorization: Bearer $CRON_SECRET` remains as a
+**manual fallback trigger** (it bypasses due-check + claim deliberately; unset secret ⇒
+the route refuses; docs/deploy.md §7).
 The shared `DAY_LABEL` map now lives in `domain/types.ts` (grids, exports, emails).
 
 ## Edit-window enforcement (PLAN §13)
@@ -217,7 +233,9 @@ into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-on
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
 change-request count pill sits next to the name (nothing at zero); a `missing` row shows
-the red status badge, dashes for its submission-only cells, and no delete control.
+the red status badge, dashes for its submission-only cells, and no delete control. The
+Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
+that writes through the student evidence actions; see the evidence/Drive section.
 `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
 `ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
@@ -255,8 +273,94 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
-the persisted `flags` rows. New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
+the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
+last hole in "everything about one student on one page": `loadStudentCloseClaims`
+(`closes/data.ts`) joins `close_claims` ⋈ `close_slots` and `loadStudentDetail` pulls it
+in parallel with the evidence, so it costs no extra latency. Visibility is gated on the
+**same predicate the student `/closes` step uses** (`isCloseStepRequired` = shift-lead **and**
+a non-empty inventory), so the card and the step can never disagree, non-leads
+short-circuit before any query, and it stays invisible while the closes feature is dormant.
+It renders through the pure `formatCloseSlot` (`domain/close-claims.ts`) and is deliberately
+compact (a title+pill row, ≤3 lines, a link) because the page's design constraint is that
+it fits 1920×1080 without scrolling. It also renders standalone when a lead has claims but
+no submission, since an admin can assign closes before the lead ever opens the form.
+New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
 (2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
+
+## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
+
+`/admin` used to be 13 bare links and loaded no data. It is now the daily entry point,
+and it answers "what needs me today?" before it offers navigation.
+
+Three layers, and the split is the point:
+
+- **`dashboard.ts`** (server-only) fetches, and only fetches. Everything runs in one
+  `Promise.all`. Most reads are aggregates (`count`/`GROUP BY`) or reuse the existing
+  cheap status helpers (`getDriveGrantStatus`, `getRosterStatus`, `hasCloseInventory`,
+  `getLastSheetSync`, the email settings); the row-heavy list loaders (`listResponses`,
+  `listNonResponses`) are deliberately **not** reused. The one exception is the student
+  roll: one thin row per **on-roster** student (~400), because it lets every
+  submitted/draft/never-started/ungrouped/stalled/no-schedule split fall out of a single
+  pure pass, and because reusing `listNonResponses`'s exact roster predicate is what
+  keeps the hub's totals from drifting away from `/admin/non-responses`.
+- **`dashboard-view.ts`** is **pure** (TDD, no I/O) and owns every policy decision: what
+  counts as a problem, how bad it is, what order the problems appear in, who is worth
+  nudging, which blocks look thin. `buildDashboardView(snapshot, now)`.
+- **`app/admin/page.tsx`** renders. No derivation.
+
+**The alert list renders only what is actually wrong**, worst first, and collapses to one
+green line otherwise. Rows disappear when fixed; they are never greyed out. The dangers
+are the states that silently stop a student submitting (Drive disconnected, no group, a
+group whose window is `unconfigured`) or that mean stored data is now wrong
+(`revalidation_failed`, a dead digest scheduler); warnings are things to get to. The
+no-group and unconfigured-window cases were previously **invisible**: `windowState()`
+already returned `unconfigured` and `resolveStudentAccess()` already denied `no-group`,
+but nothing surfaced either to a human.
+
+**Two new `app_settings` keys exist purely so the hub can be honest** about subsystems it
+cannot cheaply probe:
+- `change_digest_last_run` — stamped by `runChangeDigest()` on **every** run, *before*
+  any early return, so a run that sends nothing still proves the scheduler fired. Without
+  it a dead scheduler is indistinguishable from a quiet week. It doubles as the
+  compare-and-set target the scheduler claims runs through.
+- `drive_last_ok_at` — stamped after any successful Drive write (`relayUpload`,
+  `upsertManagedSheet`). No token expiry is stored and the only true probe
+  (`testDriveRelay`) uploads a live file, which must never run on page load. The tile says
+  *connected as X*, never *healthy*.
+
+**Least staffed shifts** counts, per (block, day), how many submitted on-roster students picked
+it **themselves** — machine-assigned weekend cells are excluded, since counting them
+would hide exactly the thin weekend coverage the panel exists to show. Cells nobody
+picked are the whole point and a `GROUP BY` cannot return them, so the block × day grid is
+expanded in code and the counts laid over it; only positions with on-roster students are
+included. Open/close come from the per-position per-day-type bounds (PLAN §6.3), never
+hardcoded. **It ranks, it does not alarm**: no per-block headcount target is modeled, so
+a low count is only low *relative to other blocks*. When nobody has picked anything the
+panel does not render at all (every block tied at zero is an empty cycle, not a shortage).
+
+Layout is full-bleed, split by a two-column shell (`.admin-shell` in `globals.css`): the
+nav rail on the left is **one** page-height panel holding every admin surface, grouped
+under Review / Configuration / Email headers with the live counts as pills (sign out
+sits pinned at the rail's foot); the status
+body on the right runs response progress paired with the alert card across the top, then
+the tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the remaining
+panels into as many columns as the body allows. Under 960px the rail becomes a
+**slide-out drawer** behind a floating menu button (`AdminNav`, the only client piece:
+open state + Escape; the nav content stays server-rendered and passes through as
+children), so the status content owns a phone screen. The rail's panel look lives on the
+`.admin-shell-nav` class rather than inline style because the drawer media query must
+restyle it. Nothing in the body may force page-level horizontal scroll: the hero grid
+floors its columns at `min(420px, 100%)`, and the group-progress table opts out of the
+generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
+private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
+`masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
+both surfaces import them. `StudentQuickSearch` is a client island: the roster is small
+enough to filter locally, so results are instant and there is no request per keystroke
+(`/` focuses it).
+
+The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the To-review
+tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is
+nobody's to review, so it matches neither side.
 
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
 
@@ -287,6 +391,30 @@ Uploading this way starts the student's submission via the same `ensureSubmissio
 which leaves `confirmed_at` NULL, so they stay a non-responder. Mirrors the on-behalf
 change-request path.
 
+**Admin on-behalf entry (v0.67).** `requireStudent(onBehalfOf)` in `evidence/actions.ts` is
+the gate seam: empty ⇒ the signed-in student through `requireEditableStudent` (roster +
+group + window); an email ⇒ `requireAdmin` + `findStudentByEmail`, so an admin writes for a
+student without their window binding (the same shape as `resolveTargetStudent` in
+`changes/actions.ts`). `addTravelRequest` and `addExtracurricularFile` read that email from
+FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `revalidateEvidence`
+then also revalidates the admin's per-student page. The **travel cutoff refuses students
+only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
+cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
+Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
+`action` slot): one modal per kind, the same fields as the student form, with the
+extracurricular details box prefilled from the submission so the admin edits rather than
+replaces the student's text (details are one column, not per file). The form holds **one
+size** whatever happens inside it (fixed height, scrolling field area, an always-reserved
+error row), so a failed upload never shifts the buttons under the pointer.
+
+The modal shell is the shared `components/Modal.tsx` (backdrop, Escape, click-outside),
+extracted from `EvidenceThumb`'s lightbox and reused by it. The panel always **spends the
+full width it is given**, capped per caller by `--modal-max-width` (900px for the lightbox,
+420px for the add form); under 720px `.modal-overlay`/`.modal-panel` (globals.css) drop the
+backdrop margin and the rounded corners so it runs **edge to edge on a phone**, where width
+is the scarce axis. Children of a modal therefore size in percentages, never fixed pixel
+widths.
+
 ## Availability form layering
 
 `src/lib/availability/` has the pure grid view-model
@@ -313,6 +441,18 @@ server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and
 `components/useUnsavedChangesWarning.ts` (a `beforeunload` prompt + a capture-phase
 `confirm()` on same-tab link clicks, since the App Router can't block route changes);
 the dirty snapshot resets on each successful save.
+
+The grid's cells are styled by the `.avail-*` block in `globals.css` (its only styling
+path; the inline style objects it replaced are gone). Under
+`@media (pointer: coarse), (max-width: 640px)` the cells become **44×44** rather than the
+desktop 30×26, meeting the platform touch-target floor: most students fill this form on a
+phone, and a mis-tap silently flips a preference that then reaches the scheduler as if it
+were deliberate (PLAN §18c). The constraint was the row-label column, not the cells: on
+touch the ` · open` / ` · close` tag drops to its own line (the separator is a `::before`)
+and the label may wrap, so the table's min-content shrinks below any phone width and
+horizontal overflow is structurally impossible (verified 44×44 with zero overflow at 390px
+and 360px). The admin `PrefGridCalculator` keeps its own smaller cells: it is a
+mouse-driven desktop tool.
 
 ## Form-flow layering (`src/lib/flow/` + wizard pages)
 
@@ -370,7 +510,13 @@ and `listStudentsForPicker(filters)`. `groups/actions.ts` ("use server", **admin
 owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPaste`/
 `unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
 `searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;
-`groups/window-message.ts` is the shared (pure) banner/error copy. Enforcement lives in
+`groups/window-message.ts` is the shared (pure) banner/error copy, including
+`readOnlyNotice(state)` (v0.70): the read-only line on `/me` is **derived from
+`WindowState`**, not hardcoded, and returns `null` for `unconfigured`. It used to be one
+fixed string telling the student to "check back during the window shown above" even when
+no window existed to show, which is the first thing a student saw if they arrived before an
+admin set a window (PLAN §18c). `before`/`closed` always carry a real date in the banner,
+so only those get a line. Enforcement lives in
 the shared `groups/gate.ts` `requireEditableStudent(onBehalfOf?)`, used by
 `availability/actions.ts`, the `requireStudent` adapter in `evidence/actions.ts` (gates
 all six evidence mutations), and the closes claim actions. Passing `onBehalfOf` switches
@@ -405,7 +551,15 @@ recipient list, stored in `app_settings` (`change_digest_enabled`,
 `ADMIN_EMAILS` env allowlist and the `admin_users` table play no part — and any
 well-formed address is accepted (`isEmailShaped`; `parseEmailList` now takes an optional
 validity check). The digest sender is `runChangeDigest` (see the schedule change
-requests section). Server
+requests section; delivery is the in-app scheduler in `changes/scheduler.ts`). The
+panel also carries **run health**: the page computes it server-side from
+`digestSchedulerEnabled` (env.ts) + `getChangeDigestLastRun()` + `process.uptime()` via
+the pure `digestRunHealth` in `changes/digest-health.ts` (`disabled` | `starting` |
+`never-ran` | `stale` | `ok`; the startup grace keeps a fresh boot from reading as
+broken, and `DIGEST_STALE_HOURS` lives there too — the hub's `dashboard-view.ts`
+imports it, one threshold for both surfaces). While enabled but `never-ran`/`stale`
+the card goes danger-toned and its title says the scheduler is not running instead of
+a bare "on"; a "Last run" line renders always. Server
 actions in `magic-link-actions.ts`: `requestMagicLink` (collects **only the email**;
 eligibility = known student/admin only; 60 s/email cooldown; **always-neutral** redirect to
 `/signin?sent=1` — no enumeration) and `redeemAndSignIn` (hands token+email to the
@@ -459,8 +613,15 @@ client island `components/admin/RosterImportPanel.tsx`). Title→position
 mapping is **DB data** since v0.63: the `roster_title_mappings` table, seeded once
 from the `TITLE_TO_POSITION` fixture in `position-mapping.ts`; `importRoster` loads it
 up front, resolves alias chains via `buildEffectiveTitleMap` (pure, tested), and
-injects the effective map into `parseRoster` (which stays pure). Admin titles
-(Office/Head Student Supervisor) and skip titles (DAB) stay code-side in
+injects the effective map into `parseRoster` (which stays pure). The **excluded-title
+list** is settings data since v0.76 (roadmap 1.7): `excluded_roster_titles` in
+`app_settings` (one title per line), edited on `/admin/roster` (`ExcludedTitlesPanel`
++ `setExcludedRosterTitles` in `admin/actions.ts`), falling back to the `SKIP_TITLES`
+fixture until first saved; `importRoster` reads it through its own db handle (so the
+CLI honors it too) and injects the set into `parseRoster` the same way. The pure seams
+(`normalizeExcludedTitles`, `effectiveExcludedTitles`) and the setting key live in
+`position-mapping.ts`; the server accessor is `getExcludedRosterTitles` in
+`settings.ts`. Admin titles (Office/Head Student Supervisor) stay code-side in
 `position-mapping.ts` — deliberately not admin-editable. The importer also stores each
 student's raw `rosterTitle` and **detects position changes** on upsert, running
 `positions/apply-change.ts` per changed student inside the import transaction

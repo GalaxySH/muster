@@ -23,16 +23,19 @@
   SL-only `/closes` wizard step, the `/admin/closes` dashboard, and the closes backup
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
-  digest email via the cron-triggered token route. **Positions & shift blocks admin
+  digest email via the in-app scheduler (0.75; the token route stays as a manual
+  fallback). **Positions & shift blocks admin
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. **Roster-wide student pages done** (§10, §10a): every student on
   the roster has a working admin page whether or not they ever filled the form in, the
   scheduler can enter course-schedule and travel details on their behalf, and
   `submissions.confirmed_at` (§9, §13.1) keeps those admin-created rows out of the
-  response counts. Next: ops.
-- **Version:** 0.68
-- **Last updated:** 2026-07-14
+  response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
+  contradiction, the SL close-claims card on the per-student view, and 44px grid touch
+  targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
+- **Version:** 0.78
+- **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -141,8 +144,10 @@ states that changes due to events/extracurriculars must include proof). Pure val
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
 withdrawable by the student. Requests
 render on the admin per-student page (§10) and are batched into a **daily digest email**
-to the admin-configured recipients (0.47), triggered by host cron via the
-token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.md §7).
+to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
+daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
+no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
+remains as a manual fallback trigger (docs/deploy.md §7).
 
 ### 4.2 Admin flow
 - **Roster import** — upload the PCPL workbook on **`/admin/roster`** (file upload →
@@ -159,11 +164,15 @@ token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`; docs/deploy.m
   import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
   workbook is reported back (UI summary + CLI) so the admin can move them to People
   Leaving and re-import. The workbook bytes are parsed in memory and never stored.
-  *Planned:* a configurable **excluded position titles** property on `/admin/roster`
-  (e.g. Dining Advisory Board members). Today the exclusion list is the hardcoded
-  `SKIP_TITLES` set in `roster/position-mapping.ts`; it should move to admin-editable
-  config (`app_settings`), shown and editable on the import page, seeded from the
-  current hardcoded titles — so a new non-worker title never requires a code change.
+  Rows whose position title is on the **excluded titles** list (e.g. Dining Advisory
+  Board members) are skipped outright, neither student nor admin. The list is
+  admin-editable config in `app_settings` (`excluded_roster_titles`, one title per
+  line, compared case-insensitively), shown and edited on `/admin/roster`; until it is
+  first saved the importer falls back to the hardcoded `SKIP_TITLES` fixture in
+  `roster/position-mapping.ts` (initial default only). Both entry points (upload +
+  CLI) read the stored list — the importer loads it like the title map and injects
+  the set into the pure `parseRoster` — so a new non-worker title never requires a
+  code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + flag filters carried in the URL** so they follow the admin into the
   per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
@@ -375,13 +384,19 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
   graded-intensity view, if ever wanted, stays admin-side.
-- **Weekend Sat/Sun separation (planned):** the weekend grids render **Sat and Sun as
-  adjacent columns**, which reads as one contiguous Saturday→Sunday weekend — but the
-  scheduling week **starts on Sunday**, so the two days sit at **opposite ends of the
-  week** (a Sat + Sun pick is two separate week-edge days, not a continuous block).
-  Add a **visual indicator between the two columns** in both weekend grids — the
-  student selection grid (`AvailabilityForm`) and the admin per-student display grid
-  (§10a `PrefTable`) — so the non-adjacency is evident at a glance.
+- **Weekend Sat/Sun separation:** the weekend grids render **Sat and Sun as
+  adjacent columns**, but the scheduling week **starts on Sunday**, so the two days
+  sit at **opposite ends of the week** (a Sat + Sun pick is two separate week-edge
+  days, not a continuous block). Both weekend grids therefore draw a **wider gap plus
+  a thin vertical rule between the two columns** — the student selection grid
+  (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
+  `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
+  evident at a glance. Purely visual, expressed in each grid's own styling
+  convention: the student grid takes an `avail-grid--weekend` table variant whose
+  column rules sit with the other `avail-*` classes in `globals.css`, the admin grid
+  a small `weekSplit` per-column inline style; both amount to extra padding on the
+  Sat/Sun sides plus a `borderLeft` on the Sun column, in that grid's border colour.
+  No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
@@ -404,6 +419,14 @@ scheduler (not auto-parsed).
   `"accept-and-flag"` restores the old behavior end to end (late entries stored
   `excused: false`, "not excused (late)" badges, `travel_late` flag on submit — those
   paths are deliberately kept wired).
+
+**Admin entry on a student's behalf (§10).** Travel entries and extracurriculars can also
+be added by an admin from the per-student response page (an *Add* link in each card
+header). Same actions, same relay, same caps; only the gate differs: the admin is the
+scheduler, so the student's form window doesn't bind them and the travel cutoff doesn't
+refuse them — an admin adding a travel entry *is* the excusal decision, so the entry is
+stored `excused: true`. This covers what a student hands over in person or after their
+window closes.
 
 ---
 
@@ -1043,10 +1066,48 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   for the admin to open in a private window, keeping their admin session alongside.
   `/dev-login` retains only the dev-only OAuth bypass.
 
+### 18c. Launch-readiness UX fixes (pre-send evaluation, 2026-07-14)
+
+Findings from walking the student flow on a phone viewport and measuring the admin
+surfaces before the semester send-out. The three items below are code; the operational
+risks that came out of the same pass (roster email/netid mismatch, the Drive grant as a
+single point of failure, the window defaulting to closed) are **not** code changes and
+live in `README.md` § "Before you start" as a pre-send checklist.
+
+- **Window copy contradiction (§13) — ✅ DONE (0.70).** When a group's window is
+  `unconfigured` (either bound null, the seeded default), `/me` shows the banner "Your
+  availability window hasn't been scheduled yet" **and**, directly beneath it, "Check back
+  during the window shown above" — pointing at a window that is not shown. The read-only
+  line must be derived from `windowState` rather than hardcoded, so it never references a
+  window that isn't displayed. For `before`/`closed` the banner does show a real date and
+  the existing framing is fine; for `unconfigured` the line is both wrong and redundant.
+
+- **SL close claims on the per-student page (§10a, §18a) — ✅ DONE (0.70).** `/admin/students/
+  [email]` is specified as the scheduler's single decision-ready view, but it carries no
+  close-claim data at all. Shift Leads must hold exactly 3 weekend closes (§18a), which is
+  the one extra hard requirement any position carries, and today the scheduler has to leave
+  the page for `/admin/closes` and search by name. Add a compact card (SL-only, and only
+  once an inventory exists, mirroring the `/closes` step's own dormancy rule) showing the
+  dated slots held and progress toward 3, short-of-3 in red, linking to `/admin/closes`.
+  The card must stay small: the page currently fits 1920×1080 with no overflow and the
+  whole point of §10a is that it does not scroll.
+
+- **Availability grid touch targets (§7) — ✅ DONE (0.70).** The student grid renders 49 toggle
+  cells at **30×26 CSS px**. That clears the WCAG 2.5.8 floor (24px) but sits well under
+  Apple HIG (44pt) and Material (48dp), and most students fill this form on a phone. A
+  mis-tap silently flips a shift preference with no undo, and the wrong preference then
+  reaches the scheduler as if it were deliberate, so this is a data-quality bug and not
+  only an accessibility one. Raise the cells to ≥44×44 px on touch pointers without
+  introducing horizontal overflow at 390px (or 360px), and without inflating the
+  desktop layout. The admin `PrefGridCalculator` grid is out of scope: it is a
+  mouse-driven desktop tool.
+
 ---
 
 ## Changelog
-- **0.68 (2026-07-14)** — **Roster-wide student pages (§9, §10, §10a, §13.1).** The
+- **0.78 (2026-07-16)** — **Roster-wide student pages (§9, §10, §10a, §13.1).** Landed on
+  `main` as 0.68 and renumbered here: phase-2 had independently used 0.68–0.77, and this
+  merge brings the two lines together. The
   scheduler can now open the page of **any** student on the roster and record scheduling
   details, whether or not that student ever filled the form in. New
   `submissions.confirmed_at` (migration `0015`, backfilled from `created_at` for existing
@@ -1070,6 +1131,171 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   breadcrumb); `requireEditableStudent(onBehalfOf?)` admin-gates it and skips the group /
   window / post-submit gates, the travel cutoff (§8) still applies, and the Drive relay +
   the no-image-bytes invariant are untouched.
+- **0.77 (2026-07-16)** — **Weekend grids: Sat visually separated from Sun (§7, §10a;
+  roadmap 1.8).** The scheduling week starts on Sunday, so Sat and Sun sit at opposite
+  ends of the week — yet both weekend grids drew them as adjacent columns, reading as
+  one contiguous Saturday→Sunday weekend. The two columns are now split by a wider gap
+  plus a thin vertical rule: the student selection grid (`AvailabilityForm` `Grid`)
+  gains an `avail-grid--weekend` table variant whose column rules live with the other
+  grid classes in `globals.css`, and the admin per-student calculator
+  (`PrefGridCalculator` `CalcTable`, which had absorbed the roadmap note's `PrefTable`)
+  gets a small `weekSplit` per-column style matching that component's inline-style
+  convention. Purely visual — extra padding on the Sat/Sun sides plus a `borderLeft`
+  on the Sun column, in each grid's own border colour — with no copy, no model change,
+  and the weekday grid untouched.
+- **0.76 (2026-07-16)** — **Configurable excluded roster titles (§4.2; roadmap 1.7).**
+  The import's skip list moves from code to admin config: `excluded_roster_titles` in
+  `app_settings` (one title per line, normalized + de-duplicated via `normalizeTitle`,
+  so comparison is case-insensitive), edited in a new panel on `/admin/roster`
+  (`ExcludedTitlesPanel` + admin action `setExcludedRosterTitles`; accessor
+  `getExcludedRosterTitles` in `settings.ts`). Until first saved the importer falls
+  back to the hardcoded `SKIP_TITLES` fixture, now the initial default only; saving an
+  empty list excludes nothing. `parseRoster` stays pure and takes the excluded set as
+  a parameter; `importRoster` reads the stored value through its own db handle
+  (CLI-safe, like the title map), so the `/admin/roster` upload and
+  `npm run roster:import` both honor it. The pure seams (`normalizeExcludedTitles`,
+  `effectiveExcludedTitles`) and the setting key live in `roster/position-mapping.ts`,
+  tested there. No schema change.
+- **0.75 (2026-07-16)** — **Digest goes in-app: scheduler replaces host cron (roadmap
+  3.1).** The daily change-request digest no longer needs a crontab on the box — the
+  exact setup step that was still uninstalled in prod. `src/instrumentation.ts` (Next
+  server-start hook, Node runtime only) starts a **tick loop** in
+  `changes/scheduler.ts` (5-minute interval plus a boot tick): each tick asks the pure
+  `isDigestDue` in `changes/digest-schedule.ts` (TDD) whether the **7:00
+  America/Chicago** send instant — DST-correct zone math, unlike the fixed-UTC
+  crontab — has passed without a recorded run (never-ran ⇒ due, so the scheduler
+  **catches up after downtime** instead of skipping the day), then takes an **atomic
+  compare-and-set claim** on `change_digest_last_run` (`claimChangeDigestRun`; 0
+  affected rows = lost race) before `runChangeDigest`, so two processes on one DB
+  cannot double-send. Gated by `digestSchedulerEnabled`: **always on in production**,
+  off elsewhere unless `DIGEST_SCHEDULER_DEV=1`, so dev servers and Playwright runs
+  never send spontaneously. The token route `POST /api/cron/change-digest` stays as a
+  **manual fallback trigger** (bypasses due-check + claim; `CRON_SECRET` now optional).
+  The 0.74 health surface adapts: `digestRunHealth` (`disabled` | `starting` |
+  `never-ran` | `stale` | `ok`, with a 15-min startup grace fed by `process.uptime()`)
+  replaces `digestCronHealth`, the `no-secret` state and the crontab setup card are
+  gone, and the panel/hub copy points at the app logs instead of the crontab.
+- **0.74 (2026-07-15)** — **Digest cron health on /admin/email-settings.** The digest
+  panel no longer claims a bare "on" from the DB toggle alone: the page computes
+  **cron health** server-side (pure `digestCronHealth` in `changes/digest-health.ts`:
+  `no-secret` when `CRON_SECRET` is unset so the endpoint refuses every run,
+  `never-ran` when no run is recorded, `stale` past `DIGEST_STALE_HOURS`, else `ok`)
+  from the v0.71 `change_digest_last_run` stamp. While enabled but unhealthy the card
+  goes danger-toned, titles the specific failure ("the daily job has not run yet" /
+  "has stopped running" / "the server cannot send it"), and shows the **crontab setup
+  steps** (verbatim from docs/deploy.md §7) until the job's first recorded run; a
+  **"Last run"** line renders always. `DIGEST_STALE_HOURS` moved out of
+  `dashboard-view.ts` into the new module so the hub and the settings page share one
+  staleness threshold.
+- **0.73 (2026-07-15)** — **Admin hub: sign out moves into the nav rail (§10b).** The
+  button leaves the page bottom and pins to the rail's foot (drawer bottom on a
+  phone), so the rail is the one place for every leave-the-page action.
+- **0.72 (2026-07-15)** — **Admin hub: nav rail beside the status body (§10b).** The
+  three navigation groups (Review / Configuration / Email) no longer float in the
+  masonry as separate cards; they join into **one page-height rail on the left**
+  (same destinations, same headers, same count pills), and the status content
+  (progress + alerts, the tile strip, the panels) becomes the body on the right
+  (`.admin-shell` in `globals.css`). Under 960px the rail becomes a **slide-out
+  drawer** behind a floating menu button (`AdminNav`, a thin client shell; the nav
+  content stays server-rendered), so the status content owns a phone screen.
+  Mobile no longer scrolls the page sideways: the hero grid floors its columns at
+  `min(420px, 100%)` instead of a hard 420px, and the group-progress table opts
+  out of the generic 680px stack-table width (`.stack-table--fit`) to fit the
+  narrower hero panel.
+- **0.71 (2026-07-14)** — **Admin hub: a dashboard that carries state (§10b).**
+  `/admin` was 13 bare links and loaded no data. It is now the daily entry point.
+  **Response progress** (submitted / draft / never-started against the on-roster
+  count, overall and per group, each group's window state and days remaining).
+  **Needs attention**: an alert list that renders only what is actually wrong,
+  most urgent first, and collapses to "Nothing needs attention" otherwise. It
+  surfaces three states that were previously **invisible** — students in **no
+  group** and groups whose window is **unconfigured** (both silently lock the form
+  shut; `resolveStudentAccess` / `windowState` already knew, nothing ever told a
+  human), and **`revalidation_failed`** submissions (stored data that stopped being
+  valid when the blocks changed under it). **Tiles**: To review (submitted, not yet
+  marked scheduled), change requests + age of the oldest, flags by type, travel in
+  the next three weeks, SL closes short. **Panels**: Least staffed shifts, Recent submissions +
+  a 14-day submissions sparkline, Students to follow up (stalled drafts / never-started /
+  missing course schedule, with copy-emails), System status, and the original 13
+  destinations grouped by job. **Every count links to the list it came from.**
+  A **student quick-search** (`/` to focus) filters the roster client-side.
+  New: **`review` filter** (`todo` | `done`) on the response list, so the To-review
+  tile has a destination. New state, so the hub can be honest rather than guess:
+  **`change_digest_last_run`** (stamped on *every* digest run, including the no-ops,
+  so a never-installed cron stops looking like a quiet week) and
+  **`drive_last_ok_at`** (stamped on any successful Drive write, since no token
+  expiry is stored and the only real probe uploads a live file). **Least staffed shifts**
+  ranks (block, day) cells by how many students picked them *themselves*
+  (machine-assigned weekend cells excluded, or they would mask the very weekend
+  thinness it exists to show); it **ranks, it does not alarm**, because no per-block
+  headcount target is modeled. Layering: `admin/dashboard.ts` fetches (aggregates
+  only; one thin row per on-roster student so the splits stay consistent with
+  `/admin/non-responses`), the **pure** `admin/dashboard-view.ts` owns all policy
+  (TDD), the page renders. The per-student view's private card/tile primitives moved
+  to `components/admin/ui.tsx` and both surfaces now share them.
+- **0.70 (2026-07-14)** — **Launch-readiness UX fixes (§18c) + README.** A pre-send pass
+  over the flow students will actually see (walked on a 390px phone viewport) and the admin
+  surfaces, ahead of the semester send-out. Three code fixes:
+  **(1) Window copy contradiction.** `/me` told a student to "check back during the window
+  shown above" while showing no window, which is exactly what the seeded default group
+  (both bounds null ⇒ `unconfigured`) produces. The read-only line is now the pure
+  `readOnlyNotice(state)` in `groups/window-message.ts`, returning `null` for
+  `unconfigured` (the banner above already states the situation and the action), so the
+  line can only appear where a real date backs it. `/me` shrank; no branch was added
+  alongside the old one. New co-located test pins all four states, including a guard that
+  the `unconfigured` copy can never again mention a window "above".
+  **(2) SL close claims on the per-student page (§10a).** The page is specified as the
+  scheduler's single decision-ready view but held no close data at all, so a Shift Lead's
+  3 mandatory closes (§18a) meant leaving for `/admin/closes` and searching by name. A
+  compact **`Weekend closes`** card now shows the dated slots held and progress toward 3
+  (green `✓ 3 of 3`, red when short) with a link through. `loadStudentCloseClaims` joins
+  claims ⋈ slots and loads in parallel with the evidence; visibility reuses
+  `isCloseStepRequired` (the *same* predicate gating the student `/closes` step), so the
+  card can't drift from the student side, non-leads short-circuit before any query, and it
+  stays dormant until an inventory exists. It also renders standalone for a lead with
+  claims but no submission (admins can assign closes before a lead opens the form).
+  Measured: the page still fits 1920×1080 with **0px overflow**.
+  **(3) Availability grid touch targets (§7).** The 49 student grid cells were 30×26 CSS
+  px, under Apple HIG (44pt) and Material (48dp). Most students fill this on a phone, and a
+  mis-tap silently flips a preference that reaches the scheduler as if deliberate, so this
+  was a data-quality bug and not only an accessibility one. Cells are now **44×44** under
+  `@media (pointer: coarse), (max-width: 640px)`, desktop unchanged. The row-label column
+  was the real constraint, so on touch the ` · open` / ` · close` tag drops to its own line
+  and the label may wrap, making horizontal overflow structurally impossible (verified
+  44×44, zero overflow, at 390px and 360px). The four nested style ternaries collapsed into
+  one `state` value driving one class; the component shed 64 lines of inline styles.
+  Also adds **`README.md`**: a status pill, what Muster is, and a **"Before you start"**
+  pre-send checklist for the operational risks the same pass surfaced, which are *not* code
+  and must not be treated as such: the roster `Email` column must equal the netid Google
+  address or the student dead-ends on "We don't recognize this account" (import only
+  lowercases/trims, so a `first.last@wisc.edu` alias never matches, and the magic-link
+  fallback refuses them silently too); the Drive grant is a single point of failure that
+  blocks the *required* first step for everyone; and a group window with either bound unset
+  is closed, which is the state a fresh group starts in.
+- **0.69 (2026-07-14)** — **Admin-added travel + extracurriculars (§7b, §10).** The Travel
+  and Extracurriculars cards on `/admin/students/[email]` each gain an **Add** link in the
+  card header, opening a modal with the same fields the student's own form has. No new
+  write path: the modal calls the existing `addTravelRequest` / `addExtracurricularFile` /
+  `saveExtracurricularNotes` actions with the student named in a hidden `student` field,
+  and `requireStudent(onBehalfOf)` in `evidence/actions.ts` grows the same on-behalf seam
+  `createChangeRequest` already uses — admin session + a known student, in place of the
+  roster/group/window gate. The travel cutoff refuses **students** only: an admin adding an
+  entry is the excusal call, so it stores `excused: true` past the cutoff. The add form
+  holds one size whatever happens inside it, so an error never shifts the buttons under the
+  pointer. The lightbox overlay is extracted out of `EvidenceThumb` into a shared
+  `components/Modal.tsx` (backdrop, Escape, click-outside), reused by both: the panel now
+  spends the full width it is given (capped per caller) and runs **edge to edge under
+  720px**, so a phone wastes no width on either the lightbox or the form.
+- **0.68 (2026-07-14)** — **Response page: change requests join the card layout (§10a).**
+  The schedule change requests panel was a full-width block *below* the dashboard, so a
+  student with requests always cost the admin a scroll to the bottom of the page. It is
+  now a card inside the same balanced-column packing as the rest, kept last in DOM order
+  so it still packs into the final slot, and its request list scrolls **inside the card**
+  (capped at 48vh) rather than stretching the card past every other column. The card is a
+  child of the dashboard container in all cases, so it still renders for a student with no
+  submission (as does the position-change flag panel, which moves in with it). Deep links
+  (`#change-request-<id>` from the queue and the digest email) still land on the right row:
+  fragment navigation scrolls the card's own list.
 - **0.67 (2026-07-14)** — **Response page: click-to-mock hours calculator (§10a).**
   The per-student availability card is now interactive: the admin clicks grid cells
   to try out a schedule and a readout in the card's upper corner shows the live hours,

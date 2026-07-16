@@ -28,29 +28,31 @@ export interface ActionResult {
   error?: string;
 }
 
-interface Target {
-  email: string;
-  /** True when an admin is filling this in for the student (skips the window gates). */
-  onBehalf: boolean;
-}
-
-// Gates every mutating evidence action on the shared student gate (PLAN §13):
-// roster + group + open window. Uploading/removing evidence is part of editing
-// the submission, so it locks with the form. An admin may pass a target student
-// to act for; the gate refuses that for everyone else.
-async function requireStudent(onBehalfOf?: string): Promise<Target | { error: string }> {
+/**
+ * Whose evidence is this? Normally the signed-in student's own, gated on the
+ * shared student gate (PLAN §13): roster + group + open window. Uploading and
+ * removing evidence is part of editing the submission, so it locks with the form.
+ *
+ * An admin may instead name a student to act for (the per-student response page,
+ * mirroring the change-request `employee` seam). The gate owns that rule: it
+ * skips the window checks for an on-behalf target and refuses one for everyone
+ * else.
+ */
+async function requireStudent(
+  onBehalfOf = "",
+): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
   const gate = await requireEditableStudent(onBehalfOf);
   return gate.ok ? { email: gate.email, onBehalf: gate.onBehalf } : { error: gate.error };
 }
 
-/** The on-behalf target an admin form carries (empty for the student's own form). */
-const targetOf = (formData: FormData): string => String(formData.get("student") ?? "").trim();
-
-/** Refresh the student page that changed, plus the admin's view of that student. */
-function revalidateFor(who: Target, path: string): void {
-  revalidatePath(path);
+/** The student page the entry lives on, plus the admin's view of it when they added it. */
+function revalidateEvidence(studentPath: string, who: { email: string; onBehalf: boolean }) {
+  revalidatePath(studentPath);
   if (who.onBehalf) revalidatePath(`/admin/students/${encodeURIComponent(who.email)}`);
 }
+
+/** The admin-only "act for this student" field the response-page modal submits. */
+const onBehalfOf = (formData: FormData) => String(formData.get("student") ?? "").trim();
 
 /** Pull a File out of FormData and read it into a Buffer after validation. */
 async function readUpload(
@@ -73,7 +75,7 @@ function relayError(e: unknown): string {
 // types (PNG/JPEG); PDFs can't be shown as a glanceable thumbnail beside the
 // preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(targetOf(formData));
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -92,7 +94,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
       .set({ courseScheduleFileId: fileId })
       .where(eq(submissions.id, submissionId));
     if (prev?.courseScheduleFileId) await relayDelete(prev.courseScheduleFileId);
-    revalidateFor(who, "/course-schedule");
+    revalidateEvidence("/course-schedule", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -100,7 +102,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
 }
 
 export async function addExtracurricularFile(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(targetOf(formData));
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -126,7 +128,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
       ...upload,
     });
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
-    revalidateFor(who, "/course-schedule");
+    revalidateEvidence("/course-schedule", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -153,15 +155,15 @@ export async function removeExtracurricularFile(
 
   await db.delete(extracurricularFiles).where(eq(extracurricularFiles.id, rowId));
   await relayDelete(row.fileId);
-  revalidateFor(who, "/course-schedule");
+  revalidateEvidence("/course-schedule", who);
   return { ok: true };
 }
 
 export async function saveExtracurricularNotes(
   notes: string,
-  onBehalfOf?: string,
+  student = "",
 ): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+  const who = await requireStudent(student);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
@@ -170,25 +172,28 @@ export async function saveExtracurricularNotes(
     .update(submissions)
     .set({ extracurricularNotes: notes.slice(0, 2000) })
     .where(eq(submissions.id, submissionId));
-  revalidateFor(who, "/course-schedule");
+  revalidateEvidence("/course-schedule", who);
   return { ok: true };
 }
 
 export async function addTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(targetOf(formData));
+  const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
-  // The cutoff hard stop (PLAN §8): under the active "refuse" policy, nothing
-  // is stored on/after the cutoff, so every stored entry is excused.
+  // The cutoff hard stop (PLAN §8) binds students: under the active "refuse"
+  // policy nothing they add on/after the cutoff is stored, so every entry they
+  // make is excused. An admin adding an entry for them IS the excusal call, so
+  // the cutoff doesn't stop it and the entry is stored excused.
   const now = new Date();
   const { cutoff } = await getTravelCutoff(now);
   const decision = decideTravelSubmission(now, cutoff);
-  if (!decision.allowed) {
+  if (!decision.allowed && !who.onBehalf) {
     return {
       ok: false,
       error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed. New travel can no longer be added.`,
     };
   }
+  const excused = decision.allowed ? decision.excused : true;
 
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
@@ -222,9 +227,9 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       note,
-      excused: decision.excused,
+      excused,
     });
-    revalidateFor(who, "/travel");
+    revalidateEvidence("/travel", who);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: relayError(e) };
@@ -254,6 +259,6 @@ export async function removeTravelRequest(id: string, onBehalfOf?: string): Prom
 
   await db.delete(travelRequests).where(eq(travelRequests.id, id));
   await relayDelete(row.proofFileId);
-  revalidateFor(who, "/travel");
+  revalidateEvidence("/travel", who);
   return { ok: true };
 }

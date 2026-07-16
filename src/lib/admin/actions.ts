@@ -26,6 +26,10 @@ import {
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
 import {
+  normalizeExcludedTitles,
+  SETTING_EXCLUDED_ROSTER_TITLES,
+} from "@/lib/roster/position-mapping";
+import {
   syncSheet,
   RESPONSES_SHEET,
   SHEET_MANUAL_COOLDOWN_MS,
@@ -214,6 +218,29 @@ export async function setChangeDigestRecipients(raw: string): Promise<SaveDigest
   else await setSetting(SETTING_CHANGE_DIGEST_RECIPIENTS, valid.join(","));
   revalidatePath("/admin/email-settings");
   return { ok: true, saved: valid };
+}
+
+export interface SaveExcludedTitlesResult extends AdminActionResult {
+  /** The normalized list that was stored (on success). */
+  saved?: string[];
+}
+
+/**
+ * Set the roster titles the import skips outright (PLAN §4.2, roadmap 1.7;
+ * edited on /admin/roster). Stored one per line; titles are normalized
+ * (trimmed, lowercased, de-duplicated) so the import compares them
+ * case-insensitively. Saving an empty list stores it and excludes nothing;
+ * the hardcoded SKIP_TITLES fixture applies only while the setting was
+ * never saved.
+ */
+export async function setExcludedRosterTitles(raw: string): Promise<SaveExcludedTitlesResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const titles = normalizeExcludedTitles(raw);
+  await setSetting(SETTING_EXCLUDED_ROSTER_TITLES, titles.join("\n"));
+  revalidatePath("/admin/roster");
+  return { ok: true, saved: titles };
 }
 
 export interface RebuildSheetResult extends AdminActionResult {

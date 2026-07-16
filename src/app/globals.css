@@ -91,6 +91,11 @@ body {
   .stack-table {
     min-width: 680px;
   }
+  /* Narrow tables with few columns (the hub's group-progress table) size to
+     their container instead of forcing the generic table width. */
+  .stack-table--fit {
+    min-width: 0;
+  }
 }
 @media (max-width: 719.98px) {
   .stack-table thead {
@@ -115,6 +120,93 @@ body {
     padding-right: 8px;
     color: var(--color-text-secondary);
     font-size: 12px;
+  }
+}
+
+/* Admin hub shell (app/admin/page.tsx): the nav rail beside the status body.
+   On a wide screen the rail is a grid column; grid items stretch, so it runs
+   the full height of the body column. Under 960px it becomes a slide-out
+   drawer opened by the floating menu button (components/admin/AdminNav.tsx),
+   so the status content owns the page. The rail's look mirrors panelStyle in
+   components/admin/ui.tsx; it lives here because the drawer must restyle it. */
+.admin-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "body";
+  gap: 14px;
+}
+.admin-shell-body {
+  grid-area: body;
+  min-width: 0;
+}
+.admin-shell-nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border-secondary);
+  padding: 0.85rem 1rem;
+}
+.admin-nav-toggle,
+.admin-nav-backdrop {
+  display: none;
+}
+@media (min-width: 960px) {
+  .admin-shell {
+    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-areas: "nav body";
+  }
+  .admin-shell-nav {
+    border-radius: var(--border-radius-lg);
+  }
+}
+@media (max-width: 959.98px) {
+  .admin-shell-nav {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 940;
+    width: min(320px, 86vw);
+    overflow-y: auto;
+    border-width: 0 1px 0 0;
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+  .admin-shell-nav--open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+  }
+  .admin-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 930;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .admin-nav-toggle {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 950;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: 999px;
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
   }
 }
 
@@ -145,6 +237,118 @@ body {
   cursor: pointer;
 }
 
+/* Student availability grid (src/components/AvailabilityForm.tsx). Compact
+   checkboxes on a mouse-driven desktop; on touch devices and narrow viewports
+   every cell becomes a real 44x44 tap target (Apple HIG / Material), because a
+   mis-tap silently flips a shift preference. The row label then drops its
+   open/close tag onto a second line and may wrap, so the wider cells never push
+   the table into horizontal overflow. */
+.avail-grid {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.avail-grid th {
+  padding: 2px 6px;
+  font-weight: 500;
+}
+.avail-grid td {
+  padding: 2px;
+}
+.avail-grid .avail-rowlabel {
+  padding: 2px 8px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+.avail-tag {
+  color: var(--color-text-info);
+}
+.avail-tag::before {
+  content: " · ";
+}
+
+.avail-cell {
+  position: relative;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  /* The off state keeps a transparent ✓ so every cell renders identically. */
+  color: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.avail-cell--on {
+  background: #1a66cc;
+  color: #fff;
+}
+.avail-cell--auto {
+  border-color: #9575cd;
+  background: #ede7f6;
+  color: #5e35b1;
+}
+.avail-cell--covered {
+  border-color: #d8c97a;
+  background: #f0e6ad;
+  color: #8a7400;
+}
+.avail-grid--locked .avail-cell {
+  cursor: default;
+}
+/* The scheduling week starts on Sunday, so Sat and Sun sit at opposite ends of
+   the week rather than forming one contiguous weekend (PLAN §7). The weekend
+   grid splits its two day columns (Sun is the last column, Sat the one before)
+   with a wider gap plus a thin vertical rule; the admin grid
+   (PrefGridCalculator) draws the same split. Weekday grids are untouched. */
+.avail-grid--weekend th:last-child,
+.avail-grid--weekend td:last-child {
+  border-left: 1px solid #ccc;
+  padding-left: 10px;
+}
+.avail-grid--weekend th:nth-last-child(2),
+.avail-grid--weekend td:nth-last-child(2) {
+  padding-right: 10px;
+}
+/* High-demand mark (roadmap 2.5): advisory, never blocks a pick. */
+.avail-hot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 3px;
+  height: 8px;
+  border-radius: 1px;
+  background: #d33;
+  pointer-events: none;
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .avail-cell {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
+  .avail-grid td {
+    padding: 2px 1px;
+  }
+  .avail-grid .avail-rowlabel {
+    padding: 2px 6px;
+    white-space: normal;
+  }
+  .avail-tag {
+    display: block;
+  }
+  .avail-tag::before {
+    content: none;
+  }
+  .avail-hot {
+    top: 3px;
+    right: 3px;
+    height: 12px;
+  }
+}
+
 /* Response-list flags cell: individual pills when there's room (wide table
    mode, and stacked mobile rows where each cell owns the full width), a
    compact count on mid-width screens where the column would crowd. */
@@ -170,5 +374,43 @@ body {
   }
   .flags-count {
     display: none;
+  }
+}
+
+/* Modal overlay (components/Modal.tsx): the panel always spends the full width
+   it is given, up to the cap its caller sets in --modal-max-width. Under 720px
+   it goes edge to edge: on a phone, width is the scarce axis, so the backdrop
+   margin and the rounded corners give way to it and height follows content. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.6);
+}
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--modal-max-width, 900px);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0.9rem;
+  background: var(--color-background-primary);
+  border-radius: var(--border-radius-lg);
+}
+@media (max-width: 719.98px) {
+  .modal-overlay {
+    padding: 0;
+  }
+  .modal-panel {
+    max-width: none;
+    max-height: 100vh;
+    padding: 0.6rem;
+    border-radius: 0;
   }
 }

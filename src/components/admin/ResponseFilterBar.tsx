@@ -1,7 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FLAG_FILTER_OPTIONS, STARTED_MODE_OPTIONS, UNGROUPED } from "@/lib/admin/response-filters";
+import {
+  FLAG_FILTER_OPTIONS,
+  REVIEW_FILTER_OPTIONS,
+  STARTED_MODE_OPTIONS,
+  UNGROUPED,
+} from "@/lib/admin/response-filters";
 
 /**
  * Group + flag + off-roster + all-students + start-date filters for the response
@@ -17,6 +22,7 @@ export function ResponseFilterBar({
   all,
   started,
   startedDate,
+  review,
 }: {
   groups: { id: string; name: string }[];
   group?: string;
@@ -25,6 +31,7 @@ export function ResponseFilterBar({
   all?: string;
   started?: string;
   startedDate?: string;
+  review?: string;
 }) {
   const router = useRouter();
 
@@ -35,6 +42,7 @@ export function ResponseFilterBar({
     all?: string;
     started?: string;
     startedDate?: string;
+    review?: string;
   }) {
     const params = new URLSearchParams();
     const g = next.group ?? group ?? "";
@@ -43,10 +51,12 @@ export function ResponseFilterBar({
     const a = next.all ?? all ?? "";
     const sm = next.started ?? started ?? "";
     const sd = next.startedDate ?? startedDate ?? "";
+    const rv = next.review ?? review ?? "";
     if (g && g !== "all") params.set("group", g);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
     if (a === "1") params.set("all", a);
+    if (rv) params.set("review", rv);
     // A mode with no date yet stays in the URL so the date picker shows up;
     // the parser ignores the half-set pair until both halves are present.
     if (sm) {
@@ -92,6 +102,21 @@ export function ResponseFilterBar({
           style={selectStyle}
         >
           {FLAG_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label style={labelStyle}>
+        Review
+        <select
+          value={review ?? ""}
+          onChange={(e) => navigate({ review: e.target.value })}
+          style={selectStyle}
+        >
+          {REVIEW_FILTER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

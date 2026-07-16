@@ -15,6 +15,7 @@ type Row = {
   onRoster: boolean;
   hiredOn: Date | null;
   status: "draft" | "submitted" | "missing";
+  scheduled: boolean;
 };
 
 const rows: Row[] = [
@@ -25,6 +26,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: iso("2025-08-20"),
     status: "submitted",
+    scheduled: false,
   },
   {
     email: "b@wisc.edu",
@@ -33,6 +35,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: iso("2026-01-15"),
     status: "submitted",
+    scheduled: true,
   },
   {
     email: "c@wisc.edu",
@@ -41,6 +44,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: iso("2026-06-01"),
     status: "draft",
+    scheduled: false,
   },
   {
     email: "d@wisc.edu",
@@ -49,6 +53,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: null,
     status: "submitted",
+    scheduled: false,
   },
   {
     email: "e@wisc.edu",
@@ -57,6 +62,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: iso("2026-01-15"),
     status: "submitted",
+    scheduled: true,
   },
   {
     email: "f@wisc.edu",
@@ -65,6 +71,7 @@ const rows: Row[] = [
     onRoster: false,
     hiredOn: iso("2024-09-03"),
     status: "submitted",
+    scheduled: false,
   },
   // Roster students who never started a submission (only listed with `all`).
   {
@@ -74,6 +81,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: iso("2026-01-15"),
     status: "missing",
+    scheduled: false,
   },
   {
     email: "h@wisc.edu",
@@ -82,6 +90,7 @@ const rows: Row[] = [
     onRoster: true,
     hiredOn: null,
     status: "missing",
+    scheduled: false,
   },
 ];
 
@@ -154,6 +163,41 @@ describe("parseResponseFilters", () => {
     expect(parseResponseFilters({ started: "bogus", startedDate: "2026-01-15" })).toEqual({});
     expect(parseResponseFilters({ started: "on", startedDate: "not-a-date" })).toEqual({});
     expect(parseResponseFilters({ started: "on", startedDate: "2026-13-45" })).toEqual({});
+  });
+
+  it("reads the review filter and rejects unknown values", () => {
+    expect(parseResponseFilters({ review: "todo" })).toEqual({ review: "todo" });
+    expect(parseResponseFilters({ review: "done" })).toEqual({ review: "done" });
+    expect(parseResponseFilters({ review: "bogus" })).toEqual({});
+  });
+});
+
+describe("the review filter", () => {
+  it("shows submitted responses not yet marked scheduled", () => {
+    // c is a draft, so it is nobody's to review however unscheduled it is.
+    expect(emails(applyResponseFilters(rows, { review: "todo" }))).toEqual([
+      "a@wisc.edu",
+      "d@wisc.edu",
+    ]);
+  });
+
+  it("shows the ones already marked scheduled", () => {
+    expect(emails(applyResponseFilters(rows, { review: "done" }))).toEqual([
+      "b@wisc.edu",
+      "e@wisc.edu",
+    ]);
+  });
+
+  it("never matches a draft on either side", () => {
+    const todo = emails(applyResponseFilters(rows, { review: "todo" }));
+    const done = emails(applyResponseFilters(rows, { review: "done" }));
+    expect(todo).not.toContain("c@wisc.edu");
+    expect(done).not.toContain("c@wisc.edu");
+  });
+
+  it("survives the query round-trip", () => {
+    expect(serializeResponseFilters({ review: "todo" })).toBe("review=todo");
+    expect(parseResponseFilters({ review: "todo" })).toEqual({ review: "todo" });
   });
 });
 
@@ -274,7 +318,7 @@ describe("FLAG_FILTER_OPTIONS", () => {
         { value: "auto_assigned_weekend", label: "Auto-assigned weekend" },
         { value: "travel_late", label: "Late travel" },
         { value: "position_change", label: "Position changed" },
-        { value: "revalidation_failed", label: "Fails validation" },
+        { value: "revalidation_failed", label: "Failed validation" },
       ]),
     );
   });

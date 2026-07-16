@@ -408,101 +408,62 @@ function Grid({
   editable: boolean;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
+  // The weekend variant splits the Sat and Sun columns with a gap and rule
+  // (PLAN §7): the scheduling week starts on Sunday, so the two days sit at
+  // opposite ends of the week, not side by side.
+  const variants =
+    (sub.dayType === "weekend" ? " avail-grid--weekend" : "") +
+    (editable ? "" : " avail-grid--locked");
   return (
     <section>
       <h2 style={{ fontSize: 15, color: "#444" }}>{heading}</h2>
-      <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+      <table className={`avail-grid${variants}`}>
         <thead>
           <tr>
             <th />
             {sub.days.map((d) => (
-              <th key={d} style={{ padding: "2px 6px", fontWeight: 500 }}>
-                {DAY_LABEL[d]}
-              </th>
+              <th key={d}>{DAY_LABEL[d]}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {sub.rows.map((row) => (
             <tr key={row.block.id}>
-              <th
-                scope="row"
-                style={{
-                  textAlign: "right",
-                  padding: "2px 8px",
-                  fontWeight: 400,
-                  whiteSpace: "nowrap",
-                }}
-              >
+              <th scope="row" className="avail-rowlabel">
                 {row.label}
-                {row.isOpen && <span style={{ color: "#1a66cc" }}> · open</span>}
-                {row.isClose && <span style={{ color: "#1a66cc" }}> · close</span>}
+                {row.isOpen && <span className="avail-tag">open</span>}
+                {row.isClose && <span className="avail-tag">close</span>}
               </th>
               {sub.days.map((day, di) => {
                 const key = selectionKey(row.block.id, day);
-                const on = selected.has(key);
-                const isAuto = !on && autoAssigned.has(key);
-                const isCovered = !on && !isAuto && covered.has(key);
+                const state = selected.has(key)
+                  ? "on"
+                  : autoAssigned.has(key)
+                    ? "auto"
+                    : covered.has(key)
+                      ? "covered"
+                      : "off";
                 const isHot = row.highDemandDays[di];
                 return (
-                  <td key={day} style={{ padding: 2 }}>
+                  <td key={day}>
                     <button
                       type="button"
-                      aria-pressed={on}
+                      className={`avail-cell avail-cell--${state}`}
+                      aria-pressed={state === "on"}
                       aria-label={`${row.label} ${DAY_LABEL[day]}`}
                       title={
-                        isAuto
+                        state === "auto"
                           ? "We auto-assigned this weekend shift because you didn't pick one. Click to choose your own."
-                          : isCovered
+                          : state === "covered"
                             ? "Already covered by a longer shift you selected"
                             : isHot
                               ? "A lot of students picked this shift"
                               : undefined
                       }
                       onClick={() => onToggle(row.block.id, day)}
-                      style={{
-                        position: "relative",
-                        width: 30,
-                        height: 26,
-                        borderRadius: 4,
-                        border: isAuto
-                          ? "1px solid #9575cd"
-                          : isCovered
-                            ? "1px solid #d8c97a"
-                            : "1px solid #ccc",
-                        background: on
-                          ? "#1a66cc"
-                          : isAuto
-                            ? "#ede7f6"
-                            : isCovered
-                              ? "#f0e6ad"
-                              : "#fff",
-                        color: on
-                          ? "#fff"
-                          : isAuto
-                            ? "#5e35b1"
-                            : isCovered
-                              ? "#8a7400"
-                              : "transparent",
-                        cursor: editable ? "pointer" : "default",
-                      }}
                     >
-                      {isHot && (
-                        <span
-                          aria-hidden
-                          style={{
-                            position: "absolute",
-                            top: 2,
-                            right: 2,
-                            width: 3,
-                            height: 8,
-                            background: "#d33",
-                            borderRadius: 1,
-                            pointerEvents: "none",
-                          }}
-                        />
-                      )}
-                      {on ? "✓" : isAuto ? "★" : isCovered ? "–" : "✓"}
+                      {isHot && <span aria-hidden className="avail-hot" />}
+                      {state === "auto" ? "★" : state === "covered" ? "–" : "✓"}
                     </button>
                   </td>
                 );

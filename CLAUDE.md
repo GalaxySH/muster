@@ -40,9 +40,12 @@ to do: install the backup cron on the box + the production deploy dry-run.
 `/change-requests` mini-flow (not window-gated; rolling 3-per-24h cap; withdrawable),
 admin review via the **unresolved queue** at `/admin/change-requests` + the per-student
 page (resolved checkboxes on both; rows and digest lines deep-link to the anchored
-request), and a daily digest email to the admin-configured recipients, triggered by
-host cron via the token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`;
-install the crontab line on the box, docs/deploy.md §7).
+request), and a daily digest email to the admin-configured recipients, sent by the
+**in-app scheduler** (`src/instrumentation.ts` starts it; due at 7:00 America/Chicago,
+compare-and-set claim on the last-run stamp, catch-up after downtime; no host setup).
+The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`) remains as a
+manual fallback trigger, and `/admin/email-settings` shows the last run + run health
+(docs/deploy.md §7).
 
 **Per-subsystem architecture notes live in `docs/architecture.md`** — feature layering
 and module seams for the Tier 2 features (2.1–2.5), SL weekend-close picking (3.2),

@@ -57,6 +57,23 @@ export function lockedMessage(
   }
 }
 
+/**
+ * The read-only line shown under the banner on the student hub. Null when the
+ * banner already says everything: an unconfigured window has no dates, so a line
+ * pointing at "the window above" would contradict it.
+ */
+export function readOnlyNotice(state: WindowState): string | null {
+  switch (state) {
+    case "before":
+      return "You can't fill out the form until it opens. Check back then.";
+    case "closed":
+      return "You can no longer make changes to your responses.";
+    case "unconfigured":
+    case "open":
+      return null;
+  }
+}
+
 /** A single-line version of the locked reason, for server-action error lists. */
 export function lockedReasonLine(
   state: WindowState,

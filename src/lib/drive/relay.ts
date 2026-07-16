@@ -8,7 +8,7 @@
  */
 import "server-only";
 import { env } from "@/lib/env";
-import { getSetting, setSetting, SETTING_PROOFS_FOLDER_ID } from "@/lib/settings";
+import { getSetting, setSetting, markDriveOk, SETTING_PROOFS_FOLDER_ID } from "@/lib/settings";
 import { getActiveDriveGrant } from "./grants";
 import { getAccessToken } from "./oauth";
 import {
@@ -62,7 +62,8 @@ async function ensureProofsFolder(accessToken: string): Promise<string> {
     name: PROOFS_FOLDER_NAME,
     mimeType: FOLDER_MIME,
   });
-  const id = existing ?? (await createFolder({ accessToken, name: PROOFS_FOLDER_NAME, parentId: root }));
+  const id =
+    existing ?? (await createFolder({ accessToken, name: PROOFS_FOLDER_NAME, parentId: root }));
   await setSetting(SETTING_PROOFS_FOLDER_ID, id);
   return id;
 }
@@ -75,7 +76,16 @@ export async function relayUpload(input: RelayUploadInput): Promise<string> {
   const folderId = await ensureProofsFolder(accessToken);
   const ext = extensionForType(input.mimeType);
   const name = `${input.studentEmail}__${input.kind}__${Date.now()}.${ext}`;
-  return uploadFile({ accessToken, folderId, name, mimeType: input.mimeType, bytes: input.bytes });
+  const fileId = await uploadFile({
+    accessToken,
+    folderId,
+    name,
+    mimeType: input.mimeType,
+    bytes: input.bytes,
+  });
+  // A write that came back clean is the only cheap proof the grant still works.
+  await markDriveOk();
+  return fileId;
 }
 
 /** Fetch a previously relayed file's bytes (for the authenticated proxy route). */
@@ -144,6 +154,7 @@ export async function upsertManagedSheet(
   }
 
   await setSetting(sheet.idSettingKey, sheetId);
+  await markDriveOk();
   return {
     spreadsheetId: sheetId,
     url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit`,

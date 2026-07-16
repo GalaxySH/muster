@@ -44,24 +44,20 @@ export default async function IntroPage() {
             WhenToWork. This form replaces that step.
           </li>
           <li>
-            You must select your position&apos;s <strong>minimum weekly hours</strong> (10h; Shift
-            Leads 15h).
-          </li>
-          <li>
-            Mark <strong>every</strong> shift you&apos;d be willing to work. These are preferences,
+            Mark <strong>every</strong> shift you&apos;d be willing to work. These preferences decide your availability,
             not your final schedule.
           </li>
           <li>
-            Weekly preferences that total more than your required hours give you a better chance of getting your preferred shifts. You can change your selections until your form window closes.
+            Increase your chances of getting the shifts you want by selecting more in the form.
           </li>
           <li>
           You are required to work a weekend shift. Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend), unless you opt into working every weekend. You pick the shift time, we pick which of A/B based on operational needs.
           </li>
           <li>
-            Travel during the semester is only excused if you add it <strong>before {cutoff.toLocaleDateString()}</strong>. The form does not accept <strong>any</strong> travel added after that date.
+            Travel during the semester is only excused if you submit it via this form <strong>before {cutoff.toLocaleDateString()}</strong>. We will not excuse any travel requested after this date.
           </li>
           <li>
-            If your availability changes throughout the semester, <Link href="/change-requests">submit a change request</Link>. We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams, and these should be sent over email.
+            If your availability changes during the semester, <Link href="/change-requests">submit a change request</Link>. We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams, and these are the only requests we will also accept over email.
           </li>
           <li>
             If you have questions, contact the scheduler (<strong>{CONTACT_EMAIL}</strong>).

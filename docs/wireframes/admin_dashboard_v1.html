@@ -1,0 +1,450 @@
+<h2 class="sr-only">Wireframe of Muster's admin dashboard: a student quick-search, a response progress band beside a needs-attention card, a row of daily-work stat tiles, then a masonry of panels covering the least staffed shifts, recent submissions, students to follow up, system status, and the full launcher grouped by job.</h2>
+
+<!-- Self-contained on purpose: this file redeclares the globals.css tokens and
+     carries its own icon sprite so it opens in a browser on its own. The values
+     mirror src/app/globals.css. Muster is light-only, so this mockup is too.
+
+     Layout note: full-bleed, and the lower half is a CSS multi-column masonry,
+     the same idiom the per-student view already uses. Panels reflow to fill
+     whatever width the monitor gives, so there is no ragged dead column. -->
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .wf {
+    --color-text-primary: #1a2233;
+    --color-text-secondary: #4a5568;
+    --color-text-tertiary: #8a94a6;
+    --color-text-info: #1a66cc;
+    --color-text-success: #196127;
+    --color-text-warning: #946c00;
+    --color-text-danger: #b00020;
+    --color-text-auto: #d1497a;
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f4f6fa;
+    --color-background-info: #e7f0fd;
+    --color-background-warning: #fff4d6;
+    --color-border-secondary: #ccd2de;
+    --color-border-tertiary: #e2e6ee;
+    --color-border-warning: #e0c060;
+    --border-radius-md: 6px;
+    --border-radius-lg: 10px;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    background: var(--color-background-secondary);
+    padding: 1.25rem clamp(0.75rem, 3vw, 1.5rem) 3rem;
+    font-variant-numeric: tabular-nums;
+    max-width: 1600px; /* full-bleed, but stop before the lines get silly */
+  }
+  .wf * { box-sizing: border-box; }
+  .wf :focus-visible { outline: 2px solid var(--color-text-info); outline-offset: 2px; border-radius: 3px; }
+  .wf svg { width: 1em; height: 1em; vertical-align: -0.13em; flex-shrink: 0; }
+  .wf a { color: var(--color-text-info); text-decoration: none; }
+  .wf a:hover { text-decoration: underline; }
+
+  .panel {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 0.85rem 1rem;
+  }
+  .label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .label .hint { font-weight: 400; font-size: 12px; color: var(--color-text-tertiary); }
+
+  /* Top row: where the cycle stands, next to what needs doing about it. */
+  .hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 12px; }
+  @media (max-width: 1000px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+
+  /* Everything below the tiles packs into columns and fills the width. */
+  .masonry { column-width: 340px; column-gap: 12px; margin-top: 12px; }
+  .masonry > .panel { break-inside: avoid; margin-bottom: 12px; }
+
+  .tile {
+    display: block;
+    background: var(--color-background-secondary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 0.7rem 0.85rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  .tile:hover { border-color: var(--color-text-info); text-decoration: none; }
+  .tile .t-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.02em; }
+  .tile .t-value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .tile .t-sub { font-size: 12px; color: var(--color-text-tertiary); }
+  .grid-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin-top: 12px; }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+  .pill-open { background: #e6f4ea; color: var(--color-text-success); }
+  .pill-soon { background: var(--color-background-info); color: var(--color-text-info); }
+  .pill-closed { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .pill-bad { background: #fce8e6; color: var(--color-text-danger); }
+  .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--color-background-secondary); }
+
+  .alert { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 14px; border-top: 0.5px solid var(--color-border-tertiary); }
+  .alert:first-of-type { border-top: 0; padding-top: 0; }
+  .alert .a-icon { margin-top: 2px; }
+  .alert .a-body { flex: 1; }
+  .alert .a-sub { font-size: 12px; color: var(--color-text-tertiary); margin-top: 1px; }
+  .danger { color: var(--color-text-danger); }
+  .warn { color: var(--color-text-warning); }
+  .ok { color: var(--color-text-success); }
+
+  .navcard {
+    display: flex; gap: 9px; align-items: center;
+    padding: 0.5rem 0.6rem;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    background: var(--color-background-primary);
+    text-decoration: none; color: inherit;
+  }
+  .navcard + .navcard { margin-top: 6px; }
+  .navcard:hover { border-color: var(--color-text-info); text-decoration: none; }
+  .navcard .n-title { font-size: 14px; font-weight: 600; }
+  .navcard .n-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 1px; }
+  .navcard .n-count { font-size: 12px; font-weight: 600; color: var(--color-text-info); background: var(--color-background-info); border-radius: 10px; padding: 1px 7px; margin-left: auto; white-space: nowrap; }
+
+  .listrow { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 13px; border-top: 0.5px solid var(--color-border-tertiary); }
+  .listrow:first-of-type { border-top: 0; }
+  .listrow .l-when { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); white-space: nowrap; }
+  .btn { font-size: 13px; padding: 3px 10px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); cursor: pointer; font-family: inherit; }
+
+  /* Least-staffed rows: a count, and a bar showing it against the best staffed shift. */
+  .cov { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 6px 0; border-top: 0.5px solid var(--color-border-tertiary); font-size: 13px; }
+  .cov:first-of-type { border-top: 0; }
+  .cov .c-who { color: var(--color-text-secondary); font-size: 12px; grid-column: 1; }
+  .cov .c-n { font-weight: 600; text-align: right; }
+  .cov .c-bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--color-background-secondary); overflow: hidden; }
+  .cov .c-bar > div { height: 100%; border-radius: 2px; }
+</style>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L1.5 21h21z"/><path d="M12 9v5"/><path d="M12 17.6v.1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></symbol>
+</svg>
+
+<div class="wf">
+
+  <!-- ─── header: identity, freshness, and the fastest path to one student ─── -->
+  <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+    <div>
+      <div style="font-size:22px; font-weight:600;">Admin</div>
+      <div style="font-size:13px; color:var(--color-text-secondary);">dining.admin@wisc.edu &nbsp;&middot;&nbsp; <span style="color:var(--color-text-tertiary);">as of 9:14 AM</span></div>
+    </div>
+    <label class="row" style="background:var(--color-background-primary); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); padding:5px 10px; min-width:300px;">
+      <svg style="color:var(--color-text-tertiary)"><use href="#i-search"/></svg>
+      <input placeholder="Find a student by name or email&hellip;" style="border:0; outline:0; font-size:14px; font-family:inherit; flex:1; background:transparent;">
+      <span style="font-size:11px; color:var(--color-text-tertiary); border:0.5px solid var(--color-border-tertiary); border-radius:4px; padding:0 4px;">/</span>
+    </label>
+  </div>
+
+  <!-- ─── hero: where the cycle stands, beside what to do about it ─── -->
+  <div class="hero">
+
+    <div class="panel">
+      <div class="label">
+        <span>Response progress</span>
+        <span class="hint">241 of 380 on roster have submitted &nbsp;&middot;&nbsp; 63%</span>
+      </div>
+
+      <div class="bar" style="margin-bottom:6px;">
+        <div style="width:63%; background:var(--color-text-info);"></div>
+        <div style="width:9%; background:var(--color-background-warning); border-right:1px solid var(--color-border-warning);"></div>
+        <div style="width:28%; background:var(--color-border-tertiary);"></div>
+      </div>
+      <div class="row" style="gap:16px; font-size:12px; color:var(--color-text-secondary); flex-wrap:wrap; margin-bottom:14px;">
+        <a href="#" class="row" style="gap:5px; color:inherit;"><svg style="color:var(--color-text-info)"><use href="#i-dot"/></svg> 241 submitted</a>
+        <a href="#" class="row" style="gap:5px; color:inherit;"><svg style="color:var(--color-border-warning)"><use href="#i-dot"/></svg> 34 draft</a>
+        <a href="#" class="row" style="gap:5px; color:inherit;"><svg style="color:var(--color-border-tertiary)"><use href="#i-dot"/></svg> 105 not started</a>
+        <span style="color:var(--color-text-tertiary);">every count links to the list behind it</span>
+      </div>
+
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <tr style="color:var(--color-text-tertiary); font-size:12px; text-align:left;">
+          <th style="font-weight:400; padding:4px 0;">Group</th>
+          <th style="font-weight:400;">Window</th>
+          <th style="font-weight:400; width:34%;">Responded</th>
+        </tr>
+        <tr style="border-top:0.5px solid var(--color-border-tertiary);">
+          <td style="padding:7px 0;">Returning staff <span style="color:var(--color-text-tertiary);">&middot; 214</span></td>
+          <td><span class="pill pill-open">open &middot; closes in 6 days</span></td>
+          <td>
+            <div class="row" style="gap:8px;">
+              <div class="bar" style="flex:1;"><div style="width:81%; background:var(--color-text-info);"></div><div style="width:6%; background:var(--color-background-warning);"></div></div>
+              <span style="color:var(--color-text-secondary); white-space:nowrap;">174 &middot; 81%</span>
+            </div>
+          </td>
+        </tr>
+        <tr style="border-top:0.5px solid var(--color-border-tertiary);">
+          <td style="padding:7px 0;">New hires <span style="color:var(--color-text-tertiary);">&middot; 148</span></td>
+          <td><span class="pill pill-soon">opens in 4 days</span></td>
+          <td>
+            <div class="row" style="gap:8px;">
+              <div class="bar" style="flex:1;"><div style="width:45%; background:var(--color-text-info);"></div><div style="width:14%; background:var(--color-background-warning);"></div></div>
+              <span style="color:var(--color-text-secondary); white-space:nowrap;">67 &middot; 45%</span>
+            </div>
+          </td>
+        </tr>
+        <tr style="border-top:0.5px solid var(--color-border-tertiary);">
+          <td style="padding:7px 0;">Shift Leads <span style="color:var(--color-text-tertiary);">&middot; 18</span></td>
+          <td><span class="pill pill-closed">closed 2 days ago</span></td>
+          <td>
+            <div class="row" style="gap:8px;">
+              <div class="bar" style="flex:1;"><div style="width:100%; background:var(--color-text-info);"></div></div>
+              <span style="color:var(--color-text-secondary); white-space:nowrap;">18 &middot; 100%</span>
+            </div>
+          </td>
+        </tr>
+        <tr style="border-top:0.5px solid var(--color-border-tertiary);">
+          <td style="padding:7px 0;" class="danger">No group <span style="color:var(--color-text-tertiary);">&middot; 18</span></td>
+          <td><span class="pill pill-bad">cannot open the form</span></td>
+          <td><a href="#">Assign them a group <svg><use href="#i-arrow"/></svg></a></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="label">
+        <span>Needs attention</span>
+        <span class="hint">5 issues &nbsp;&middot;&nbsp; most urgent first</span>
+      </div>
+
+      <div class="alert">
+        <span class="a-icon danger"><svg><use href="#i-x"/></svg></span>
+        <div class="a-body">
+          <div>The change-request digest has not run in 3 days.</div>
+          <div class="a-sub">The host cron probably is not installed. 12 open requests are waiting.</div>
+        </div>
+        <a href="#" style="white-space:nowrap;">Email <svg><use href="#i-arrow"/></svg></a>
+      </div>
+
+      <div class="alert">
+        <span class="a-icon danger"><svg><use href="#i-x"/></svg></span>
+        <div class="a-body">
+          <div>18 students are in no group, so the form will not open for them.</div>
+          <div class="a-sub">Mostly new hires added after the last import.</div>
+        </div>
+        <a href="#" style="white-space:nowrap;">Groups <svg><use href="#i-arrow"/></svg></a>
+      </div>
+
+      <div class="alert">
+        <span class="a-icon danger"><svg><use href="#i-x"/></svg></span>
+        <div class="a-body">
+          <div>3 submitted responses no longer pass validation.</div>
+          <div class="a-sub">Their shift blocks changed after they submitted.</div>
+        </div>
+        <a href="#" style="white-space:nowrap;">Review <svg><use href="#i-arrow"/></svg></a>
+      </div>
+
+      <div class="alert">
+        <span class="a-icon warn"><svg><use href="#i-warn"/></svg></span>
+        <div class="a-body">
+          <div>5 shift leads are short of their 3 weekend closes.</div>
+          <div class="a-sub">Inventory covers 21 of the 24 claims they need.</div>
+        </div>
+        <a href="#" style="white-space:nowrap;">Closes <svg><use href="#i-arrow"/></svg></a>
+      </div>
+
+      <div class="alert">
+        <span class="a-icon warn"><svg><use href="#i-warn"/></svg></span>
+        <div class="a-body">
+          <div>2 roster titles are not mapped to a position.</div>
+          <div class="a-sub">Pantry Lead, Catering Runner. Those students cannot pick shifts.</div>
+        </div>
+        <a href="#" style="white-space:nowrap;">Positions <svg><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── the daily queues. "to review" replaces "ready to email", which only
+       repeated the badge already sitting on the batch-email card below. ─── -->
+  <div class="grid-tiles">
+    <a class="tile" href="#">
+      <div class="t-label">To review</div>
+      <div class="t-value">23 <span style="font-size:13px; color:var(--color-text-tertiary); font-weight:400;">of 241</span></div>
+      <div class="t-sub">submitted, not marked scheduled</div>
+    </a>
+    <a class="tile" href="#">
+      <div class="t-label">Change requests</div>
+      <div class="t-value">12</div>
+      <div class="t-sub">3 new &nbsp;&middot;&nbsp; oldest 6 days</div>
+    </a>
+    <a class="tile" href="#">
+      <div class="t-label">Flagged</div>
+      <div class="t-value">46</div>
+      <div class="t-sub">43 auto weekend &nbsp;&middot;&nbsp; 3 stale</div>
+    </a>
+    <a class="tile" href="#">
+      <div class="t-label">Travel</div>
+      <div class="t-value">27</div>
+      <div class="t-sub">next three weeks</div>
+    </a>
+    <a class="tile" href="#">
+      <div class="t-label">Shift lead closes</div>
+      <div class="t-value">5 <span style="font-size:13px; color:var(--color-text-tertiary); font-weight:400;">of 18 short</span></div>
+      <div class="t-sub warn">3 claims over capacity</div>
+    </a>
+  </div>
+
+  <!-- ─── masonry: packs into as many columns as the screen allows ─── -->
+  <div class="masonry">
+
+    <div class="panel">
+      <div class="label"><span>Least staffed shifts</span><span class="hint">students who selected each shift</span></div>
+      <div class="cov">
+        <div>Sun close <span style="color:var(--color-text-tertiary);">8p&ndash;11:30p</span></div>
+        <div class="c-n danger">2</div>
+        <div class="c-who">Dishwasher</div>
+        <div class="c-bar"><div style="width:7%; background:var(--color-text-danger);"></div></div>
+      </div>
+      <div class="cov">
+        <div>Sat open <span style="color:var(--color-text-tertiary);">8:45a&ndash;12:30p</span></div>
+        <div class="c-n danger">3</div>
+        <div class="c-who">Cashier</div>
+        <div class="c-bar"><div style="width:11%; background:var(--color-text-danger);"></div></div>
+      </div>
+      <div class="cov">
+        <div>Fri close <span style="color:var(--color-text-tertiary);">8p&ndash;11:30p</span></div>
+        <div class="c-n warn">4</div>
+        <div class="c-who">Culinary Assistant</div>
+        <div class="c-bar"><div style="width:14%; background:var(--color-text-warning);"></div></div>
+      </div>
+      <div class="cov">
+        <div>Sun <span style="color:var(--color-text-tertiary);">2:30p&ndash;5:15p</span></div>
+        <div class="c-n warn">6</div>
+        <div class="c-who">Stocker</div>
+        <div class="c-bar"><div style="width:21%; background:var(--color-text-warning);"></div></div>
+      </div>
+      <div class="cov">
+        <div>Mon open <span style="color:var(--color-text-tertiary);">6:45a&ndash;10a</span></div>
+        <div class="c-n">9</div>
+        <div class="c-who">Barista</div>
+        <div class="c-bar"><div style="width:32%; background:var(--color-border-secondary);"></div></div>
+      </div>
+      <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:8px;">
+        The best staffed shift has 28.
+        <a href="#">All coverage <svg><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>Recent submissions</span><a href="#" class="hint">All responses</a></div>
+      <div class="listrow"><a href="#">Jordan Park</a> <span style="color:var(--color-text-tertiary);">Cashier</span> <span class="l-when">14 min ago</span></div>
+      <div class="listrow"><a href="#">Ava Nguyen</a> <span style="color:var(--color-text-tertiary);">Barista</span> <span class="l-when">1 hr ago</span></div>
+      <div class="listrow"><a href="#">Marcus Bell</a> <span style="color:var(--color-text-tertiary);">Dishwasher</span> <span class="warn" style="font-size:12px;">auto weekend</span> <span class="l-when">2 hr ago</span></div>
+      <div class="listrow"><a href="#">Sofia Ruiz</a> <span style="color:var(--color-text-tertiary);">Shift Lead</span> <span class="l-when">3 hr ago</span></div>
+      <div class="listrow"><a href="#">Theo Adeyemi</a> <span style="color:var(--color-text-tertiary);">Stocker</span> <span class="l-when">yesterday</span></div>
+      <div style="margin-top:10px; height:28px; display:flex; align-items:flex-end; gap:3px;">
+        <div style="flex:1; height:20%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:55%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:90%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:70%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:45%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:30%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:35%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:25%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:15%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:18%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:12%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:22%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:16%; background:var(--color-border-tertiary); border-radius:2px;"></div>
+        <div style="flex:1; height:28%; background:var(--color-text-info); border-radius:2px;"></div>
+      </div>
+      <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:3px;">submissions per day, last 14 days</div>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>Students to follow up</span><span class="hint">on roster, window open</span></div>
+      <div class="listrow"><span>Stalled drafts</span> <span style="color:var(--color-text-tertiary);">no edit in 3 days</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">11</span></div>
+      <div class="listrow"><span>Never started the form</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">105</span></div>
+      <div class="listrow"><span>No course schedule uploaded</span> <span style="color:var(--color-text-tertiary);">draft only</span> <span class="l-when" style="font-size:14px; font-weight:600; color:var(--color-text-primary);">7</span></div>
+      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap;">
+        <button class="btn">Copy the 11 stalled emails</button>
+        <button class="btn">Copy all 105</button>
+      </div>
+      <div style="font-size:11px; color:var(--color-text-tertiary); margin-top:8px;">Paste into a mail merge. The full list lives on Missing responses.</div>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>System status</span><a href="#" class="hint">Status page &#8599;</a></div>
+      <div class="listrow" style="display:block; border:0; padding-top:0;">
+        <div style="font-size:12px; color:var(--color-text-tertiary);">Google Drive</div>
+        <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> dining.admin@wisc.edu</div>
+        <div style="font-size:12px; color:var(--color-text-tertiary);">last upload worked 12 min ago</div>
+      </div>
+      <div class="listrow" style="display:block;">
+        <div style="font-size:12px; color:var(--color-text-tertiary);">Responses sheet</div>
+        <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> synced 8 min ago</div>
+        <div style="font-size:12px;"><a href="#">Open sheet</a> &nbsp;&middot;&nbsp; <a href="#">Download CSV</a></div>
+      </div>
+      <div class="listrow" style="display:block;">
+        <div style="font-size:12px; color:var(--color-text-tertiary);">Email</div>
+        <div class="row" style="gap:6px;"><span class="ok"><svg><use href="#i-check"/></svg></span> sending on &nbsp;&middot;&nbsp; digest on</div>
+        <div style="font-size:12px; color:var(--color-text-danger);">digest last ran 3 days ago</div>
+      </div>
+      <div class="listrow" style="display:block;">
+        <div style="font-size:12px; color:var(--color-text-tertiary);">Roster</div>
+        <div>380 on &nbsp;&middot;&nbsp; 12 off</div>
+        <div style="font-size:12px; color:var(--color-text-tertiary);">imported 4 days ago by you</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>Review</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Responses</div><div class="n-desc">Every student who has responded</div></div><span class="n-count">275</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Missing responses</div><div class="n-desc">Students who have not responded</div></div><span class="n-count">105</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Change requests</div><div class="n-desc">Shift changes students have asked for</div></div><span class="n-count">12</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Upcoming travel</div><div class="n-desc">Students away in the coming weeks</div></div><span class="n-count">27</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Shift lead weekend closes</div><div class="n-desc">Close claims, 3 per lead</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">5 short</span></a>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>Email</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Batch schedule email</div><div class="n-desc">Notify a group their schedule is ready</div></div><span class="n-count">9 ready</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Email settings</div><div class="n-desc">Sending switch, digest, recipients</div></div></a>
+    </div>
+
+    <div class="panel">
+      <div class="label"><span>Configuration</span></div>
+      <a class="navcard" href="#"><div><div class="n-title">Groups and form windows</div><div class="n-desc">Groups and form windows</div></div><span class="n-count" style="background:#fce8e6; color:var(--color-text-danger);">18 ungrouped</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Positions and shift blocks</div><div class="n-desc">The shifts students can select</div></div><span class="n-count" style="background:var(--color-background-warning); color:var(--color-text-warning);">2 titles</span></a>
+      <a class="navcard" href="#"><div><div class="n-title">Roster import</div><div class="n-desc">Upload the PCPL workbook</div></div></a>
+      <a class="navcard" href="#"><div><div class="n-title">Google Drive</div><div class="n-desc">Where uploaded proofs are stored</div></div></a>
+      <a class="navcard" href="#"><div><div class="n-title">Test accounts</div><div class="n-desc">Synthetic accounts for training</div></div></a>
+    </div>
+
+  </div>
+
+  <!-- ─── the quiet day: what the attention card looks like with nothing wrong ─── -->
+  <div style="margin-top:10px; padding-top:14px; border-top:0.5px dashed var(--color-border-secondary);">
+    <div style="font-size:12px; color:var(--color-text-tertiary); margin-bottom:8px;">Variant: the attention card on a day when nothing is wrong. The rows are gone, not greyed out, and the progress band takes the width back.</div>
+    <div class="panel" style="max-width:420px;">
+      <div class="label"><span>Needs attention</span></div>
+      <div class="row" style="gap:8px; font-size:14px;">
+        <span class="ok"><svg><use href="#i-check"/></svg></span> Nothing needs attention.
+      </div>
+    </div>
+  </div>
+
+</div>

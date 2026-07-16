@@ -15,6 +15,13 @@ export type FlagFilter = "any" | DbFlagType;
 /** How a start-date filter compares against the roster hire date. */
 export type StartedMode = "before" | "after" | "on";
 
+/**
+ * The admin's own progress through the pile: a submission they haven't marked
+ * scheduled yet is still on the desk. Drafts are nobody's to review, so neither
+ * value matches them.
+ */
+export type ReviewFilter = "todo" | "done";
+
 export interface ResponseFilters {
   /** A group id, or "none" for responders with no group. */
   groupId?: string | "none";
@@ -27,6 +34,8 @@ export interface ResponseFilters {
   /** Restrict by roster start date (`date` is `yyyy-mm-dd`). Rows with no
    *  recorded start date never match while this is set. */
   started?: { mode: StartedMode; date: string };
+  /** Restrict to submitted responses by whether they're marked scheduled. */
+  review?: ReviewFilter;
 }
 
 /** The minimal row shape the filters read. */
@@ -37,6 +46,7 @@ export interface FilterableResponse {
   hiredOn: Date | null;
   /** "missing" = a roster student with no submission row at all. */
   status: "draft" | "submitted" | "missing";
+  scheduled: boolean;
 }
 
 /** Short human label per flag type, shared by the filter dropdown and the pills. */
@@ -44,7 +54,7 @@ export const FLAG_LABELS: Record<DbFlagType, string> = {
   auto_assigned_weekend: "Auto-assigned weekend",
   travel_late: "Late travel",
   position_change: "Position changed",
-  revalidation_failed: "Fails validation",
+  revalidation_failed: "Failed validation",
 };
 
 const KNOWN_FLAGS: readonly FlagFilter[] = ["any", ...(Object.keys(FLAG_LABELS) as DbFlagType[])];
@@ -69,6 +79,15 @@ export const STARTED_MODE_OPTIONS: { value: string; label: string }[] = [
 
 const STARTED_MODES: readonly StartedMode[] = ["before", "after", "on"];
 
+/** Options for the review dropdown (value "" = no filter). */
+export const REVIEW_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Any" },
+  { value: "todo", label: "To review" },
+  { value: "done", label: "Reviewed" },
+];
+
+const REVIEW_FILTERS: readonly ReviewFilter[] = ["todo", "done"];
+
 const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 
 /** Read filters from raw query params (unknown/absent values are dropped). */
@@ -79,6 +98,7 @@ export function parseResponseFilters(params: {
   all?: string;
   started?: string;
   startedDate?: string;
+  review?: string;
 }): ResponseFilters {
   const filters: ResponseFilters = {};
   const group = params.group?.trim();
@@ -93,6 +113,10 @@ export function parseResponseFilters(params: {
   const date = params.startedDate?.trim();
   if (mode && date && (STARTED_MODES as readonly string[]).includes(mode) && isIsoDate(date)) {
     filters.started = { mode: mode as StartedMode, date };
+  }
+  const review = params.review?.trim();
+  if (review && (REVIEW_FILTERS as readonly string[]).includes(review)) {
+    filters.review = review as ReviewFilter;
   }
   return filters;
 }
@@ -120,6 +144,9 @@ export function applyResponseFilters<T extends FilterableResponse>(
       return false;
     }
     if (filters.started && !matchesStarted(r.hiredOn, filters.started)) return false;
+    // A draft isn't reviewable, so it matches neither side of the review filter.
+    if (filters.review === "todo" && !(r.status === "submitted" && !r.scheduled)) return false;
+    if (filters.review === "done" && !(r.status === "submitted" && r.scheduled)) return false;
     return true;
   });
 }
@@ -152,5 +179,6 @@ export function serializeResponseFilters(filters: ResponseFilters): string {
     params.set("started", filters.started.mode);
     params.set("startedDate", filters.started.date);
   }
+  if (filters.review) params.set("review", filters.review);
   return params.toString();
 }
