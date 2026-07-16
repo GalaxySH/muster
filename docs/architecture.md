@@ -315,7 +315,8 @@ panel does not render at all (every block tied at zero is an empty cycle, not a 
 
 Layout is full-bleed, split by a two-column shell (`.admin-shell` in `globals.css`): the
 nav rail on the left is **one** page-height panel holding every admin surface, grouped
-under Review / Configuration / Email headers with the live counts as pills; the status
+under Review / Configuration / Email headers with the live counts as pills (sign out
+sits pinned at the rail's foot); the status
 body on the right runs response progress paired with the alert card across the top, then
 the tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the remaining
 panels into as many columns as the body allows. Under 960px the rail becomes a

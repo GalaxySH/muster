@@ -23,14 +23,14 @@
   SL-only `/closes` wizard step, the `/admin/closes` dashboard, and the closes backup
   sheet. **Schedule change requests done** (roadmap 3.1, §4.1): the always-available
   `/change-requests` mini-flow, admin review on the per-student page, and the daily
-  digest email via the in-app scheduler (0.74; the token route stays as a manual
+  digest email via the in-app scheduler (0.75; the token route stays as a manual
   fallback). **Positions & shift blocks admin
   done** (roadmap 3.3, §6): `/admin/positions` CRUD with alias-mode consolidation,
   ghost-title resolution, the position-change carry-over rule + flags, and the
   insert-only seed. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.74
+- **Version:** 0.75
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -140,7 +140,7 @@ states that changes due to events/extracurriculars must include proof). Pure val
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
 withdrawable by the student. Requests
 render on the admin per-student page (§10) and are batched into a **daily digest email**
-to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.74: due
+to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
 daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
 no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
 remains as a manual fallback trigger (docs/deploy.md §7).
@@ -1053,7 +1053,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.74 (2026-07-16)** — **Digest goes in-app: scheduler replaces host cron (roadmap
+- **0.75 (2026-07-16)** — **Digest goes in-app: scheduler replaces host cron (roadmap
   3.1).** The daily change-request digest no longer needs a crontab on the box — the
   exact setup step that was still uninstalled in prod. `src/instrumentation.ts` (Next
   server-start hook, Node runtime only) starts a **tick loop** in
@@ -1068,11 +1068,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   off elsewhere unless `DIGEST_SCHEDULER_DEV=1`, so dev servers and Playwright runs
   never send spontaneously. The token route `POST /api/cron/change-digest` stays as a
   **manual fallback trigger** (bypasses due-check + claim; `CRON_SECRET` now optional).
-  The 0.73 health surface adapts: `digestRunHealth` (`disabled` | `starting` |
+  The 0.74 health surface adapts: `digestRunHealth` (`disabled` | `starting` |
   `never-ran` | `stale` | `ok`, with a 15-min startup grace fed by `process.uptime()`)
   replaces `digestCronHealth`, the `no-secret` state and the crontab setup card are
   gone, and the panel/hub copy points at the app logs instead of the crontab.
-- **0.73 (2026-07-15)** — **Digest cron health on /admin/email-settings.** The digest
+- **0.74 (2026-07-15)** — **Digest cron health on /admin/email-settings.** The digest
   panel no longer claims a bare "on" from the DB toggle alone: the page computes
   **cron health** server-side (pure `digestCronHealth` in `changes/digest-health.ts`:
   `no-secret` when `CRON_SECRET` is unset so the endpoint refuses every run,
@@ -1084,6 +1084,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   **"Last run"** line renders always. `DIGEST_STALE_HOURS` moved out of
   `dashboard-view.ts` into the new module so the hub and the settings page share one
   staleness threshold.
+- **0.73 (2026-07-15)** — **Admin hub: sign out moves into the nav rail (§10b).** The
+  button leaves the page bottom and pins to the rail's foot (drawer bottom on a
+  phone), so the rail is the one place for every leave-the-page action.
 - **0.72 (2026-07-15)** — **Admin hub: nav rail beside the status body (§10b).** The
   three navigation groups (Review / Configuration / Email) no longer float in the
   masonry as separate cards; they join into **one page-height rail on the left**
