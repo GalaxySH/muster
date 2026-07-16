@@ -7,6 +7,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBadgeCheck,
   faCalendar,
+  faChartColumn,
   faCircleCheck,
   faCircleExclamation,
   faEnvelope,
@@ -125,6 +126,12 @@ export default async function AdminPage() {
               }
               countTone="warning"
               countSuffix="short"
+            />
+            <NavCard
+              icon={faChartColumn}
+              title="Schedule coverage"
+              desc="Who can cover each shift, against targets"
+              href="/admin/schedule"
             />
           </NavGroup>
 

@@ -43,6 +43,12 @@ export interface ShiftBlock {
   start: number;
   /** minutes since midnight, exclusive end */
   end: number;
+  /**
+   * Admin-set target staffing per day this block runs (roadmap 5.1). Absent or
+   * null = no target. Optional so selection/validation code and fixtures that
+   * predate it stay valid; only coverage (and the future generator) read it.
+   */
+  desiredCapacity?: number | null;
 }
 
 /** A selectable availability position (PLAN.md §6.1). */

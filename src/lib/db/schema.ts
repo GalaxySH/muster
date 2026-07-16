@@ -58,6 +58,10 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
   dayType: mysqlEnum("day_type", dayTypeEnum).notNull(),
   startMinutes: int("start_minutes").notNull(),
   endMinutes: int("end_minutes").notNull(),
+  // Admin-set target staffing per day this block runs (roadmap 5.1). Null = no
+  // target: the coverage view shows a plain count and the future generator
+  // treats the block as uncapped. Applies to each applicable day alike.
+  desiredCapacity: int("desired_capacity"),
   // (high_demand removed in roadmap 2.5: demand is now computed from live
   // selection counts at grid load, not an admin-set column. See domain/demand.ts.)
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `shift_blocks` ADD `desired_capacity` int;

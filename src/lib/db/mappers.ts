@@ -25,5 +25,6 @@ export function toDomainBlock(row: ShiftBlockRow): ShiftBlock {
     dayType: row.dayType,
     start: row.startMinutes,
     end: row.endMinutes,
+    desiredCapacity: row.desiredCapacity,
   };
 }
