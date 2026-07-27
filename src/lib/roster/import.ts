@@ -218,8 +218,8 @@ export async function importRoster({
         .onDuplicateKeyUpdate({ set: { email: a.email } });
     }
 
-    // Only ever an onRoster flip on rows that already exist: name, position
-    // and any submission are kept, and nobody is created just to be inactive.
+    // Only ever an onRoster flip, never a delete: the name, position and any
+    // submission are kept, so someone re-listed later comes straight back.
     if (deactivate.length > 0) {
       await tx.update(students).set({ onRoster: false }).where(inArray(students.email, deactivate));
     }
