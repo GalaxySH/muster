@@ -10,6 +10,10 @@ import { getDb } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import {
+  parseSchedulingParams,
+  type SchedulingParams,
+} from "@/lib/domain/scheduling/params";
+import {
   effectiveExcludedTitles,
   SETTING_EXCLUDED_ROSTER_TITLES,
 } from "@/lib/roster/position-mapping";
@@ -42,6 +46,8 @@ export const SETTING_CHANGE_DIGEST_LAST_RUN = "change_digest_last_run";
  * is what lets the hub report Drive health without a network call (roadmap 4.1).
  */
 export const SETTING_DRIVE_LAST_OK_AT = "drive_last_ok_at";
+/** JSON SchedulingParams for the schedule engine, admin-set on /admin/schedule. Absent ⇒ defaults. */
+export const SETTING_SCHEDULE_PARAMS = "schedule_params";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -112,6 +118,15 @@ export async function getChangeDigestRecipients(): Promise<string[]> {
  */
 export async function getExcludedRosterTitles(): Promise<string[]> {
   return [...effectiveExcludedTitles(await getSetting(SETTING_EXCLUDED_ROSTER_TITLES))];
+}
+
+/**
+ * The schedule engine's tunable knobs (docs/schedule-generation-plan.md §3.2),
+ * admin-set on /admin/schedule; the domain defaults apply until first saved
+ * (and whenever the stored value is unreadable).
+ */
+export async function getSchedulingParams(): Promise<SchedulingParams> {
+  return parseSchedulingParams(await getSetting(SETTING_SCHEDULE_PARAMS));
 }
 
 /** Parse a stored ISO instant, treating an unparseable value as absent. */

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseTime,
   formatTime,
+  formatSpan,
   minutesToHHMM,
   hhmmToMinutes,
   minutesBetween,
@@ -105,5 +106,15 @@ describe("overlaps", () => {
 
   it("detects disjoint ranges", () => {
     expect(overlaps(r("6:45a", "10a"), r("12:30p", "2:30p"))).toBe(false);
+  });
+});
+
+describe("formatSpan", () => {
+  it("formats a start and end pair", () => {
+    expect(formatSpan(parseTime("4p"), parseTime("8p"))).toBe("4p to 8p");
+  });
+
+  it("shows a midnight end as 12a", () => {
+    expect(formatSpan(parseTime("7:45p"), 1440)).toBe("7:45p to 12a");
   });
 });

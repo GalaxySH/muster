@@ -3,35 +3,61 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import { SectionLabel, StatTile, cardsGridStyle, panelStyle } from "@/components/admin/ui";
-import { loadCoverage, type PositionCoverage } from "@/lib/schedule/data";
-import type { CoverageRow, CoverageStatus } from "@/lib/domain/coverage";
-import { formatTime } from "@/lib/domain/time";
+import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
+import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
+import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
+import { getSchedulingParams } from "@/lib/settings";
+import {
+  loadCoverage,
+  loadCurrentSchedule,
+  type CurrentSchedule,
+  type PositionCoverage,
+} from "@/lib/schedule/data";
+import {
+  assignedCellCount,
+  coverageStatus,
+  summarizeAssignedCoverage,
+  type CoverageRow,
+  type CoverageStatus,
+  type CoverageSummary,
+} from "@/lib/domain/coverage";
+import { demandCellKey } from "@/lib/domain/demand";
+import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
 
-/** Counts move with every submission; never serve a cached page. */
+/** Counts move with every submission and run; never serve a cached page. */
 export const dynamic = "force-dynamic";
 
 /**
- * Admin: schedule coverage (roadmap 5.1; docs/schedule-generation-plan.md
- * Phase A). Supply vs target per (block × day) cell, from submitted on-roster
- * availability. This is the coverage grid the future generator fills against;
- * until then it turns the hub's relative "least staffed" ranking into absolute
- * shortfall numbers wherever a target is set on /admin/positions.
+ * Admin: schedule coverage and the recommended schedule (roadmap 5.1;
+ * docs/schedule-generation-plan.md Phases A and B). Before a run exists the
+ * grid shows selection supply per (block × day) cell; once one is generated it
+ * grades the run's assigned seats against the targets, with supply in the cell
+ * tooltip, and lists every student's recommended shifts below.
  */
 export default async function AdminSchedulePage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const coverage = await loadCoverage();
+  const [coverage, schedule, params] = await Promise.all([
+    loadCoverage(),
+    loadCurrentSchedule(),
+    getSchedulingParams(),
+  ]);
+  const summaryOf = (p: PositionCoverage): CoverageSummary =>
+    schedule ? summarizeAssignedCoverage(p.rows, schedule.assignedCells) : p.summary;
   const totals = coverage.reduce(
-    (acc, p) => ({
-      targetedCells: acc.targetedCells + p.summary.targetedCells,
-      shortCells: acc.shortCells + p.summary.shortCells,
-      missing: acc.missing + p.summary.missing,
-      responders: acc.responders + p.responders,
-      roster: acc.roster + p.rosterCount,
-    }),
+    (acc, p) => {
+      const s = summaryOf(p);
+      return {
+        targetedCells: acc.targetedCells + s.targetedCells,
+        shortCells: acc.shortCells + s.shortCells,
+        missing: acc.missing + s.missing,
+        responders: acc.responders + p.responders,
+        roster: acc.roster + p.rosterCount,
+      };
+    },
     { targetedCells: 0, shortCells: 0, missing: 0, responders: 0, roster: 0 },
   );
 
@@ -40,12 +66,19 @@ export default async function AdminSchedulePage() {
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
       </AppHeader>
-      <h1>Schedule coverage</h1>
+      <h1>Schedule</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        Each cell counts the submitted students who could work that shift on that day, next to the
-        target staffing where one is set. Set targets per block on the Positions and shift blocks
-        page. Late shifts carry a Night or Evening tag so the hardest shifts to fill stand out.
+        {schedule
+          ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Hover a cell to see how many students could work it. Weekend cells show both rotation weeks as A·B."
+          : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Set targets per block on the Positions and shift blocks page."}
       </p>
+
+      <SchedulePanel schedule={schedule} responders={totals.responders} />
+
+      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+        <SectionLabel>Generation settings</SectionLabel>
+        <ScheduleParamsForm initial={params} />
+      </section>
 
       <div style={{ ...cardsGridStyle, maxWidth: 720 }}>
         <StatTile
@@ -75,14 +108,95 @@ export default async function AdminSchedulePage() {
       </p>
 
       {coverage.map((p) => (
-        <PositionSection key={p.positionId} coverage={p} />
+        <PositionSection
+          key={p.positionId}
+          coverage={p}
+          schedule={schedule}
+          summary={summaryOf(p)}
+        />
       ))}
+
+      {schedule && <StudentTable schedule={schedule} />}
     </Page>
   );
 }
 
-function PositionSection({ coverage }: { coverage: PositionCoverage }) {
-  const { positionName, rosterCount, responders, rows, summary } = coverage;
+function SchedulePanel({
+  schedule,
+  responders,
+}: {
+  schedule: CurrentSchedule | null;
+  responders: number;
+}) {
+  if (!schedule) {
+    return (
+      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+        <SectionLabel>Recommended schedule</SectionLabel>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+          No schedule has been generated yet. Responses are placed in the order they came in,
+          later shifts first.
+        </p>
+        <GenerateScheduleButton hasRun={false} />
+      </section>
+    );
+  }
+
+  const { report } = schedule;
+  const placed = report.students.filter((s) => s.assignedMinutes > 0).length;
+  const frozen = report.students.filter((s) => s.frozen).length;
+  const notes: string[] = [];
+  if (report.droppedStudents.length > 0) {
+    notes.push(`${report.droppedStudents.length} left the roster and were dropped`);
+  }
+  if (report.droppedBlockGone > 0) {
+    notes.push(`${report.droppedBlockGone} kept shifts pointed at removed blocks and were dropped`);
+  }
+  if (report.skippedNoPosition.length > 0) {
+    notes.push(`${report.skippedNoPosition.length} skipped with no position set`);
+  }
+  if (report.belowMinDays > 0) {
+    notes.push(`${report.belowMinDays} could not span their minimum days`);
+  }
+
+  return (
+    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+      <SectionLabel
+        action={
+          <a href="/admin/schedule/export" style={{ fontSize: 13 }}>
+            Download CSV
+          </a>
+        }
+      >
+        Recommended schedule
+      </SectionLabel>
+      <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
+        {schedule.totalAssignments} assignments across {placed} of {responders} responses.
+        {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
+        {report.shortOfTarget > 0 && ` ${report.shortOfTarget} students are short of their hours.`}
+        {report.params &&
+          ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
+      </p>
+      {notes.length > 0 && (
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
+          {notes.join("; ")}.
+        </p>
+      )}
+      <GenerateScheduleButton hasRun />
+    </section>
+  );
+}
+
+function PositionSection({
+  coverage,
+  schedule,
+  summary,
+}: {
+  coverage: PositionCoverage;
+  schedule: CurrentSchedule | null;
+  summary: CoverageSummary;
+}) {
+  const { positionName, rosterCount, responders, rows } = coverage;
   const dayTypes: { dayType: DayType; label: string }[] = [
     { dayType: "weekday", label: "Weekdays" },
     { dayType: "weekend", label: "Weekends" },
@@ -140,7 +254,7 @@ function PositionSection({ coverage }: { coverage: PositionCoverage }) {
                 </thead>
                 <tbody>
                   {dayRows.map((row) => (
-                    <CoverageTableRow key={row.blockId} row={row} />
+                    <CoverageTableRow key={row.blockId} row={row} schedule={schedule} />
                   ))}
                 </tbody>
               </table>
@@ -152,31 +266,59 @@ function PositionSection({ coverage }: { coverage: PositionCoverage }) {
   );
 }
 
-function CoverageTableRow({ row }: { row: CoverageRow }) {
+function CoverageTableRow({
+  row,
+  schedule,
+}: {
+  row: CoverageRow;
+  schedule: CurrentSchedule | null;
+}) {
   return (
     <tr>
       <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
-        {span(row.start, row.end)}
+        {formatSpan(row.start, row.end)}
         {row.tier === "night" && <span style={nightTag}>Night</span>}
         {row.tier === "evening" && <span style={eveningTag}>Evening</span>}
         {row.isClose && <span style={closeTag}>Close</span>}
       </td>
       <td style={{ ...cellTd, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
-      {row.cells.map((cell) => (
-        <td key={cell.day} style={{ ...cellTd, ...statusStyles[cell.status] }}>
-          {cell.count}
-          {cell.target !== null && (
-            <span style={{ opacity: 0.65 }}>/{cell.target}</span>
-          )}
-        </td>
-      ))}
+      {row.cells.map((cell) => {
+        if (!schedule) {
+          return (
+            <td key={cell.day} style={{ ...cellTd, ...statusStyles[cell.status] }}>
+              {cell.count}
+              {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
+            </td>
+          );
+        }
+        const counts = schedule.assignedCells.get(demandCellKey(row.blockId, cell.day));
+        const assigned = assignedCellCount(row.dayType, counts);
+        const status = coverageStatus(assigned, cell.target);
+        const shown =
+          row.dayType === "weekend" ? `${counts?.a ?? 0}·${counts?.b ?? 0}` : String(assigned);
+        return (
+          <td
+            key={cell.day}
+            title={`${cell.count} could work this shift`}
+            style={{ ...cellTd, ...statusStyles[status] }}
+          >
+            {shown}
+            {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
+          </td>
+        );
+      })}
     </tr>
   );
 }
 
-/** Format a span; a block may end exactly at midnight, shown as 12a. */
-const span = (start: number, end: number) =>
-  `${formatTime(start)} to ${formatTime(end === 1440 ? 0 : end)}`;
+function StudentTable({ schedule }: { schedule: CurrentSchedule }) {
+  return (
+    <section style={{ ...panelStyle, marginTop: 14 }}>
+      <SectionLabel>Students</SectionLabel>
+      <ScheduleStudentTable students={schedule.students} />
+    </section>
+  );
+}
 
 const statusStyles: Record<CoverageStatus, React.CSSProperties> = {
   ok: { background: "#e6f4ea", color: "#196127" },

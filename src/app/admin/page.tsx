@@ -122,7 +122,7 @@ export default async function AdminPage() {
               countTone="warning"
               countLabel="shift leads short of their close claims"
             />
-            <NavCard icon={faChartColumn} title="Schedule coverage" href="/admin/schedule" />
+            <NavCard icon={faChartColumn} title="Schedule" href="/admin/schedule" />
           </NavGroup>
 
           <NavGroup title="Configuration">

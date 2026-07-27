@@ -766,5 +766,63 @@ coverage view, no generator yet. Standard layering:
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
   "N people short" readout. No client island; the page is read-only.
 
-Later phases (the generator itself, runs/assignments, pins/restore) are specified in
-`docs/schedule-generation-plan.md` and will extend `src/lib/schedule/`.
+## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
+
+The generator itself, layered exactly like the rest of the app:
+
+- **Pure domain** `domain/scheduling/` (TDD; no I/O): `params.ts` (the
+  admin-tunable `SchedulingParams` — max hours per day, night/evening priority
+  0..100 — with validation and a never-throwing parse), `types.ts` (engine
+  input/output including the run report, which snapshots the params used),
+  `seats.ts` (the shared `SeatLedger` counting seats per cell **per weekend
+  rotation week** so capacity binds where it is worked, plus `need` = unmet
+  share of target, `tierBonus` = priority/100, and `averagedAssignedMinutes`
+  mirroring `computeCapacity`'s union/averaging math), `engine.ts`
+  (`generateAssignments`: FCFS by `submittedAt`, freeze carry-forward for
+  students marked scheduled, weekend-first seeding to the position's minimum
+  day span, open-days-first filling under the tunable day cap, targeted-first
+  cell choice ranked by pull = need + tier bonus so late cells run ahead
+  instead of soaking up every seat, cohort balancing by assigned weekend
+  load), and `improve.ts` (bounded same-day relocation accepted when the
+  destination's pull beats the vacated cell's, evaluated with the seat lifted
+  out; never drops hours, never grows a day count, never touches frozen
+  students). Everything is deterministically ordered; no randomness anywhere.
+- **Persistence** (migration 0017): append-only `schedule_runs`
+  (current/superseded + `summaryJson` = the engine report, retention 10) and
+  fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
+  shiftBlockId, day)` with a `cohort` column. Recommendations are derived data;
+  a deleted block simply takes its assignment rows with it (the block editor's
+  selection-reference guard is unchanged).
+- **Action** `schedule/actions.ts` `generateSchedule()`: admin-gated; loads
+  eligible students (`eligibleSubmittedFilter`, shared with the coverage
+  loader) with their selections, the current run's rows as the freeze source,
+  runs the pure engine, then transactionally supersedes the old run, inserts
+  the new one plus chunked assignment rows, and prunes beyond retention.
+- **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
+  page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
+  split A/B, and per-student rows joining live names/positions/scheduled onto
+  the run report). `domain/coverage.ts` grew `assignedCellCount` (weekend cells
+  grade on the needier week) and `summarizeAssignedCoverage` so the page's
+  totals switch from selection supply to assigned seats once a run exists.
+- **UI** `/admin/schedule`: the run panel (`GenerateScheduleButton`, a small
+  client island with a two-step confirm), the coverage grid re-used with
+  assigned counts (weekend `A·B`, supply in the tooltip), the per-student
+  table (hours vs target, rotation, shifts, "kept" chip on frozen rows), and
+  the CSV route `/admin/schedule/export` (reuses `toCsv` and its formula-
+  injection guard).
+- **Tunable params** ride `app_settings` (`schedule_params`, one JSON row):
+  `getSchedulingParams` in `lib/settings.ts`, the admin-gated
+  `saveScheduleParams` action, and the `ScheduleParamsForm` island on
+  `/admin/schedule`. Saved values apply from the next update; each run's
+  stored report records what it actually used.
+- **Dev tooling** `src/scripts/generate-availability.ts`
+  (`npm run dev:generate-availability`): seeded, deterministic synthetic
+  students + submitted selections that pass the real `validateAvailability`;
+  `--clean` removes exactly the `synthetic-` rows; refuses production.
+
+**The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
+protection concept. Frozen students' rows carry forward verbatim through every
+run and consume capacity first; marking scheduled still never changes response
+status or the non-response list (both key on `confirmedAt`). Phase C (run
+history + restore UI, diffs, staleness banner, the `Muster Schedule` sheet) is
+specified in `docs/schedule-generation-plan.md`.

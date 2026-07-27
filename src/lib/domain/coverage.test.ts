@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  assignedCellCount,
   buildCoverageRows,
   coverageStatus,
   latenessTier,
+  summarizeAssignedCoverage,
   summarizeCoverage,
 } from "./coverage";
 import type { CellCount } from "./demand";
@@ -124,5 +126,48 @@ describe("summarizeCoverage", () => {
   it("is all zeros when no block has a target", () => {
     const rows = buildCoverageRows([block("we", "weekend", "9a", "1p")], []);
     expect(summarizeCoverage(rows)).toEqual({ targetedCells: 0, shortCells: 0, missing: 0 });
+  });
+});
+
+describe("summarizeAssignedCoverage", () => {
+  const cellKey = (blockId: string, day: string) => `${blockId}|${day}`;
+
+  it("grades weekday cells by their count and weekend cells by the needier week", () => {
+    const rows = buildCoverageRows(
+      [block("wd", "weekday", "5p", "8p", 3), block("we", "weekend", "9a", "1p", 2)],
+      [],
+    );
+    const assigned = new Map([
+      [cellKey("wd", "mon"), { a: 3, b: 0 }],
+      [cellKey("wd", "tue"), { a: 1, b: 0 }],
+      [cellKey("we", "sat"), { a: 2, b: 1 }],
+      [cellKey("we", "sun"), { a: 2, b: 2 }],
+    ]);
+    // Weekday: mon ok, tue short 2, wed-fri short 3 each. Weekend: sat graded on
+    // week b (1 of 2, short 1), sun ok.
+    expect(summarizeAssignedCoverage(rows, assigned)).toEqual({
+      targetedCells: 7,
+      shortCells: 5,
+      missing: 12,
+    });
+  });
+
+  it("treats unassigned cells as zero", () => {
+    const rows = buildCoverageRows([block("wd", "weekday", "5p", "8p", 1)], []);
+    expect(summarizeAssignedCoverage(rows, new Map())).toEqual({
+      targetedCells: 5,
+      shortCells: 5,
+      missing: 5,
+    });
+  });
+});
+
+describe("assignedCellCount", () => {
+  it("is zero when nothing is assigned", () => {
+    expect(assignedCellCount("weekday", undefined)).toBe(0);
+  });
+  it("uses the plain count on weekdays and the needier week on weekends", () => {
+    expect(assignedCellCount("weekday", { a: 4, b: 0 })).toBe(4);
+    expect(assignedCellCount("weekend", { a: 4, b: 2 })).toBe(2);
   });
 });
