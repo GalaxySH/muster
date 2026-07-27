@@ -1,0 +1,428 @@
+import { describe, it, expect } from "vitest";
+import { parseTime } from "../time";
+import { computeCapacity } from "../capacity";
+import type { Position, SelectedShift, ShiftBlock } from "../types";
+import { DAY_CAP_MINUTES, generateAssignments, targetMinutes } from "./engine";
+import type { EngineInput, ScheduleAssignment, ScheduleStudent } from "./types";
+
+const CA: Position = {
+  id: "ca",
+  name: "Culinary Assistant",
+  minHours: 10,
+  minDays: 2,
+  weekendExempt: false,
+};
+const SL: Position = { id: "sl", name: "Shift Lead", minHours: 15, minDays: 3, weekendExempt: false };
+const BAR: Position = { id: "barista", name: "Barista", minHours: 10, minDays: 2, weekendExempt: true };
+const POSITIONS = [CA, SL, BAR];
+
+function block(
+  id: string,
+  positionId: string,
+  dayType: "weekday" | "weekend",
+  start: string,
+  end: string,
+  desiredCapacity: number | null = null,
+): ShiftBlock {
+  return { id, positionId, dayType, start: parseTime(start), end: parseTime(end), desiredCapacity };
+}
+
+const sel = (blockId: string, day: SelectedShift["day"]): SelectedShift => ({ blockId, day });
+
+/** Deterministic FCFS stamps: minute n of the response window. */
+const at = (n: number) => new Date(Date.UTC(2026, 7, 1, 10, n));
+
+function student(email: string, over: Partial<ScheduleStudent> = {}): ScheduleStudent {
+  return {
+    email,
+    positionId: "ca",
+    international: false,
+    everyWeekendOptIn: false,
+    desiredHours: 10,
+    submittedAt: at(0),
+    scheduled: false,
+    selection: [],
+    ...over,
+  };
+}
+
+function run(
+  students: ScheduleStudent[],
+  blocks: ShiftBlock[],
+  previous: ScheduleAssignment[] = [],
+): ReturnType<typeof generateAssignments> {
+  const input: EngineInput = { students, positions: POSITIONS, blocks, previous };
+  return generateAssignments(input);
+}
+
+const rowsOf = (result: ReturnType<typeof generateAssignments>, email: string) =>
+  result.assignments.filter((a) => a.studentEmail === email);
+
+const reportOf = (result: ReturnType<typeof generateAssignments>, email: string) =>
+  result.report.students.find((s) => s.email === email)!;
+
+/** Merged assigned minutes per day for one student, to check the daily cap. */
+function dayLoads(rows: ScheduleAssignment[], blocks: ShiftBlock[]): Map<string, number> {
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+  const loads = new Map<string, number>();
+  const perDay = new Map<string, { start: number; end: number }[]>();
+  for (const r of rows) {
+    const b = byId.get(r.blockId)!;
+    const list = perDay.get(r.day) ?? [];
+    list.push({ start: b.start, end: b.end });
+    perDay.set(r.day, list);
+  }
+  for (const [day, ranges] of perDay) {
+    ranges.sort((a, b) => a.start - b.start);
+    let total = 0;
+    let cur = { ...ranges[0]! };
+    for (const r of ranges.slice(1)) {
+      if (r.start <= cur.end) cur.end = Math.max(cur.end, r.end);
+      else {
+        total += cur.end - cur.start;
+        cur = { ...r };
+      }
+    }
+    total += cur.end - cur.start;
+    loads.set(day, total);
+  }
+  return loads;
+}
+
+// Barista weekday grid: two adjacent 4h blocks per day, so a full day is 8h.
+const barGrid = [
+  block("bar-am", "barista", "weekday", "8a", "12p"),
+  block("bar-pm", "barista", "weekday", "12p", "4p"),
+];
+const barSelection = (["mon", "tue", "wed", "thu", "fri"] as const).flatMap((d) => [
+  sel("bar-am", d),
+  sel("bar-pm", d),
+]);
+
+describe("targetMinutes", () => {
+  it("uses desired hours between floor and cap", () => {
+    expect(targetMinutes(student("s@w", { desiredHours: 12 }), CA)).toBe(720);
+  });
+  it("raises a too-low desire to the position floor", () => {
+    expect(targetMinutes(student("s@w", { desiredHours: 5 }), CA)).toBe(600);
+  });
+  it("falls back to the floor when desired hours are missing", () => {
+    expect(targetMinutes(student("s@w", { desiredHours: null }), SL)).toBe(900);
+  });
+  it("caps at 30h domestic and 20h international", () => {
+    expect(targetMinutes(student("s@w", { desiredHours: 40 }), CA)).toBe(1800);
+    expect(
+      targetMinutes(student("s@w", { desiredHours: 40, international: true }), CA),
+    ).toBe(1200);
+  });
+});
+
+describe("generateAssignments", () => {
+  it("is deterministic: the same input twice gives identical output", () => {
+    const students = [
+      student("b@w", { positionId: "barista", selection: barSelection, submittedAt: at(1) }),
+      student("a@w", { positionId: "barista", selection: barSelection, submittedAt: at(2) }),
+    ];
+    const first = run(students, barGrid);
+    const second = run(students, barGrid);
+    expect(second).toEqual(first);
+  });
+
+  it("concentrates a 10h target onto the minimum two days", () => {
+    const r = run(
+      [student("b@w", { positionId: "barista", desiredHours: 10, selection: barSelection })],
+      barGrid,
+    );
+    const report = reportOf(r, "b@w");
+    expect(report.daysUsed).toBe(2);
+    expect(report.assignedMinutes).toBeGreaterThanOrEqual(600);
+    for (const load of dayLoads(rowsOf(r, "b@w"), barGrid).values()) {
+      expect(load).toBeLessThanOrEqual(DAY_CAP_MINUTES);
+    }
+  });
+
+  it("opens a third day only when 8h days cannot hold the target", () => {
+    const r = run(
+      [student("b@w", { positionId: "barista", desiredHours: 20, selection: barSelection })],
+      barGrid,
+    );
+    const report = reportOf(r, "b@w");
+    expect(report.daysUsed).toBe(3);
+    expect(report.assignedMinutes).toBeGreaterThanOrEqual(1200);
+    for (const load of dayLoads(rowsOf(r, "b@w"), barGrid).values()) {
+      expect(load).toBeLessThanOrEqual(DAY_CAP_MINUTES);
+    }
+  });
+
+  it("seeds a Shift Lead's three-day floor even when two days would reach the hours", () => {
+    const blocks = [
+      block("sl-mon", "sl", "weekday", "10a", "6p"),
+      block("sl-tue", "sl", "weekday", "10a", "6p"),
+      block("sl-wed", "sl", "weekday", "2p", "6p"),
+    ];
+    const r = run(
+      [
+        student("lead@w", {
+          positionId: "sl",
+          desiredHours: 15,
+          selection: [sel("sl-mon", "mon"), sel("sl-tue", "tue"), sel("sl-wed", "wed")],
+        }),
+      ],
+      blocks,
+    );
+    expect(reportOf(r, "lead@w").daysUsed).toBe(3);
+  });
+
+  it("lets a single block longer than 8h stand alone on its day", () => {
+    const blocks = [
+      block("long", "barista", "weekday", "8a", "5p"), // 9h
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 10,
+          selection: [sel("long", "mon"), sel("bar-am", "mon"), sel("bar-pm", "tue")],
+        }),
+      ],
+      blocks,
+    );
+    const loads = dayLoads(rowsOf(r, "b@w"), blocks);
+    expect(loads.get("mon")).toBe(540);
+    // Nothing stacked past the cap on Monday: only the long block lives there.
+    expect(rowsOf(r, "b@w").filter((a) => a.day === "mon")).toHaveLength(1);
+  });
+
+  it("gives a contested last seat to the earlier responder", () => {
+    const blocks = [
+      block("scarce", "barista", "weekday", "12p", "4p", 1),
+      ...barGrid,
+    ];
+    const selection = [sel("scarce", "mon"), ...barSelection];
+    const r = run(
+      [
+        student("late@w", { positionId: "barista", selection, submittedAt: at(9) }),
+        student("early@w", { positionId: "barista", selection, submittedAt: at(3) }),
+      ],
+      blocks,
+    );
+    const holders = r.assignments.filter((a) => a.blockId === "scarce").map((a) => a.studentEmail);
+    expect(holders).toEqual(["early@w"]);
+  });
+
+  it("prefers later-ending cells, then scarcer ones", () => {
+    const blocks = [
+      block("morning", "barista", "weekday", "8a", "12p"),
+      block("night", "barista", "weekday", "5p", "9p"),
+      block("targeted", "barista", "weekday", "12p", "4p", 5),
+      block("untargeted", "barista", "weekday", "12p", "4p"),
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 10,
+          selection: [
+            sel("morning", "mon"),
+            sel("night", "mon"),
+            sel("targeted", "tue"),
+            sel("untargeted", "tue"),
+          ],
+        }),
+      ],
+      blocks,
+    );
+    const ids = rowsOf(r, "b@w").map((a) => a.blockId);
+    expect(ids).toContain("night");
+    expect(ids).toContain("targeted");
+    expect(ids).not.toContain("untargeted");
+  });
+
+  it("never assigns two overlapping staggered blocks on the same day", () => {
+    const blocks = [
+      block("first", "barista", "weekday", "12p", "4p"),
+      block("stagger", "barista", "weekday", "2p", "6p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          selection: [sel("first", "mon"), sel("stagger", "mon"), ...barSelection],
+        }),
+      ],
+      blocks,
+    );
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId);
+    expect(monIds.includes("first") && monIds.includes("stagger")).toBe(false);
+  });
+
+  it("assigns only cells the student selected", () => {
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          selection: [sel("bar-am", "mon"), sel("bar-pm", "mon"), sel("bar-am", "tue")],
+        }),
+      ],
+      barGrid,
+    );
+    const offered = new Set(["bar-am|mon", "bar-pm|mon", "bar-am|tue"]);
+    for (const a of rowsOf(r, "b@w")) {
+      expect(offered.has(`${a.blockId}|${a.day}`)).toBe(true);
+    }
+  });
+
+  it("seeds every non-exempt student a weekend cell and balances cohorts by load", () => {
+    const blocks = [
+      block("wd", "ca", "weekday", "8a", "4p"),
+      block("wd2", "ca", "weekday", "8a", "4p"),
+      block("we", "ca", "weekend", "11a", "7p"),
+    ];
+    const selection = [
+      sel("wd", "mon"),
+      sel("wd", "tue"),
+      sel("wd2", "wed"),
+      sel("we", "sat"),
+    ];
+    const r = run(
+      [
+        student("one@w", { selection, submittedAt: at(1) }),
+        student("two@w", { selection, submittedAt: at(2) }),
+      ],
+      blocks,
+    );
+    const cohortOf = (email: string) =>
+      rowsOf(r, email).find((a) => a.day === "sat")!.cohort;
+    expect(cohortOf("one@w")).toBe("a");
+    expect(cohortOf("two@w")).toBe("b");
+    expect(reportOf(r, "one@w").cohort).toBe("a");
+  });
+
+  it("counts an every-weekend opt-in against both rotation weeks", () => {
+    const blocks = [
+      block("wd", "ca", "weekday", "8a", "4p"),
+      block("we", "ca", "weekend", "11a", "7p", 1),
+    ];
+    const selection = [sel("wd", "mon"), sel("wd", "tue"), sel("we", "sat")];
+    const r = run(
+      [
+        student("opt@w", { selection, everyWeekendOptIn: true, submittedAt: at(1) }),
+        student("next@w", { selection, submittedAt: at(2) }),
+      ],
+      blocks,
+    );
+    expect(rowsOf(r, "opt@w").find((a) => a.day === "sat")!.cohort).toBe("every");
+    // The single weekend seat is spent in both weeks, so nobody else fits.
+    expect(rowsOf(r, "next@w").filter((a) => a.day === "sat")).toHaveLength(0);
+  });
+
+  it("matches computeCapacity's averaging math for assigned hours", () => {
+    const blocks = [
+      block("wd", "ca", "weekday", "8a", "4p"),
+      block("wd2", "ca", "weekday", "4p", "8p"),
+      block("we", "ca", "weekend", "11a", "7p"),
+    ];
+    const r = run(
+      [
+        student("s@w", {
+          desiredHours: 14,
+          selection: [sel("wd", "mon"), sel("wd2", "tue"), sel("we", "sat"), sel("we", "sun")],
+        }),
+      ],
+      blocks,
+    );
+    const rows = rowsOf(r, "s@w");
+    const asSelection = rows.map((a) => ({ blockId: a.blockId, day: a.day }));
+    const capacity = computeCapacity(asSelection, blocks, { everyWeekendOptIn: false });
+    expect(reportOf(r, "s@w").assignedMinutes).toBeCloseTo(capacity.weeklyAverageMinutes, 6);
+  });
+
+  it("carries a scheduled student's previous rows verbatim and holds their seats", () => {
+    const blocks = [
+      block("scarce", "ca", "weekend", "11a", "7p", 1),
+      block("wd", "ca", "weekday", "8a", "4p"),
+    ];
+    const previous: ScheduleAssignment[] = [
+      { studentEmail: "frozen@w", blockId: "scarce", day: "sat", cohort: "a" },
+      { studentEmail: "frozen@w", blockId: "wd", day: "mon", cohort: "weekday" },
+    ];
+    const selection = [sel("scarce", "sat"), sel("wd", "mon"), sel("wd", "tue")];
+    const r = run(
+      [
+        student("frozen@w", { selection, scheduled: true, submittedAt: at(9) }),
+        student("rival@w", { selection, submittedAt: at(1) }),
+      ],
+      blocks,
+      previous,
+    );
+    const byBlock = (a: ScheduleAssignment, b: ScheduleAssignment) =>
+      a.blockId < b.blockId ? -1 : 1;
+    expect([...rowsOf(r, "frozen@w")].sort(byBlock)).toEqual([...previous].sort(byBlock));
+    expect(reportOf(r, "frozen@w").frozen).toBe(true);
+    // The frozen seat wins even against an earlier responder in cohort a.
+    const rivalSat = rowsOf(r, "rival@w").find((a) => a.day === "sat");
+    expect(rivalSat?.cohort).toBe("b");
+  });
+
+  it("generates nothing new for a scheduled student without previous rows", () => {
+    const r = run(
+      [student("frozen@w", { positionId: "barista", selection: barSelection, scheduled: true })],
+      barGrid,
+    );
+    expect(rowsOf(r, "frozen@w")).toHaveLength(0);
+    expect(reportOf(r, "frozen@w").frozen).toBe(true);
+  });
+
+  it("drops previous rows of students no longer eligible and reports them", () => {
+    const previous: ScheduleAssignment[] = [
+      { studentEmail: "gone@w", blockId: "bar-am", day: "mon", cohort: "weekday" },
+    ];
+    const r = run(
+      [student("b@w", { positionId: "barista", selection: barSelection })],
+      barGrid,
+      previous,
+    );
+    expect(rowsOf(r, "gone@w")).toHaveLength(0);
+    expect(r.report.droppedStudents).toEqual(["gone@w"]);
+  });
+
+  it("drops a carried row whose block no longer exists and counts it", () => {
+    const previous: ScheduleAssignment[] = [
+      { studentEmail: "frozen@w", blockId: "deleted-block", day: "mon", cohort: "weekday" },
+      { studentEmail: "frozen@w", blockId: "bar-am", day: "tue", cohort: "weekday" },
+    ];
+    const r = run(
+      [student("frozen@w", { positionId: "barista", selection: [], scheduled: true })],
+      barGrid,
+      previous,
+    );
+    expect(rowsOf(r, "frozen@w").map((a) => a.blockId)).toEqual(["bar-am"]);
+    expect(r.report.droppedBlockGone).toBe(1);
+  });
+
+  it("skips and reports students without a known position", () => {
+    const r = run([student("lost@w", { positionId: null })], barGrid);
+    expect(r.assignments).toHaveLength(0);
+    expect(r.report.skippedNoPosition).toEqual(["lost@w"]);
+  });
+
+  it("reports students who fall short of their target", () => {
+    const blocks = [block("only", "barista", "weekday", "8a", "12p")];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [sel("only", "mon"), sel("only", "tue")],
+        }),
+      ],
+      blocks,
+    );
+    expect(r.report.shortOfTarget).toBe(1);
+    expect(reportOf(r, "b@w").assignedMinutes).toBe(480);
+  });
+});

@@ -82,6 +82,11 @@ export function hhmmToMinutes(value: string): number | null {
   return total > 1440 ? null : total;
 }
 
+/** Format a span like "4p to 8p". A block may end exactly at midnight (12a). */
+export function formatSpan(start: number, end: number): string {
+  return `${formatTime(start)} to ${formatTime(end === 1440 ? 0 : end)}`;
+}
+
 /** Duration of a range in minutes. */
 export function minutesBetween(range: TimeRange): number {
   return range.end - range.start;

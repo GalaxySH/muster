@@ -316,6 +316,51 @@ export const closeClaims = mysqlTable(
   (t) => [primaryKey({ columns: [t.closeSlotId, t.studentEmail] })],
 );
 
+export const scheduleRunStatusEnum = ["current", "superseded"] as const;
+export const cohortEnum = ["weekday", "a", "b", "every"] as const;
+
+/**
+ * One generation of the recommended schedule (docs/schedule-generation-plan.md
+ * §2.2). Runs are append-only: generating never deletes a prior run's rows, it
+ * writes a new run and flips `status`, so any regeneration can be undone by
+ * marking a superseded run current again. Old runs beyond a retention count are
+ * pruned. `summaryJson` holds the engine's run report for the admin view.
+ */
+export const scheduleRuns = mysqlTable("schedule_runs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  generatedBy: varchar("generated_by", { length: 255 }).notNull(),
+  status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
+  summaryJson: text("summary_json").notNull(),
+});
+
+/**
+ * One recommended (student × block × day) cell of a run (plan §2.3), always
+ * drawn from the student's own shift_selections; deliberately separate from
+ * that table because preferences (input) and recommendations (output) never
+ * share a table. `cohort` places weekend cells on the A/B rotation ("every"
+ * for opt-ins, who work both weeks); weekday cells carry "weekday". Rows are
+ * derived data, so everything cascades: losing a run, student, or block just
+ * removes the recommendation.
+ */
+export const scheduleAssignments = mysqlTable(
+  "schedule_assignments",
+  {
+    runId: varchar("run_id", { length: 36 })
+      .notNull()
+      .references(() => scheduleRuns.id, { onDelete: "cascade" }),
+    studentEmail: varchar("student_email", { length: 255 })
+      .notNull()
+      .references(() => students.email, { onDelete: "cascade" }),
+    shiftBlockId: varchar("shift_block_id", { length: 96 })
+      .notNull()
+      .references(() => shiftBlocks.id, { onDelete: "cascade" }),
+    day: mysqlEnum("day", dayEnum).notNull(),
+    cohort: mysqlEnum("cohort", cohortEnum).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.studentEmail, t.shiftBlockId, t.day] })],
+);
+
 // --- Relations (for typed relational queries) ---
 
 export const positionsRelations = relations(positions, ({ many }) => ({

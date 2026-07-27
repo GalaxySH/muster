@@ -129,8 +129,8 @@ export default async function AdminPage() {
             />
             <NavCard
               icon={faChartColumn}
-              title="Schedule coverage"
-              desc="Who can cover each shift, against targets"
+              title="Schedule"
+              desc="Recommended schedules and coverage against targets"
               href="/admin/schedule"
             />
           </NavGroup>

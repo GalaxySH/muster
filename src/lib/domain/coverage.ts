@@ -132,3 +132,40 @@ export function summarizeCoverage(rows: readonly CoverageRow[]): CoverageSummary
   }
   return summary;
 }
+
+/** Seats a schedule run fills in one cell, per weekend rotation week. */
+export interface AssignedCounts {
+  a: number;
+  b: number;
+}
+
+/**
+ * The staffing a run gives one cell for grading against its target: the count
+ * for weekday cells, the needier rotation week for weekend cells (each real
+ * weekend day is worked by one cohort plus the every-weekend students, so the
+ * target must hold in both weeks).
+ */
+export function assignedCellCount(dayType: DayType, counts: AssignedCounts | undefined): number {
+  if (!counts) return 0;
+  return dayType === "weekend" ? Math.min(counts.a, counts.b) : counts.a;
+}
+
+/** summarizeCoverage against a run's assigned seats instead of selection supply. */
+export function summarizeAssignedCoverage(
+  rows: readonly CoverageRow[],
+  assigned: ReadonlyMap<string, AssignedCounts>,
+): CoverageSummary {
+  const summary: CoverageSummary = { targetedCells: 0, shortCells: 0, missing: 0 };
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.target === null) continue;
+      summary.targetedCells += 1;
+      const count = assignedCellCount(row.dayType, assigned.get(demandCellKey(row.blockId, cell.day)));
+      if (count < cell.target) {
+        summary.shortCells += 1;
+        summary.missing += cell.target - count;
+      }
+    }
+  }
+  return summary;
+}
