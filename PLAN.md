@@ -1200,7 +1200,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   **Nudge lists** are scoped to open windows (a reminder cannot help a student whose window
   has not opened or has closed). **Boot guard:** `env-guard.ts` now refuses to start prod
   with empty `GOOGLE_CLIENT_ID`/`SECRET` or a localhost `NEXTAUTH_URL`. All policy stays in
-  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +49 tests, 602 pass.
+  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +34 tests, 602 pass.
 - **0.86 (2026-07-27)** — **Roster import reads the PC & Training Tracker (§4.2, §9,
   §16.2).** The workbook changed shape for the new year: one sheet per dining unit
   (Muster reads **Gordon**) with a **Status** column, and no People Coming / People
