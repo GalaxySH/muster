@@ -182,6 +182,10 @@ interface SubmissionPatch {
  * response. Shared by the student's own save and the admin's on-behalf save.
  * Neither ever promotes a draft: the status is whatever the row already had, so
  * a row an admin starts stays a draft the student has yet to confirm.
+ *
+ * `studentEdit` decides whether this counts as the student changing their own
+ * answers, which is exactly what `updated_at` records (PLAN §9): true for their
+ * own save, false for an admin's on-behalf one.
  */
 async function persistAvailability(args: {
   email: string;
@@ -189,8 +193,10 @@ async function persistAvailability(args: {
   patch: SubmissionPatch;
   position: Position;
   blocks: ShiftBlock[];
+  studentEdit: boolean;
 }): Promise<AutoAssignedShift | null> {
-  const { email, selection, patch, position, blocks } = args;
+  const { email, selection, position, blocks } = args;
+  const patch = args.studentEdit ? { ...args.patch, updatedAt: new Date() } : args.patch;
   const db = getDb();
   const { effectiveStatus, autoAssigned } = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -274,6 +280,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     patch: { everyWeekendOptIn: input.everyWeekendOptIn, desiredHours, studentNotes },
     position,
     blocks,
+    studentEdit: true,
   });
 
   revalidatePath("/availability");
@@ -290,7 +297,8 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
  * they can add travel past the cutoff. Status behaviour matches the other
  * on-behalf-of actions: this starts a draft when there is no submission and never
  * promotes one, so a row an admin created still reads "missing" until the student
- * confirms it themselves (`responseStatus`).
+ * confirms it themselves (`responseStatus`). It also leaves `updated_at` alone,
+ * which tracks the student's own edits only.
  */
 export async function saveAvailabilityFor(
   student: string,
@@ -317,6 +325,7 @@ export async function saveAvailabilityFor(
     patch: { everyWeekendOptIn: input.everyWeekendOptIn },
     position,
     blocks,
+    studentEdit: false,
   });
 
   revalidatePath("/availability");
@@ -347,6 +356,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
       everyWeekendOptIn: submissions.everyWeekendOptIn,
       desiredHours: submissions.desiredHours,
       courseScheduleFileId: submissions.courseScheduleFileId,
+      submittedAt: submissions.submittedAt,
     })
     .from(submissions)
     .where(eq(submissions.studentEmail, email))
@@ -399,10 +409,13 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
   }
 
   let autoAssigned: AutoAssignedShift | null = null;
+  const now = new Date();
   await db.transaction(async (tx) => {
     await tx
       .update(submissions)
-      .set({ status: "submitted", submittedAt: new Date() })
+      // submittedAt records the FIRST submit, so a student finishing the wizard
+      // again keeps their original stamp; updatedAt moves, since they just edited.
+      .set({ status: "submitted", submittedAt: sub.submittedAt ?? now, updatedAt: now })
       .where(eq(submissions.id, sub.id));
     autoAssigned = await writeSelectionAndFlags(tx, {
       submissionId: sub.id,

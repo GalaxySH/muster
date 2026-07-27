@@ -252,7 +252,19 @@ deliberately hidden until the student has started** (against an empty selection 
 check would read as failing) and a student with no position gets a notice instead of the
 calculator. The header rings red (`--color-border-danger`) with a draft/missing badge
 until the response is submitted; its button-shaped controls opt into the `.btn-hover`
-class in `globals.css`, since inline style objects can't express `:hover`. The client
+class in `globals.css`, since inline style objects can't express `:hover`.
+
+**Header timestamps (v0.81).** `ResponseStamps` renders both submission stamps as two
+label→value rows in one tinted panel: **Submitted** (write-once first submit, "not yet"
+on a draft) and **Last updated** (the student's own last edit). See the availability
+section for who is allowed to move each. Two constraints are load-bearing. The pair is
+**two lines, not four** (label inline with its value) and tuned to stay **under the 40px
+avatar** beside it, so the avatar remains the tallest element and the bar keeps the
+height it had when it showed one timestamp — if you change the font size, line height, or
+padding, re-measure. And the old header fell back to `updatedAt` when `submittedAt` was
+null, which labelled an edit time as a submit time; the stamps are now distinct fields
+and never substitute for each other. `fmtStamp` is the compact one-line form of
+`fmtDate` (same US Central rendering, seconds dropped). The client
 islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
 both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
@@ -443,7 +455,23 @@ non-exempt students who picked none (pure `domain/auto-assign.ts`) as an `auto_a
 `shift_selections` row + an `auto_assigned_weekend` `flags` row, raises `travel_late`, and
 resyncs the Drive sheet. Both actions share a private `writeSelectionAndFlags` (auto-assign
 + flags run only when the effective status is `submitted`, so an already-submitted form
-stays consistent when edited).
+stays consistent when edited). `finalizeSubmission` stamps `submitted_at` **only when it is
+null**, so it records the first submit and a student finishing the wizard again keeps it.
+
+**Who moves `updated_at` (v0.81).** It means "when the student last changed their own
+answers", so it is deliberately **not** `ON UPDATE CURRENT_TIMESTAMP` (migration `0016`
+dropped the clause) — otherwise every admin write to the row silently moved it. Student
+paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
+`finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
+Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
+(notes, scheduled mark), the schedule-email stamp, and `saveAvailabilityFor`. The one shared
+seam that needs care is evidence, where the same action serves both callers: `editStamp(who)`
+spreads the column into a `.set()` that is already updating the submission, and
+`touchSubmission(id, who)` covers the actions that only wrote child rows (a travel entry, a
+proof file) and would otherwise leave the parent's stamp stale. Both key off the `onBehalf`
+flag the gate already returns. Downstream, this makes the hub's stalled-draft cutoff and
+"recent submissions" honest: an admin note no longer refreshes a stalled draft, and a
+re-submit no longer jumps someone to the top of recent.
 
 **`saveAvailabilityFor(student, …)` (v0.80)** is the admin's on-behalf save, called by
 `PrefGridCalculator` on the per-student page (§10a). It gates through

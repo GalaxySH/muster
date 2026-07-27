@@ -75,6 +75,26 @@ const fmtDate = (d: Date | null) => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`;
 };
 
+/**
+ * The same instant as `fmtDate`, abbreviated to one short line ("26 Jul 2026 19:13
+ * CDT") so the header can show two stamps without growing taller. Same US Central
+ * rendering (see `fmtDate`); seconds are dropped, since nothing here turns on them.
+ */
+const fmtStamp = (d: Date): string => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Chicago",
+    timeZoneName: "short",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
+};
+
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
@@ -194,19 +214,14 @@ export default async function StudentDetailPage({
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {status === "submitted" ? (
-            <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-              submitted · {fmtDate(submission!.submittedAt ?? submission!.updatedAt)}
-            </span>
-          ) : (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-              <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
-              {status === "draft" && (
-                <span style={{ color: "var(--color-text-tertiary)" }}>
-                  edited {fmtDate(submission!.updatedAt)}
-                </span>
-              )}
-            </span>
+          {status !== "submitted" && (
+            <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
+          )}
+          {submission && (
+            <ResponseStamps
+              submittedAt={submission.submittedAt}
+              updatedAt={submission.updatedAt}
+            />
           )}
           <Link
             href={`/change-requests?student=${encodeURIComponent(detail.email)}`}
@@ -651,6 +666,42 @@ function JumpMenu({
 }
 
 /**
+ * The two timestamps every response carries, side by side in the header: when the
+ * student first submitted, and when they last changed anything. They read as one
+ * paired unit rather than a line of fine print, because the scheduler uses them to
+ * judge how current a response is.
+ *
+ * **Submitted** is write-once (the first submit, never moved by a later edit), so a
+ * draft has none yet. **Last updated** tracks the student's own edits only: admin
+ * actions on this page (notes, the scheduled mark, anything saved on the student's
+ * behalf) deliberately leave it alone, so it can't imply the student came back.
+ */
+function ResponseStamps({
+  submittedAt,
+  updatedAt,
+}: {
+  submittedAt: Date | null;
+  updatedAt: Date;
+}) {
+  return (
+    <div style={stampPair}>
+      <Stamp label="Submitted" at={submittedAt} empty="not yet" />
+      <Stamp label="Last updated" at={updatedAt} />
+    </div>
+  );
+}
+
+/** One row of the pair: label and value share a line, so two stamps cost two lines. */
+function Stamp({ label, at, empty = "—" }: { label: string; at: Date | null; empty?: string }) {
+  return (
+    <>
+      <div style={stampLabel}>{label}</div>
+      <div style={at ? stampValue : stampEmpty}>{at ? fmtStamp(at) : empty}</div>
+    </>
+  );
+}
+
+/**
  * The Shift Lead's weekend closes (PLAN §18a): the dated slots they hold and
  * progress toward the required picks. Short of the required count reads red,
  * complete reads green, matching /admin/closes. Rendered only when
@@ -782,6 +833,48 @@ const newChangeRequestLink: React.CSSProperties = {
   background: "var(--color-background-primary)",
   color: "var(--color-text-primary)",
   textDecoration: "none",
+};
+
+/**
+ * The header timestamps: two label→value rows in one bordered, tinted panel.
+ *
+ * These were 12px tertiary-grey fine print, the wrong weight for something the
+ * scheduler reads on every response. The visibility comes from contrast, not size:
+ * dark labels and primary-text values against a tinted panel. Deliberately **two
+ * lines total** (label inline with its value, not above it) and tuned to sit
+ * **under 40px** so the avatar beside it stays the tallest thing in the header and
+ * the bar keeps exactly the height it had when it showed a single timestamp. Check
+ * that if you change the font sizes, line height, or padding here.
+ */
+const stampPair: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto auto",
+  columnGap: 8,
+  alignItems: "baseline",
+  padding: "2px 9px",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  background: "var(--color-background-secondary)",
+};
+const stampLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "var(--color-text-secondary)",
+  lineHeight: 1.35,
+};
+const stampValue: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--color-text-primary)",
+  whiteSpace: "nowrap",
+  lineHeight: 1.35,
+};
+/** A response with no submit time yet: still legible, but clearly not a date. */
+const stampEmpty: React.CSSProperties = {
+  ...stampValue,
+  color: "var(--color-text-tertiary)",
 };
 
 /** Anything short of a submitted response rings the header red. */

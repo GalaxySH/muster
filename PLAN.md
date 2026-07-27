@@ -34,7 +34,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.80
+- **Version:** 0.81
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -479,6 +479,16 @@ columns from the roster.
   signal: stamped **only** when the student clicks "Yes, that's me" on `/me`, since an
   admin can create the row before the student ever signs in; §13.1),
   `everyWeekendOptIn: bool`,
+  - **The two timestamps** (both shown in the §10a header): `submittedAt` is
+    **write-once** — the instant of the **first** submit, so re-submitting after an edit
+    never moves it (null until they submit; a draft has no submit time, and every
+    submitted row has one). `updatedAt` is **when the student last changed their own
+    answers**, and only student-side writes move it: their availability save, finalize,
+    their evidence uploads/removals, and their `/me` confirm. **Admin writes never touch
+    it** — scheduler notes, the scheduled mark, the schedule-email stamp, and anything
+    saved on the student's behalf (§10a) all leave it where the student left it, so it
+    can never imply a student came back to a form they haven't. The column is therefore
+    **not** `ON UPDATE CURRENT_TIMESTAMP`; every student-side write sets it explicitly.
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
@@ -585,8 +595,11 @@ scheduled mark, and any evidence entered on the student's behalf **create the dr
 demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
 with no position gets a notice instead of the calculator. Layout (see wireframe):
 - **Identity header:** name, email, position; **prev/next** nav + full-list jump;
-  status: **submitted/edited**, or a **draft** / **missing** badge with the header ringed
-  red until the response is submitted; a **"mark scheduled ✓" toggle** (mirrors the
+  a **draft** / **missing** badge with the header ringed
+  red until the response is submitted; **both timestamps** (§9) side by side in one
+  panel — **Submitted** (the first submit, or "not yet") and **Last updated** (the
+  student's own last edit) — legible rather than fine print, and kept to two tight lines
+  so the bar doesn't grow; a **"mark scheduled ✓" toggle** (mirrors the
   roster's "W2W schedule created" column — track progress across ~400 without leaving
   Muster); a **"delete response"** button (confirm → removes the submission + its Drive
   proofs, then returns to the list; the roster record is kept — see §10).
@@ -1124,6 +1137,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.81 (2026-07-26)** — **Submitted / last-updated timestamps mean what they say (§9, §10a;
+  migration `0016`).** `updated_at` was `ON UPDATE CURRENT_TIMESTAMP`, so **every** write to
+  the row moved it — including admin ones. A scheduler adding a note, ticking "scheduled", or
+  saving availability on a student's behalf made the response look like the student had just
+  edited it. The column is no longer auto-updating (migration `0016` drops the clause); every
+  **student-side** write now sets it explicitly (availability save, finalize, their evidence
+  uploads/removals, the `/me` confirm), and admin writes deliberately leave it alone. Evidence
+  actions get an `editStamp`/`touchSubmission` seam keyed on the same `onBehalf` flag the gate
+  already resolves, which also fixes a gap: adding or removing a travel entry or a proof file
+  only wrote child rows, so it never moved the parent's stamp at all. `submitted_at` becomes
+  **write-once** — `finalizeSubmission` sets it only when null, so a student who finishes the
+  wizard again keeps their original submit time (it used to be overwritten), and `0016`
+  backfills any submitted row missing one. Two knock-on improvements: the hub's stalled-draft
+  detection no longer counts an admin note as student activity, and "recent submissions" no
+  longer re-sorts a re-submitter to the top. The §10a header now shows **both** stamps in one
+  bordered panel, labelled and in primary text instead of 12px light-grey fine print, on two
+  tight lines so the bar keeps its original height (verified: the panel is 38px against the
+  40px avatar, and hiding it leaves the header at the same 69px). Drafts read "not yet" for
+  Submitted rather than borrowing `updated_at`, which the old header did, mislabelling an edit
+  time as a submit time. No new tests: this is schema + action behaviour with no pure seam, so
+  it was verified end-to-end against a live DB instead (478 existing tests still pass).
 - **0.80 (2026-07-16)** — **Availability + course schedule on the student's behalf (§10a).**
   The response page's grid was a calculator that could never commit: a scheduler could try a
   schedule but not record it. It now **saves**. Once a trial differs from the student's
