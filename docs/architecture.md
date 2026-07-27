@@ -359,9 +359,8 @@ a low count is only low *relative to other blocks*. When nobody has picked anyth
 panel does not render at all (every block tied at zero is an empty cycle, not a shortage).
 
 Layout is full-bleed, split by a two-column shell (`.admin-shell` in `globals.css`): the
-nav rail on the left is **one** page-height panel holding every admin surface, grouped
-under Review / Configuration / Email headers with the live counts as pills (sign out
-sits pinned at the rail's foot); the status
+nav rail on the left is **one** panel holding every admin surface, grouped under
+Review / Configuration / Email headers with the live counts as pills; the status
 body on the right runs response progress paired with the alert card across the top, then
 the tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the remaining
 panels into as many columns as the body allows. Under 960px the rail becomes a
@@ -369,7 +368,17 @@ panels into as many columns as the body allows. Under 960px the rail becomes a
 open state + Escape; the nav content stays server-rendered and passes through as
 children), so the status content owns a phone screen. The rail's panel look lives on the
 `.admin-shell-nav` class rather than inline style because the drawer media query must
-restyle it. Nothing in the body may force page-level horizontal scroll: the hero grid
+restyle it.
+
+The rail is sized so **the whole thing fits one desktop screen without scrolling** (13
+links + 3 headers ≈ 536px), which is what the `NavCard` shape is for: one 30px row of
+icon + label + count, no descriptive second line, the label ellipsized rather than
+wrapped so every row stays the same height, and a count that needs explaining carrying
+it as a `title`/`aria-label` instead of widening the pill. On desktop the rail hugs its
+links (`align-self: start`) rather than stretching to the body's height; that has to
+stay inside the `min-width: 960px` query, since the drawer is `position: fixed` and
+would otherwise stop short of the viewport foot. Signing out is a text link beside the
+admin email in the page header (`SignOutLink`), not a rail item. Nothing in the body may force page-level horizontal scroll: the hero grid
 floors its columns at `min(420px, 100%)`, and the group-progress table opts out of the
 generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
 private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,

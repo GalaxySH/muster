@@ -34,8 +34,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.82
-- **Last updated:** 2026-07-16
+- **Version:** 0.83
+- **Last updated:** 2026-07-26
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1142,6 +1142,20 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.83 (2026-07-26)** — **The admin hub's nav rail fits one screen (§10b).** The rail ran
+  past the fold on a desktop window, so reaching Email settings meant scrolling the page. Each
+  `NavCard` loses its description line and becomes a single 30px row of icon, label, and count;
+  the group headers shrink to small caps; the rail narrows to 236px and hugs its links instead
+  of stretching to the body's height. That takes it to 536px for all 13 links, which clears a
+  660px viewport (the smallest common laptop) with room to spare. A count that needed a word of
+  explanation ("27 short", "124 ungrouped") now carries it as a tooltip and `aria-label` rather
+  than widening the pill, and long labels ellipsize rather than wrap so every row is the same
+  height. **Sign out moves out of the rail** to a text link beside the admin email in the page
+  header (`SignOutLink`, sharing the pending-state convention via a new `SubmitTextLink`). The
+  `align-self: start` that makes the rail hug has to live inside the desktop media query: the
+  under-960px drawer is `position: fixed` and would otherwise stop short of the viewport foot.
+  Verified in the browser at 1512x860, 1280x660, and as the mobile drawer at 760px; 496 tests
+  still pass.
 - **0.82 (2026-07-26)** — **Submitted / last-updated timestamps mean what they say (§9, §10a;
   migration `0017`).** `updated_at` was `ON UPDATE CURRENT_TIMESTAMP`, so **every** write to
   the row moved it — including admin ones. A scheduler adding a note, ticking "scheduled", or
