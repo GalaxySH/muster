@@ -108,11 +108,13 @@ export default async function StudentDetailPage({
   params: Promise<{ email: string }>;
   searchParams: Promise<{
     group?: string;
+    position?: string;
     flag?: string;
     roster?: string;
     all?: string;
     started?: string;
     startedDate?: string;
+    review?: string;
   }>;
 }) {
   const session = await getAppSession();
