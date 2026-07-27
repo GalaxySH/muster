@@ -1,50 +1,67 @@
 /**
- * CLI: import a PCPL workbook into the database. Reads "People Coming" (active
- * employees) and, if present, "People Leaving" (marked off-roster).
+ * CLI: import a roster tracker into the database. Reads one sheet (default
+ * "Gordon", or "People Coming" in an older PCPL workbook) of an .xlsx, or a
+ * CSV export of one sheet.
  *
- *   npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu
+ *   npx tsx src/scripts/import-roster.ts "PC & Training Tracker 26-27.xlsx" --by you@wisc.edu
+ *   npx tsx src/scripts/import-roster.ts tracker.xlsx --sheet Carson
  *
- * Idempotent. The workbook holds employee PII and must never be committed
+ * Call tsx directly rather than `npm run roster:import --` when passing flags: npm
+ * claims --by (it expands to --bypass-2fa) and --sheet before the script sees them.
+ *
+ * Idempotent. The file holds employee PII and must never be committed
  * (it's gitignored).
  */
 import { createDb } from "../lib/db/client";
 import { importRoster } from "../lib/roster/import";
+import { RosterGuardError } from "../lib/roster/parse";
 
 function parseArgs(argv: string[]) {
   const positional: string[] = [];
   let importedBy = "cli";
+  let sheetName: string | undefined;
+  let allowMassDeactivation = false;
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--by") {
-      importedBy = argv[++i] ?? importedBy;
-    } else {
-      positional.push(argv[i]!);
-    }
+    if (argv[i] === "--by") importedBy = argv[++i] ?? importedBy;
+    else if (argv[i] === "--sheet") sheetName = argv[++i];
+    else if (argv[i] === "--allow-mass-deactivation") allowMassDeactivation = true;
+    else positional.push(argv[i]!);
   }
-  return { filePath: positional[0], importedBy };
+  return { filePath: positional[0], importedBy, sheetName, allowMassDeactivation };
 }
 
 async function main() {
-  const { filePath, importedBy } = parseArgs(process.argv.slice(2));
+  const { filePath, importedBy, sheetName, allowMassDeactivation } = parseArgs(
+    process.argv.slice(2),
+  );
   if (!filePath) {
-    throw new Error('Usage: npm run roster:import -- "<workbook.xlsx>" --by <email>');
+    throw new Error(
+      'Usage: npm run roster:import -- "<tracker.xlsx|export.csv>" --by <email> [--sheet <name>] [--allow-mass-deactivation]',
+    );
   }
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required (see .env.example)");
 
   const { db, pool } = createDb(url);
   try {
-    const summary = await importRoster({ db, workbook: filePath, importedBy });
+    const summary = await importRoster({
+      db,
+      workbook: filePath,
+      importedBy,
+      sheetName,
+      allowMassDeactivation,
+    });
     console.log(`\nRoster import ${summary.importId} complete.`);
-    console.log(
-      `  rows read:         ${summary.sheetRows.peopleComing} coming, ${summary.sheetRows.peopleLeaving} leaving`,
-    );
+    console.log(`  sheet:             ${summary.sheetName ?? "(csv)"}`);
+    console.log(`  rows read:         ${summary.sheetRows}`);
     console.log(`  students upserted: ${summary.studentsUpserted}`);
     console.log(`  admins upserted:   ${summary.adminsUpserted}`);
-    console.log(`  left marked off:   ${summary.leftMarked}`);
+    console.log(`  taken off roster:  ${summary.deactivatedByAbsence.length}`);
     console.log(`  rows skipped:      ${summary.skipped.length}`);
-    if (summary.movedWithinWorkbook.length > 0) {
-      console.log("\n  in both sheets (promoted/moved, kept on roster):");
-      for (const email of summary.movedWithinWorkbook) console.log(`    ${email}`);
+
+    if (summary.deactivatedByAbsence.length > 0) {
+      console.log("\n  taken off the roster (no longer in this sheet):");
+      for (const email of summary.deactivatedByAbsence) console.log(`    ${email}`);
     }
     if (summary.movedToAdmin.length > 0) {
       console.log("\n  promoted to supervisor (now admin, off the student roster):");
@@ -56,9 +73,7 @@ async function main() {
         const outcome = c.deferred
           ? "picks unchanged (no target blocks yet)"
           : `${c.carriedOver} kept, ${c.dropped} dropped${c.revalidationFailed ? ", now fails validation" : ""}`;
-        console.log(
-          `    ${c.email}  ${c.from ?? "(none)"} -> ${c.to ?? "(none)"}  ${outcome}`,
-        );
+        console.log(`    ${c.email}  ${c.from ?? "(none)"} -> ${c.to ?? "(none)"}  ${outcome}`);
       }
     }
     console.log("\n  by position:");
@@ -73,12 +88,6 @@ async function main() {
         console.log(`    ${String(n).padStart(3)}  "${title}"`);
       }
     }
-    if (summary.unlistedOnRoster.length > 0) {
-      console.log(
-        "\n  ⚠ on-roster students in neither sheet of this workbook (left untouched):",
-      );
-      for (const email of summary.unlistedOnRoster) console.log(`    ${email}`);
-    }
     if (summary.skipped.length > 0) {
       const byReason = summary.skipped.reduce<Record<string, number>>((acc, s) => {
         acc[s.reason] = (acc[s.reason] ?? 0) + 1;
@@ -92,6 +101,14 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  // The guard refused the import: nothing was written, and the message already
+  // says what to check, so print it plainly instead of a stack trace.
+  if (err instanceof RosterGuardError) {
+    console.error(`\nRoster import refused.\n  ${err.message}\n`);
+    for (const email of err.absent) console.error(`    ${email}`);
+    console.error("\n  Re-run with --allow-mass-deactivation to apply it anyway.");
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });

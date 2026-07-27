@@ -25,11 +25,12 @@ export default async function AdminRosterPage() {
       </AppHeader>
       <h1>Roster import</h1>
       <p style={{ color: "#555" }}>
-        Upload the current PCPL workbook (.xlsx) to bring the roster up to date. Rows on{" "}
-        <strong>People Coming</strong> are added or refreshed as active students; rows on{" "}
-        <strong>People Leaving</strong> are marked off-roster (they drop out of the response list,
-        export, and non-response tracking, though their submission is kept). Re-importing the same
-        workbook is safe.
+        Upload the current roster tracker (.xlsx, or a .csv export of one sheet) to bring the roster
+        up to date. Everyone on the sheet is added or refreshed as a student. Anyone the sheet no
+        longer lists is taken off the roster (they drop out of the response list, export, and
+        non-response tracking, though their submission is kept). If that would take off more than a
+        fifth of the roster, the import stops and asks you first. Leave <strong>Sheet</strong> blank
+        to read the Gordon sheet. Re-importing the same file is safe.
       </p>
 
       <section style={card}>
@@ -77,8 +78,8 @@ export default async function AdminRosterPage() {
       <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Excluded titles</h2>
         <p style={{ margin: "0 0 10px", fontSize: 14, color: "#555" }}>
-          People Coming rows with these position titles are skipped by the import. They are not
-          added as students or admins.
+          Rows with these position titles are skipped by the import. They are not added as students
+          or admins.
         </p>
         <ExcludedTitlesPanel titles={excludedTitles} />
       </section>

@@ -31,8 +31,10 @@ next-env.d.ts
 .env.prod
 
 # roster workbooks (employee PII / FERPA-adjacent — never commit; see PLAN §12)
+# .csv included since v0.86: the tracker is also handed round as a per-sheet CSV export.
 *.xlsx
 *.xls
+*.csv
 
 
 # logs

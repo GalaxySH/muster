@@ -36,11 +36,28 @@ describe("validateRosterUpload", () => {
     expect(res.error).toMatch(/too large/i);
   });
 
-  it("rejects non-xlsx uploads (legacy .xls, csv, images)", () => {
-    expect(validateRosterUpload(file({ name: "roster.xls", type: "application/vnd.ms-excel" })).ok).toBe(false);
-    expect(validateRosterUpload(file({ name: "roster.csv", type: "text/csv" })).ok).toBe(false);
+  it("accepts a .csv export of one tracker sheet", () => {
+    expect(validateRosterUpload(file({ name: "tracker(Gordon).csv", type: "text/csv" }))).toEqual({
+      ok: true,
+    });
+    expect(validateRosterUpload(file({ name: "tracker.csv", type: "" }))).toEqual({ ok: true });
+    // Windows registers Excel for CSV, so these two types arrive for .csv files.
+    expect(
+      validateRosterUpload(file({ name: "tracker.csv", type: "application/vnd.ms-excel" })),
+    ).toEqual({ ok: true });
+    expect(validateRosterUpload(file({ name: "tracker.CSV", type: "text/plain" }))).toEqual({
+      ok: true,
+    });
+  });
+
+  it("rejects unsupported uploads (legacy .xls, images, mislabelled text)", () => {
+    expect(
+      validateRosterUpload(file({ name: "roster.xls", type: "application/vnd.ms-excel" })).ok,
+    ).toBe(false);
     expect(validateRosterUpload(file({ name: "photo.png", type: "image/png" })).ok).toBe(false);
-    // Generic type only rescues a .xlsx filename — not anything else.
+    // A csv MIME type doesn't rescue a non-csv filename.
+    expect(validateRosterUpload(file({ name: "notes.txt", type: "text/plain" })).ok).toBe(false);
+    // Generic type only rescues .xlsx or .csv, nothing else.
     expect(validateRosterUpload(file({ name: "roster.xls", type: "" })).ok).toBe(false);
   });
 });

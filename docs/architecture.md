@@ -669,14 +669,40 @@ be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-l
 
 ## Roster import (`src/lib/roster/`)
 
-Parses the PCPL "People Coming" sheet → upserts
-`students` (minimized fields only — name, position, international, and now an **optional
-Hire Date** → `students.hiredOn`, located by header, tolerated when absent) + `admin_users`,
-idempotently. `importRoster` takes a
-file path or an in-memory buffer; two entry points share it — the CLI script and the
+Parses one sheet of the **PC & Training Tracker** (v0.86; one sheet per dining unit,
+default **Gordon**) → upserts `students` (minimized fields only — name, position,
+international, and a **Start Date** → `students.hiredOn`, located by header, tolerated
+when absent) + `admin_users`, idempotently.
+
+The layering is **source adapter → pure grid parsing → orchestrator**, which is what
+makes the format differences cheap:
+
+- `read-workbook.ts` is I/O only: bytes (path or buffer) → `{sheetName, grid}` where
+  the grid is a plain `string[][]`. It sniffs xlsx (a zip, so `PK`) vs CSV rather than
+  trusting the extension, decodes CSV as **CP1252** when the bytes aren't valid UTF-8
+  (Excel's export; without this "Retail and Café Team Member" became an unmapped ghost),
+  renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by
+  `ROSTER_SHEET_CANDIDATES` (`Gordon`, then `People Coming`, so old PCPL workbooks
+  still import). It knows nothing about which columns matter.
+- `csv.ts` (`parseCsv`) is a pure RFC 4180 reader — the tracker's names are
+  `"Last, First"`, so fields need real quote handling.
+- `parse.ts` is pure and holds everything format-shaped: `extractRosterRows` finds the
+  **header row** (the tracker has a merged section banner above it) by looking for a row
+  with both Name and Email, then locates columns by header text with **exact matchers
+  tried before fuzzy ones** across the whole row (the tracker has "Email" *and* "Welcome
+  Email"), which is also what lets the per-sheet column-order differences pass through
+  untouched. Data minimization is enforced here, in one place, and that includes the
+  tracker's **Status** column: it is an administrative marker that says nothing about
+  roster membership, so it is never read. `RosterFormatError` carries admin-actionable
+  messages (a missing sheet lists the sheets present) which `actions.ts` passes through
+  verbatim.
+
+`importRoster` takes a file path or an in-memory buffer, plus an optional `sheetName`
+and `allowMassDeactivation`; two entry points share it — the CLI script and the
 `/admin/roster` upload (`roster/actions.ts` `importRosterFromUpload`, admin-gated;
-pure pre-validation in `roster/upload-validation.ts`, page data in `roster/status.ts`,
-client island `components/admin/RosterImportPanel.tsx`). Title→position
+pure pre-validation in `roster/upload-validation.ts` (xlsx or csv), page data in
+`roster/status.ts`, client island `components/admin/RosterImportPanel.tsx`, which keeps
+the chosen file when the guard trips so the override can resend it). Title→position
 mapping is **DB data** since v0.63: the `roster_title_mappings` table, seeded once
 from the `TITLE_TO_POSITION` fixture in `position-mapping.ts`; `importRoster` loads it
 up front, resolves alias chains via `buildEffectiveTitleMap` (pure, tested), and
@@ -694,11 +720,30 @@ student's raw `rosterTitle` and **detects position changes** on upsert, running
 `positions/apply-change.ts` per changed student inside the import transaction
 (summary field `positionChanges`); unmapped titles become ghosts (see the positions
 config section). Reconciliation is pure and
-tested in `parse.ts`: `reconcileLeaving` (both sheets → People Coming wins) and
-`reconcileAdmins` (a People Coming admin holding an active student row was promoted
-to supervisor → the importer flips that student row off-roster, onRoster only;
-summary field `movedToAdmin`). PCPL emails are netid
-`@wisc.edu` = the Google identity, so `findStudentByEmail` links directly on sign-in.
+tested in `parse.ts`: `reconcileAdmins` (a sheet admin holding an active student row was
+promoted to supervisor → the importer flips that student row off-roster, onRoster only;
+summary field `movedToAdmin`).
+
+**Roster membership is presence.** Being listed puts someone on
+(`onRoster: true`, full upsert); no longer being listed takes them off
+(`summary.deactivatedByAbsence`). The orchestrator applies departures plus
+`movedToAdmin` as one `update ... set onRoster = false where email in (...)` after the
+upserts, so a submission, name and position always survive. Rows skipped for an excluded
+title deliberately don't count as "seen", so retitling someone into the excluded list
+retires them.
+
+Because a departure is *inferred* from an absence rather than stated anywhere, the
+**absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
+`ABSENCE_GUARD_SHARE` (20%) of the current roster would go, `importRoster` throws
+`RosterGuardError` **before opening the transaction**, so a wrong-sheet upload writes
+nothing at all and doesn't even record an audit row. There is deliberately no
+small-roster floor. The error carries the absent list, the limit and the roster size;
+`actions.ts` turns it into `RosterImportResult.guard` so the panel can list who would
+have gone and offer the override checkbox, and the CLI prints it and exits 1. A summary
+therefore never describes a partly applied run.
+
+PCPL/tracker emails are netid `@wisc.edu` = the Google identity, so `findStudentByEmail`
+links directly on sign-in.
 
 ## Positions & blocks config (roadmap 3.3, PLAN §6, v0.63)
 
