@@ -3,10 +3,10 @@ import {
   extractRosterRows,
   parseRoster,
   parseHireDate,
-  classifyStatus,
   reconcileAdmins,
   evaluateAbsenceGuard,
   RosterFormatError,
+  RosterGuardError,
   type RawRosterRow,
 } from "./parse";
 
@@ -16,7 +16,6 @@ const row = (over: Partial<RawRosterRow>): RawRosterRow => ({
   email: "test1@wisc.edu",
   international: "No",
   hireDate: "",
-  status: "Active",
   ...over,
 });
 
@@ -49,6 +48,8 @@ describe("extractRosterRows", () => {
       ...TRACKER_HEADER,
       ["Roe, Jamie", "0000000000", "Student Stocker", "Inactive", "jr@wisc.edu", "555", "No"],
     ]);
+    // Campus ID, Cell Phone and Status are all present and all left behind:
+    // Status is administrative and says nothing about roster membership.
     expect(rows).toEqual([
       {
         name: "Roe, Jamie",
@@ -56,7 +57,6 @@ describe("extractRosterRows", () => {
         email: "jr@wisc.edu",
         international: "No",
         hireDate: "",
-        status: "Inactive",
       },
     ]);
   });
@@ -70,8 +70,6 @@ describe("extractRosterRows", () => {
       positionTitle: "Culinary Assistant",
       international: "Yes",
       hireDate: "2025-08-20",
-      // No Status column at all: blank, which classifies as active.
-      status: "",
     });
   });
 
@@ -253,63 +251,16 @@ describe("parseRoster", () => {
     expect(students[0]?.hiredOn?.toISOString()).toBe("2023-09-07T00:00:00.000Z");
   });
 
-  describe("status", () => {
-    it("routes Inactive rows to the off-roster bucket, not to students", () => {
-      const r = parseRoster(
-        [
-          row({ email: "gone@wisc.edu", name: "Gone Person", status: "Inactive" }),
-          row({ email: "here@wisc.edu", status: "Active" }),
-        ],
-        TITLE_MAP,
-        EXCLUDED,
-      );
-      expect(r.students.map((s) => s.email)).toEqual(["here@wisc.edu"]);
-      expect(r.inactive).toEqual([{ email: "gone@wisc.edu", displayName: "Gone Person" }]);
-      // Both were listed, so neither counts as missing from the sheet.
-      expect([...r.seenEmails].sort()).toEqual(["gone@wisc.edu", "here@wisc.edu"]);
-    });
-
-    it("does not classify an Inactive supervisor as an admin", () => {
-      const r = parseRoster(
-        [row({ positionTitle: "Office Student Supervisor", status: "Inactive" })],
-        TITLE_MAP,
-        EXCLUDED,
-      );
-      expect(r.admins).toHaveLength(0);
-      expect(r.inactive).toHaveLength(1);
-    });
-
-    it("keeps a row with an unrecognized status active and reports the value", () => {
-      const r = parseRoster(
-        [row({ email: "t@wisc.edu", status: "Transfer" }), row({ status: "Transfer" })],
-        TITLE_MAP,
-        EXCLUDED,
-      );
-      expect(r.students).toHaveLength(2);
-      expect(r.inactive).toHaveLength(0);
-      expect(r.unrecognizedStatuses.get("Transfer")).toBe(2);
-    });
-
-    it("treats a blank status as active without reporting it", () => {
-      const r = parseRoster([row({ status: "" })], TITLE_MAP, EXCLUDED);
-      expect(r.students).toHaveLength(1);
-      expect(r.unrecognizedStatuses.size).toBe(0);
-    });
-  });
-});
-
-describe("classifyStatus", () => {
-  it("reads Active and Inactive regardless of case and padding", () => {
-    expect(classifyStatus(" ACTIVE ")).toBe("active");
-    expect(classifyStatus("inactive")).toBe("inactive");
-  });
-
-  it("treats a blank status as active", () => {
-    expect(classifyStatus("")).toBe("active");
-  });
-
-  it("reports anything else rather than guessing", () => {
-    expect(classifyStatus("Transfer")).toBe("unrecognized");
+  it("puts everyone the sheet lists on the roster, whatever the sheet says elsewhere", () => {
+    // Status is administrative and never reaches this layer, so a row cannot
+    // opt itself off the roster. Only dropping out of the sheet does that.
+    const r = parseRoster(
+      [row({ email: "a@wisc.edu" }), row({ email: "b@wisc.edu" })],
+      TITLE_MAP,
+      EXCLUDED,
+    );
+    expect(r.students.map((s) => s.email)).toEqual(["a@wisc.edu", "b@wisc.edu"]);
+    expect([...r.seenEmails].sort()).toEqual(["a@wisc.edu", "b@wisc.edu"]);
   });
 });
 
@@ -389,35 +340,47 @@ describe("reconcileAdmins", () => {
 });
 
 describe("evaluateAbsenceGuard", () => {
-  it("applies a normal number of absences", () => {
-    // 88 on roster → limit 18; 5 missing is routine turnover.
-    expect(evaluateAbsenceGuard(5, 88)).toEqual({ limit: 18, tripped: false, applied: true });
+  it("allows a normal number of departures", () => {
+    // 100 on roster → up to 20 may go; 5 leaving is routine turnover.
+    expect(evaluateAbsenceGuard(5, 100)).toEqual({ limit: 20, blocked: false });
   });
 
-  it("stops an import that would take too much of the roster off", () => {
-    const result = evaluateAbsenceGuard(60, 88);
-    expect(result.tripped).toBe(true);
-    expect(result.applied).toBe(false);
+  it("blocks an import that would take more than a fifth of the roster off", () => {
+    expect(evaluateAbsenceGuard(60, 100).blocked).toBe(true);
   });
 
-  it("applies anyway with the override", () => {
-    const result = evaluateAbsenceGuard(60, 88, true);
-    expect(result.tripped).toBe(false);
-    expect(result.applied).toBe(true);
+  it("runs anyway with the override", () => {
+    expect(evaluateAbsenceGuard(60, 100, true).blocked).toBe(false);
   });
 
-  it("tolerates the floor on a small roster", () => {
-    // 20% of 8 is 2, but small rosters always allow up to the floor.
-    expect(evaluateAbsenceGuard(9, 8)).toMatchObject({ limit: 10, applied: true });
-    expect(evaluateAbsenceGuard(11, 8)).toMatchObject({ tripped: true });
+  it("allows exactly 20% and blocks one past it", () => {
+    expect(evaluateAbsenceGuard(20, 100).blocked).toBe(false);
+    expect(evaluateAbsenceGuard(21, 100).blocked).toBe(true);
   });
 
-  it("never trips on a first import into an empty roster", () => {
-    expect(evaluateAbsenceGuard(0, 0)).toMatchObject({ tripped: false, applied: true });
+  it("compares against the exact share, not the rounded-down limit", () => {
+    // 20% of 88 is 17.6: 17 is within it, 18 is over. The reported limit
+    // rounds down, since a fractional student can't be taken off.
+    expect(evaluateAbsenceGuard(17, 88)).toEqual({ limit: 17, blocked: false });
+    expect(evaluateAbsenceGuard(18, 88).blocked).toBe(true);
   });
 
-  it("applies exactly at the limit and trips one past it", () => {
-    expect(evaluateAbsenceGuard(18, 88).applied).toBe(true);
-    expect(evaluateAbsenceGuard(19, 88).tripped).toBe(true);
+  it("never blocks a first import into an empty roster", () => {
+    expect(evaluateAbsenceGuard(0, 0).blocked).toBe(false);
+  });
+
+  it("blocks any departure from a roster too small to lose one", () => {
+    // 20% of 4 is 0.8, so even one departure is proportionally too much.
+    expect(evaluateAbsenceGuard(1, 4)).toEqual({ limit: 0, blocked: true });
+  });
+});
+
+describe("RosterGuardError", () => {
+  it("carries the detail the admin needs to decide, and says nothing was changed", () => {
+    const err = new RosterGuardError(["a@wisc.edu", "b@wisc.edu"], 17, 88);
+    expect(err.absent).toHaveLength(2);
+    expect(err.limit).toBe(17);
+    expect(err.rosterCount).toBe(88);
+    expect(err.message).toMatch(/Nothing was changed/);
   });
 });

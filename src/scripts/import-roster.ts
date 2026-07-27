@@ -14,6 +14,7 @@
  */
 import { createDb } from "../lib/db/client";
 import { importRoster } from "../lib/roster/import";
+import { RosterGuardError } from "../lib/roster/parse";
 
 function parseArgs(argv: string[]) {
   const positional: string[] = [];
@@ -55,12 +56,12 @@ async function main() {
     console.log(`  rows read:         ${summary.sheetRows}`);
     console.log(`  students upserted: ${summary.studentsUpserted}`);
     console.log(`  admins upserted:   ${summary.adminsUpserted}`);
-    console.log(`  marked inactive:   ${summary.deactivatedByStatus.length}`);
+    console.log(`  taken off roster:  ${summary.deactivatedByAbsence.length}`);
     console.log(`  rows skipped:      ${summary.skipped.length}`);
 
-    if (summary.deactivatedByStatus.length > 0) {
-      console.log("\n  taken off the roster (Status is Inactive):");
-      for (const email of summary.deactivatedByStatus) console.log(`    ${email}`);
+    if (summary.deactivatedByAbsence.length > 0) {
+      console.log("\n  taken off the roster (no longer in this sheet):");
+      for (const email of summary.deactivatedByAbsence) console.log(`    ${email}`);
     }
     if (summary.movedToAdmin.length > 0) {
       console.log("\n  promoted to supervisor (now admin, off the student roster):");
@@ -87,21 +88,6 @@ async function main() {
         console.log(`    ${String(n).padStart(3)}  "${title}"`);
       }
     }
-    if (Object.keys(summary.unrecognizedStatuses).length > 0) {
-      console.log("\n  ⚠ unrecognized Status values (kept on the roster):");
-      for (const [status, n] of Object.entries(summary.unrecognizedStatuses)) {
-        console.log(`    ${String(n).padStart(3)}  "${status}"`);
-      }
-    }
-    if (summary.absentOnRoster.length > 0) {
-      const { tripped, limit } = summary.absenceGuard;
-      console.log(
-        tripped
-          ? `\n  ⚠ ${summary.absentOnRoster.length} on-roster students are missing from this sheet, over the safety limit of ${limit}. None were taken off. Check the file, then re-run with --allow-mass-deactivation:`
-          : "\n  taken off the roster (missing from this sheet):",
-      );
-      for (const email of summary.absentOnRoster) console.log(`    ${email}`);
-    }
     if (summary.skipped.length > 0) {
       const byReason = summary.skipped.reduce<Record<string, number>>((acc, s) => {
         acc[s.reason] = (acc[s.reason] ?? 0) + 1;
@@ -115,6 +101,14 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  // The guard refused the import: nothing was written, and the message already
+  // says what to check, so print it plainly instead of a stack trace.
+  if (err instanceof RosterGuardError) {
+    console.error(`\nRoster import refused.\n  ${err.message}\n`);
+    for (const email of err.absent) console.error(`    ${email}`);
+    console.error("\n  Re-run with --allow-mass-deactivation to apply it anyway.");
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });

@@ -624,10 +624,11 @@ makes the format differences cheap:
   with both Name and Email, then locates columns by header text with **exact matchers
   tried before fuzzy ones** across the whole row (the tracker has "Email" *and* "Welcome
   Email"), which is also what lets the per-sheet column-order differences pass through
-  untouched. Data minimization is enforced here, in one place. `classifyStatus` maps the
-  **Status** column (`Active`/blank → active, `Inactive` → off-roster, anything else
-  reported and left active). `RosterFormatError` carries admin-actionable messages
-  (missing sheet lists the sheets present) which `actions.ts` passes through verbatim.
+  untouched. Data minimization is enforced here, in one place, and that includes the
+  tracker's **Status** column: it is an administrative marker that says nothing about
+  roster membership, so it is never read. `RosterFormatError` carries admin-actionable
+  messages (a missing sheet lists the sheets present) which `actions.ts` passes through
+  verbatim.
 
 `importRoster` takes a file path or an in-memory buffer, plus an optional `sheetName`
 and `allowMassDeactivation`; two entry points share it — the CLI script and the
@@ -656,20 +657,23 @@ tested in `parse.ts`: `reconcileAdmins` (a sheet admin holding an active student
 promoted to supervisor → the importer flips that student row off-roster, onRoster only;
 summary field `movedToAdmin`).
 
-**Taking people off the roster** has two independent paths, and the orchestrator applies
-them as one `update ... set onRoster = false where email in (...)` after the upserts.
-A deactivation *only ever flips a row that already exists*, so the tracker's 100-plus
-historical Inactive people never enter the database:
+**Roster membership is presence.** Being listed puts someone on
+(`onRoster: true`, full upsert); no longer being listed takes them off
+(`summary.deactivatedByAbsence`). The orchestrator applies departures plus
+`movedToAdmin` as one `update ... set onRoster = false where email in (...)` after the
+upserts, so a submission, name and position always survive. Rows skipped for an excluded
+title deliberately don't count as "seen", so retitling someone into the excluded list
+retires them.
 
-1. **Stated** — the row's Status is `Inactive` (`summary.deactivatedByStatus`). A
-   duplicate row listing the same person as active wins, the way People Coming used to.
-2. **Inferred** — on-roster here but absent from the sheet entirely
-   (`summary.absentOnRoster`), gated by the **absence guard**
-   (`evaluateAbsenceGuard`, pure): past `max(ABSENCE_GUARD_FLOOR, ABSENCE_GUARD_SHARE ×
-   roster)` the import leaves them on and reports what it would have done, until an
-   admin re-runs with the override. Only the inferred path is gated; a stated
-   departure is never withheld. Rows skipped for an excluded title deliberately don't
-   count as "seen", so retitling someone into the excluded list retires them (guarded).
+Because a departure is *inferred* from an absence rather than stated anywhere, the
+**absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
+`ABSENCE_GUARD_SHARE` (20%) of the current roster would go, `importRoster` throws
+`RosterGuardError` **before opening the transaction**, so a wrong-sheet upload writes
+nothing at all and doesn't even record an audit row. There is deliberately no
+small-roster floor. The error carries the absent list, the limit and the roster size;
+`actions.ts` turns it into `RosterImportResult.guard` so the panel can list who would
+have gone and offer the override checkbox, and the CLI prints it and exits 1. A summary
+therefore never describes a partly applied run.
 
 PCPL/tracker emails are netid `@wisc.edu` = the Google identity, so `findStudentByEmail`
 links directly on sign-in.

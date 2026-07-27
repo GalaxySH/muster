@@ -17,6 +17,23 @@ describe("normalizeTitle", () => {
   it("lowercases, trims, and collapses whitespace", () => {
     expect(normalizeTitle("  CULINARY   assistant \n")).toBe("culinary assistant");
   });
+
+  it("strips accents, so a Café title matches however the export encoded it", () => {
+    expect(normalizeTitle("Retail and Café Team Member")).toBe("retail and cafe team member");
+  });
+});
+
+describe("SKIP_TITLES", () => {
+  it("covers both spellings of the Dining Advisory Board title", () => {
+    // The tracker renamed "Advisor" to "Advisory"; missing that let DAB members
+    // through as students with no position.
+    for (const title of [
+      "Dining Advisory Board Member (DAB)",
+      "Dining Advisor Board Member (DAB)",
+    ]) {
+      expect(SKIP_TITLES.has(normalizeTitle(title))).toBe(true);
+    }
+  });
 });
 
 describe("buildEffectiveTitleMap", () => {

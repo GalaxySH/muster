@@ -4,11 +4,12 @@
  * read sheet → parse/classify → upsert students + admins + audit row, all in
  * one transaction. Idempotent: re-running updates existing rows by email.
  *
- * The tracker's **Status** column decides who is on the roster; someone absent
- * from the sheet altogether is taken off too, but only within the absence
- * guard (a partial or wrong-sheet upload must not empty the roster in one go).
- * Off-roster rows are never created, only flipped, so historical Inactive
- * people the app has never seen stay out of the database.
+ * **Being listed in the sheet is what puts someone on the roster**, and
+ * dropping out of it is what takes them off; the tracker's Status column is an
+ * administrative marker and is deliberately not read. Because a departure is
+ * inferred from an absence, the **absence guard** is all-or-nothing: past its
+ * limit the whole import is refused before anything is written, rather than
+ * applying part of a file that looks wrong.
  *
  * Titles map to positions through the DB-owned roster_title_mappings table
  * (alias chains resolved), and a student whose stored position differs from
@@ -40,7 +41,7 @@ import {
   parseRoster,
   reconcileAdmins,
   evaluateAbsenceGuard,
-  type AbsenceGuardResult,
+  RosterGuardError,
 } from "./parse";
 
 /** One student whose stored position differed from the sheet's (names, not ids). */
@@ -63,22 +64,18 @@ export interface ImportSummary {
   sheetRows: number;
   studentsUpserted: number;
   adminsUpserted: number;
-  /** Emails taken off the roster because the sheet marks them Inactive. */
-  deactivatedByStatus: string[];
   /**
-   * Emails on-roster in the database that this sheet doesn't list at all.
-   * Applied (taken off the roster) only when `absenceGuard.applied` is true.
+   * Emails taken off the roster because this sheet no longer lists them. Always
+   * applied: past the guard's limit the whole import is refused instead
+   * (RosterGuardError), so a summary never reports a partly applied run.
    */
-  absentOnRoster: string[];
-  absenceGuard: AbsenceGuardResult;
+  deactivatedByAbsence: string[];
   /**
    * Emails the sheet classifies as admins that held an active student row:
    * promoted to a supervisor title, so the student row was flipped off-roster
    * (their submission stays; admin access comes from admin_users).
    */
   movedToAdmin: string[];
-  /** Status values that are neither Active nor Inactive. Treated as active. */
-  unrecognizedStatuses: Record<string, number>;
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
@@ -97,7 +94,7 @@ export interface ImportOptions {
   importedBy: string;
   /** Worksheet to read; defaults to the first of ROSTER_SHEET_CANDIDATES present. */
   sheetName?: string;
-  /** Apply the absent-student deactivations even when the guard would stop them. */
+  /** Run even when the guard would refuse the import for taking too many people off. */
   allowMassDeactivation?: boolean;
 }
 
@@ -144,31 +141,23 @@ export async function importRoster({
   // their old student row active with a stale position, so flip it off-roster.
   const movedToAdmin = reconcileAdmins(parsed, onRosterEmails);
 
-  // Stated departure. A duplicate row listing the same person as active wins,
-  // the same way the old two-sheet workbook let People Coming win.
-  const activeStudents = new Set(parsed.students.map((s) => s.email));
-  const deactivatedByStatus = parsed.inactive
-    .map((i) => i.email)
-    .filter((email) => onRosterEmails.has(email) && !activeStudents.has(email))
-    .sort();
-
-  // Inferred departure: on-roster here, absent from the sheet entirely.
-  const absentOnRoster = [...onRosterEmails]
+  // Departure: on-roster here, no longer listed in the sheet.
+  const deactivatedByAbsence = [...onRosterEmails]
     .filter((email) => !parsed.seenEmails.has(email))
     .sort();
-  const absenceGuard = evaluateAbsenceGuard(
-    absentOnRoster.length,
+
+  // All-or-nothing: refuse the whole import rather than apply half of a file
+  // that looks wrong. Thrown before the transaction, so nothing is written.
+  const guard = evaluateAbsenceGuard(
+    deactivatedByAbsence.length,
     onRosterEmails.size,
     allowMassDeactivation,
   );
+  if (guard.blocked) {
+    throw new RosterGuardError(deactivatedByAbsence, guard.limit, onRosterEmails.size);
+  }
 
-  const deactivate = [
-    ...new Set([
-      ...deactivatedByStatus,
-      ...(absenceGuard.applied ? absentOnRoster : []),
-      ...movedToAdmin,
-    ]),
-  ];
+  const deactivate = [...new Set([...deactivatedByAbsence, ...movedToAdmin])];
 
   const positionName = new Map(positionRows.map((p) => [p.id, p.name]));
   const nameOf = (id: string | null) => (id === null ? null : (positionName.get(id) ?? id));
@@ -254,11 +243,8 @@ export async function importRoster({
     sheetRows: rows.length,
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
-    deactivatedByStatus,
-    absentOnRoster,
-    absenceGuard,
+    deactivatedByAbsence,
     movedToAdmin,
-    unrecognizedStatuses: Object.fromEntries(parsed.unrecognizedStatuses),
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

@@ -26,11 +26,11 @@ export default async function AdminRosterPage() {
       <h1>Roster import</h1>
       <p style={{ color: "#555" }}>
         Upload the current roster tracker (.xlsx, or a .csv export of one sheet) to bring the roster
-        up to date. Rows marked <strong>Active</strong> are added or refreshed as students; rows
-        marked <strong>Inactive</strong>, and anyone the sheet no longer lists, are taken off the
-        roster (they drop out of the response list, export, and non-response tracking, though their
-        submission is kept). Leave <strong>Sheet</strong> blank to read the Gordon sheet.
-        Re-importing the same file is safe.
+        up to date. Everyone on the sheet is added or refreshed as a student. Anyone the sheet no
+        longer lists is taken off the roster (they drop out of the response list, export, and
+        non-response tracking, though their submission is kept). If that would take off more than a
+        fifth of the roster, the import stops and asks you first. Leave <strong>Sheet</strong> blank
+        to read the Gordon sheet. Re-importing the same file is safe.
       </p>
 
       <section style={card}>

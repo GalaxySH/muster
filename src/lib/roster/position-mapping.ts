@@ -70,7 +70,11 @@ export const ADMIN_TITLES: ReadonlySet<string> = new Set([
  * Initial default only: once an admin saves the excluded-titles setting on
  * /admin/roster, the stored list is authoritative (see effectiveExcludedTitles).
  */
-export const SKIP_TITLES: ReadonlySet<string> = new Set(["dining advisor board member (dab)"]);
+export const SKIP_TITLES: ReadonlySet<string> = new Set([
+  // The tracker spells it "Advisory"; older PCPL workbooks say "Advisor".
+  "dining advisory board member (dab)",
+  "dining advisor board member (dab)",
+]);
 
 /**
  * app_settings key for the admin-edited excluded titles, stored one per line.

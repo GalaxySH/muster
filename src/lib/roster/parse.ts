@@ -2,15 +2,16 @@
  * Pure roster parsing/classification (PLAN.md §4.2, §9, §16).
  *
  * Turns a sheet grid into rows (`extractRosterRows`), then classifies those
- * rows into active students / admins / people to take off the roster
- * (`parseRoster`), applying data minimization: only name, title, email,
- * international and start date are carried, never Campus ID, phone, res hall,
- * proficiency or any onboarding-tracking column.
+ * rows into students and admins (`parseRoster`), applying data minimization:
+ * only name, title, email, international and start date are carried, never
+ * Campus ID, phone, res hall, proficiency, **Status**, or any onboarding
+ * column. Status is an administrative marker that says nothing about roster
+ * membership, so it is deliberately not read.
  *
- * The roster tracker has one sheet per dining unit with a **Status** column
- * (Active / Inactive), which is the on-roster signal; there is no longer a
- * separate leavers sheet. Someone missing from the sheet entirely is handled
- * by the caller through `evaluateAbsenceGuard`.
+ * **Being listed in the sheet is what puts someone on the roster.** The
+ * tracker has one sheet per dining unit and no leavers sheet; people come off
+ * the roster by dropping out of the sheet, which the caller applies through
+ * `evaluateAbsenceGuard`.
  *
  * The title-to-position map and the excluded-title set are injected by the
  * caller (the importer builds them from roster_title_mappings and
@@ -36,8 +37,6 @@ export interface RawRosterRow {
   international: string;
   /** Start date as `yyyy-mm-dd` or `yyyy/mm/dd`, or "" when absent (PLAN §9). */
   hireDate: string;
-  /** Raw Status cell; "" when the sheet has no Status column (older workbooks). */
-  status: string;
 }
 
 export interface RosterStudent {
@@ -57,12 +56,6 @@ export interface RosterAdmin {
   displayName: string;
 }
 
-/** Someone the sheet marks Inactive: taken off the roster, never created. */
-export interface InactiveStudent {
-  email: string;
-  displayName: string;
-}
-
 export interface SkippedRow {
   reason: "missing_email" | "non_wisc_email" | "excluded_title";
   detail: string;
@@ -71,17 +64,14 @@ export interface SkippedRow {
 export interface RosterParseResult {
   students: RosterStudent[];
   admins: RosterAdmin[];
-  inactive: InactiveStudent[];
   skipped: SkippedRow[];
   /** normalized titles that mapped to no position, with occurrence counts. */
   unmappedTitles: Map<string, number>;
-  /** Status values that are neither Active nor Inactive, with counts. Treated as active. */
-  unrecognizedStatuses: Map<string, number>;
   /**
-   * Every valid roster email the sheet listed, whatever its status. Anyone
-   * on-roster in the database but absent from this set is missing from the
-   * workbook (see evaluateAbsenceGuard). Skipped rows are deliberately not
-   * counted: an excluded title means the person is no longer tracked here.
+   * Every valid roster email the sheet listed. Listing someone is what puts
+   * them on the roster, so anyone on-roster in the database but absent from
+   * this set has left (see evaluateAbsenceGuard). Skipped rows are
+   * deliberately not counted: an excluded title means they aren't tracked here.
    */
   seenEmails: Set<string>;
 }
@@ -169,8 +159,7 @@ export function extractRosterRows(grid: readonly (readonly string[])[]): RawRost
   );
   const emailCol = requireColumn(headers, EMAIL_MATCHERS, "Email");
   const intlCol = requireColumn(headers, [contains("international")], "International");
-  // Optional: not every sheet carries a status or a start date.
-  const statusCol = findColumn(headers, [exact("status")]);
+  // Optional: not every sheet carries a start date.
   const hireCol = findColumn(headers, [
     exact("start date"),
     contains("start date"),
@@ -193,7 +182,6 @@ export function extractRosterRows(grid: readonly (readonly string[])[]): RawRost
       positionTitle: cell(row, titleCol),
       international: cell(row, intlCol),
       hireDate: cell(row, hireCol),
-      status: cell(row, statusCol),
     });
   }
   return rows;
@@ -202,21 +190,6 @@ export function extractRosterRows(grid: readonly (readonly string[])[]): RawRost
 // ---------------------------------------------------------------------------
 // Row classification
 // ---------------------------------------------------------------------------
-
-export type StatusKind = "active" | "inactive" | "unrecognized";
-
-/**
- * Read the Status cell. Only "Inactive" takes someone off the roster; a blank
- * status (or a sheet with no Status column) means active. Anything else is
- * reported rather than guessed at, and left active, so a status nobody has
- * taught the importer yet can't quietly drop people.
- */
-export function classifyStatus(raw: string): StatusKind {
-  const status = raw.trim().toLowerCase();
-  if (status === "" || status === "active") return "active";
-  if (status === "inactive") return "inactive";
-  return "unrecognized";
-}
 
 function parseInternational(value: string): boolean {
   return value.trim().toLowerCase().startsWith("y");
@@ -239,10 +212,8 @@ export function parseRoster(
   const result: RosterParseResult = {
     students: [],
     admins: [],
-    inactive: [],
     skipped: [],
     unmappedTitles: new Map(),
-    unrecognizedStatuses: new Map(),
     seenEmails: new Set(),
   };
 
@@ -266,16 +237,6 @@ export function parseRoster(
     }
 
     result.seenEmails.add(email);
-
-    const status = classifyStatus(row.status ?? "");
-    if (status === "inactive") {
-      result.inactive.push({ email, displayName });
-      continue;
-    }
-    if (status === "unrecognized") {
-      const raw = (row.status ?? "").trim();
-      result.unrecognizedStatuses.set(raw, (result.unrecognizedStatuses.get(raw) ?? 0) + 1);
-    }
 
     if (ADMIN_TITLES.has(title)) {
       result.admins.push({ email, displayName });
@@ -323,32 +284,47 @@ export function reconcileAdmins(
 // Absence guard
 // ---------------------------------------------------------------------------
 
-/** Share of the current roster that may vanish from a sheet before the guard trips. */
+/** Share of the roster that may be taken off in one import before it is refused. */
 export const ABSENCE_GUARD_SHARE = 0.2;
-/** Small rosters always tolerate at least this many absences. */
-export const ABSENCE_GUARD_FLOOR = 10;
 
 export interface AbsenceGuardResult {
-  /** The most absences that get applied without an explicit override. */
+  /** The most students that may be taken off without an override. */
   limit: number;
-  /** True when the import refused to act on the absences. */
-  tripped: boolean;
-  /** True when the absent students were taken off the roster. */
-  applied: boolean;
+  /** True when the import must not run at all. */
+  blocked: boolean;
 }
 
 /**
- * Absence from the sheet is an inference, not a stated departure, so a partial
- * or wrong-sheet upload could otherwise take most of the roster off in one go.
- * Past the limit the import leaves everyone on and reports what it would have
- * done; the admin re-runs with the override once they've checked the file.
+ * An all-or-nothing gate. Being missing from the sheet is what takes someone
+ * off the roster, so a partial or wrong-sheet upload would retire most of the
+ * roster in one go. Past the limit the whole import is refused rather than
+ * partly applied, leaving the database untouched; the admin re-runs with the
+ * override once they've checked the file.
  */
 export function evaluateAbsenceGuard(
   absentCount: number,
   onRosterCount: number,
   override = false,
 ): AbsenceGuardResult {
-  const limit = Math.max(ABSENCE_GUARD_FLOOR, Math.ceil(onRosterCount * ABSENCE_GUARD_SHARE));
-  const exceeded = absentCount > limit;
-  return { limit, tripped: exceeded && !override, applied: !exceeded || override };
+  const limit = Math.floor(onRosterCount * ABSENCE_GUARD_SHARE);
+  return { limit, blocked: !override && absentCount > onRosterCount * ABSENCE_GUARD_SHARE };
+}
+
+/**
+ * The absence guard refused the import. Carries the detail the admin needs to
+ * decide whether to override, and is thrown before anything is written.
+ */
+export class RosterGuardError extends Error {
+  constructor(
+    readonly absent: string[],
+    readonly limit: number,
+    readonly rosterCount: number,
+  ) {
+    super(
+      `This sheet is missing ${absent.length} of the ${rosterCount} students on the roster, ` +
+        `more than the ${limit} that can be taken off in one import. ` +
+        `Nothing was changed. Check that you uploaded the right sheet.`,
+    );
+    this.name = "RosterGuardError";
+  }
 }

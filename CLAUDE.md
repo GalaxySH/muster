@@ -22,16 +22,17 @@ response dashboard (`/admin/responses`), the per-student view
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
 Sheet** in the Drive folder. The roster import reads **one sheet of the PC & Training
 Tracker** (v0.80; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
-export of a single sheet), where a **Status** column is the on-roster signal (`Active`
-or blank → `onRoster: true`; `Inactive` → `onRoster: false`; any other value is reported
-and left active). The active surfaces (response list, export, non-response tracking)
-filter to `onRoster: true` so people who left drop out (their submission stays in the
-DB). Someone on-roster but **absent from the sheet entirely** is also taken off, behind
-the **absence guard**: past `max(10, 20%)` of the roster the import leaves them on and
-reports the list, until an admin re-runs with the override. A deactivation only ever
-flips an existing row, never creates one. Admins import from the UI at
+export of a single sheet). **Being listed on the sheet is what puts someone on the
+roster**, and dropping out of it is what takes them off; the sheet's **Status** column
+is an administrative marker that says nothing about roster membership, so it is
+deliberately **not read at all**. The active surfaces (response list, export,
+non-response tracking) filter to `onRoster: true` so people who left drop out (their
+submission stays in the DB). Because a departure is inferred from an absence, the
+**absence guard** is **all-or-nothing**: if more than **20%** of the roster would be
+taken off, the whole import is refused before anything is written (no rows changed, no
+audit row), until an admin re-runs with the override. Admins import from the UI at
 **`/admin/roster`** (upload → the same idempotent importer, parsed in memory, never
-written to disk; renders the summary, the guard, and any unrecognized Status values);
+written to disk; renders the summary, or the refusal with the list and the override);
 the CLI remains for scripted use. The old two-sheet PCPL workbook still imports (the
 sheet picker falls back to `People Coming`).
 The Drive relay + the running sheet are **confirmed live**. The **magic-link fallback**

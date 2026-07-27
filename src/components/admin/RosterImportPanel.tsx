@@ -4,15 +4,16 @@
  * Admin roster-import upload (PLAN.md §4.2): pick the roster tracker (.xlsx or
  * a CSV export of one sheet), relay it to the importRosterFromUpload server
  * action, and render the returned summary. The import is idempotent, so
- * re-uploading a corrected file is always safe: the sheet's Status column
- * decides who is on the roster.
+ * re-uploading a corrected file is always safe: being listed in the sheet is
+ * what puts someone on the roster.
  *
- * When the absence guard stops an import, the chosen file is kept so the admin
- * can tick the override and submit the same file again.
+ * When the absence guard refuses an import, nothing was written; the panel
+ * lists who would have gone and keeps the chosen file so the admin can tick
+ * the override and submit the same file again.
  */
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { importRosterFromUpload } from "@/lib/roster/actions";
+import { importRosterFromUpload, type RosterGuardBlock } from "@/lib/roster/actions";
 import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";
 import { validateRosterUpload } from "@/lib/roster/upload-validation";
 import { ActionButton, InfoCard } from "@/components/ui";
@@ -28,11 +29,13 @@ export function RosterImportPanel() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [guard, setGuard] = useState<RosterGuardBlock | null>(null);
   const [sheetName, setSheetName] = useState("");
   const [allowMass, setAllowMass] = useState(false);
 
   function runImport() {
     setSummary(null);
+    setGuard(null);
     const file = fileRef.current?.files?.[0];
     if (!file) {
       setError("Choose the roster tracker (.xlsx or .csv) first.");
@@ -55,12 +58,13 @@ export function RosterImportPanel() {
       const res = await importRosterFromUpload(formData);
       if (!res.ok || !res.summary) {
         setError(res.error ?? "Import failed. Please try again.");
+        // Nothing was written; keep the file so the override can re-send it.
+        setGuard(res.guard ?? null);
         return;
       }
       setSummary(res.summary);
       setAllowMass(false);
-      // Keep the file when the guard stopped it, so the override can re-send it.
-      if (!res.summary.absenceGuard.tripped && fileRef.current) fileRef.current.value = "";
+      if (fileRef.current) fileRef.current.value = "";
     });
   }
 
@@ -96,15 +100,33 @@ export function RosterImportPanel() {
           ✗ {error}
         </p>
       )}
-      {summary && (
-        <SummaryReport
-          summary={summary}
-          allowMass={allowMass}
-          onAllowMassChange={setAllowMass}
-          pending={pending}
-          onRetry={runImport}
-        />
+      {guard && (
+        <div role="status" style={guardBox}>
+          <p style={{ margin: "0 0 6px", fontWeight: 600 }}>
+            These {guard.absent.length} students would be taken off the roster:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+            {guard.absent.map((email) => (
+              <li key={email}>{email}</li>
+            ))}
+          </ul>
+          <div style={overrideRow}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={allowMass}
+                onChange={(e) => setAllowMass(e.target.checked)}
+                disabled={pending}
+              />
+              Take them off the roster
+            </label>
+            <ActionButton onClick={runImport} pending={pending} pendingLabel="Importing…">
+              Import again
+            </ActionButton>
+          </div>
+        </div>
       )}
+      {summary && <SummaryReport summary={summary} />}
     </div>
   );
 }
@@ -116,25 +138,9 @@ function describeChangeOutcome(c: PositionChangeSummary): string {
   return c.revalidationFailed ? `${picks} Now fails checks.` : picks;
 }
 
-interface SummaryReportProps {
-  summary: ImportSummary;
-  allowMass: boolean;
-  onAllowMassChange: (value: boolean) => void;
-  pending: boolean;
-  onRetry: () => void;
-}
-
-function SummaryReport({
-  summary,
-  allowMass,
-  onAllowMassChange,
-  pending,
-  onRetry,
-}: SummaryReportProps) {
+function SummaryReport({ summary }: { summary: ImportSummary }) {
   const unmapped = Object.entries(summary.unmappedTitles);
-  const statuses = Object.entries(summary.unrecognizedStatuses);
   const positions = Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1]);
-  const { tripped } = summary.absenceGuard;
 
   return (
     <div role="status" style={reportBox}>
@@ -151,8 +157,8 @@ function SummaryReport({
           <strong>{summary.adminsUpserted}</strong> admins added or refreshed
         </li>
         <li>
-          <strong>{summary.deactivatedByStatus.length}</strong> taken off the roster (marked
-          Inactive)
+          <strong>{summary.deactivatedByAbsence.length}</strong> taken off the roster (no longer in
+          the sheet)
         </li>
       </ul>
 
@@ -201,58 +207,17 @@ function SummaryReport({
         </InfoCard>
       )}
 
-      {statuses.length > 0 && (
-        <div style={warnBox}>
+      {summary.deactivatedByAbsence.length > 0 && (
+        <div style={quietBox}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            ⚠ Status values we don’t recognize. These people were kept on the roster. Set them to
-            Active or Inactive in the sheet and import again:
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {statuses.map(([status, n]) => (
-              <li key={status}>
-                “{status}” × {n}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {summary.absentOnRoster.length > 0 && (
-        <div style={tripped ? warnBox : quietBox}>
-          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            {tripped ? (
-              <>
-                ⚠ {summary.absentOnRoster.length} students on the roster are not in this sheet, more
-                than the {summary.absenceGuard.limit} we apply without asking. Nobody was taken off.
-              </>
-            ) : (
-              <>
-                Taken off the roster because this sheet doesn’t list them (
-                {summary.absentOnRoster.length}):
-              </>
-            )}
+            Taken off the roster because this sheet doesn’t list them (
+            {summary.deactivatedByAbsence.length}):
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
-            {summary.absentOnRoster.map((email) => (
+            {summary.deactivatedByAbsence.map((email) => (
               <li key={email}>{email}</li>
             ))}
           </ul>
-          {tripped && (
-            <div style={overrideRow}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={allowMass}
-                  onChange={(e) => onAllowMassChange(e.target.checked)}
-                  disabled={pending}
-                />
-                Take these students off the roster
-              </label>
-              <ActionButton onClick={onRetry} pending={pending} pendingLabel="Importing…">
-                Import again
-              </ActionButton>
-            </div>
-          )}
         </div>
       )}
 
@@ -279,22 +244,23 @@ const reportBox: React.CSSProperties = {
   padding: "0.8rem 1rem",
 };
 
-const warnBox: React.CSSProperties = {
+/** The refused-import box: who would have gone, plus the override. */
+const guardBox: React.CSSProperties = {
   border: "1px solid #f0e2b6",
   background: "#fdf8e9",
   color: "#6b5900",
   borderRadius: 6,
   padding: "0.6rem 0.8rem",
-  margin: "0 0 8px",
   fontSize: 14,
 };
 
-/** Same shape as warnBox, but for a change that was applied as intended. */
+/** Same shape, for a change that was applied as intended. */
 const quietBox: React.CSSProperties = {
-  ...warnBox,
+  ...guardBox,
   border: "1px solid #e2e2e2",
   background: "#f6f6f6",
   color: "#444",
+  margin: "0 0 8px",
 };
 
 const overrideRow: React.CSSProperties = {
