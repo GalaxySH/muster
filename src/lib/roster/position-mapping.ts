@@ -10,9 +10,14 @@
 
 import { resolveAlias, type AliasRow } from "@/lib/domain/position-alias";
 
-/** Normalize a raw title for stable lookup (handles case, padding, stray newlines). */
+/**
+ * Normalize a raw title for stable lookup: handles case, padding, stray
+ * newlines, and accents, so "Retail and Café Team Member" matches whether the
+ * export encoded the accent or not. Header cells are normalized with this too
+ * (same job, same rules) when the parse layer locates columns.
+ */
 export function normalizeTitle(title: string): string {
-  return title.trim().toLowerCase().replace(/\s+/g, " ");
+  return title.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 /** A stored roster_title_mappings row. */
@@ -49,7 +54,9 @@ export const TITLE_TO_POSITION: Readonly<Record<string, string>> = {
   cashier: "cashier",
   "cashier (culinary assistant in sea)": "cashier",
   // No standalone "Barista" titles appear; cafe team members are the baristas.
+  // Keys are accent-stripped by normalizeTitle, so "Café" matches "cafe".
   "southeast cafe team member": "barista",
+  "retail and cafe team member": "barista",
 };
 
 /** Titles that designate scheduler/admin staff, not availability workers. */

@@ -11,7 +11,8 @@
 - **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
   per-student view §10a, non-response tracking, CSV + running Drive-sheet export). Roster
-  now handles the People Coming / People Leaving split; student schedule-notes field added.
+  imports the per-unit **PC & Training Tracker** (Status column + absence guard, §4.2);
+  student schedule-notes field added.
   **Edit-window enforcement done** (admin-configured groups + windows; two-gate access).
   **Magic-link fallback done** (auth-only; Resend on `re.hauge.rocks`). **Guided student
   form-flow done** (§4.1): `/me` hub → intro → course-schedule → availability → travel →
@@ -70,8 +71,10 @@ blocks, and form windows are configuration, not hardcoded), and privacy-minimizi
   Hour minimums/maximums are evaluated as the **average across the two-week cycle**.
 - **Every-weekend opt-in** — a student may request to work *every* weekend (same
   shift both weeks) in exchange for fewer weekday shifts.
-- **Roster (PCPL)** — "People Coming People Leaving" Excel workbook. Sheet **PC** =
-  current employees (source of truth for lookups); sheet **PL** = leaving.
+- **Roster (tracker)** — the "PC & Training Tracker" Excel workbook, one sheet per
+  dining unit (Muster reads **Gordon**), with a **Status** column (Active / Inactive)
+  as the on-roster signal. Supersedes the old PCPL "People Coming / People Leaving"
+  two-sheet workbook, which the importer still reads (§4.2).
 - **Feasible hours range** — given a student's selected availability + constraints,
   the min/max weekly hours (cycle-averaged) that could be scheduled from it.
 
@@ -150,20 +153,33 @@ no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SE
 remains as a manual fallback trigger (docs/deploy.md §7).
 
 ### 4.2 Admin flow
-- **Roster import** — upload the PCPL workbook on **`/admin/roster`** (file upload →
+- **Roster import** — upload the roster tracker on **`/admin/roster`** (file upload →
   the same idempotent importer; the CLI `npm run roster:import` remains for scripted
-  use); parse **People Coming** (active → `onRoster: true`) and **People Leaving**
-  (resigned/fired → `onRoster: false`); upsert students. A person in **both** sheets was
-  promoted/moved (the old row goes to People Leaving plus a fresh People Coming entry):
-  **People Coming wins** — they stay on-roster with the new classification and are
-  reported in the summary as moved. A promotion into a **supervisor/admin title** also
-  flips any active student row of theirs off-roster (`reconcileAdmins` in
-  `roster/parse.ts`; the admin_users upsert alone would leave the stale student row
-  active) — reported in the summary as moved to admin. People moved to People Leaving
-  drop out of listed/required responses; their submission is retained in the DB. The
-  import never deletes: anyone still on-roster but in **neither** sheet of the uploaded
-  workbook is reported back (UI summary + CLI) so the admin can move them to People
-  Leaving and re-import. The workbook bytes are parsed in memory and never stored.
+  use). One sheet is read: the one named on the upload form, else the first of
+  **Gordon**, **People Coming** that exists. Both the **.xlsx** workbook and a **.csv**
+  export of a single sheet are accepted; the file bytes are parsed in memory and never
+  stored. Columns are located by header text (the tracker puts a merged section banner
+  above the real header row, and column order differs between unit sheets), so only
+  the minimized fields are ever read (§9, §12).
+  **Status drives the roster:** `Active` (or a blank status) → `onRoster: true` and a
+  full upsert; `Inactive` → `onRoster: false`. Any other value is **reported and left
+  active**, so a status the importer hasn't been taught can't quietly drop people.
+  A promotion into a **supervisor/admin title** also flips any active student row of
+  theirs off-roster (`reconcileAdmins` in `roster/parse.ts`; the admin_users upsert
+  alone would leave the stale student row active), reported in the summary as moved to
+  admin. People taken off the roster drop out of listed/required responses; their
+  submission, name and position are retained in the DB.
+  **The import never deletes, and never creates an off-roster row**: a deactivation
+  only ever flips an existing student, so historical Inactive people the app has never
+  seen stay out of the database entirely.
+- **Absence guard** — anyone on-roster in the DB whom the uploaded sheet doesn't list
+  at all is also taken off the roster, but absence is an inference rather than a stated
+  departure, so a partial or wrong-sheet upload must not empty the roster. Past
+  `max(10, 20% of the current roster)` absences the import applies everything else and
+  leaves those students on, reporting what it would have done; the admin re-runs with
+  the override (a checkbox on `/admin/roster`, `--allow-mass-deactivation` on the CLI)
+  once they've checked the file. Explicit `Inactive` rows are a stated signal and are
+  never withheld by the guard. Pure seam: `evaluateAbsenceGuard` in `roster/parse.ts`.
   Rows whose position title is on the **excluded titles** list (e.g. Dining Advisory
   Board members) are skipped outright, neither student nor admin. The list is
   admin-editable config in `app_settings` (`excluded_roster_titles`, one title per
@@ -1110,6 +1126,33 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.80 (2026-07-26)** — **Roster import reads the PC & Training Tracker (§4.2, §9,
+  §16.2).** The workbook changed shape for the new year: one sheet per dining unit
+  (Muster reads **Gordon**) with a **Status** column, and no People Coming / People
+  Leaving split. The importer now reads a single sheet, in either **.xlsx** or a
+  **.csv** export of one sheet, chosen by name on the upload form (else the first of
+  Gordon / People Coming present), so older PCPL workbooks still import.
+  **Status is the on-roster signal** (`Active`/blank → on, `Inactive` → off, anything
+  else reported and left active). Removed with the split: `readPeopleLeaving`,
+  `parseLeaving`, `reconcileLeaving`, `RawLeavingRow`, `LeavingStudent` and the
+  both-sheets "moved within workbook" reconciliation, which only existed because a
+  promotion wrote a person into both sheets (the 0.37 defect). `reconcileAdmins` stays.
+  New **absence guard** (§4.2): people missing from the sheet entirely are taken off
+  the roster too, but only up to `max(10, 20%)` of the roster, else the import applies
+  everything else, reports the list and waits for an explicit override (checkbox on
+  `/admin/roster`, `--allow-mass-deactivation` on the CLI). Deactivation now **only
+  flips existing rows** and never creates one, so the tracker's historical Inactive
+  people never enter the database. Format handling: two-row headers, per-sheet column
+  order, exact-before-fuzzy header matching (the tracker has both "Email" and "Welcome
+  Email"), `yyyy/mm/dd` start dates, and **CP1252 decoding** for CSV exports, without
+  which "Retail and Café Team Member" (35 people) became an unmapped ghost title;
+  `normalizeTitle` now strips accents and that title maps to Barista in the seed
+  fixture. New pure seams, all TDD: `roster/csv.ts` (`parseCsv`), `extractRosterRows`,
+  `classifyStatus`, `evaluateAbsenceGuard`, `RosterFormatError`; `read-workbook.ts` is
+  now a thin source adapter returning a `string[][]` grid. Verified against the real
+  Gordon sheet and its CSV export (identical results: 85 active, 4 admins, 109
+  inactive, zero unmapped titles) plus the Carson/Catering sheets and the old PCPL
+  workbook. +37 tests; 520 pass.
 - **0.79 (2026-07-16)** — **Target staffing + schedule coverage (roadmap 5.1; Phase A of
   `docs/schedule-generation-plan.md`).** Shift blocks gain an optional `desiredCapacity`
   (target headcount per day the block runs), edited inline on `/admin/positions` (a

@@ -1,11 +1,18 @@
 /**
  * Roster import orchestrator (PLAN.md §4.2).
  *
- * read workbook → parse/classify → upsert students + admins + audit row, all
- * in one transaction. Idempotent: re-running updates existing rows by email.
+ * read sheet → parse/classify → upsert students + admins + audit row, all in
+ * one transaction. Idempotent: re-running updates existing rows by email.
+ *
+ * The tracker's **Status** column decides who is on the roster; someone absent
+ * from the sheet altogether is taken off too, but only within the absence
+ * guard (a partial or wrong-sheet upload must not empty the roster in one go).
+ * Off-roster rows are never created, only flipped, so historical Inactive
+ * people the app has never seen stay out of the database.
+ *
  * Titles map to positions through the DB-owned roster_title_mappings table
  * (alias chains resolved), and a student whose stored position differs from
- * the workbook's goes through the shared position-change routine (selection
+ * the sheet's goes through the shared position-change routine (selection
  * carry-over + flags + revalidation; roadmap 3.3). Takes a Database so it's
  * decoupled from connection setup, and a workbook source that is either a
  * file path (CLI) or the uploaded bytes (admin UI).
@@ -22,15 +29,21 @@ import {
   appSettings,
 } from "@/lib/db/schema";
 import { applyPositionChange } from "@/lib/positions/apply-change";
-import { readPeopleComing, readPeopleLeaving, type WorkbookSource } from "./read-workbook";
+import { readRosterGrid, type WorkbookSource } from "./read-workbook";
 import {
   buildEffectiveTitleMap,
   effectiveExcludedTitles,
   SETTING_EXCLUDED_ROSTER_TITLES,
 } from "./position-mapping";
-import { parseRoster, parseLeaving, reconcileLeaving, reconcileAdmins } from "./parse";
+import {
+  extractRosterRows,
+  parseRoster,
+  reconcileAdmins,
+  evaluateAbsenceGuard,
+  type AbsenceGuardResult,
+} from "./parse";
 
-/** One student whose stored position differed from the workbook's (names, not ids). */
+/** One student whose stored position differed from the sheet's (names, not ids). */
 export interface PositionChangeSummary {
   email: string;
   from: string | null;
@@ -44,37 +57,34 @@ export interface PositionChangeSummary {
 
 export interface ImportSummary {
   importId: string;
+  /** The worksheet read, or null for a CSV. */
+  sheetName: string | null;
+  /** Data rows read from the sheet (blank rows excluded); reconcile against the file. */
+  sheetRows: number;
   studentsUpserted: number;
   adminsUpserted: number;
-  /** People Leaving rows upserted as off-roster (onRoster: false). */
-  leftMarked: number;
+  /** Emails taken off the roster because the sheet marks them Inactive. */
+  deactivatedByStatus: string[];
   /**
-   * Emails in BOTH sheets: a promotion/position change moves the old row to
-   * "People Leaving" and adds a fresh "People Coming" entry. People Coming
-   * wins: they stay on-roster with the new position; reported here. Someone
-   * promoted to a supervisor title is reported under movedToAdmin instead.
+   * Emails on-roster in the database that this sheet doesn't list at all.
+   * Applied (taken off the roster) only when `absenceGuard.applied` is true.
    */
-  movedWithinWorkbook: string[];
+  absentOnRoster: string[];
+  absenceGuard: AbsenceGuardResult;
   /**
-   * Emails classified as admins in People Coming that held an active student
-   * row: promoted to a supervisor title, so the student row was flipped
-   * off-roster (their submission stays; admin access comes from admin_users).
+   * Emails the sheet classifies as admins that held an active student row:
+   * promoted to a supervisor title, so the student row was flipped off-roster
+   * (their submission stays; admin access comes from admin_users).
    */
   movedToAdmin: string[];
-  /**
-   * Emails still on-roster in the DB that appear in NEITHER sheet of this
-   * workbook. The import never removes them (only "People Leaving" flips a
-   * student off-roster), so they're surfaced for the admin to reconcile.
-   */
-  unlistedOnRoster: string[];
-  /** Raw data rows read per sheet (blank rows excluded); reconcile against the workbook. */
-  sheetRows: { peopleComing: number; peopleLeaving: number };
+  /** Status values that are neither Active nor Inactive. Treated as active. */
+  unrecognizedStatuses: Record<string, number>;
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
   /**
-   * People Coming students whose stored position differed from the incoming
-   * one (including to/from none): the shared carry-over routine ran for each
+   * Active students whose stored position differed from the incoming one
+   * (including to/from none): the shared carry-over routine ran for each
    * (selections re-pointed where a target block has identical times, the rest
    * dropped, position_change flagged, availability revalidated).
    */
@@ -85,14 +95,22 @@ export interface ImportOptions {
   db: Database;
   workbook: WorkbookSource;
   importedBy: string;
+  /** Worksheet to read; defaults to the first of ROSTER_SHEET_CANDIDATES present. */
+  sheetName?: string;
+  /** Apply the absent-student deactivations even when the guard would stop them. */
+  allowMassDeactivation?: boolean;
 }
 
 export async function importRoster({
   db,
   workbook,
   importedBy,
+  sheetName: requestedSheet,
+  allowMassDeactivation = false,
 }: ImportOptions): Promise<ImportSummary> {
-  const rows = await readPeopleComing(workbook);
+  const { sheetName, grid } = await readRosterGrid(workbook, requestedSheet);
+  const rows = extractRosterRows(grid);
+
   // The title map is DB-owned (seeded once from the code fixture, extended by
   // ghost resolution on /admin/positions); aliases canonicalize before writes.
   // The excluded-title list is admin config in app_settings (edited on
@@ -112,33 +130,45 @@ export async function importRoster({
     buildEffectiveTitleMap(mappingRows, positionRows),
     effectiveExcludedTitles(excludedSetting?.value ?? null),
   );
-  // Tolerant of older single-sheet workbooks: missing "People Leaving" → [].
-  const leavingRows = await readPeopleLeaving(workbook);
-  const leaving = parseLeaving(leavingRows);
-  // A person in both sheets was promoted/moved, not fired: People Coming wins.
-  const { markLeft, movedWithinWorkbook } = reconcileLeaving(parsed, leaving);
   const importId = randomUUID();
 
-  // Pre-read the whole roster once: onRoster status feeds the drift check
-  // below, stored positions feed the change detection inside the transaction.
+  // Pre-read the whole roster once: onRoster status feeds the deactivation
+  // sets below, stored positions feed the change detection in the transaction.
   const existing = await db
     .select({ email: students.email, positionId: students.positionId, onRoster: students.onRoster })
     .from(students);
   const priorPosition = new Map(existing.map((r) => [r.email, r.positionId]));
-
-  // Drift check (computed against the pre-import roster): anyone on-roster but
-  // absent from both sheets keeps their status; flag them so a person quietly
-  // dropped from the workbook doesn't linger unnoticed.
-  const mentioned = new Set<string>([
-    ...parsed.students.map((s) => s.email),
-    ...parsed.admins.map((a) => a.email),
-    ...leaving.map((l) => l.email),
-  ]);
   const onRosterEmails = new Set(existing.filter((r) => r.onRoster).map((r) => r.email));
-  const unlistedOnRoster = [...onRosterEmails].filter((email) => !mentioned.has(email)).sort();
+
   // Promoted into a supervisor title: the admin_users upsert alone would leave
   // their old student row active with a stale position, so flip it off-roster.
   const movedToAdmin = reconcileAdmins(parsed, onRosterEmails);
+
+  // Stated departure. A duplicate row listing the same person as active wins,
+  // the same way the old two-sheet workbook let People Coming win.
+  const activeStudents = new Set(parsed.students.map((s) => s.email));
+  const deactivatedByStatus = parsed.inactive
+    .map((i) => i.email)
+    .filter((email) => onRosterEmails.has(email) && !activeStudents.has(email))
+    .sort();
+
+  // Inferred departure: on-roster here, absent from the sheet entirely.
+  const absentOnRoster = [...onRosterEmails]
+    .filter((email) => !parsed.seenEmails.has(email))
+    .sort();
+  const absenceGuard = evaluateAbsenceGuard(
+    absentOnRoster.length,
+    onRosterEmails.size,
+    allowMassDeactivation,
+  );
+
+  const deactivate = [
+    ...new Set([
+      ...deactivatedByStatus,
+      ...(absenceGuard.applied ? absentOnRoster : []),
+      ...movedToAdmin,
+    ]),
+  ];
 
   const positionName = new Map(positionRows.map((p) => [p.id, p.name]));
   const nameOf = (id: string | null) => (id === null ? null : (positionName.get(id) ?? id));
@@ -168,8 +198,8 @@ export async function importRoster({
           },
         });
 
-      // Position change (only ever from People Coming rows; markLeft rows just
-      // flip onRoster): run the shared carry-over + flag + revalidate routine.
+      // Position change (only ever from active rows; deactivations just flip
+      // onRoster): run the shared carry-over + flag + revalidate routine.
       const hadRow = priorPosition.has(s.email);
       const before = priorPosition.get(s.email) ?? null;
       // Keep the in-memory view current so a duplicate row for the same email
@@ -192,21 +222,6 @@ export async function importRoster({
       });
     }
 
-    // Only people NOT also in People Coming (see reconcileLeaving). On an
-    // existing row we only flip onRoster; never clobber position/displayName.
-    for (const l of markLeft) {
-      await tx
-        .insert(students)
-        .values({
-          email: l.email,
-          displayName: l.displayName,
-          positionId: null,
-          international: false,
-          onRoster: false,
-        })
-        .onDuplicateKeyUpdate({ set: { onRoster: false } });
-    }
-
     for (const a of parsed.admins) {
       await tx
         .insert(adminUsers)
@@ -214,12 +229,10 @@ export async function importRoster({
         .onDuplicateKeyUpdate({ set: { email: a.email } });
     }
 
-    // Same onRoster-only flip as markLeft: keep their name/position history.
-    if (movedToAdmin.length > 0) {
-      await tx
-        .update(students)
-        .set({ onRoster: false })
-        .where(inArray(students.email, movedToAdmin));
+    // Only ever an onRoster flip on rows that already exist: name, position
+    // and any submission are kept, and nobody is created just to be inactive.
+    if (deactivate.length > 0) {
+      await tx.update(students).set({ onRoster: false }).where(inArray(students.email, deactivate));
     }
 
     await tx.insert(rosterImports).values({
@@ -237,16 +250,15 @@ export async function importRoster({
 
   return {
     importId,
+    sheetName,
+    sheetRows: rows.length,
     studentsUpserted: parsed.students.length,
     adminsUpserted: parsed.admins.length,
-    leftMarked: markLeft.length,
-    movedWithinWorkbook: movedWithinWorkbook
-      .map((m) => m.email)
-      .filter((email) => !movedToAdmin.includes(email))
-      .sort(),
+    deactivatedByStatus,
+    absentOnRoster,
+    absenceGuard,
     movedToAdmin,
-    unlistedOnRoster,
-    sheetRows: { peopleComing: rows.length, peopleLeaving: leavingRows.length },
+    unrecognizedStatuses: Object.fromEntries(parsed.unrecognizedStatuses),
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

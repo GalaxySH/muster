@@ -20,15 +20,20 @@ redirects to `/course-schedule` (Phase 2), and the **admin views** (Phase 4): th
 response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
-Sheet** in the Drive folder. The roster import handles the PCPL workbook's two sheets
-(**People Coming** = active → `onRoster: true`; **People Leaving** = resigned/fired →
-`onRoster: false`; someone in **both** sheets was promoted/moved — People Coming wins,
-they stay active), and the active surfaces (response list, export, non-response tracking)
-filter to `onRoster: true` so people who left drop out (their submission stays in the DB).
-Admins import the workbook from the UI at **`/admin/roster`** (upload → the same
-idempotent importer, parsed in memory, never written to disk; renders the summary + a
-drift report of on-roster students absent from both sheets); the CLI remains for
-scripted use.
+Sheet** in the Drive folder. The roster import reads **one sheet of the PC & Training
+Tracker** (v0.80; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
+export of a single sheet), where a **Status** column is the on-roster signal (`Active`
+or blank → `onRoster: true`; `Inactive` → `onRoster: false`; any other value is reported
+and left active). The active surfaces (response list, export, non-response tracking)
+filter to `onRoster: true` so people who left drop out (their submission stays in the
+DB). Someone on-roster but **absent from the sheet entirely** is also taken off, behind
+the **absence guard**: past `max(10, 20%)` of the roster the import leaves them on and
+reports the list, until an admin re-runs with the override. A deactivation only ever
+flips an existing row, never creates one. Admins import from the UI at
+**`/admin/roster`** (upload → the same idempotent importer, parsed in memory, never
+written to disk; renders the summary, the guard, and any unrecognized Status values);
+the CLI remains for scripted use. The old two-sheet PCPL workbook still imports (the
+sheet picker falls back to `People Coming`).
 The Drive relay + the running sheet are **confirmed live**. The **magic-link fallback**
 (auth for users Google rejects) is built (PLAN §11). Ops hardening is largely done:
 security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
@@ -126,7 +131,10 @@ docker compose -f compose.dev.yaml up -d     # local DB on localhost:3306
 npm run db:generate    # generate a migration from schema changes
 npm run db:migrate     # apply migrations
 npm run db:seed        # upsert canonical position/block config
-npm run roster:import -- "PCPL S26.xlsx" --by you@wisc.edu   # import roster from the CLI (PII; gitignored) — or upload on /admin/roster
+# Import the roster from the CLI (PII; gitignored) — or upload on /admin/roster.
+# Call tsx directly when passing flags: `npm run` swallows --by/--sheet as npm's own.
+npx tsx src/scripts/import-roster.ts "PC & Training Tracker 26-27.xlsx" --by you@wisc.edu
+npx tsx src/scripts/import-roster.ts tracker.xlsx --sheet Carson --allow-mass-deactivation
 ```
 
 Local dev setup: `cp .env.example .env.local`, start the dev DB, then
@@ -228,7 +236,8 @@ naturally.
   Drive `fileId` (§12). `drive.file` is per-file (app sees only files it created) —
   do not request broader `drive` scope.
 - **Data minimization:** do not ingest Campus ID, phone, or onboarding-tracking
-  columns from the roster (PCPL workbook, sheet PC). Only the fields in the §9 data
+  columns from the roster tracker (also: Res Hall, Proficiency, and every onboarding
+  or training column). Only the fields in the §9 data
   model.
 - Refresh tokens / the Drive grant are stored **encrypted server-side** — never in
   session cookies (a POC mistake explicitly called out in §11).
