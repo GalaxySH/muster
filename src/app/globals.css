@@ -124,11 +124,12 @@ body {
 }
 
 /* Admin hub shell (app/admin/page.tsx): the nav rail beside the status body.
-   On a wide screen the rail is a grid column; grid items stretch, so it runs
-   the full height of the body column. Under 960px it becomes a slide-out
-   drawer opened by the floating menu button (components/admin/AdminNav.tsx),
-   so the status content owns the page. The rail's look mirrors panelStyle in
-   components/admin/ui.tsx; it lives here because the drawer must restyle it. */
+   On a wide screen the rail is a grid column sized to its own content, and every
+   link is one compact row, so the whole rail fits a desktop screen without
+   scrolling. Under 960px it becomes a slide-out drawer opened by the floating
+   menu button (components/admin/AdminNav.tsx), so the status content owns the
+   page. The rail's look mirrors panelStyle in components/admin/ui.tsx; it lives
+   here because the drawer must restyle it. */
 .admin-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -143,10 +144,10 @@ body {
   grid-area: nav;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   background: var(--color-background-primary);
   border: 1px solid var(--color-border-secondary);
-  padding: 0.85rem 1rem;
+  padding: 0.7rem 0.75rem;
 }
 .admin-nav-toggle,
 .admin-nav-backdrop {
@@ -154,11 +155,14 @@ body {
 }
 @media (min-width: 960px) {
   .admin-shell {
-    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-columns: 236px minmax(0, 1fr);
     grid-template-areas: "nav body";
   }
   .admin-shell-nav {
     border-radius: var(--border-radius-lg);
+    /* Hug the links instead of stretching to the body's height: with the rail
+       this short, a stretched panel is mostly empty space. */
+    align-self: start;
   }
 }
 @media (max-width: 959.98px) {
