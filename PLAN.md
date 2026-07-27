@@ -34,8 +34,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.81
-- **Last updated:** 2026-07-16
+- **Version:** 0.85
+- **Last updated:** 2026-07-26
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -384,18 +384,22 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
   graded-intensity view, if ever wanted, stays admin-side.
-- **Weekend Sat/Sun separation:** the weekend grids render **Sat and Sun as
-  adjacent columns**, but the scheduling week **starts on Sunday**, so the two days
-  sit at **opposite ends of the week** (a Sat + Sun pick is two separate week-edge
-  days, not a continuous block). Both weekend grids therefore draw a **wider gap plus
+- **Weekend Sun/Sat separation:** the weekend grids render **Sun then Sat**, because
+  the scheduling week **starts on Sunday**: Sunday opens the week and Saturday closes
+  it, so the two days sit at **opposite ends of the week** (a Sun + Sat pick is two
+  separate week-edge days, not a continuous block). Column order follows
+  `WEEKEND_DAYS` (`domain/types.ts`), the single source for weekend column order;
+  `ALL_DAYS` is the matching Sunday-start week (Sun, Mon..Fri, Sat) used for day
+  pickers and export ordering. Both weekend grids additionally draw a **wider gap plus
   a thin vertical rule between the two columns** — the student selection grid
   (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
   `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
-  evident at a glance. Purely visual, expressed in each grid's own styling
+  evident at a glance. Expressed in each grid's own styling
   convention: the student grid takes an `avail-grid--weekend` table variant whose
-  column rules sit with the other `avail-*` classes in `globals.css`, the admin grid
-  a small `weekSplit` per-column inline style; both amount to extra padding on the
-  Sat/Sun sides plus a `borderLeft` on the Sun column, in that grid's border colour.
+  column rules sit with the other `avail-*` classes in `globals.css` (positional
+  selectors, so they follow the column order), the admin grid a small `weekSplit`
+  per-column inline style; both amount to extra padding on the Sun side plus a
+  `borderLeft` on the Sat column, in that grid's border colour.
   No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7b. Evidence & excusal pages
@@ -477,6 +481,16 @@ columns from the roster.
   signal: stamped **only** when the student clicks "Yes, that's me" on `/me`, since an
   admin can create the row before the student ever signs in; §13.1),
   `everyWeekendOptIn: bool`,
+  - **The two timestamps** (both shown in the §10a header): `submittedAt` is
+    **write-once** — the instant of the **first** submit, so re-submitting after an edit
+    never moves it (null until they submit; a draft has no submit time, and every
+    submitted row has one). `updatedAt` is **when the student last changed their own
+    answers**, and only student-side writes move it: their availability save, finalize,
+    their evidence uploads/removals, and their `/me` confirm. **Admin writes never touch
+    it** — scheduler notes, the scheduled mark, the schedule-email stamp, and anything
+    saved on the student's behalf (§10a) all leave it where the student left it, so it
+    can never imply a student came back to a form they haven't. The column is therefore
+    **not** `ON UPDATE CURRENT_TIMESTAMP`; every student-side write sets it explicitly.
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
@@ -594,10 +608,13 @@ scheduled mark, and any evidence entered on the student's behalf **create the dr
 demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
 with no position gets a notice instead of the calculator. Layout (see wireframe):
 - **Identity header:** name, email, position; **prev/next** nav + full-list jump;
-  status: **submitted/edited**, or a **draft** / **missing** badge with the header ringed
-  red until the response is submitted; a **"mark scheduled ✓" toggle** (mirrors the
+  a **draft** / **missing** badge with the header ringed
+  red until the response is submitted; **both timestamps** (§9) side by side in one
+  panel — **Submitted** (the first submit, or "not yet") and **Last updated** (the
+  student's own last edit) — legible rather than fine print, and kept to two tight lines
+  so the bar doesn't grow; a **"mark scheduled ✓" toggle** (mirrors the
   roster's "W2W schedule created" column — track progress across ~400 without leaving
-  Muster; since 0.80 it is also the generator's **freeze switch**: a scheduled
+  Muster; since 0.84 it is also the generator's **freeze switch**: a scheduled
   student's recommended assignments carry forward verbatim through every later run,
   while the toggle still never affects response status or non-response tracking,
   which key on `confirmedAt` — §13.1); a **"delete response"** button (confirm → removes the submission + its Drive
@@ -613,6 +630,16 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
   open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
   any **auto-assigned** weekend cell marked distinctly.
+  - **Editable + saveable on the student's behalf:** the grid doubles as the hours
+    calculator — the scheduler clicks cells (and the rotation pill) to try a schedule and
+    the readout recomputes live. A trial is local until they **Save** it (the button joins
+    Reset/Clear once anything differs, and runs Save → Saving → Saved). Saving writes the
+    **selection + rotation only**: the student's own **requested hours** and **note** are
+    never touched, since the grid doesn't edit them. There is **no hard-rule gate** here —
+    the scheduler may deliberately record a below-floor selection, the same way an admin
+    may add travel past the cutoff. An already-submitted response stays submitted and has
+    its weekend auto-assign + flags re-applied, exactly as the student's own save would
+    (§5 #5); an unstarted one gets the draft row on demand and stays "missing" (§13.1).
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -634,6 +661,11 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   enter details outside the window). The **travel cutoff (§8) still applies**, and the
   Drive relay is unchanged (still no image bytes stored, §12). Same on-behalf pattern as
   the admin-filed change request (§4.1).
+  - **In-place from the card:** Course schedule, Travel, and Extracurriculars each also
+    carry an **Add** control that opens a modal on the response page itself, so the common
+    case (a student handed the scheduler a screenshot) never leaves the view. A course
+    schedule is one file, not a list, so once one is on file the control reads **Replace**
+    and the upload swaps it (the old Drive file is deleted, §12).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
 
 ---
@@ -989,7 +1021,7 @@ under-18 test (deferred → fallback, §11).
 - Writing schedules. Generating schedule **recommendations** is no longer a blanket
   non-goal: it is built, admin-facing and advisory only, per
   `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79;
-  Phase B generation engine + run view in 0.80). Recommendations are never shown to
+  Phase B generation engine + run view in 0.84). Recommendations are never shown to
   students. The human scheduler still writes the actual schedule in W2W by hand.
 - Any programmatic integration with WhenToWork.
 - Storing FERPA-protected records on the app server (by design — see §12).
@@ -1125,7 +1157,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.81 (2026-07-26)** — **Tunable scheduling parameters.** New
+- **0.85 (2026-07-26)** — **Tunable scheduling parameters.** New
   `domain/scheduling/params.ts`: `SchedulingParams` = max hours per day (1 to
   16, default 8) plus night and evening priorities (0 to 100, defaults 50/25),
   admin-edited in a Generation settings panel on `/admin/schedule`, stored as
@@ -1142,8 +1174,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   the tunable value. Verified live: at priority 50 the synthetic-cohort Shift
   Lead mornings went from mostly 0/5 to covered while nights stayed at or near
   target, and at a 6h cap no non-frozen student's day exceeded 6h (frozen rows
-  stay verbatim by design).
-- **0.80 (2026-07-26)** — **Recommended schedule generation (Phase B of
+  stay verbatim by design). (Numbered 0.81 on its branch; renumbered at merge
+  because main had claimed 0.80 through 0.83.)
+- **0.84 (2026-07-26)** — **Recommended schedule generation (Phase B of
   `docs/schedule-generation-plan.md`; roadmap 5.1).** New pure engine in
   `domain/scheduling/` (engine, improve, seats): deterministic first-come-first-serve
   by `submittedAt` (tie: email) over submitted on-roster students. Per student it
@@ -1162,13 +1195,87 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   split to one "Update schedule" action (two-step confirm, no typed phrase needed).
   Runs are **append-only**: `schedule_runs` (current/superseded, run report in
   `summaryJson`, retention 10) + `schedule_assignments` (cohort per row), migration
-  0017. `/admin/schedule` gains the run panel, assigned-vs-target grid cells (weekend
+  0018. `/admin/schedule` gains the run panel, assigned-vs-target grid cells (weekend
   shown as A·B, selection supply in the tooltip), a per-student assignment table, and
   a CSV export; recommendations stay admin-only. New seeded dev script
   `npm run dev:generate-availability` (`--seed/--students/--fill/--bias`, `--clean`)
   creates synthetic-NNN@wisc.edu students whose submissions pass the real
   `validateAvailability`, refusing production. §9 entities, §10a, §17 and
-  `docs/architecture.md` updated; the plan doc reflects what shipped.
+  `docs/architecture.md` updated; the plan doc reflects what shipped. (Numbered
+  0.80 on its branch, with migration 0017; renumbered at merge because main had
+  claimed both.)
+- **0.83 (2026-07-26)** — **The admin hub's nav rail fits one screen (§10b).** The rail ran
+  past the fold on a desktop window, so reaching Email settings meant scrolling the page. Each
+  `NavCard` loses its description line and becomes a single 30px row of icon, label, and count;
+  the group headers shrink to small caps; the rail narrows to 236px and hugs its links instead
+  of stretching to the body's height. That takes it to 536px for all 13 links, which clears a
+  660px viewport (the smallest common laptop) with room to spare. A count that needed a word of
+  explanation ("27 short", "124 ungrouped") now carries it as a tooltip and `aria-label` rather
+  than widening the pill, and long labels ellipsize rather than wrap so every row is the same
+  height. **Sign out moves out of the rail** to a text link beside the admin email in the page
+  header (`SignOutLink`, sharing the pending-state convention via a new `SubmitTextLink`). The
+  `align-self: start` that makes the rail hug has to live inside the desktop media query: the
+  under-960px drawer is `position: fixed` and would otherwise stop short of the viewport foot.
+  Verified in the browser at 1512x860, 1280x660, and as the mobile drawer at 760px; 496 tests
+  still pass.
+- **0.82 (2026-07-26)** — **Submitted / last-updated timestamps mean what they say (§9, §10a;
+  migration `0017`).** `updated_at` was `ON UPDATE CURRENT_TIMESTAMP`, so **every** write to
+  the row moved it — including admin ones. A scheduler adding a note, ticking "scheduled", or
+  saving availability on a student's behalf made the response look like the student had just
+  edited it. The column is no longer auto-updating (migration `0017` drops the clause); every
+  **student-side** write now sets it explicitly (availability save, finalize, their evidence
+  uploads/removals, the `/me` confirm), and admin writes deliberately leave it alone. Evidence
+  actions get an `editStamp`/`touchSubmission` seam keyed on the same `onBehalf` flag the gate
+  already resolves, which also fixes a gap: adding or removing a travel entry or a proof file
+  only wrote child rows, so it never moved the parent's stamp at all. `submitted_at` becomes
+  **write-once** — `finalizeSubmission` sets it only when null, so a student who finishes the
+  wizard again keeps their original submit time (it used to be overwritten), and `0017`
+  backfills any submitted row missing one. Two knock-on improvements: the hub's stalled-draft
+  detection no longer counts an admin note as student activity, and "recent submissions" no
+  longer re-sorts a re-submitter to the top. The §10a header now shows **both** stamps in one
+  bordered panel, labelled and in primary text instead of 12px light-grey fine print, on two
+  tight lines so the bar keeps its original height (verified: the panel is 38px against the
+  40px avatar, and hiding it leaves the header at the same 69px). Drafts read "not yet" for
+  Submitted rather than borrowing `updated_at`, which the old header did, mislabelling an edit
+  time as a submit time. No new tests: this is schema + action behaviour with no pure seam, so
+  it was verified end-to-end against a live DB instead (478 existing tests still pass).
+- **0.81 (2026-07-16)** — **Availability + course schedule on the student's behalf (§10a).**
+  The response page's grid was a calculator that could never commit: a scheduler could try a
+  schedule but not record it. It now **saves**. Once a trial differs from the student's
+  picks a **Save** joins Reset/Clear (Save → Saving → Saved, then it retires itself), calling
+  the new `saveAvailabilityFor(student, …)`. That action gates through
+  `requireEditableStudent(student)` like the evidence actions, and shares a new private
+  `persistAvailability` with the student's own `saveAvailability`, so an admin edit lands
+  **exactly** how a student's save would: an already-submitted response stays submitted and
+  gets its weekend auto-assign + flags re-applied, an unstarted one gets a draft row and
+  stays "missing" until the student confirms. Two deliberate differences, both because the
+  admin is the authority rather than the window: **no hard-rule gate** (a below-floor
+  selection can be recorded on purpose, as travel can be added past the cutoff), and it
+  writes **selection + rotation only** — the student's requested hours and their note are
+  never touched, since the grid doesn't edit them. The **course schedule** gains the same
+  in-place **Add** the Travel/Extracurricular cards have: `uploadCourseSchedule` already
+  took an on-behalf `student` field, so this is `AddEvidenceButton` learning a third kind,
+  not a new path. With one on file the control reads **Replace** (a schedule is one column,
+  not a list; the old Drive file is relay-deleted as before). No schema change, and the
+  privacy invariant is untouched (no image bytes, still the admin `drive.file` grant).
+  +5 tests (478 total); the save was verified end-to-end against a live DB, including the
+  submitted-response auto-assign path.
+- **0.80 (2026-07-16)** — **Weekend columns run Sun then Sat (§7).** The weekend grids
+  ordered their columns Sat | Sun, which reads as one contiguous Sat+Sun weekend — the
+  exact misreading 0.42's divider was added to prevent. The scheduling week starts on
+  Sunday, so the columns now run **Sun | Sat**: Sunday opens the week, Saturday closes
+  it, and the divider between them lands on the real week boundary. `WEEKEND_DAYS`
+  (`domain/types.ts`) flips to `["sun", "sat"]` and is now the single source for weekend
+  column order — the student grid, the admin `PrefGridCalculator`, and the admin hub's
+  coverage cells all follow it (the hub's private `WEEKDAYS`/`WEEKEND` copies were
+  deleted in favour of the domain constants). `ALL_DAYS` becomes a coherent Sunday-start
+  week (`Sun, Mon..Fri, Sat`) instead of the incoherent `Mon..Fri, Sun, Sat` the flip
+  would otherwise have produced, so the change-request day picker and the responses
+  export both sort Sun→Sat. `weekSplit` and the `avail-grid--weekend` CSS keep the rule
+  between the two columns (the CSS selectors are positional and needed no change).
+  Visual + ordering only: no schema, no copy, no model change. Weekend auto-assign is
+  unaffected (it picks uniformly at random over the same candidate set; only the
+  enumeration order moved). 473 tests pass.
 - **0.79 (2026-07-16)** — **Target staffing + schedule coverage (roadmap 5.1; Phase A of
   `docs/schedule-generation-plan.md`).** Shift blocks gain an optional `desiredCapacity`
   (target headcount per day the block runs), edited inline on `/admin/positions` (a

@@ -78,7 +78,7 @@ export interface EngineReport {
   shortOfTarget: number;
   /** Active students spanning fewer days than their position minimum. */
   belowMinDays: number;
-  /** The knobs this run was generated with (absent on pre-0.81 stored runs). */
+  /** The knobs this run was generated with (absent on pre-0.85 stored runs). */
   params?: SchedulingParams;
 }
 

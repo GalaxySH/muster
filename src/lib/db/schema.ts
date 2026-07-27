@@ -140,9 +140,21 @@ export const submissions = mysqlTable("submissions", {
   // admin can start a submission on a student's behalf before the student ever
   // signs in.
   confirmedAt: datetime("confirmed_at", { mode: "date" }),
+  /**
+   * When the student FIRST submitted. Write-once: `finalizeSubmission` sets it only
+   * when it is still null, so re-submitting after an edit never moves it. Null until
+   * they submit (a draft has no submit time).
+   */
   submittedAt: datetime("submitted_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  /**
+   * When the STUDENT last changed their own answers. Deliberately NOT
+   * `onUpdateNow()`: admins write to this row too (scheduler notes, the scheduled
+   * mark, the schedule-email stamp, and on-behalf-of edits), and an admin touching a
+   * response must not look like the student coming back to it. Every student-side
+   * write therefore sets this column explicitly; admin-side writes leave it alone.
+   */
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 /** One availability-grid cell: this block on this day is selected (PLAN.md §9). */

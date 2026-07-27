@@ -21,12 +21,12 @@ const position: Position = {
 };
 
 describe("weekendCandidates", () => {
-  it("is every weekend block crossed with Sat and Sun", () => {
+  it("is every weekend block crossed with Sun and Sat", () => {
     expect(weekendCandidates(blocks)).toEqual([
-      { blockId: "we-a", day: "sat" },
       { blockId: "we-a", day: "sun" },
-      { blockId: "we-b", day: "sat" },
+      { blockId: "we-a", day: "sat" },
       { blockId: "we-b", day: "sun" },
+      { blockId: "we-b", day: "sat" },
     ]);
   });
 
@@ -56,7 +56,7 @@ describe("chooseWeekendAutoAssign", () => {
   it("picks a candidate using the injected index", () => {
     expect(chooseWeekendAutoAssign(blocks, { pick: () => 2 })).toEqual({
       blockId: "we-b",
-      day: "sat",
+      day: "sun",
     });
   });
 
@@ -70,7 +70,7 @@ describe("chooseWeekendAutoAssign", () => {
     const preferred: SelectedShift = { blockId: "gone", day: "sat" };
     expect(chooseWeekendAutoAssign(blocks, { preferred, pick: () => 0 })).toEqual({
       blockId: "we-a",
-      day: "sat",
+      day: "sun",
     });
   });
 

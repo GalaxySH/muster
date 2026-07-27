@@ -47,6 +47,11 @@ export interface AdminActionResult {
  * anyone on the roster, whether or not they ever filled the form in. The draft
  * this creates has no confirmedAt, so the student still counts as a
  * non-responder everywhere (see `responseStatus` in ./data).
+ *
+ * These are admin writes, so they must never touch `updated_at` — that column
+ * means "when the student last changed their answers" (PLAN §9). Nothing here has
+ * to opt out: the column is no longer `ON UPDATE CURRENT_TIMESTAMP`, so it moves
+ * only when a caller sets it. Don't add it to `patch`.
  */
 async function updateSubmission(
   studentEmail: string,

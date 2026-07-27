@@ -56,9 +56,9 @@ describe("buildAdminGrid", () => {
   it("marks an auto-assigned weekend cell 'auto'", () => {
     const grid = buildAdminGrid(allBlocks, [], [{ blockId: "we-b", day: "sat" }]);
     const row = grid.weekend!.rows.find((r) => r.block.id === "we-b")!;
-    // weekend days are [sat, sun]
-    expect(grid.weekend!.days).toEqual(["sat", "sun"]);
-    expect(row.cells).toEqual(["auto", "off"]);
+    // Sunday opens the week, so Sat is the second cell.
+    expect(grid.weekend!.days).toEqual(["sun", "sat"]);
+    expect(row.cells).toEqual(["off", "auto"]);
   });
 
   it("prefers 'auto' over 'on' when a cell is both (auto-assign overlay wins)", () => {
@@ -68,7 +68,7 @@ describe("buildAdminGrid", () => {
       [{ blockId: "we-b", day: "sat" }],
     );
     const row = grid.weekend!.rows.find((r) => r.block.id === "we-b")!;
-    expect(row.cells[0]).toBe("auto");
+    expect(row.cells[1]).toBe("auto");
   });
 
   it("carries through derived open/close and the per-day high-demand overlay", () => {

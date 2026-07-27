@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+vi.mock("@/lib/availability/actions", () => ({
+  saveAvailabilityFor: vi.fn(async () => ({ ok: true, errors: [] })),
+}));
+
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+
 import { PrefGridCalculator } from "./PrefGridCalculator";
+import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { buildAdminGrid } from "@/lib/admin/summary";
 import { demandCellKey } from "@/lib/domain/demand";
 import { parseTime } from "@/lib/domain/time";
@@ -46,6 +54,7 @@ function renderCalc(
         opts.autoAssigned ?? [],
         opts.highDemand ?? new Set(),
       )}
+      studentEmail="stu@wisc.edu"
       blocks={blocks}
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
       minHours={opts.minHours ?? 10}
@@ -53,6 +62,12 @@ function renderCalc(
     />,
   );
 }
+
+beforeEach(() => {
+  vi.mocked(saveAvailabilityFor).mockClear();
+  vi.mocked(saveAvailabilityFor).mockResolvedValue({ ok: true, errors: [] });
+  refresh.mockClear();
+});
 
 describe("PrefGridCalculator", () => {
   it("opens on the student's picks and reads their preference capacity", () => {
@@ -240,5 +255,94 @@ describe("PrefGridCalculator", () => {
       "title",
       expect.stringContaining("a lot of students picked this shift"),
     );
+  });
+
+  describe("saving on the student's behalf", () => {
+    const save = () => screen.queryByRole("button", { name: /^(Save|Saving…|Saved)$/ });
+
+    it("offers no Save until the trial differs from the student's picks", async () => {
+      const user = userEvent.setup();
+      renderCalc();
+      expect(save()).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      expect(save()).toHaveTextContent("Save");
+    });
+
+    it("saves the trial cells and the trial rotation for the named student", async () => {
+      const user = userEvent.setup();
+      renderCalc();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add a cell
+      await user.click(screen.getByRole("button", { name: /alternating/i })); // and the rotation
+      await user.click(save()!);
+
+      expect(saveAvailabilityFor).toHaveBeenCalledWith("stu@wisc.edu", {
+        selection: expect.arrayContaining([
+          { blockId: "wd-a", day: "mon" },
+          { blockId: "wd-a", day: "tue" },
+          { blockId: "we-a", day: "sat" },
+          { blockId: "wd-b", day: "wed" },
+        ]),
+        everyWeekendOptIn: true,
+      });
+      expect(vi.mocked(saveAvailabilityFor).mock.calls[0]![1].selection).toHaveLength(4);
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+    });
+
+    it("runs Save → Saved, and settles once the save comes back as the student's picks", async () => {
+      const user = userEvent.setup();
+      const { rerender } = renderCalc();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+      await waitFor(() => expect(save()).toHaveTextContent("Saved"));
+      expect(save()).toBeDisabled();
+
+      // What the server now holds comes back as props; the trial is their selection,
+      // so there is nothing left to save and the button retires.
+      rerender(
+        <PrefGridCalculator
+          grid={buildAdminGrid(blocks, [...picks, { blockId: "wd-b", day: "wed" }], [], new Set())}
+          studentEmail="stu@wisc.edu"
+          blocks={blocks}
+          everyWeekendOptIn={false}
+          minHours={10}
+          cap={30}
+        />,
+      );
+      expect(screen.getByText("preferred")).toBeInTheDocument();
+      await waitFor(() => expect(save()).not.toBeInTheDocument(), { timeout: 3000 });
+    });
+
+    it("re-arms Save if the admin edits again while Saved is still up", async () => {
+      const user = userEvent.setup();
+      renderCalc();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+      await waitFor(() => expect(save()).toHaveTextContent("Saved"));
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Thu" }));
+      expect(save()).toHaveTextContent("Save");
+      expect(save()).toBeEnabled();
+    });
+
+    it("surfaces a failed save and leaves the trial intact to retry", async () => {
+      const user = userEvent.setup();
+      vi.mocked(saveAvailabilityFor).mockResolvedValue({
+        ok: false,
+        errors: ["No position is set for this student."],
+      });
+      renderCalc();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+
+      expect(await screen.findByText("No position is set for this student.")).toBeInTheDocument();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(save()).toHaveTextContent("Save");
+      expect(save()).toBeEnabled();
+    });
   });
 });

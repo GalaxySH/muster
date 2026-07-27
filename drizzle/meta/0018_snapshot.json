@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "cd13b542-fbf6-4546-8b9c-a6b88cd06fa8",
-  "prevId": "8fa3a651-d9d9-443b-8f3f-3021cadf450a",
+  "id": "d343fe7a-ea63-4d1c-94cc-3eedb2cdd138",
+  "prevId": "cd13b542-fbf6-4546-8b9c-a6b88cd06fa8",
   "tables": {
     "admin_google_grants": {
       "name": "admin_google_grants",
@@ -795,6 +795,155 @@
           "name": "roster_title_mappings_title",
           "columns": [
             "title"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "schedule_assignments": {
+      "name": "schedule_assignments",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "student_email": {
+          "name": "student_email",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shift_block_id": {
+          "name": "shift_block_id",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "enum('mon','tue','wed','thu','fri','sat','sun')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cohort": {
+          "name": "cohort",
+          "type": "enum('weekday','a','b','every')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "schedule_assignments_run_id_schedule_runs_id_fk": {
+          "name": "schedule_assignments_run_id_schedule_runs_id_fk",
+          "tableFrom": "schedule_assignments",
+          "tableTo": "schedule_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "schedule_assignments_student_email_students_email_fk": {
+          "name": "schedule_assignments_student_email_students_email_fk",
+          "tableFrom": "schedule_assignments",
+          "tableTo": "students",
+          "columnsFrom": [
+            "student_email"
+          ],
+          "columnsTo": [
+            "email"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "schedule_assignments_shift_block_id_shift_blocks_id_fk": {
+          "name": "schedule_assignments_shift_block_id_shift_blocks_id_fk",
+          "tableFrom": "schedule_assignments",
+          "tableTo": "shift_blocks",
+          "columnsFrom": [
+            "shift_block_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "schedule_assignments_run_id_student_email_shift_block_id_day_pk": {
+          "name": "schedule_assignments_run_id_student_email_shift_block_id_day_pk",
+          "columns": [
+            "run_id",
+            "student_email",
+            "shift_block_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "schedule_runs": {
+      "name": "schedule_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generated_at": {
+          "name": "generated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "generated_by": {
+          "name": "generated_by",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('current','superseded')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'current'"
+        },
+        "summary_json": {
+          "name": "summary_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "schedule_runs_id": {
+          "name": "schedule_runs_id",
+          "columns": [
+            "id"
           ]
         }
       },

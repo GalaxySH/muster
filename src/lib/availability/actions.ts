@@ -22,6 +22,10 @@
  * no weekend shift gets one auto-assigned, PLAN §5 #5) plus the late-travel
  * flag (§8) are written by `writeSelectionAndFlags` whenever the effective status
  * is "submitted".
+ *
+ * `saveAvailabilityFor` is the admin's on-behalf-of save from the response page's
+ * grid (§10a). It shares this file's persistence core, so an admin edit lands the
+ * same way a student's own save would.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -161,49 +165,44 @@ async function writeSelectionAndFlags(
   return autoAssigned;
 }
 
-export async function saveAvailability(input: SaveAvailabilityInput): Promise<SaveResult> {
-  const gate = await requireEditableStudent();
-  if (!gate.ok) return { ok: false, errors: [gate.error] };
-  if (!gate.positionId)
-    return { ok: false, errors: ["No position is set for your account yet."] };
+/**
+ * The submission-row fields a save writes. The student's own form owns all of
+ * them; an admin saving from the response grid writes only the rotation, so the
+ * student's desired hours and their note stay exactly as the student left them.
+ */
+interface SubmissionPatch {
+  everyWeekendOptIn: boolean;
+  desiredHours?: number | null;
+  studentNotes?: string | null;
+}
 
-  const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
-  if (!posWithBlocks) return { ok: false, errors: ["Your position configuration is missing."] };
-  const { position, blocks } = posWithBlocks;
-
-  // Trust only cells that belong to this position's blocks.
-  const validIds = new Set(blocks.map((b) => b.id));
-  const selection = input.selection.filter((s) => validIds.has(s.blockId));
-
-  const result = validateAvailability(selection, position, blocks, {
-    everyWeekendOptIn: input.everyWeekendOptIn,
-  });
-
-  const desiredHours =
-    typeof input.desiredHours === "number" &&
-    Number.isFinite(input.desiredHours) &&
-    input.desiredHours > 0
-      ? input.desiredHours
-      : null;
-  const studentNotes = input.notes.trim() || null;
-
-  // "continue" is a hard gate: refuse to advance (and don't persist) on failure,
-  // exactly as the old submit did; students can "Save draft" to keep work safe.
-  if (input.mode === "continue") {
-    const errors = result.checks
-      .filter((c) => c.severity === "hard" && !c.passed)
-      .map((c) => c.detail);
-    const desiredCheck = checkDesiredHours(desiredHours, position);
-    if (!desiredCheck.passed) errors.push(desiredCheck.detail);
-    if (errors.length > 0) return { ok: false, errors };
-  }
-
+/**
+ * Upsert the submission, replace its selection, and recompute its flags in one
+ * transaction, then refresh the Drive sheet if this is a real (submitted)
+ * response. Shared by the student's own save and the admin's on-behalf save.
+ * Neither ever promotes a draft: the status is whatever the row already had, so
+ * a row an admin starts stays a draft the student has yet to confirm.
+ *
+ * `studentEdit` decides whether this counts as the student changing their own
+ * answers, which is exactly what `updated_at` records (PLAN §9): true for their
+ * own save, false for an admin's on-behalf one.
+ */
+async function persistAvailability(args: {
+  email: string;
+  selection: SelectedShift[];
+  patch: SubmissionPatch;
+  position: Position;
+  blocks: ShiftBlock[];
+  studentEdit: boolean;
+}): Promise<AutoAssignedShift | null> {
+  const { email, selection, position, blocks } = args;
+  const patch = args.studentEdit ? { ...args.patch, updatedAt: new Date() } : args.patch;
   const db = getDb();
   const { effectiveStatus, autoAssigned } = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: submissions.id, status: submissions.status })
       .from(submissions)
-      .where(eq(submissions.studentEmail, gate.email))
+      .where(eq(submissions.studentEmail, email))
       .limit(1);
 
     // Never promote here; preserve whatever status the submission already has.
@@ -212,19 +211,14 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     let submissionId: string;
     if (existing) {
       submissionId = existing.id;
-      await tx
-        .update(submissions)
-        .set({ everyWeekendOptIn: input.everyWeekendOptIn, desiredHours, studentNotes })
-        .where(eq(submissions.id, submissionId));
+      await tx.update(submissions).set(patch).where(eq(submissions.id, submissionId));
     } else {
       submissionId = randomUUID();
       await tx.insert(submissions).values({
         id: submissionId,
-        studentEmail: gate.email,
+        studentEmail: email,
         status: "draft",
-        everyWeekendOptIn: input.everyWeekendOptIn,
-        desiredHours,
-        studentNotes,
+        ...patch,
       });
     }
 
@@ -241,8 +235,101 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
   // Keep the running Drive spreadsheet fresh only when an actual response changed
   // (i.e. the form is already submitted). Drafts never trigger it.
   if (effectiveStatus === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  return autoAssigned;
+}
+
+export async function saveAvailability(input: SaveAvailabilityInput): Promise<SaveResult> {
+  const gate = await requireEditableStudent();
+  if (!gate.ok) return { ok: false, errors: [gate.error] };
+  if (!gate.positionId)
+    return { ok: false, errors: ["No position is set for your account yet."] };
+
+  const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
+  if (!posWithBlocks) return { ok: false, errors: ["Your position configuration is missing."] };
+  const { position, blocks } = posWithBlocks;
+
+  // Trust only cells that belong to this position's blocks.
+  const validIds = new Set(blocks.map((b) => b.id));
+  const selection = input.selection.filter((s) => validIds.has(s.blockId));
+
+  const desiredHours =
+    typeof input.desiredHours === "number" &&
+    Number.isFinite(input.desiredHours) &&
+    input.desiredHours > 0
+      ? input.desiredHours
+      : null;
+  const studentNotes = input.notes.trim() || null;
+
+  // "continue" is a hard gate: refuse to advance (and don't persist) on failure,
+  // exactly as the old submit did; students can "Save draft" to keep work safe.
+  if (input.mode === "continue") {
+    const result = validateAvailability(selection, position, blocks, {
+      everyWeekendOptIn: input.everyWeekendOptIn,
+    });
+    const errors = result.checks
+      .filter((c) => c.severity === "hard" && !c.passed)
+      .map((c) => c.detail);
+    const desiredCheck = checkDesiredHours(desiredHours, position);
+    if (!desiredCheck.passed) errors.push(desiredCheck.detail);
+    if (errors.length > 0) return { ok: false, errors };
+  }
+
+  const autoAssigned = await persistAvailability({
+    email: gate.email,
+    selection,
+    patch: { everyWeekendOptIn: input.everyWeekendOptIn, desiredHours, studentNotes },
+    position,
+    blocks,
+    studentEdit: true,
+  });
 
   revalidatePath("/availability");
+  return { ok: true, autoAssigned, errors: [] };
+}
+
+/**
+ * Save a student's availability on behalf of them, from the grid on the admin
+ * response page (PLAN §10a). Writes only what that grid edits: the selected
+ * cells and the weekend rotation.
+ *
+ * The admin is the authority here, not the form window, so there is no hard-rule
+ * gate: a scheduler can deliberately record a below-floor selection, exactly as
+ * they can add travel past the cutoff. Status behaviour matches the other
+ * on-behalf-of actions: this starts a draft when there is no submission and never
+ * promotes one, so a row an admin created still reads "missing" until the student
+ * confirms it themselves (`responseStatus`). It also leaves `updated_at` alone,
+ * which tracks the student's own edits only.
+ */
+export async function saveAvailabilityFor(
+  student: string,
+  input: { selection: SelectedShift[]; everyWeekendOptIn: boolean },
+): Promise<SaveResult> {
+  if (!student.trim()) return { ok: false, errors: ["No student was named."] };
+
+  const gate = await requireEditableStudent(student);
+  if (!gate.ok) return { ok: false, errors: [gate.error] };
+  if (!gate.positionId) return { ok: false, errors: ["No position is set for this student."] };
+
+  const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
+  if (!posWithBlocks) {
+    return { ok: false, errors: ["This student's position configuration is missing."] };
+  }
+  const { position, blocks } = posWithBlocks;
+
+  const validIds = new Set(blocks.map((b) => b.id));
+  const selection = input.selection.filter((s) => validIds.has(s.blockId));
+
+  const autoAssigned = await persistAvailability({
+    email: gate.email,
+    selection,
+    patch: { everyWeekendOptIn: input.everyWeekendOptIn },
+    position,
+    blocks,
+    studentEdit: false,
+  });
+
+  revalidatePath("/availability");
+  revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
   return { ok: true, autoAssigned, errors: [] };
 }
 
@@ -269,6 +356,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
       everyWeekendOptIn: submissions.everyWeekendOptIn,
       desiredHours: submissions.desiredHours,
       courseScheduleFileId: submissions.courseScheduleFileId,
+      submittedAt: submissions.submittedAt,
     })
     .from(submissions)
     .where(eq(submissions.studentEmail, email))
@@ -321,10 +409,13 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
   }
 
   let autoAssigned: AutoAssignedShift | null = null;
+  const now = new Date();
   await db.transaction(async (tx) => {
     await tx
       .update(submissions)
-      .set({ status: "submitted", submittedAt: new Date() })
+      // submittedAt records the FIRST submit, so a student finishing the wizard
+      // again keeps their original stamp; updatedAt moves, since they just edited.
+      .set({ status: "submitted", submittedAt: sub.submittedAt ?? now, updatedAt: now })
       .where(eq(submissions.id, sub.id));
     autoAssigned = await writeSelectionAndFlags(tx, {
       submissionId: sub.id,

@@ -25,9 +25,12 @@ export async function confirmRosterInfo() {
   const student = await findStudentByEmail(session.email);
   if (student) {
     const submissionId = await ensureSubmissionId(student.email);
+    const now = new Date();
+    // The student acting on their own submission, so it counts as a student-side
+    // change: `updated_at` moves (admin writes deliberately leave it alone).
     await getDb()
       .update(submissions)
-      .set({ confirmedAt: new Date() })
+      .set({ confirmedAt: now, updatedAt: now })
       .where(eq(submissions.id, submissionId));
   }
   redirect("/intro");

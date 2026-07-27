@@ -1,7 +1,7 @@
 # Schedule generation — implementation plan
 
 **Status: Phases A and B shipped** (A: targets + coverage, v0.79; B: the
-generation engine, runs, and the `/admin/schedule` run view, v0.80). Phase C
+generation engine, runs, and the `/admin/schedule` run view, v0.84). Phase C
 (run history + restore UI, diffs, staleness banner, Sheet export) remains.
 PLAN.md stays authoritative for current behavior; sections below are updated to
 what shipped where the build diverged from the original proposal. The largest
@@ -65,11 +65,11 @@ input per block row), PLAN §6/§9. Precedent: `close_slots.capacity`.
 Note: this reverses the deliberate "it ranks, it does not alarm" stance of the
 least-staffed panel (PLAN §10b). With targets modeled, coverage views may alarm.
 
-### 2.2 `schedule_runs` (shipped, v0.80)
+### 2.2 `schedule_runs` (shipped, v0.84)
 
 `id`, `generatedAt`, `generatedBy` (admin email), `status`
 (`current` | `superseded`), `summaryJson` (the engine's run report; since
-v0.81 it also snapshots the tunable params the run used, so no separate
+v0.85 it also snapshots the tunable params the run used, so no separate
 `paramsJson` column, and with a single generation mode no `mode` column
 either).
 
@@ -80,7 +80,7 @@ schedules": nothing is ever erased, and any regeneration — even a bad one — 
 one click away from being undone. Old runs beyond a retention count (say, keep
 the last 10) can be pruned.
 
-### 2.3 `schedule_assignments` (shipped, v0.80)
+### 2.3 `schedule_assignments` (shipped, v0.84)
 
 `runId` (FK cascade), `studentEmail` (FK cascade), `shiftBlockId` (FK cascade),
 `day` (mon–sun), `cohort` (`a` | `b` | `every` | `weekday`). Composite PK
@@ -129,7 +129,7 @@ reach `target = clamp(desiredHours, position.minHours, hourCap(international))`.
 This is the first place the 20/30h cap is actually enforced — PLAN §5 #3 says
 "the cap is applied only when the schedule is written," and this is that moment.
 
-**Min-days concentration (shipped, v0.80).** The engine schedules each student
+**Min-days concentration (shipped, v0.84).** The engine schedules each student
 onto as few days as possible: it seeds the position's minimum day span (2, SL
 3) one cell per day — for non-exempt positions the first seed is their best
 weekend cell, so everyone lands on the rotation — then fills already-worked
@@ -140,7 +140,7 @@ stacks on it), and a day past the minimum opens only when the target hours
 cannot fit otherwise. So at the 8h default a 10h student lands on exactly 2
 days and a 20h student needs 3 (8+8+4).
 
-**Tunable cell choice (v0.81; `domain/scheduling/params.ts`).** Cells with a
+**Tunable cell choice (v0.85; `domain/scheduling/params.ts`).** Cells with a
 target come first, ranked by **pull**: the unmet share of target plus the
 tier's tunable bonus (`nightPriority`/100 for ends ≥ 20:00,
 `eveningPriority`/100 for ends ≥ 17:00). Blending instead of tier-first
@@ -165,7 +165,7 @@ places them in whichever cohort (A/B) has lower weighted weekend coverage at
 that moment; all their weekend assignments land in that cohort. Opt-in
 students' weekend cells count toward both templates.
 
-### 3.4 Improvement pass (shipped, v0.80: same-day relocation)
+### 3.4 Improvement pass (shipped, v0.84: same-day relocation)
 
 Bounded local search that raises total weighted coverage (targeted seats score
 their lateness tier) under the invariants: **no student's covered hours may
@@ -175,7 +175,7 @@ untouched. FCFS guarantees each student's hour *quantity*; the pass may shuffle
 *which* of their acceptable same-day cells they hold. Students marked scheduled
 never move. Deterministic first-improvement ordering, fixed round cap.
 
-## 4. Regeneration model (shipped, v0.80: one mode)
+## 4. Regeneration model (shipped, v0.84: one mode)
 
 The scheduled freeze made the planned incremental/full split unnecessary.
 There is one action, **Update schedule**:
@@ -232,7 +232,7 @@ one NavCard in the hub.
   stored per §2.2, only the UI is missing).
 - Manual overrides — Phase C, if wanted; would need a `source` column back.
 
-## 6. Synthetic availability generator (shipped, v0.80)
+## 6. Synthetic availability generator (shipped, v0.84)
 
 A seeded dev script (precedent: `src/scripts/add-test-student.ts`):
 
@@ -257,7 +257,7 @@ npm run dev:generate-availability -- --seed 42 [--students 400] [--fill 0.8]
 | Phase | Contents | Status |
 |---|---|---|
 | **A** | `desired_capacity` end-to-end + coverage grid vs selections (standalone value, no generator) | ✅ shipped, v0.79 |
-| **B** | Synthetic availability generator, then the domain engine (FCFS + min-days concentration + weights + cohorts + improvement pass, TDD), runs/assignments tables, generate action, `/admin/schedule` v1 (grid + per-student list + CSV) | ✅ shipped, v0.80 |
+| **B** | Synthetic availability generator, then the domain engine (FCFS + min-days concentration + weights + cohorts + improvement pass, TDD), runs/assignments tables, generate action, `/admin/schedule` v1 (grid + per-student list + CSV) | ✅ shipped, v0.84 |
 | **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, manual per-assignment overrides if wanted, `Muster Schedule` sheet | ~1 week |
 
 Docs shipped alongside each phase (same-commit rule): PLAN §17 amendment +
