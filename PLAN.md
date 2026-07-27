@@ -34,7 +34,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.80
+- **Version:** 0.81
 - **Last updated:** 2026-07-16
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1125,6 +1125,24 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.81 (2026-07-26)** — **Tunable scheduling parameters.** New
+  `domain/scheduling/params.ts`: `SchedulingParams` = max hours per day (1 to
+  16, default 8) plus night and evening priorities (0 to 100, defaults 50/25),
+  admin-edited in a Generation settings panel on `/admin/schedule`, stored as
+  one JSON `app_settings` row (`schedule_params`), applied at the next update,
+  and snapshotted into each run's stored report (shown in the run panel). The
+  cell choice changed from tier-first lexicographic (which filled nights to
+  capacity before mornings saw a single seat) to a **blended pull**: targeted
+  cells rank by their unmet share of target plus the tier's priority/100, so
+  100 reproduces fill-nights-first, 0 fills targeted cells evenly, and the
+  default keeps nights running about half a target ahead while mornings still
+  get coverage; untargeted cells rank after every targeted one. The
+  improvement pass uses the same pull (destination must beat the vacated
+  cell's, evaluated with the seat lifted out), and the day cap everywhere is
+  the tunable value. Verified live: at priority 50 the synthetic-cohort Shift
+  Lead mornings went from mostly 0/5 to covered while nights stayed at or near
+  target, and at a 6h cap no non-frozen student's day exceeded 6h (frozen rows
+  stay verbatim by design).
 - **0.80 (2026-07-26)** — **Recommended schedule generation (Phase B of
   `docs/schedule-generation-plan.md`; roadmap 5.1).** New pure engine in
   `domain/scheduling/` (engine, improve, seats): deterministic first-come-first-serve

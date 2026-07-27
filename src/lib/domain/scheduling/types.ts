@@ -7,6 +7,7 @@
  * recommendations (output) never share a table.
  */
 import type { Day, Position, SelectedShift, ShiftBlock } from "../types";
+import type { SchedulingParams } from "./params";
 
 /**
  * Which weekly template an assignment belongs to. Weekday cells are the same
@@ -48,6 +49,8 @@ export interface EngineInput {
   blocks: ShiftBlock[];
   /** The current run's assignments; source of carried-forward frozen rows. */
   previous: ScheduleAssignment[];
+  /** Admin-tunable knobs (./params); the defaults apply when absent. */
+  params?: SchedulingParams;
 }
 
 /** Per-student outcome for the run summary and the admin list. */
@@ -75,6 +78,8 @@ export interface EngineReport {
   shortOfTarget: number;
   /** Active students spanning fewer days than their position minimum. */
   belowMinDays: number;
+  /** The knobs this run was generated with (absent on pre-0.81 stored runs). */
+  params?: SchedulingParams;
 }
 
 export interface EngineResult {

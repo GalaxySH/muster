@@ -410,6 +410,61 @@ describe("generateAssignments", () => {
     expect(r.report.skippedNoPosition).toEqual(["lost@w"]);
   });
 
+  it("balances night priority against morning need instead of filling nights first", () => {
+    const blocks = [
+      block("night", "barista", "weekday", "5p", "9p", 4),
+      block("morning", "barista", "weekday", "8a", "12p", 4),
+    ];
+    const nightsOnly = [sel("night", "mon"), sel("night", "tue")];
+    const both = [...nightsOnly, sel("morning", "mon"), sel("morning", "tue")];
+    const students = () => [
+      student("s1@w", { positionId: "barista", selection: nightsOnly, submittedAt: at(1) }),
+      student("s2@w", { positionId: "barista", selection: nightsOnly, submittedAt: at(2) }),
+      student("s3@w", { positionId: "barista", selection: nightsOnly, submittedAt: at(3) }),
+      student("s4@w", { positionId: "barista", selection: both, submittedAt: at(4) }),
+    ];
+
+    // Default priority 50: with nights already three quarters full, the empty
+    // morning cells pull harder, so the fourth student lands on mornings.
+    const balanced = run(students(), blocks);
+    const s4 = rowsOf(balanced, "s4@w").map((a) => `${a.blockId}|${a.day}`);
+    expect(s4).toContain("morning|mon");
+    expect(s4).toContain("morning|tue");
+    expect(s4).not.toContain("night|tue");
+
+    // Priority 100 restores fill-nights-completely-first.
+    const nightsFirst = generateAssignments({
+      students: students(),
+      positions: POSITIONS,
+      blocks,
+      previous: [],
+      params: { dayCapHours: 8, nightPriority: 100, eveningPriority: 25 },
+    });
+    const s4First = rowsOf(nightsFirst, "s4@w").map((a) => `${a.blockId}|${a.day}`);
+    expect(s4First).toContain("night|mon");
+    expect(s4First).toContain("night|tue");
+    expect(s4First).not.toContain("morning|tue");
+  });
+
+  it("honors a lower day cap by spreading onto more days", () => {
+    const r = generateAssignments({
+      students: [
+        student("b@w", { positionId: "barista", desiredHours: 12, selection: barSelection }),
+      ],
+      positions: POSITIONS,
+      blocks: barGrid,
+      previous: [],
+      params: { dayCapHours: 6, nightPriority: 50, eveningPriority: 25 },
+    });
+    const report = reportOf(r, "b@w");
+    expect(report.daysUsed).toBe(3);
+    expect(report.assignedMinutes).toBe(720);
+    for (const load of dayLoads(rowsOf(r, "b@w"), barGrid).values()) {
+      expect(load).toBeLessThanOrEqual(6 * 60);
+    }
+    expect(r.report.params?.dayCapHours).toBe(6);
+  });
+
   it("reports students who fall short of their target", () => {
     const blocks = [block("only", "barista", "weekday", "8a", "12p")];
     const r = run(

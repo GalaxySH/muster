@@ -1,20 +1,24 @@
 /**
  * Seat accounting and scoring shared by the schedule engine and its
  * improvement pass (docs/schedule-generation-plan.md §3).
+ *
+ * Scoring blends scarcity with the admin-tunable lateness priorities
+ * (./params): a targeted cell pulls with its unmet share of target plus its
+ * tier's priority/100, so later cells run ahead by about that share instead of
+ * absorbing every seat first. Cells without a target only ever rank against
+ * each other (they claim no need).
  */
 import { AB_WEEKEND_FACTOR } from "../capacity";
-import { latenessTier, type LatenessTier } from "../coverage";
+import { latenessTier } from "../coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
 import type { TimeRange } from "../time";
 import { ALL_DAYS, dayTypeOf, type Day, type ShiftBlock } from "../types";
+import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import type { Cohort } from "./types";
 
-/** Hard ceiling on one day's merged assigned span (the min-days rule's guard). */
-export const DAY_CAP_MINUTES = 8 * 60;
-
-/** Later-ending cells staff up first; tied tiers fall through to scarcity. */
-export const LATENESS_SCORE: Record<LatenessTier, number> = { night: 3, evening: 2, day: 1 };
+/** The default day ceiling in engine units (DEFAULT_SCHEDULING_PARAMS.dayCapHours). */
+export const DAY_CAP_MINUTES = DEFAULT_SCHEDULING_PARAMS.dayCapHours * 60;
 
 /** Averaged minutes are float-valued (×0.5 weekend factor); compare with tolerance. */
 export const EPSILON_MINUTES = 1e-6;
@@ -23,13 +27,12 @@ export const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 
 export const byEmail = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/**
- * What filling one seat in this cell is worth to the improvement objective:
- * cells with a staffing target score their lateness tier, untargeted cells
- * score nothing (they are real work, but nothing measures their shortfall).
- */
-export function seatScore(block: ShiftBlock): number {
-  return block.desiredCapacity == null ? 0 : LATENESS_SCORE[latenessTier(block.end)];
+/** The tunable lateness pull of a block, as a share of a cell's target (0..1). */
+export function tierBonus(block: ShiftBlock, params: SchedulingParams): number {
+  const tier = latenessTier(block.end);
+  const priority =
+    tier === "night" ? params.nightPriority : tier === "evening" ? params.eveningPriority : 0;
+  return priority / 100;
 }
 
 /** Weekday covered minutes plus cycle-factored weekend covered minutes. */
@@ -103,16 +106,22 @@ export class SeatLedger {
   }
 
   /**
-   * People still missing against the target, for scarcity ranking. Uses the
-   * needier rotation week for weekend cells; 0 when the block has no target.
+   * The unmet share of this cell's target (1 = empty, 0 = met), the scarcity
+   * half of the scoring blend. Uses the needier rotation week for weekend cells
+   * when the student's rotation isn't fixed yet; 0 when the block has no target.
    */
-  shortfall(block: ShiftBlock, day: Day, cohort: Cohort | null): number {
+  need(block: ShiftBlock, day: Day, cohort: Cohort | null): number {
     const cap = block.desiredCapacity;
     if (cap == null) return 0;
     const c = this.cell(block.id, day);
-    if (block.dayType !== "weekend") return cap - c.a;
-    if (cohort === "a") return cap - c.a;
-    if (cohort === "b") return cap - c.b;
-    return cap - Math.min(c.a, c.b);
+    const count =
+      block.dayType !== "weekend"
+        ? c.a
+        : cohort === "a"
+          ? c.a
+          : cohort === "b"
+            ? c.b
+            : Math.min(c.a, c.b);
+    return (cap - count) / cap;
   }
 }

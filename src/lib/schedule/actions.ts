@@ -24,12 +24,17 @@ import {
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import {
+  validateSchedulingParams,
+  type SchedulingParams,
+} from "@/lib/domain/scheduling/params";
 import type {
   Cohort,
   ScheduleAssignment,
   ScheduleStudent,
 } from "@/lib/domain/scheduling/types";
 import type { Day } from "@/lib/domain/types";
+import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
 
 /** Superseded runs kept for restore before pruning. */
@@ -47,9 +52,10 @@ export async function generateSchedule(): Promise<GenerateResult> {
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const [positionRows, blockRows, studentRows, selectionRows, currentRun] = await Promise.all([
-    db.select().from(positions),
-    db.select().from(shiftBlocks),
+  const [positionRows, blockRows, studentRows, selectionRows, currentRun, params] =
+    await Promise.all([
+      db.select().from(positions),
+      db.select().from(shiftBlocks),
     db
       .select({
         email: students.email,
@@ -74,6 +80,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
       .innerJoin(students, eq(submissions.studentEmail, students.email))
       .where(eligibleSubmittedFilter()),
     loadCurrentRunRow(),
+    getSchedulingParams(),
   ]);
 
   const selectionByEmail = new Map<string, { blockId: string; day: Day }[]>();
@@ -113,6 +120,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
     positions: positionRows.map(toDomainPosition),
     blocks: blockRows.map(toDomainBlock),
     previous,
+    params,
   });
 
   const runId = randomUUID();
@@ -155,4 +163,26 @@ export async function generateSchedule(): Promise<GenerateResult> {
 
   revalidatePath("/admin/schedule");
   return { ok: true, placed: result.assignments.length };
+}
+
+export interface SaveParamsResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Save the engine's tunable knobs (domain/scheduling/params.ts). They apply
+ * from the next generation on; each run also snapshots the values it used
+ * into its stored report.
+ */
+export async function saveScheduleParams(params: SchedulingParams): Promise<SaveParamsResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const error = validateSchedulingParams(params);
+  if (error) return { ok: false, error };
+
+  await setSetting(SETTING_SCHEDULE_PARAMS, JSON.stringify(params));
+  revalidatePath("/admin/schedule");
+  return { ok: true };
 }

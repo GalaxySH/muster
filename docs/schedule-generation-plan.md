@@ -68,9 +68,10 @@ least-staffed panel (PLAN §10b). With targets modeled, coverage views may alarm
 ### 2.2 `schedule_runs` (shipped, v0.80)
 
 `id`, `generatedAt`, `generatedBy` (admin email), `status`
-(`current` | `superseded`), `summaryJson` (the engine's run report; weights are
-code constants, so the commit hash is the reproducibility snapshot — no
-`paramsJson`, and with a single generation mode no `mode` column either).
+(`current` | `superseded`), `summaryJson` (the engine's run report; since
+v0.81 it also snapshots the tunable params the run used, so no separate
+`paramsJson` column, and with a single generation mode no `mode` column
+either).
 
 **Runs are append-only.** Generation never deletes a prior run's assignments;
 it writes a new run and flips `status`. **Restore** = mark a superseded run
@@ -133,21 +134,24 @@ onto as few days as possible: it seeds the position's minimum day span (2, SL
 3) one cell per day — for non-exempt positions the first seed is their best
 weekend cell, so everyone lands on the rotation — then fills already-worked
 days before opening another. Two guards shape this: one day's **merged
-assigned span never exceeds 8h** (`DAY_CAP_MINUTES`; a single block longer
-than 8h may stand alone on its day but nothing stacks on it), and a day past
-the minimum opens only when the target hours cannot fit otherwise. So a 10h
-student lands on exactly 2 days; a 20h student needs 3 (8+8+4).
+assigned span never exceeds the admin-set max hours per day** (default 8; a
+single block longer than the cap may stand alone on its day but nothing
+stacks on it), and a day past the minimum opens only when the target hours
+cannot fit otherwise. So at the 8h default a 10h student lands on exactly 2
+days and a 20h student needs 3 (8+8+4).
 
-Cell preference order within the day rules (descending):
-
-1. **Lateness tier**, derived from `endMinutes` — no new config needed:
-   ends ≥ 20:00 (closes and near-closes) > ends ≥ 17:00 (evening) > rest.
-   This is the "we're short at night" priority, first-class in the objective
-   rather than faked by lowering morning capacities. Capacity tuning remains
-   available as a manual knob, but shouldn't be needed.
-2. **Scarcity** — current shortfall vs `desired_capacity`, so students who can
-   cover starved cells get steered there.
-3. Deterministic tie-breaks (day, block id).
+**Tunable cell choice (v0.81; `domain/scheduling/params.ts`).** Cells with a
+target come first, ranked by **pull**: the unmet share of target plus the
+tier's tunable bonus (`nightPriority`/100 for ends ≥ 20:00,
+`eveningPriority`/100 for ends ≥ 17:00). Blending instead of tier-first
+ordering means priority 100 reproduces fill-nights-completely-first, 0 fills
+all targeted cells evenly, and the default 50 keeps night cells running about
+half a target ahead while mornings still get coverage — the original absolute
+ordering starved mornings entirely under contention. Untargeted cells rank
+after every targeted one (they claim no need), ordered by tier bonus alone.
+Deterministic tie-breaks (day, block id). The knobs are admin-edited on
+`/admin/schedule` (one JSON `app_settings` row, `schedule_params`), applied at
+the next update, and snapshotted into each run's stored report.
 
 Hard constraints per assignment: cell below `desired_capacity`; no time overlap
 with another assigned block on the same day (touching is fine — the interval

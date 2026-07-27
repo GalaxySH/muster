@@ -703,18 +703,23 @@ coverage view, no generator yet. Standard layering:
 
 The generator itself, layered exactly like the rest of the app:
 
-- **Pure domain** `domain/scheduling/` (TDD; no I/O): `types.ts` (engine input/
-  output including the run report), `seats.ts` (the shared `SeatLedger` counting
-  seats per cell **per weekend rotation week** so capacity binds where it is
-  worked, `LATENESS_SCORE`, `DAY_CAP_MINUTES` = 8h, `averagedAssignedMinutes`
+- **Pure domain** `domain/scheduling/` (TDD; no I/O): `params.ts` (the
+  admin-tunable `SchedulingParams` — max hours per day, night/evening priority
+  0..100 — with validation and a never-throwing parse), `types.ts` (engine
+  input/output including the run report, which snapshots the params used),
+  `seats.ts` (the shared `SeatLedger` counting seats per cell **per weekend
+  rotation week** so capacity binds where it is worked, plus `need` = unmet
+  share of target, `tierBonus` = priority/100, and `averagedAssignedMinutes`
   mirroring `computeCapacity`'s union/averaging math), `engine.ts`
   (`generateAssignments`: FCFS by `submittedAt`, freeze carry-forward for
   students marked scheduled, weekend-first seeding to the position's minimum
-  day span, open-days-first filling under the 8h day cap, lateness/scarcity
-  cell choice, cohort balancing by assigned weekend load), and `improve.ts`
-  (bounded same-day relocation that never drops hours, never grows a day
-  count, and never touches frozen students). Everything is deterministically
-  ordered; no randomness anywhere.
+  day span, open-days-first filling under the tunable day cap, targeted-first
+  cell choice ranked by pull = need + tier bonus so late cells run ahead
+  instead of soaking up every seat, cohort balancing by assigned weekend
+  load), and `improve.ts` (bounded same-day relocation accepted when the
+  destination's pull beats the vacated cell's, evaluated with the seat lifted
+  out; never drops hours, never grows a day count, never touches frozen
+  students). Everything is deterministically ordered; no randomness anywhere.
 - **Persistence** (migration 0017): append-only `schedule_runs`
   (current/superseded + `summaryJson` = the engine report, retention 10) and
   fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
@@ -738,6 +743,11 @@ The generator itself, layered exactly like the rest of the app:
   table (hours vs target, rotation, shifts, "kept" chip on frozen rows), and
   the CSV route `/admin/schedule/export` (reuses `toCsv` and its formula-
   injection guard).
+- **Tunable params** ride `app_settings` (`schedule_params`, one JSON row):
+  `getSchedulingParams` in `lib/settings.ts`, the admin-gated
+  `saveScheduleParams` action, and the `ScheduleParamsForm` island on
+  `/admin/schedule`. Saved values apply from the next update; each run's
+  stored report records what it actually used.
 - **Dev tooling** `src/scripts/generate-availability.ts`
   (`npm run dev:generate-availability`): seeded, deterministic synthetic
   students + submitted selections that pass the real `validateAvailability`;

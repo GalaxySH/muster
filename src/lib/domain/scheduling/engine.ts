@@ -19,20 +19,19 @@
  * separate pin concept.
  */
 import { hourCap } from "../caps";
-import { latenessTier } from "../coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
 import { overlaps, type TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
 import { improveAssignments } from "./improve";
+import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import {
-  DAY_CAP_MINUTES,
   DAY_INDEX,
   EPSILON_MINUTES,
-  LATENESS_SCORE,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
+  tierBonus,
 } from "./seats";
 import type {
   Cohort,
@@ -66,6 +65,7 @@ interface ActiveState {
 }
 
 export function generateAssignments(input: EngineInput): EngineResult {
+  const params = input.params ?? DEFAULT_SCHEDULING_PARAMS;
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const positionById = new Map(input.positions.map((p) => [p.id, p]));
   const ledger = new SeatLedger();
@@ -146,11 +146,11 @@ export function generateAssignments(input: EngineInput): EngineResult {
       assignments: [],
     };
     states.push(state);
-    placeStudent(state, blockById, ledger, weekendMinutes);
+    placeStudent(state, blockById, ledger, weekendMinutes, params);
     assignments.push(...state.assignments);
   }
 
-  const improved = improveAssignments(assignments, input.students, input.blocks);
+  const improved = improveAssignments(assignments, input.students, input.blocks, params);
 
   // Rebuild per-student coverage from the final rows so reports reflect any
   // relocations the improvement pass made.
@@ -193,6 +193,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       skippedNoPosition,
       shortOfTarget,
       belowMinDays,
+      params,
     },
   };
 }
@@ -208,20 +209,21 @@ function placeStudent(
   blockById: Map<string, ShiftBlock>,
   ledger: SeatLedger,
   weekendMinutes: { a: number; b: number },
+  params: SchedulingParams,
 ): void {
   const { student, position } = state;
 
   // Non-exempt students belong on the weekend rotation (PLAN §5 #5), so one
   // seed is the best weekend cell they offered; the rest span new days.
   if (!position.weekendExempt) {
-    const weekend = bestCandidate(state, blockById, ledger, {
+    const weekend = bestCandidate(state, blockById, ledger, params, {
       daysOpen: false,
       weekendOnly: true,
     });
     if (weekend) assign(state, weekend, ledger, weekendMinutes);
   }
   while (state.ranges.size < position.minDays) {
-    const seed = bestCandidate(state, blockById, ledger, { daysOpen: false });
+    const seed = bestCandidate(state, blockById, ledger, params, { daysOpen: false });
     if (!seed) break;
     assign(state, seed, ledger, weekendMinutes);
   }
@@ -231,8 +233,8 @@ function placeStudent(
     const assigned = averagedAssignedMinutes(state.ranges, student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES >= state.target) break;
     const next =
-      bestCandidate(state, blockById, ledger, { daysOpen: true }) ??
-      bestCandidate(state, blockById, ledger, { daysOpen: false });
+      bestCandidate(state, blockById, ledger, params, { daysOpen: true }) ??
+      bestCandidate(state, blockById, ledger, params, { daysOpen: false });
     if (!next) break;
     assign(state, next, ledger, weekendMinutes);
   }
@@ -240,18 +242,23 @@ function placeStudent(
 
 /**
  * The best feasible cell from the student's own selections, restricted to
- * already-open or still-unopened days. Preference: later-ending tier, then
- * scarcity against targets, then day order and block id (total, deterministic).
+ * already-open or still-unopened days. Cells with a target come first, ranked
+ * by pull (unmet share of target plus the tunable tier bonus, so late cells
+ * run ahead by about that share instead of soaking up every seat); untargeted
+ * cells follow, ranked by tier bonus alone. Ties break on day order, then
+ * block id (total, deterministic).
  */
 function bestCandidate(
   state: ActiveState,
   blockById: Map<string, ShiftBlock>,
   ledger: SeatLedger,
+  params: SchedulingParams,
   filter: { daysOpen: boolean; weekendOnly?: boolean },
 ): Candidate | null {
+  const dayCapMinutes = params.dayCapHours * 60;
   let best: Candidate | null = null;
-  let bestScore = 0;
-  let bestShortfall = 0;
+  let bestTargeted = false;
+  let bestPull = 0;
 
   for (const cell of state.student.selection) {
     const block = blockById.get(cell.blockId);
@@ -268,23 +275,24 @@ function bestCandidate(
     const range: TimeRange = { start: block.start, end: block.end };
     if (dayOpen) {
       if (dayRanges.some((r) => overlaps(r, range))) continue;
-      if (coveredMinutes([...dayRanges, range]) > DAY_CAP_MINUTES) continue;
+      if (coveredMinutes([...dayRanges, range]) > dayCapMinutes) continue;
     }
 
-    const score = LATENESS_SCORE[latenessTier(block.end)];
-    const shortfall = ledger.shortfall(block, cell.day, cohortContext);
+    const targeted = block.desiredCapacity != null;
+    const bonus = tierBonus(block, params);
+    const pull = targeted ? ledger.need(block, cell.day, cohortContext) + bonus : bonus;
     if (
       best === null ||
-      score > bestScore ||
-      (score === bestScore &&
-        (shortfall > bestShortfall ||
-          (shortfall === bestShortfall &&
+      (targeted && !bestTargeted) ||
+      (targeted === bestTargeted &&
+        (pull > bestPull ||
+          (pull === bestPull &&
             (DAY_INDEX.get(cell.day)! < DAY_INDEX.get(best.day)! ||
               (cell.day === best.day && cell.blockId < best.block.id)))))
     ) {
       best = { block, day: cell.day };
-      bestScore = score;
-      bestShortfall = shortfall;
+      bestTargeted = targeted;
+      bestPull = pull;
     }
   }
   return best;

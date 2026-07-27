@@ -4,7 +4,9 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import { SectionLabel, StatTile, cardsGridStyle, panelStyle } from "@/components/admin/ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
+import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
+import { getSchedulingParams } from "@/lib/settings";
 import {
   loadCoverage,
   loadCurrentSchedule,
@@ -38,7 +40,11 @@ export default async function AdminSchedulePage() {
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [coverage, schedule] = await Promise.all([loadCoverage(), loadCurrentSchedule()]);
+  const [coverage, schedule, params] = await Promise.all([
+    loadCoverage(),
+    loadCurrentSchedule(),
+    getSchedulingParams(),
+  ]);
   const summaryOf = (p: PositionCoverage): CoverageSummary =>
     schedule ? summarizeAssignedCoverage(p.rows, schedule.assignedCells) : p.summary;
   const totals = coverage.reduce(
@@ -68,6 +74,11 @@ export default async function AdminSchedulePage() {
       </p>
 
       <SchedulePanel schedule={schedule} responders={totals.responders} />
+
+      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+        <SectionLabel>Generation settings</SectionLabel>
+        <ScheduleParamsForm initial={params} />
+      </section>
 
       <div style={{ ...cardsGridStyle, maxWidth: 720 }}>
         <StatTile
@@ -163,6 +174,8 @@ function SchedulePanel({
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
         {report.shortOfTarget > 0 && ` ${report.shortOfTarget} students are short of their hours.`}
+        {report.params &&
+          ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
       </p>
       {notes.length > 0 && (
         <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
