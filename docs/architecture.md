@@ -254,7 +254,7 @@ calculator. The header rings red (`--color-border-danger`) with a draft/missing 
 until the response is submitted; its button-shaped controls opt into the `.btn-hover`
 class in `globals.css`, since inline style objects can't express `:hover`.
 
-**Header timestamps (v0.81).** `ResponseStamps` renders both submission stamps as two
+**Header timestamps (v0.82).** `ResponseStamps` renders both submission stamps as two
 label→value rows in one tinted panel: **Submitted** (write-once first submit, "not yet"
 on a draft) and **Last updated** (the student's own last edit). See the availability
 section for who is allowed to move each. Two constraints are load-bearing. The pair is
@@ -274,7 +274,7 @@ that drives preference capacity, so the trial recomputes hours identically to en
 seeds from the student's picks (readout opens at their pref. capacity), reads the
 persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a reference
 layer, and offers Reset/Clear. A trial is client state **until the admin saves it**
-(v0.80): once anything differs from the student's picks a **Save** joins Reset/Clear and
+(v0.81): once anything differs from the student's picks a **Save** joins Reset/Clear and
 runs `Save → Saving… → Saved`, calling `saveAvailabilityFor` (see the availability
 section) to write the selection + rotation on the student's behalf. Nothing else in the
 card persists, so it stays a calculator that can commit rather than an editor. The
@@ -425,7 +425,7 @@ Course schedule / Travel / Extracurriculars card headers on `/admin/students/[em
 `action` slot): one modal per kind, the same fields as the student form, with the
 extracurricular details box prefilled from the submission so the admin edits rather than
 replaces the student's text (details are one column, not per file). The **course-schedule
-kind** (v0.80) is the same component against `uploadCourseSchedule`, which already took the
+kind** (v0.81) is the same component against `uploadCourseSchedule`, which already took the
 on-behalf `student` field — it needed a caller, not a new path. A schedule is one column,
 not a list, so when one is on file the link reads **Replace** and the modal says so;
 `uploadCourseSchedule` relay-deletes the old Drive file itself. That kind is only a file
@@ -458,7 +458,7 @@ resyncs the Drive sheet. Both actions share a private `writeSelectionAndFlags` (
 stays consistent when edited). `finalizeSubmission` stamps `submitted_at` **only when it is
 null**, so it records the first submit and a student finishing the wizard again keeps it.
 
-**Who moves `updated_at` (v0.81).** It means "when the student last changed their own
+**Who moves `updated_at` (v0.82).** It means "when the student last changed their own
 answers", so it is deliberately **not** `ON UPDATE CURRENT_TIMESTAMP` (migration `0016`
 dropped the clause) — otherwise every admin write to the row silently moved it. Student
 paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
@@ -473,7 +473,7 @@ flag the gate already returns. Downstream, this makes the hub's stalled-draft cu
 "recent submissions" honest: an admin note no longer refreshes a stalled draft, and a
 re-submit no longer jumps someone to the top of recent.
 
-**`saveAvailabilityFor(student, …)` (v0.80)** is the admin's on-behalf save, called by
+**`saveAvailabilityFor(student, …)` (v0.81)** is the admin's on-behalf save, called by
 `PrefGridCalculator` on the per-student page (§10a). It gates through
 `requireEditableStudent(student)` like the evidence actions, then shares the same
 persistence core as `saveAvailability`: a private `persistAvailability` owns the
@@ -726,3 +726,36 @@ the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
+
+## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.79)
+
+The first slice of the schedule-generation plan: per-block target staffing plus a
+coverage view, no generator yet. Standard layering:
+
+- **Pure domain** `domain/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
+  produces one row per block (weekday rows first, then by start) with one cell per
+  applicable day; `coverageStatus` grades a cell against the block target (`ok` /
+  `short` / `severe` = under half / `none` when no target), `latenessTier` tiers a
+  block by its end time (`night` >= 8p, `evening` >= 5p) so late shifts stand out the
+  way the future generator will prioritize them, and `summarizeCoverage` totals
+  targeted/short cells and missing people. Close tags reuse `deriveOpenClose`; cell
+  keys reuse `demandCellKey`.
+- **Target staffing** rides the existing positions config path: nullable
+  `shift_blocks.desired_capacity` (migration 0015), mapped by `toDomainBlock` into the
+  optional `ShiftBlock.desiredCapacity`, threaded through `AdminBlockItem`, validated
+  by `validateDesiredCapacity` (`domain/config-validation.ts`, 1..99 or null) in both
+  `createBlock`/`updateBlock` and the `BlockEditor` island (which grew a number input
+  per row; a capacity-only save skips the picked-shift time confirm because times did
+  not move).
+- **Loader** `schedule/data.ts` `loadCoverage()`: active non-alias positions, all
+  blocks, on-roster/responder counts, and per-cell distinct-submission counts filtered
+  to submitted + on-roster. Deliberate difference from `loadHighDemandCells`: coverage
+  **includes** `autoAssigned` cells, because it asks who *can* work a cell, while
+  demand ranks what students *chose*.
+- **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
+  summary `StatTile` row, then per-position panels with weekday/weekend tables,
+  status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
+  "N people short" readout. No client island; the page is read-only.
+
+Later phases (the generator itself, runs/assignments, pins/restore) are specified in
+`docs/schedule-generation-plan.md` and will extend `src/lib/schedule/`.

@@ -1,7 +1,38 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "./time";
-import { validateBlockTimes, blockSetWarnings } from "./config-validation";
+import {
+  DESIRED_CAPACITY_MAX,
+  blockSetWarnings,
+  validateBlockTimes,
+  validateDesiredCapacity,
+} from "./config-validation";
 import type { DayType, Position, ShiftBlock } from "./types";
+
+describe("validateDesiredCapacity", () => {
+  it("accepts null as no target", () => {
+    expect(validateDesiredCapacity(null)).toBeNull();
+  });
+
+  it("accepts the bounds", () => {
+    expect(validateDesiredCapacity(1)).toBeNull();
+    expect(validateDesiredCapacity(DESIRED_CAPACITY_MAX)).toBeNull();
+  });
+
+  it("rejects zero, negatives, and values past the max", () => {
+    expect(validateDesiredCapacity(0)).toMatch(/./);
+    expect(validateDesiredCapacity(-3)).toMatch(/./);
+    expect(validateDesiredCapacity(DESIRED_CAPACITY_MAX + 1)).toMatch(/./);
+  });
+
+  it("rejects fractions and NaN", () => {
+    expect(validateDesiredCapacity(5.5)).toMatch(/./);
+    expect(validateDesiredCapacity(Number.NaN)).toMatch(/./);
+  });
+
+  it("writes a plain message without em dashes", () => {
+    expect(validateDesiredCapacity(0)).not.toContain("—");
+  });
+});
 
 describe("validateBlockTimes", () => {
   it("accepts a normal daytime range", () => {

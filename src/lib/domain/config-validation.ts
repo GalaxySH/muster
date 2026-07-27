@@ -24,6 +24,21 @@ const EPSILON_MINUTES = 1e-6;
 
 const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
 
+/** Upper bound on a block's target staffing; keeps typos out of coverage math. */
+export const DESIRED_CAPACITY_MAX = 99;
+
+/**
+ * Check a block's target staffing (roadmap 5.1). Null means no target and is
+ * always valid. Returns an error message, or null when valid.
+ */
+export function validateDesiredCapacity(value: number | null): string | null {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || value < 1 || value > DESIRED_CAPACITY_MAX) {
+    return `Target staffing must be a whole number from 1 to ${DESIRED_CAPACITY_MAX}, or blank for no target.`;
+  }
+  return null;
+}
+
 /** Check one block's start/end minutes. Returns an error message, or null when valid. */
 export function validateBlockTimes(start: number, end: number): string | null {
   if (!Number.isInteger(start) || !Number.isInteger(end)) {

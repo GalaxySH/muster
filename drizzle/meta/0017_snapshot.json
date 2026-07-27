@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "8fa3a651-d9d9-443b-8f3f-3021cadf450a",
-  "prevId": "cbe1c070-b456-4895-9ae2-b4a81edc2145",
+  "id": "cd13b542-fbf6-4546-8b9c-a6b88cd06fa8",
+  "prevId": "8fa3a651-d9d9-443b-8f3f-3021cadf450a",
   "tables": {
     "admin_google_grants": {
       "name": "admin_google_grants",
@@ -1170,7 +1170,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "onUpdate": true,
           "default": "(now())"
         }
       },
