@@ -35,8 +35,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.85
-- **Last updated:** 2026-07-26
+- **Version:** 0.88
+- **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -190,8 +190,8 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   the set into the pure `parseRoster` — so a new non-worker title never requires a
   code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
-  **group + flag filters carried in the URL** so they follow the admin into the
-  per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
+  **group + position + flag filters carried in the URL** so they follow the admin into
+  the per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
   switch widens the list to the whole roster, badging everyone who never started (§10).
 - **Per-student detail** — expanded view + computed stats (§10). The name is a
   **jump-to dropdown** over the filtered list for direct hops. The page opens for **any
@@ -913,10 +913,10 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
   and on **self-add** (a dormant hook, `applyDefaultGroupOnSelfAdd`, assigns immediately
   when the toggle is on — the magic-link/self-add flow isn't built yet). Turning the
   toggle off never un-assigns anyone.
-- **Assignment surfaces:** a filterable picker (position / roster / group / name) with
-  multi-select, plus a **paste-delimited-emails** path (reports matched vs. unknown).
-  *(Hire date is now ingested for the welcome-back greeting — §9, roadmap 2.1 — so a
-  hire-date picker filter is an optional follow-up, no longer blocked on the field.)*
+- **Assignment surfaces:** a filterable picker (position / roster / group / hire date /
+  name) with multi-select, plus a **paste-delimited-emails** path (reports matched vs.
+  unknown). The hire-date filter is a before/after/on compare against a chosen date
+  (roadmap 2.2), matching the response dashboard's start-date filter.
 - **Travel-excusal cutoff:** a **single global instant** (default Sep 1), independent of
   windows — a form window open past the cutoff still stops accepting travel. Stored in
   `app_settings` (`travel_cutoff`), editable on the admin groups surface (clear ⇒ 9/1
@@ -1173,6 +1173,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.88 (2026-07-27)** — **Hire-date filter on the group-assignment picker** (§13,
+  roadmap 2.2). "Assign students" on `/admin/groups` gained a before/after/on hire-date
+  compare, alongside position/roster/group, resolving the "optional follow-up" noted in
+  §13; it reuses the response dashboard's `matchesStarted` comparator against the same
+  `hiredOn` field.
+- **0.87 (2026-07-27)** — **Position filter on the response dashboard** (roadmap 2.2).
+  `/admin/responses` gained a Position dropdown alongside Group, filtering to a
+  position (or "No position") the same way the group filter works; it lives in the
+  URL so it follows the admin into the per-student prev/next walk.
 - **0.86 (2026-07-27)** — **Roster import reads the PC & Training Tracker (§4.2, §9,
   §16.2).** The workbook changed shape for the new year: one sheet per dining unit
   (Muster reads **Gordon**) with a **Status** column, and no People Coming / People

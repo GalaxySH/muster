@@ -3,20 +3,23 @@
 import { useRouter } from "next/navigation";
 import {
   FLAG_FILTER_OPTIONS,
+  NO_POSITION,
   REVIEW_FILTER_OPTIONS,
   STARTED_MODE_OPTIONS,
   UNGROUPED,
 } from "@/lib/admin/response-filters";
 
 /**
- * Group + flag + off-roster + all-students + start-date filters for the response
- * dashboard (roadmap 2.2). These live in the URL (not client state) so they survive
- * navigation into the per-student view and drive its prev/next walk. Search +
+ * Group + position + flag + off-roster + all-students + start-date filters for the
+ * response dashboard (roadmap 2.2). These live in the URL (not client state) so they
+ * survive navigation into the per-student view and drive its prev/next walk. Search +
  * sort stay client-side in the table.
  */
 export function ResponseFilterBar({
   groups,
   group,
+  positions,
+  position,
   flag,
   roster,
   all,
@@ -26,6 +29,8 @@ export function ResponseFilterBar({
 }: {
   groups: { id: string; name: string }[];
   group?: string;
+  positions: { id: string; name: string }[];
+  position?: string;
   flag?: string;
   roster?: string;
   all?: string;
@@ -37,6 +42,7 @@ export function ResponseFilterBar({
 
   function navigate(next: {
     group?: string;
+    position?: string;
     flag?: string;
     roster?: string;
     all?: string;
@@ -46,6 +52,7 @@ export function ResponseFilterBar({
   }) {
     const params = new URLSearchParams();
     const g = next.group ?? group ?? "";
+    const p = next.position ?? position ?? "";
     const f = next.flag ?? flag ?? "";
     const r = next.roster ?? roster ?? "";
     const a = next.all ?? all ?? "";
@@ -53,6 +60,7 @@ export function ResponseFilterBar({
     const sd = next.startedDate ?? startedDate ?? "";
     const rv = next.review ?? review ?? "";
     if (g && g !== "all") params.set("group", g);
+    if (p && p !== "all") params.set("position", p);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
     if (a === "1") params.set("all", a);
@@ -91,6 +99,23 @@ export function ResponseFilterBar({
             </option>
           ))}
           <option value={UNGROUPED}>No group</option>
+        </select>
+      </label>
+
+      <label style={labelStyle}>
+        Position
+        <select
+          value={position ?? ""}
+          onChange={(e) => navigate({ position: e.target.value })}
+          style={selectStyle}
+        >
+          <option value="">All positions</option>
+          {positions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+          <option value={NO_POSITION}>No position</option>
         </select>
       </label>
 

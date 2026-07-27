@@ -3,8 +3,9 @@
  *
  * The access resolver is the heart of the gate: a student with no group is
  * denied; otherwise their group's window decides editability. The picker/list
- * helpers back the admin assignment surface. Pure window math lives in
- * `domain/window.ts`; this layer only loads + joins.
+ * helpers back the admin assignment surface, including a hire-date filter that
+ * reuses the response dashboard's start-date matcher (`admin/response-filters.ts`).
+ * Pure window math lives in `domain/window.ts`; this layer only loads + joins.
  */
 import "server-only";
 import { and, asc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
@@ -18,6 +19,7 @@ import {
   isLockedAfterSubmit,
   type WindowState,
 } from "@/lib/domain/window";
+import { matchesStarted, type StartedMode } from "@/lib/admin/response-filters";
 
 export interface GroupRow {
   id: string;
@@ -150,6 +152,9 @@ export interface PickerFilters {
   groupId?: string | "none";
   /** Case-insensitive substring on display name or email. */
   search?: string;
+  /** Restrict by roster hire date (`date` is `yyyy-mm-dd`). Students with no
+   *  recorded hire date never match while this is set. */
+  hiredOn?: { mode: StartedMode; date: string };
 }
 
 export interface PickerStudent {
@@ -187,6 +192,7 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
       groupId: students.groupId,
       groupName: groups.name,
       groupAssignedAuto: students.groupAssignedAuto,
+      hiredOn: students.hiredOn,
     })
     .from(students)
     .leftJoin(positions, eq(students.positionId, positions.id))
@@ -194,7 +200,14 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(asc(students.displayName), asc(students.email));
 
-  return rows.map((r) => ({
+  // The hire-date compare (before/after/on) mirrors the response dashboard's
+  // start-date filter, so it's applied in memory with the same pure matcher
+  // rather than duplicated as a SQL date comparison.
+  const filtered = filters.hiredOn
+    ? rows.filter((r) => matchesStarted(r.hiredOn, filters.hiredOn!))
+    : rows;
+
+  return filtered.map((r) => ({
     email: r.email,
     displayName: r.displayName,
     positionId: r.positionId,

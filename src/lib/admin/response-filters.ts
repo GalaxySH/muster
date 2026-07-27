@@ -1,7 +1,7 @@
 /**
  * Pure response-list filters that follow you (PLAN §10, roadmap 2.2).
  *
- * The group, flag, off-roster, and all-students filters live in the URL so they survive
+ * The group, position, flag, off-roster, and all-students filters live in the URL so they survive
  * navigation into the per-student view and drive the prev/next walk there. This
  * module owns the parse ↔ apply ↔ serialize round-trip; `admin/data.ts` fetches
  * the rows and the pages read/write the query. Search + sort stay client-side in
@@ -12,7 +12,10 @@ import type { DbFlagType } from "@/lib/db/schema";
 /** A flag filter: "any" = at least one flag, or a specific flag type. */
 export type FlagFilter = "any" | DbFlagType;
 
-/** How a start-date filter compares against the roster hire date. */
+/**
+ * How a start-date filter compares against the roster hire date. Also used by
+ * the group-assignment student picker's "Hired on" filter (`groups/data.ts`).
+ */
 export type StartedMode = "before" | "after" | "on";
 
 /**
@@ -25,6 +28,8 @@ export type ReviewFilter = "todo" | "done";
 export interface ResponseFilters {
   /** A group id, or "none" for responders with no group. */
   groupId?: string | "none";
+  /** A position id, or "none" for responders with no position assigned. */
+  positionId?: string | "none";
   /** Restrict to responders carrying a matching flag. */
   flag?: FlagFilter;
   /** Also list off-roster responders (hidden by default). */
@@ -41,6 +46,7 @@ export interface ResponseFilters {
 /** The minimal row shape the filters read. */
 export interface FilterableResponse {
   groupId: string | null;
+  positionId: string | null;
   flagTypes: DbFlagType[];
   onRoster: boolean;
   hiredOn: Date | null;
@@ -69,6 +75,9 @@ export const FLAG_FILTER_OPTIONS: { value: string; label: string }[] = [
 /** Sentinel group value for on-roster responders with no group assigned. */
 export const UNGROUPED = "none";
 
+/** Sentinel position value for responders with no position assigned. */
+export const NO_POSITION = "none";
+
 /** Options for the start-date mode dropdown (value "" = no filter). */
 export const STARTED_MODE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "Any time" },
@@ -93,6 +102,7 @@ const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(
 /** Read filters from raw query params (unknown/absent values are dropped). */
 export function parseResponseFilters(params: {
   group?: string;
+  position?: string;
   flag?: string;
   roster?: string;
   all?: string;
@@ -103,6 +113,8 @@ export function parseResponseFilters(params: {
   const filters: ResponseFilters = {};
   const group = params.group?.trim();
   if (group && group !== "all") filters.groupId = group;
+  const position = params.position?.trim();
+  if (position && position !== "all") filters.positionId = position;
   const flag = params.flag?.trim();
   if (flag && (KNOWN_FLAGS as readonly string[]).includes(flag)) {
     filters.flag = flag as FlagFilter;
@@ -138,6 +150,11 @@ export function applyResponseFilters<T extends FilterableResponse>(
     } else if (filters.groupId && r.groupId !== filters.groupId) {
       return false;
     }
+    if (filters.positionId === NO_POSITION) {
+      if (r.positionId !== null) return false;
+    } else if (filters.positionId && r.positionId !== filters.positionId) {
+      return false;
+    }
     if (filters.flag === "any") {
       if (r.flagTypes.length === 0) return false;
     } else if (filters.flag && !r.flagTypes.includes(filters.flag)) {
@@ -151,8 +168,12 @@ export function applyResponseFilters<T extends FilterableResponse>(
   });
 }
 
-/** Calendar-day comparison against the roster start date (ISO strings sort). */
-function matchesStarted(
+/**
+ * Calendar-day comparison against the roster start date (ISO strings sort).
+ * Shared with the group-assignment picker (`groups/data.ts`), which filters
+ * the same `hiredOn` field with the same 3 compare options.
+ */
+export function matchesStarted(
   hiredOn: Date | null,
   started: { mode: StartedMode; date: string },
 ): boolean {
@@ -172,6 +193,7 @@ function matchesStarted(
 export function serializeResponseFilters(filters: ResponseFilters): string {
   const params = new URLSearchParams();
   if (filters.groupId) params.set("group", filters.groupId);
+  if (filters.positionId) params.set("position", filters.positionId);
   if (filters.flag) params.set("flag", filters.flag);
   if (filters.includeOffRoster) params.set("roster", "all");
   if (filters.includeMissing) params.set("all", "1");
