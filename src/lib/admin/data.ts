@@ -293,6 +293,8 @@ export interface RosterPerson {
   positionName: string | null;
   /** Raw PCPL title from the roster import, shown when no position is mapped. */
   rosterTitle: string | null;
+  /** Roster hire date; null when unknown. Drives the default hire-date sort. */
+  hiredOn: Date | null;
 }
 
 export interface NonResponseReport {
@@ -310,7 +312,9 @@ export interface NonResponseReport {
  * Non-response tracking (PLAN §10): roster − responders, split into never-started
  * vs. draft-only, plus off-roster responders flagged separately. Buckets use the
  * shared `responseStatus` rule, so a stub row an admin created for a student who
- * never showed up stays in "no response" and keeps getting chased.
+ * never showed up stays in "no response" and keeps getting chased. Ordered by
+ * hire date (oldest first, unknown dates last) so the longest-tenured chases
+ * surface first; name is only the tiebreak.
  */
 export async function listNonResponses(): Promise<NonResponseReport> {
   const db = getDb();
@@ -323,13 +327,19 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       positionId: students.positionId,
       positionName: positions.name,
       rosterTitle: students.rosterTitle,
+      hiredOn: students.hiredOn,
       status: submissions.status,
       confirmedAt: submissions.confirmedAt,
     })
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    .orderBy(asc(students.displayName), asc(students.email));
+    .orderBy(
+      sql`${students.hiredOn} is null`,
+      asc(students.hiredOn),
+      asc(students.displayName),
+      asc(students.email),
+    );
 
   const noResponse: RosterPerson[] = [];
   const draftOnly: RosterPerson[] = [];
@@ -344,6 +354,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       positionId: r.positionId,
       positionName: r.positionName ?? null,
       rosterTitle: r.rosterTitle,
+      hiredOn: r.hiredOn,
     };
     const status = responseStatus({ status: r.status, confirmedAt: r.confirmedAt });
     if (r.onRoster) {
