@@ -12,7 +12,10 @@ import type { DbFlagType } from "@/lib/db/schema";
 /** A flag filter: "any" = at least one flag, or a specific flag type. */
 export type FlagFilter = "any" | DbFlagType;
 
-/** How a start-date filter compares against the roster hire date. */
+/**
+ * How a start-date filter compares against the roster hire date. Also used by
+ * the group-assignment student picker's "Hired on" filter (`groups/data.ts`).
+ */
 export type StartedMode = "before" | "after" | "on";
 
 /**
@@ -165,8 +168,12 @@ export function applyResponseFilters<T extends FilterableResponse>(
   });
 }
 
-/** Calendar-day comparison against the roster start date (ISO strings sort). */
-function matchesStarted(
+/**
+ * Calendar-day comparison against the roster start date (ISO strings sort).
+ * Shared with the group-assignment picker (`groups/data.ts`), which filters
+ * the same `hiredOn` field with the same 3 compare options.
+ */
+export function matchesStarted(
   hiredOn: Date | null,
   started: { mode: StartedMode; date: string },
 ): boolean {

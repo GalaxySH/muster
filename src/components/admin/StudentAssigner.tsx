@@ -9,6 +9,7 @@ import {
   unassignStudents,
 } from "@/lib/groups/actions";
 import type { PickerStudent, PickerFilters } from "@/lib/groups/data";
+import { STARTED_MODE_OPTIONS, type StartedMode } from "@/lib/admin/response-filters";
 
 interface Option {
   id: string;
@@ -17,8 +18,9 @@ interface Option {
 
 /**
  * Assign students to groups (PLAN §13): a filterable picker (position / roster /
- * group / name) with multi-select, plus a paste-a-list-of-emails path that
- * reports matched vs. unknown addresses.
+ * group / hire date / name) with multi-select, plus a paste-a-list-of-emails path
+ * that reports matched vs. unknown addresses. The hire-date filter (3 compare
+ * options + a date) mirrors the response dashboard's start-date filter.
  */
 export function StudentAssigner({ groups, positions }: { groups: Option[]; positions: Option[] }) {
   const router = useRouter();
@@ -28,6 +30,8 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
   const [posSel, setPosSel] = useState("");
   const [rosterSel, setRosterSel] = useState("");
   const [groupSel, setGroupSel] = useState("");
+  const [hiredMode, setHiredMode] = useState("");
+  const [hiredDate, setHiredDate] = useState("");
   const [searchText, setSearchText] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
 
@@ -46,6 +50,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
     if (posSel) filters.positionId = posSel as PickerFilters["positionId"];
     if (rosterSel) filters.onRoster = rosterSel === "yes";
     if (groupSel) filters.groupId = groupSel as PickerFilters["groupId"];
+    if (hiredMode && hiredDate) filters.hiredOn = { mode: hiredMode as StartedMode, date: hiredDate };
     if (appliedSearch.trim()) filters.search = appliedSearch.trim();
     setLoading(true);
     startTransition(async () => {
@@ -54,7 +59,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
       setSelected(new Set());
       setLoading(false);
     });
-  }, [posSel, rosterSel, groupSel, appliedSearch]);
+  }, [posSel, rosterSel, groupSel, hiredMode, hiredDate, appliedSearch]);
 
   useEffect(() => {
     load();
@@ -156,6 +161,29 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
             </option>
           ))}
         </select>
+        <select
+          value={hiredMode}
+          onChange={(e) => {
+            const next = e.target.value;
+            setHiredMode(next);
+            if (!next) setHiredDate("");
+          }}
+          style={ctrl}
+        >
+          {STARTED_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.value ? `Hired ${o.label.toLowerCase()}` : "Any hire date"}
+            </option>
+          ))}
+        </select>
+        {hiredMode && (
+          <input
+            type="date"
+            value={hiredDate}
+            onChange={(e) => setHiredDate(e.target.value)}
+            style={ctrl}
+          />
+        )}
         <input
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}

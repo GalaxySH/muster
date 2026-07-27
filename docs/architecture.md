@@ -574,7 +574,12 @@ The pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both
 TDD-tested). `groups/data.ts` (server-only) has `resolveStudentAccess(email)` (the two-gate
 decision used by every gate), `listGroups`/`getDefaultGroup`/`getDefaultAutoAssignEnabled`,
-and `listStudentsForPicker(filters)`. `groups/actions.ts` ("use server", **admin-gated**)
+and `listStudentsForPicker(filters)`. Most `PickerFilters` push down to SQL `where`
+conditions, but the hire-date compare (`hiredOn: { mode, date }`, roadmap 2.2) is applied
+in memory with `matchesStarted` imported from `admin/response-filters.ts` — the same
+before/after/on comparator the response dashboard's start-date filter uses against the
+same `students.hiredOn` column, rather than duplicating it as a SQL date comparison.
+`groups/actions.ts` ("use server", **admin-gated**)
 owns the mutations (create/rename/setWindow/delete, `assignStudents`/`assignByPaste`/
 `unassignStudents`, `setDefaultAutoAssign`, `runDefaultAssignmentSweep`) + a
 `searchStudentsForPicker` read. `groups/constants.ts` holds the default group id/name;

@@ -35,8 +35,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.85
-- **Last updated:** 2026-07-26
+- **Version:** 0.88
+- **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -913,10 +913,10 @@ cohorts). Two gates decide a student's form access (availability **and** evidenc
   and on **self-add** (a dormant hook, `applyDefaultGroupOnSelfAdd`, assigns immediately
   when the toggle is on — the magic-link/self-add flow isn't built yet). Turning the
   toggle off never un-assigns anyone.
-- **Assignment surfaces:** a filterable picker (position / roster / group / name) with
-  multi-select, plus a **paste-delimited-emails** path (reports matched vs. unknown).
-  *(Hire date is now ingested for the welcome-back greeting — §9, roadmap 2.1 — so a
-  hire-date picker filter is an optional follow-up, no longer blocked on the field.)*
+- **Assignment surfaces:** a filterable picker (position / roster / group / hire date /
+  name) with multi-select, plus a **paste-delimited-emails** path (reports matched vs.
+  unknown). The hire-date filter is a before/after/on compare against a chosen date
+  (roadmap 2.2), matching the response dashboard's start-date filter.
 - **Travel-excusal cutoff:** a **single global instant** (default Sep 1), independent of
   windows — a form window open past the cutoff still stops accepting travel. Stored in
   `app_settings` (`travel_cutoff`), editable on the admin groups surface (clear ⇒ 9/1
@@ -1173,6 +1173,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.88 (2026-07-27)** — **Hire-date filter on the group-assignment picker** (§13,
+  roadmap 2.2). "Assign students" on `/admin/groups` gained a before/after/on hire-date
+  compare, alongside position/roster/group, resolving the "optional follow-up" noted in
+  §13; it reuses the response dashboard's `matchesStarted` comparator against the same
+  `hiredOn` field.
 - **0.87 (2026-07-27)** — **Position filter on the response dashboard** (roadmap 2.2).
   `/admin/responses` gained a Position dropdown alongside Group, filtering to a
   position (or "No position") the same way the group filter works; it lives in the
