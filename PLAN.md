@@ -35,8 +35,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.85
-- **Last updated:** 2026-07-26
+- **Version:** 0.87
+- **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1173,6 +1173,34 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.87 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
+  integration errors (§10b).** The alert list was blind to the positions/shift-blocks
+  configuration and to several env/settings misconfigurations; each is now surfaced by
+  reusing an existing pure seam rather than re-deriving. **Positions:** every active
+  position with on-roster students runs through the same `blockSetWarnings`
+  (`domain/config-validation.ts`) the `/admin/positions` editor shows. A block set that
+  can never reach the hour or day floor (the extreme being **no blocks at all**) is a
+  `danger` (those students can never submit); a missing weekday or weekend layout is a
+  `warning`. `blockSetWarnings` gained two kinds for this: `no_weekday_blocks` and
+  `min_days_unreachable` (a day floor no selection can span, e.g. a Shift Lead whose config
+  is weekend-only maxes out at 2 distinct days, under its 3). **Assignment/roster:**
+  on-roster students left on a **deactivated or merged** position (a warning; also the
+  `nonassignable-position-students` count), roster emails that are **not `wisc.edu`** or
+  that **look like a name alias** rather than the NetID Google returns at sign-in, and the
+  ghost-title alert now leads with the **affected student count** instead of the number of
+  titles. **Env/settings:** email on with **no Resend key** in prod (`danger`),
+  `DRIVE_FOLDER_ID` unset, the **travel cutoff already past** while a window is open, a
+  **recently closed window** that left members unsubmitted, and the running **responses /
+  SL-closes sheets that have never synced**. **Integration health:** a new
+  `drive_last_error_at` stamp (set in `relayUpload` / `upsertManagedSheet` on any throw)
+  drives a **`drive-failing`** danger when it is newer than `drive_last_ok_at`, catching a
+  revoked grant the row-existence "connected" check cannot see; it clears itself on the
+  next success. The **digest-scheduler** alert is no longer gated on the open queue: it
+  calls `digestRunHealth()` directly, so a dead scheduler surfaces even on a quiet day.
+  **Nudge lists** are scoped to open windows (a reminder cannot help a student whose window
+  has not opened or has closed). **Boot guard:** `env-guard.ts` now refuses to start prod
+  with empty `GOOGLE_CLIENT_ID`/`SECRET` or a localhost `NEXTAUTH_URL`. All policy stays in
+  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +49 tests, 602 pass.
 - **0.86 (2026-07-27)** — **Roster import reads the PC & Training Tracker (§4.2, §9,
   §16.2).** The workbook changed shape for the new year: one sheet per dining unit
   (Muster reads **Gordon**) with a **Status** column, and no People Coming / People

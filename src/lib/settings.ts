@@ -46,6 +46,13 @@ export const SETTING_CHANGE_DIGEST_LAST_RUN = "change_digest_last_run";
  * is what lets the hub report Drive health without a network call (roadmap 4.1).
  */
 export const SETTING_DRIVE_LAST_OK_AT = "drive_last_ok_at";
+/**
+ * ISO instant of the last Drive write that FAILED (token refresh, upload, or
+ * sheet write threw). Paired with drive_last_ok_at: a failure newer than the
+ * last success means Drive is currently down, usually a revoked grant, which
+ * the row-existence "connected" check cannot see on its own (roadmap 4.1).
+ */
+export const SETTING_DRIVE_LAST_ERROR_AT = "drive_last_error_at";
 /** JSON SchedulingParams for the schedule engine, admin-set on /admin/schedule. Absent ⇒ defaults. */
 export const SETTING_SCHEDULE_PARAMS = "schedule_params";
 
@@ -186,5 +193,18 @@ export async function markDriveOk(now: Date = new Date()): Promise<void> {
     await setSetting(SETTING_DRIVE_LAST_OK_AT, now.toISOString());
   } catch (e) {
     console.error("Could not record the Drive health stamp (non-fatal):", e);
+  }
+}
+
+export async function getDriveLastError(): Promise<Date | null> {
+  return getInstant(SETTING_DRIVE_LAST_ERROR_AT);
+}
+
+/** Record a Drive write that threw. Best effort: never masks the original error. */
+export async function markDriveFailed(now: Date = new Date()): Promise<void> {
+  try {
+    await setSetting(SETTING_DRIVE_LAST_ERROR_AT, now.toISOString());
+  } catch (e) {
+    console.error("Could not record the Drive failure stamp (non-fatal):", e);
   }
 }

@@ -15,8 +15,9 @@
  * All derivation lives in `dashboard-view.ts`. This module only fetches.
  */
 import "server-only";
-import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { digestSchedulerEnabled, env } from "@/lib/env";
 import {
   changeRequests,
   flags,
@@ -28,7 +29,8 @@ import {
   submissions,
   type DbFlagType,
 } from "@/lib/db/schema";
-import { WEEKDAY_DAYS, WEEKEND_DAYS } from "@/lib/domain/types";
+import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
+import { WEEKDAY_DAYS, WEEKEND_DAYS, type ShiftBlock } from "@/lib/domain/types";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { getRosterStatus } from "@/lib/roster/status";
 import { hasCloseInventory, loadCloseAdmin } from "@/lib/closes/data";
@@ -36,10 +38,12 @@ import {
   getChangeDigestEnabled,
   getChangeDigestLastRun,
   getChangeDigestRecipients,
+  getDriveLastError,
   getDriveLastOkAt,
   getEmailSendingEnabled,
+  getTravelCutoff,
 } from "@/lib/settings";
-import { getLastSheetSync, getSheetUrl, RESPONSES_SHEET } from "./sheet-sync";
+import { CLOSES_SHEET, getLastSheetSync, getSheetUrl, RESPONSES_SHEET } from "./sheet-sync";
 import { loadUpcomingTravel } from "./data";
 import type {
   CoverageCell,
@@ -64,13 +68,18 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     closes,
     drive,
     driveLastOkAt,
+    driveLastErrorAt,
     sheetUrl,
     sheetSyncedAt,
+    closesSheetSyncedAt,
     sendingEnabled,
     digestEnabled,
     digestRecipients,
     digestLastRun,
     roster,
+    positionConfigs,
+    nonAssignablePositions,
+    travelCutoff,
     coverage,
     recent,
     perDay,
@@ -91,13 +100,18 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     loadCloses(),
     getDriveGrantStatus(),
     getDriveLastOkAt(),
+    getDriveLastError(),
     getSheetUrl(RESPONSES_SHEET),
     getLastSheetSync(RESPONSES_SHEET),
+    getLastSheetSync(CLOSES_SHEET),
     getEmailSendingEnabled(),
     getChangeDigestEnabled(),
     getChangeDigestRecipients(),
     getChangeDigestLastRun(),
     getRosterStatus(),
+    loadPositionConfigs(),
+    loadNonAssignablePositions(),
+    getTravelCutoff(now).then((r) => r.cutoff),
     loadCoverage(),
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
@@ -110,15 +124,30 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     flagCounts,
     travelCount,
     closes,
-    drive: { connected: drive.connected, email: drive.email ?? null, lastOkAt: driveLastOkAt },
+    drive: {
+      connected: drive.connected,
+      email: drive.email ?? null,
+      lastOkAt: driveLastOkAt,
+      lastErrorAt: driveLastErrorAt,
+    },
     sheet: { url: sheetUrl, lastSyncedAt: sheetSyncedAt },
+    closesSheet: { lastSyncedAt: closesSheetSyncedAt },
     email: {
       sendingEnabled,
       digestEnabled,
       recipientCount: digestRecipients.length,
       digestLastRun,
     },
+    scheduler: { enabled: digestSchedulerEnabled, uptimeMs: process.uptime() * 1000 },
+    config: {
+      resendConfigured: Boolean(env.RESEND_API_KEY),
+      driveFolderConfigured: Boolean(env.DRIVE_FOLDER_ID),
+      isProduction: process.env.NODE_ENV === "production",
+      travelCutoff,
+    },
     ghostTitles: roster.ghostTitles,
+    positionConfigs,
+    nonAssignablePositions,
     roster: {
       onRoster: roster.onRoster,
       offRoster: roster.offRoster,
@@ -162,6 +191,72 @@ async function loadStudentRoll(): Promise<DashboardStudent[]> {
     hasCourseSchedule: Boolean(r.courseScheduleFileId),
     updatedAt: r.updatedAt ?? null,
   }));
+}
+
+/**
+ * Every active, assignable position that has at least one on-roster student,
+ * with its full block set, so the alert layer can run `blockSetWarnings` over a
+ * config that is actually in use. Positions nobody is assigned to are dropped:
+ * an unfinished setup on an unused position is not blocking anyone.
+ */
+async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs"]> {
+  const db = getDb();
+  const [posRows, blockRows, staffRows] = await Promise.all([
+    db
+      .select()
+      .from(positions)
+      .where(and(eq(positions.active, true), isNull(positions.mergedIntoId))),
+    db.select().from(shiftBlocks),
+    db
+      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
+      .from(students)
+      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
+      .groupBy(students.positionId),
+  ]);
+
+  const staff = new Map(staffRows.map((r) => [r.positionId, Number(r.n)]));
+  const blocksByPosition = new Map<string, ShiftBlock[]>();
+  for (const b of blockRows) {
+    const list = blocksByPosition.get(b.positionId) ?? [];
+    list.push(toDomainBlock(b));
+    blocksByPosition.set(b.positionId, list);
+  }
+
+  return posRows
+    .map((p) => ({
+      position: toDomainPosition(p),
+      blocks: blocksByPosition.get(p.id) ?? [],
+      onRosterCount: staff.get(p.id) ?? 0,
+    }))
+    .filter((pc) => pc.onRosterCount > 0);
+}
+
+/**
+ * On-roster students still assigned to a position that is no longer assignable
+ * (deactivated or merged into another). Their form still resolves the old blocks
+ * by id, but they drop out of coverage and the picker, so this is a quiet drift
+ * an admin needs to clean up. Grouped by position so the alert can name them.
+ */
+async function loadNonAssignablePositions(): Promise<
+  DashboardSnapshot["nonAssignablePositions"]
+> {
+  const rows = await getDb()
+    .select({ name: positions.name, n: sql<number>`count(*)` })
+    .from(students)
+    .innerJoin(positions, eq(students.positionId, positions.id))
+    .where(
+      and(
+        eq(students.onRoster, true),
+        or(eq(positions.active, false), isNotNull(positions.mergedIntoId)),
+      ),
+    )
+    .groupBy(positions.id, positions.name);
+
+  const withCounts = rows.map((r) => ({ name: r.name, count: Number(r.n) }));
+  return {
+    studentCount: withCounts.reduce((sum, r) => sum + r.count, 0),
+    positionNames: withCounts.sort((a, b) => b.count - a.count).map((r) => r.name),
+  };
 }
 
 async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["changeRequests"]> {

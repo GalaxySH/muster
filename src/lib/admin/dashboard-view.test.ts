@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
+import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
 import {
   buildDashboardView,
   STALLED_DRAFT_DAYS,
@@ -28,15 +29,25 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
       available: 0,
       feasible: true,
     },
-    drive: { connected: true, email: "admin@wisc.edu", lastOkAt: ago(HOURS(1)) },
+    drive: { connected: true, email: "admin@wisc.edu", lastOkAt: ago(HOURS(1)), lastErrorAt: null },
     sheet: { url: "https://sheet", lastSyncedAt: ago(HOURS(1)) },
+    closesSheet: { lastSyncedAt: ago(HOURS(1)) },
     email: {
       sendingEnabled: true,
       digestEnabled: true,
       recipientCount: 1,
       digestLastRun: ago(HOURS(2)),
     },
+    scheduler: { enabled: true, uptimeMs: HOURS(1) },
+    config: {
+      resendConfigured: true,
+      driveFolderConfigured: true,
+      isProduction: false,
+      travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+    },
     ghostTitles: [],
+    positionConfigs: [],
+    nonAssignablePositions: { studentCount: 0, positionNames: [] },
     roster: {
       onRoster: 0,
       offRoster: 0,
@@ -150,7 +161,7 @@ describe("alerts", () => {
   it("puts every danger ahead of every warning", () => {
     const view = buildDashboardView(
       healthy({
-        drive: { connected: false, email: null, lastOkAt: null },
+        drive: { connected: false, email: null, lastOkAt: null, lastErrorAt: null },
         ghostTitles: [{ title: "Pantry Lead", count: 2 }],
         students: [student({ groupId: null })],
       }),
@@ -209,19 +220,44 @@ describe("alerts", () => {
     expect(ids(snap)).not.toContain("digest-stale");
   });
 
-  it("stays quiet about the digest when there is nothing for it to send", () => {
-    // A cron that has never run looks identical to a quiet week until a request
-    // is actually waiting on it, so an empty queue must not raise the alarm.
+  it("stays quiet while the scheduler is still in its startup grace", () => {
+    const snap = healthy({
+      email: { sendingEnabled: true, digestEnabled: true, recipientCount: 2, digestLastRun: null },
+      scheduler: { enabled: true, uptimeMs: 60 * 1000 },
+    });
+    expect(ids(snap)).not.toContain("digest-stale");
+  });
+
+  it("flags a scheduler that has never run once past the startup grace", () => {
+    const snap = healthy({
+      email: { sendingEnabled: true, digestEnabled: true, recipientCount: 2, digestLastRun: null },
+      scheduler: { enabled: true, uptimeMs: HOURS(2) },
+    });
+    expect(ids(snap)).toContain("digest-stale");
+  });
+
+  it("stays quiet when the scheduler is disabled in this environment", () => {
+    const snap = healthy({
+      email: { sendingEnabled: true, digestEnabled: true, recipientCount: 2, digestLastRun: null },
+      scheduler: { enabled: false, uptimeMs: HOURS(2) },
+    });
+    expect(ids(snap)).not.toContain("digest-stale");
+  });
+
+  it("flags a dead scheduler even when the queue is empty", () => {
+    // The old gate suppressed this whenever no request was waiting; a dead
+    // scheduler stops all future catch-up, so it must surface on a quiet day too.
     const snap = healthy({
       changeRequests: { open: 0, oldestCreatedAt: null, newLast24h: 0 },
       email: {
         sendingEnabled: true,
         digestEnabled: true,
         recipientCount: 2,
-        digestLastRun: null,
+        digestLastRun: ago(3 * DAY_MS),
       },
+      scheduler: { enabled: true, uptimeMs: HOURS(5) },
     });
-    expect(ids(snap)).not.toContain("digest-stale");
+    expect(ids(snap)).toContain("digest-stale");
   });
 
   it("surfaces submissions that no longer pass validation, linked to the filter", () => {
@@ -299,10 +335,264 @@ describe("alerts", () => {
   });
 });
 
+describe("positions config alerts", () => {
+  const pos = (over: Partial<Position> = {}): Position => ({
+    id: "cashier",
+    name: "Cashier",
+    minHours: 10,
+    minDays: 2,
+    weekendExempt: false,
+    ...over,
+  });
+  const blk = (id: string, dayType: DayType, start: number, end: number): ShiftBlock => ({
+    id,
+    positionId: "cashier",
+    dayType,
+    start,
+    end,
+  });
+
+  it("raises a danger when a staffed position has no shift blocks", () => {
+    const snap = healthy({ positionConfigs: [{ position: pos(), blocks: [], onRosterCount: 4 }] });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "position-config-cashier");
+    expect(a?.severity).toBe("danger");
+    expect(a?.title).toContain("no shift blocks");
+    expect(a?.title).toContain("4 students");
+    expect(a?.href).toBe("/admin/positions");
+  });
+
+  it("raises a danger when the blocks cannot reach the hour minimum", () => {
+    // One 1h weekday block, weekend-exempt: 5h a week, under the 10h floor.
+    const snap = healthy({
+      positionConfigs: [
+        { position: pos({ weekendExempt: true }), blocks: [blk("b", "weekday", 480, 540)], onRosterCount: 3 },
+      ],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "position-config-cashier");
+    expect(a?.severity).toBe("danger");
+    expect(a?.detail).toMatch(/10h/);
+  });
+
+  it("raises only a warning when a non-exempt position is missing weekend blocks", () => {
+    // A 10h weekday block reaches the hour and day floors; only weekends are absent.
+    const snap = healthy({
+      positionConfigs: [{ position: pos(), blocks: [blk("b", "weekday", 480, 1080)], onRosterCount: 5 }],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "position-config-cashier");
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("missing weekend");
+  });
+
+  it("says nothing when a staffed position is fully configured", () => {
+    const snap = healthy({
+      positionConfigs: [
+        {
+          position: pos(),
+          blocks: [blk("wd", "weekday", 480, 1080), blk("we", "weekend", 540, 1140)],
+          onRosterCount: 5,
+        },
+      ],
+    });
+    expect(ids(snap)).not.toContain("position-config-cashier");
+  });
+
+  it("sorts a config danger ahead of a config warning", () => {
+    const snap = healthy({
+      positionConfigs: [
+        { position: pos({ id: "a", name: "Aaa" }), blocks: [], onRosterCount: 2 },
+        { position: pos({ id: "z", name: "Zzz" }), blocks: [blk("b", "weekday", 480, 1080)], onRosterCount: 2 },
+      ],
+    });
+    const severities = buildDashboardView(snap, NOW)
+      .alerts.filter((x) => x.id.startsWith("position-config-"))
+      .map((x) => x.severity);
+    expect(severities).toEqual(["danger", "warning"]);
+  });
+});
+
+describe("environment and settings alerts", () => {
+  const config = (over: Partial<DashboardSnapshot["config"]> = {}): DashboardSnapshot["config"] => ({
+    resendConfigured: true,
+    driveFolderConfigured: true,
+    isProduction: false,
+    travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+    ...over,
+  });
+
+  it("flags email that is on in production with no Resend key", () => {
+    const snap = healthy({ config: config({ isProduction: true, resendConfigured: false }) });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "email-no-key");
+    expect(a?.severity).toBe("danger");
+    expect(a?.href).toBe("/admin/email-settings");
+  });
+
+  it("does not flag a missing Resend key outside production", () => {
+    const snap = healthy({ config: config({ isProduction: false, resendConfigured: false }) });
+    expect(ids(snap)).not.toContain("email-no-key");
+  });
+
+  it("flags a connected Drive with no destination folder", () => {
+    const snap = healthy({ config: config({ driveFolderConfigured: false }) });
+    expect(ids(snap)).toContain("drive-folder-unset");
+  });
+
+  it("does not flag the Drive folder when Drive is not connected", () => {
+    const snap = healthy({
+      drive: { connected: false, email: null, lastOkAt: null, lastErrorAt: null },
+      config: config({ driveFolderConfigured: false }),
+    });
+    expect(ids(snap)).not.toContain("drive-folder-unset");
+    expect(ids(snap)).toContain("drive-disconnected");
+  });
+
+  it("flags a passed travel cutoff while a window is still open", () => {
+    const snap = healthy({
+      config: config({ travelCutoff: ago(DAY_MS) }),
+      groups: [
+        { id: "g1", name: "G", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+      ],
+      students: [student({ groupId: "g1" })],
+    });
+    expect(ids(snap)).toContain("travel-cutoff-past");
+  });
+
+  it("does not flag a passed cutoff when no window is open", () => {
+    const snap = healthy({ config: config({ travelCutoff: ago(DAY_MS) }) });
+    expect(ids(snap)).not.toContain("travel-cutoff-past");
+  });
+
+  it("flags on-roster students left on a non-assignable position", () => {
+    const snap = healthy({
+      nonAssignablePositions: { studentCount: 3, positionNames: ["Cashier"] },
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "nonassignable-position-students",
+    );
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("3 on-roster students");
+    expect(a?.detail).toContain("Cashier");
+  });
+});
+
+describe("integration health alerts", () => {
+  it("flags a connected Drive whose last write failed after the last success", () => {
+    const snap = healthy({
+      drive: {
+        connected: true,
+        email: "a@wisc.edu",
+        lastOkAt: ago(HOURS(3)),
+        lastErrorAt: ago(HOURS(1)),
+      },
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "drive-failing");
+    expect(a?.severity).toBe("danger");
+  });
+
+  it("stays quiet when the last Drive write succeeded after the last error", () => {
+    const snap = healthy({
+      drive: {
+        connected: true,
+        email: "a@wisc.edu",
+        lastOkAt: ago(HOURS(1)),
+        lastErrorAt: ago(HOURS(3)),
+      },
+    });
+    expect(ids(snap)).not.toContain("drive-failing");
+  });
+
+  it("does not double-report a disconnected Drive as failing", () => {
+    const snap = healthy({
+      drive: { connected: false, email: null, lastOkAt: null, lastErrorAt: ago(HOURS(1)) },
+    });
+    expect(ids(snap)).not.toContain("drive-failing");
+    expect(ids(snap)).toContain("drive-disconnected");
+  });
+
+  it("flags a responses sheet that has never synced while submissions exist", () => {
+    const snap = healthy({
+      students: [student({ status: "submitted" })],
+      sheet: { url: null, lastSyncedAt: null },
+    });
+    expect(ids(snap)).toContain("responses-sheet-unsynced");
+  });
+
+  it("does not flag the responses sheet before any submission", () => {
+    const snap = healthy({ sheet: { url: null, lastSyncedAt: null } });
+    expect(ids(snap)).not.toContain("responses-sheet-unsynced");
+  });
+
+  it("flags a closes sheet that has never synced once inventory exists", () => {
+    const snap = healthy({
+      closes: {
+        hasInventory: true,
+        leadsTotal: 3,
+        leadsShort: 0,
+        required: 9,
+        available: 12,
+        feasible: true,
+      },
+      closesSheet: { lastSyncedAt: null },
+    });
+    expect(ids(snap)).toContain("closes-sheet-unsynced");
+  });
+});
+
+describe("window and roster alerts", () => {
+  it("flags a recently closed window that left members unsubmitted", () => {
+    const snap = healthy({
+      groups: [{ id: "g1", name: "Returning", opensAt: ago(10 * DAY_MS), closesAt: ago(2 * DAY_MS) }],
+      students: [
+        student({ email: "1@wisc.edu", groupId: "g1", status: "submitted" }),
+        student({ email: "2@wisc.edu", groupId: "g1", status: null }),
+        student({ email: "3@wisc.edu", groupId: "g1", status: "draft" }),
+      ],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "closed-window-shortfall");
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("2 students");
+    expect(a?.detail).toContain("Returning");
+  });
+
+  it("stops flagging a window that closed long ago", () => {
+    const snap = healthy({
+      groups: [{ id: "g1", name: "Old", opensAt: ago(60 * DAY_MS), closesAt: ago(40 * DAY_MS) }],
+      students: [student({ email: "1@wisc.edu", groupId: "g1", status: null })],
+    });
+    expect(ids(snap)).not.toContain("closed-window-shortfall");
+  });
+
+  it("counts affected students, not titles, for a null-title ghost bucket", () => {
+    const snap = healthy({ ghostTitles: [{ title: null, count: 40 }] });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "ghost-titles");
+    expect(a?.title).toContain("40");
+  });
+
+  it("flags roster emails that are not wisc.edu addresses", () => {
+    const snap = healthy({
+      students: [student({ email: "ok@wisc.edu" }), student({ email: "someone@gmail.com" })],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "non-wisc-emails");
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("1 roster email");
+    expect(a?.href).toBe("/admin/roster");
+  });
+
+  it("flags dotted wisc.edu emails that look like aliases, not NetIDs", () => {
+    const snap = healthy({
+      students: [student({ email: "jane.doe@wisc.edu" }), student({ email: "jdoe@wisc.edu" })],
+    });
+    expect(ids(snap)).toContain("alias-emails");
+    expect(ids(snap)).not.toContain("non-wisc-emails");
+  });
+});
+
 describe("who is worth a nudge", () => {
   it("separates stalled drafts from drafts still being worked on", () => {
     const view = buildDashboardView(
       healthy({
+        groups: [
+          { id: "g1", name: "Open", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+        ],
         students: [
           student({
             email: "stale@w",
@@ -317,6 +607,23 @@ describe("who is worth a nudge", () => {
     );
     expect(view.nudge.stalledDraftEmails).toEqual(["stale@w"]);
     expect(view.nudge.neverStartedEmails).toEqual(["never@w"]);
+  });
+
+  it("does not nudge students whose window is closed or has not opened", () => {
+    const view = buildDashboardView(
+      healthy({
+        groups: [
+          { id: "open", name: "Open", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+          { id: "shut", name: "Shut", opensAt: ago(3 * DAY_MS), closesAt: ago(DAY_MS) },
+        ],
+        students: [
+          student({ email: "reachable@w", status: null, groupId: "open" }),
+          student({ email: "lockedout@w", status: null, groupId: "shut" }),
+        ],
+      }),
+      NOW,
+    );
+    expect(view.nudge.neverStartedEmails).toEqual(["reachable@w"]);
   });
 
   it("counts drafts with no course schedule uploaded", () => {

@@ -8,7 +8,13 @@
  */
 import "server-only";
 import { env } from "@/lib/env";
-import { getSetting, setSetting, markDriveOk, SETTING_PROOFS_FOLDER_ID } from "@/lib/settings";
+import {
+  getSetting,
+  setSetting,
+  markDriveOk,
+  markDriveFailed,
+  SETTING_PROOFS_FOLDER_ID,
+} from "@/lib/settings";
 import { getActiveDriveGrant } from "./grants";
 import { getAccessToken } from "./oauth";
 import {
@@ -72,20 +78,27 @@ async function ensureProofsFolder(accessToken: string): Promise<string> {
 export async function relayUpload(input: RelayUploadInput): Promise<string> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
-  const accessToken = await getAccessToken(grant.refreshToken);
-  const folderId = await ensureProofsFolder(accessToken);
-  const ext = extensionForType(input.mimeType);
-  const name = `${input.studentEmail}__${input.kind}__${Date.now()}.${ext}`;
-  const fileId = await uploadFile({
-    accessToken,
-    folderId,
-    name,
-    mimeType: input.mimeType,
-    bytes: input.bytes,
-  });
-  // A write that came back clean is the only cheap proof the grant still works.
-  await markDriveOk();
-  return fileId;
+  try {
+    const accessToken = await getAccessToken(grant.refreshToken);
+    const folderId = await ensureProofsFolder(accessToken);
+    const ext = extensionForType(input.mimeType);
+    const name = `${input.studentEmail}__${input.kind}__${Date.now()}.${ext}`;
+    const fileId = await uploadFile({
+      accessToken,
+      folderId,
+      name,
+      mimeType: input.mimeType,
+      bytes: input.bytes,
+    });
+    // A write that came back clean is the only cheap proof the grant still works.
+    await markDriveOk();
+    return fileId;
+  } catch (e) {
+    // A throw after the grant existed means the grant itself is failing (revoked
+    // token, refresh failure). Stamp it so the hub can see "connected but down".
+    await markDriveFailed();
+    throw e;
+  }
 }
 
 /** Fetch a previously relayed file's bytes (for the authenticated proxy route). */
@@ -128,35 +141,42 @@ export async function upsertManagedSheet(
 ): Promise<ManagedSheetResult> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
-  const accessToken = await getAccessToken(grant.refreshToken);
-  const root = driveRoot();
-
-  let sheetId =
-    (await getSetting(sheet.idSettingKey)) ??
-    (await findChildByName({
-      accessToken,
-      parentId: root,
-      name: sheet.name,
-      mimeType: SPREADSHEET_MIME,
-    })) ??
-    (await createSpreadsheet({ accessToken, name: sheet.name, parentId: root }));
-
   try {
-    await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
-  } catch (e) {
-    // The cached/found sheet was deleted out from under us; recreate once.
-    if (e instanceof SheetWriteError && e.status === 404) {
-      sheetId = await createSpreadsheet({ accessToken, name: sheet.name, parentId: root });
-      await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
-    } else {
-      throw e;
-    }
-  }
+    const accessToken = await getAccessToken(grant.refreshToken);
+    const root = driveRoot();
 
-  await setSetting(sheet.idSettingKey, sheetId);
-  await markDriveOk();
-  return {
-    spreadsheetId: sheetId,
-    url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit`,
-  };
+    let sheetId =
+      (await getSetting(sheet.idSettingKey)) ??
+      (await findChildByName({
+        accessToken,
+        parentId: root,
+        name: sheet.name,
+        mimeType: SPREADSHEET_MIME,
+      })) ??
+      (await createSpreadsheet({ accessToken, name: sheet.name, parentId: root }));
+
+    try {
+      await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
+    } catch (e) {
+      // The cached/found sheet was deleted out from under us; recreate once.
+      if (e instanceof SheetWriteError && e.status === 404) {
+        sheetId = await createSpreadsheet({ accessToken, name: sheet.name, parentId: root });
+        await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
+      } else {
+        throw e;
+      }
+    }
+
+    await setSetting(sheet.idSettingKey, sheetId);
+    await markDriveOk();
+    return {
+      spreadsheetId: sheetId,
+      url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit`,
+    };
+  } catch (e) {
+    // Same as relayUpload: a post-grant throw is the grant failing, not a
+    // missing connection. Stamp it so the hub reads "connected but down".
+    await markDriveFailed();
+    throw e;
+  }
 }

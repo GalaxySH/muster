@@ -12,7 +12,9 @@
  */
 import { windowState, type WindowState } from "@/lib/domain/window";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
-import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
+import { blockSetWarnings } from "@/lib/domain/config-validation";
+import type { Position, ShiftBlock } from "@/lib/domain/types";
+import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
 import type { DbFlagType } from "@/lib/db/schema";
 
@@ -20,9 +22,13 @@ import type { DbFlagType } from "@/lib/db/schema";
 export const STALLED_DRAFT_DAYS = 3;
 /** How many of the thinnest blocks the coverage panel lists. */
 export const COVERAGE_ROWS = 5;
+/**
+ * A window that closed within this many days is still worth chasing (reopen,
+ * follow up). Past it the alert would be permanent noise, so it drops off.
+ */
+export const RECENTLY_CLOSED_DAYS = 14;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
 
 export type Severity = "danger" | "warning";
 
@@ -78,6 +84,19 @@ export interface RecentSubmission {
   flagTypes: DbFlagType[];
 }
 
+/**
+ * One active, assignable position that has on-roster students, with its full
+ * block set. The alert layer runs the pure `blockSetWarnings` over these to
+ * catch a shift setup that silently blocks its students (no blocks, an
+ * unreachable hour or day floor) or leaves a layout missing.
+ */
+export interface PositionConfig {
+  position: Position;
+  blocks: ShiftBlock[];
+  /** On-roster students assigned to this position; always > 0 (empties are dropped). */
+  onRosterCount: number;
+}
+
 export interface DashboardSnapshot {
   /** On-roster students only. Off-roster people are not the admin's work. */
   students: DashboardStudent[];
@@ -93,15 +112,39 @@ export interface DashboardSnapshot {
     available: number;
     feasible: boolean;
   };
-  drive: { connected: boolean; email: string | null; lastOkAt: Date | null };
+  drive: {
+    connected: boolean;
+    email: string | null;
+    lastOkAt: Date | null;
+    /** Last Drive write that threw; a value newer than lastOkAt means it is down. */
+    lastErrorAt: Date | null;
+  };
   sheet: { url: string | null; lastSyncedAt: Date | null };
+  /** The SL closes backup sheet; only meaningful once close inventory exists. */
+  closesSheet: { lastSyncedAt: Date | null };
   email: {
     sendingEnabled: boolean;
     digestEnabled: boolean;
     recipientCount: number;
     digestLastRun: Date | null;
   };
+  /** The in-app change-digest scheduler's liveness inputs (see digest-health). */
+  scheduler: { enabled: boolean; uptimeMs: number };
+  /** Environment/settings toggles the alert layer reads to catch silent misconfig. */
+  config: {
+    /** RESEND_API_KEY is set; when false, "sending on" still delivers nothing. */
+    resendConfigured: boolean;
+    /** DRIVE_FOLDER_ID is set; when false, uploads land in a personal Drive. */
+    driveFolderConfigured: boolean;
+    /** NODE_ENV === "production"; some misconfigs only bite (or only matter) in prod. */
+    isProduction: boolean;
+    /** Effective travel-excusal cutoff (admin value or the 9/1 default). */
+    travelCutoff: Date;
+  };
   ghostTitles: { title: string | null; count: number }[];
+  positionConfigs: PositionConfig[];
+  /** On-roster students whose position is now inactive or merged (not assignable). */
+  nonAssignablePositions: { studentCount: number; positionNames: string[] };
   roster: {
     onRoster: number;
     offRoster: number;
@@ -192,10 +235,18 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     };
   });
 
+  // A reminder only helps a student whose window is open right now: nudging
+  // someone whose window has not opened (they cannot start) or has already closed
+  // (they are locked out) points the admin at people they cannot help.
+  const openGroupIds = new Set(groupProgress.filter((g) => g.state === "open").map((g) => g.id));
+  const inOpenWindow = (s: DashboardStudent) => s.groupId !== null && openGroupIds.has(s.groupId);
+
   const stalledCutoff = new Date(now.getTime() - STALLED_DRAFT_DAYS * DAY_MS);
   const stalledDraftEmails = drafts
     .filter((s) => s.updatedAt !== null && s.updatedAt < stalledCutoff)
+    .filter(inOpenWindow)
     .map((s) => s.email);
+  const neverStartedEmails = notStarted.filter(inOpenWindow).map((s) => s.email);
 
   const flagTotal = snapshot.flagCounts.reduce((n, f) => n + f.count, 0);
   const flagsByType = snapshot.flagCounts
@@ -243,7 +294,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     },
     nudge: {
       stalledDraftEmails,
-      neverStartedEmails: notStarted.map((s) => s.email),
+      neverStartedEmails,
       missingCourseSchedule: drafts.filter((s) => !s.hasCourseSchedule).length,
     },
     coverage: { cells: coverageCells, max: coverageMax },
@@ -278,6 +329,21 @@ function buildAlerts(
       href: "/admin/drive",
       linkLabel: "Drive",
     });
+  } else if (
+    s.drive.lastErrorAt !== null &&
+    (s.drive.lastOkAt === null || s.drive.lastErrorAt > s.drive.lastOkAt)
+  ) {
+    // The grant row still exists (so "connected" reads true), but the most recent
+    // Drive write threw after the last one that worked: the grant is failing,
+    // usually because it was revoked at Google.
+    danger.push({
+      id: "drive-failing",
+      severity: "danger",
+      title: "Google Drive uploads are failing.",
+      detail: "The grant may have been revoked. Reconnect Drive so uploads work again.",
+      href: "/admin/drive",
+      linkLabel: "Drive",
+    });
   }
 
   if (ctx.ungrouped > 0) {
@@ -303,22 +369,34 @@ function buildAlerts(
     });
   }
 
-  const digestAge = s.email.digestLastRun ? now.getTime() - s.email.digestLastRun.getTime() : null;
-  const digestStale = digestAge === null || digestAge > DIGEST_STALE_HOURS * HOUR_MS;
-  if (
-    s.changeRequests.open > 0 &&
-    s.email.digestEnabled &&
-    s.email.recipientCount > 0 &&
-    digestStale
-  ) {
+  // The scheduler stamps every run (even no-op ones), so a missing or stale
+  // stamp means the scheduler itself is dead, independent of whether a request
+  // is waiting. That is why this is NOT gated on the open queue: a dead
+  // scheduler stops all future catch-up, so it must surface even on a quiet day
+  // (the startup grace inside digestRunHealth covers a just-booted process).
+  const digestHealth = digestRunHealth({
+    schedulerEnabled: s.scheduler.enabled,
+    lastRunAt: s.email.digestLastRun,
+    uptimeMs: s.scheduler.uptimeMs,
+    now,
+  });
+  if (digestHealth === "never-ran" || digestHealth === "stale") {
+    const days =
+      s.email.digestLastRun !== null
+        ? Math.floor((now.getTime() - s.email.digestLastRun.getTime()) / DAY_MS)
+        : null;
+    const waiting =
+      s.changeRequests.open > 0
+        ? ` ${s.changeRequests.open} open ${plural(s.changeRequests.open, "request is", "requests are")} waiting.`
+        : "";
     danger.push({
       id: "digest-stale",
       severity: "danger",
       title:
-        digestAge === null
-          ? "The change-request digest has never run."
-          : `The change-request digest has not run in ${Math.floor(digestAge / DAY_MS)} ${plural(Math.floor(digestAge / DAY_MS), "day", "days")}.`,
-      detail: `${s.changeRequests.open} open ${plural(s.changeRequests.open, "request is", "requests are")} waiting. Check the app logs on the server.`,
+        days === null
+          ? "The change-request digest scheduler has never run."
+          : `The change-request digest has not run in ${days} ${plural(days, "day", "days")}.`,
+      detail: `The scheduler should run daily.${waiting} Check the app logs on the server.`,
       href: "/admin/email-settings",
       linkLabel: "Email",
     });
@@ -333,6 +411,56 @@ function buildAlerts(
       detail: "Their shift blocks changed after they submitted.",
       href: "/admin/responses?flag=revalidation_failed",
       linkLabel: "Review",
+    });
+  }
+
+  // A position's shift setup can silently block every student assigned to it: no
+  // blocks to pick, or a block set that can never reach the hour or day floor.
+  // Only positions with on-roster students are checked (an unused position is
+  // not costing anyone a submission), and the pure `blockSetWarnings` is the
+  // same check the positions editor shows.
+  for (const pc of s.positionConfigs) {
+    const warnings = blockSetWarnings(pc.position, pc.blocks);
+    if (warnings.length === 0) continue;
+
+    const affected = `${pc.onRosterCount} ${plural(pc.onRosterCount, "student", "students")}`;
+    const blocking = warnings.some(
+      (w) => w.kind === "min_hours_unreachable" || w.kind === "min_days_unreachable",
+    );
+    const missing = [
+      warnings.some((w) => w.kind === "no_weekday_blocks") ? "weekday" : null,
+      warnings.some((w) => w.kind === "no_weekend_blocks") ? "weekend" : null,
+    ].filter((m): m is string => m !== null);
+
+    const alert: DashboardAlert = {
+      id: `position-config-${pc.position.id}`,
+      severity: blocking ? "danger" : "warning",
+      title:
+        pc.blocks.length === 0
+          ? `${pc.position.name} has no shift blocks, so its ${affected} cannot pick anything.`
+          : blocking
+            ? `${pc.position.name}'s shift blocks leave its ${affected} unable to submit.`
+            : `${pc.position.name} is missing ${missing.join(" and ")} shift blocks.`,
+      // The title already says it all when there are no blocks; otherwise the
+      // warning messages carry the specifics (how short of the floor, etc.).
+      detail: pc.blocks.length === 0 ? undefined : warnings.map((w) => w.message).join(" "),
+      href: "/admin/positions",
+      linkLabel: "Positions",
+    };
+    (blocking ? danger : warning).push(alert);
+  }
+
+  // Sending is on but there is no Resend key, so every message (sign-in links,
+  // schedule emails, the digest) is only logged. Production only: dev leaves the
+  // key empty on purpose, and the System status row reads a healthy "sending on".
+  if (s.config.isProduction && s.email.sendingEnabled && !s.config.resendConfigured) {
+    danger.push({
+      id: "email-no-key",
+      severity: "danger",
+      title: "Email is on but no Resend key is set, so nothing actually sends.",
+      detail: "Sign-in links and schedule emails are only written to the server log.",
+      href: "/admin/email-settings",
+      linkLabel: "Email",
     });
   }
 
@@ -356,6 +484,10 @@ function buildAlerts(
   }
 
   if (s.ghostTitles.length > 0) {
+    // Lead with the head count, not the number of titles: a cohort of 40 whose
+    // title never stored collapses into one null-title bucket, and "1 title"
+    // badly understates 40 students who cannot pick a single shift.
+    const affected = s.ghostTitles.reduce((n, g) => n + g.count, 0);
     const named = s.ghostTitles
       .map((g) => g.title)
       .filter((t): t is string => Boolean(t))
@@ -364,10 +496,78 @@ function buildAlerts(
     warning.push({
       id: "ghost-titles",
       severity: "warning",
-      title: `${s.ghostTitles.length} roster ${plural(s.ghostTitles.length, "title is", "titles are")} not mapped to a position.`,
-      detail: named ? `${named}. Those students cannot pick shifts.` : undefined,
+      title: `${affected} on-roster ${plural(affected, "student has", "students have")} a roster title with no position.`,
+      detail: named
+        ? `They cannot pick shifts until it is mapped. Titles: ${named}.`
+        : "They cannot pick shifts until it is mapped.",
       href: "/admin/positions",
       linkLabel: "Positions",
+    });
+  }
+
+  if (s.nonAssignablePositions.studentCount > 0) {
+    const n = s.nonAssignablePositions.studentCount;
+    const named = s.nonAssignablePositions.positionNames.slice(0, 3).join(", ");
+    warning.push({
+      id: "nonassignable-position-students",
+      severity: "warning",
+      title: `${n} on-roster ${plural(n, "student is", "students are")} on a position that is no longer assignable.`,
+      detail: named ? `${named}. Reassign them or reactivate the position.` : undefined,
+      href: "/admin/positions",
+      linkLabel: "Positions",
+    });
+  }
+
+  // A connected grant with no destination folder puts every upload in the
+  // granting admin's personal Drive instead of the shared folder. Only meaningful
+  // once Drive is connected; otherwise the drive-disconnected danger covers it.
+  if (s.drive.connected && !s.config.driveFolderConfigured) {
+    warning.push({
+      id: "drive-folder-unset",
+      severity: "warning",
+      title: "Uploads are going to a personal Google Drive, not the shared folder.",
+      detail: "Set the Drive folder so proofs and the running sheets land in the shared space.",
+      href: "/admin/drive",
+      linkLabel: "Drive",
+    });
+  }
+
+  // Responses exist but the running sheet has never been written, so folder
+  // members reading the sheet see nothing. It syncs after each submission, so a
+  // null stamp with submissions in hand means the sync is not getting through.
+  if (s.students.some((st) => st.status === "submitted") && s.sheet.lastSyncedAt === null) {
+    warning.push({
+      id: "responses-sheet-unsynced",
+      severity: "warning",
+      title: "The responses sheet has never synced.",
+      detail: "Folder members cannot see any responses in it yet.",
+      href: "/admin/drive",
+      linkLabel: "Drive",
+    });
+  }
+
+  if (s.closes.hasInventory && s.closesSheet.lastSyncedAt === null) {
+    warning.push({
+      id: "closes-sheet-unsynced",
+      severity: "warning",
+      title: "The weekend closes sheet has never synced.",
+      detail: "The close-claims backup for folder members is missing.",
+      href: "/admin/closes",
+      linkLabel: "Closes",
+    });
+  }
+
+  // Once the travel cutoff has passed the travel step refuses every new entry. If
+  // a form window is still open, students are actively hitting that wall, which
+  // usually means the cutoff was set too early.
+  if (now >= s.config.travelCutoff && ctx.groupProgress.some((g) => g.state === "open")) {
+    warning.push({
+      id: "travel-cutoff-past",
+      severity: "warning",
+      title: "The travel cutoff has passed, so students can no longer add travel.",
+      detail: "A form window is still open. Move the cutoff later if this is too early.",
+      href: "/admin/groups",
+      linkLabel: "Groups",
     });
   }
 
@@ -387,6 +587,65 @@ function buildAlerts(
       title: "The change-request digest has no recipients, so it never sends.",
       href: "/admin/email-settings",
       linkLabel: "Email",
+    });
+  }
+
+  // A window that just closed with members who never submitted is the moment to
+  // act (reopen, chase them). Only recently closed windows, so it clears itself.
+  const closedShort = ctx.groupProgress.filter(
+    (g) =>
+      g.state === "closed" &&
+      g.submitted < g.memberCount &&
+      g.closesAt !== null &&
+      now.getTime() - g.closesAt.getTime() <= RECENTLY_CLOSED_DAYS * DAY_MS,
+  );
+  if (closedShort.length > 0) {
+    const total = closedShort.reduce((n, g) => n + (g.memberCount - g.submitted), 0);
+    const named = closedShort
+      .slice(0, 3)
+      .map((g) => `${g.name} (${g.memberCount - g.submitted})`)
+      .join(", ");
+    warning.push({
+      id: "closed-window-shortfall",
+      severity: "warning",
+      title: `${total} ${plural(total, "student", "students")} never submitted before their window closed.`,
+      detail: `${named}. They stay locked out unless you reopen the window.`,
+      href: "/admin/non-responses",
+      linkLabel: "Missing",
+    });
+  }
+
+  // A roster email Google will not accept (not wisc.edu) locks that student out
+  // of sign-in entirely; being on the roster is what would have let them in.
+  const nonWisc = s.students.filter((st) => {
+    const domain = st.email.split("@")[1]?.toLowerCase();
+    return domain !== undefined && domain !== "wisc.edu";
+  }).length;
+  if (nonWisc > 0) {
+    warning.push({
+      id: "non-wisc-emails",
+      severity: "warning",
+      title: `${nonWisc} roster ${plural(nonWisc, "email is", "emails are")} not a wisc.edu address.`,
+      detail: "Those students cannot sign in with Google and may be locked out of the form.",
+      href: "/admin/roster",
+      linkLabel: "Roster",
+    });
+  }
+
+  // A dotted wisc.edu local part is almost always a name alias, not the NetID
+  // Google returns at sign-in, so the student is never matched to their roster row.
+  const aliasEmails = s.students.filter((st) => {
+    const [local, domain] = st.email.toLowerCase().split("@");
+    return domain === "wisc.edu" && (local?.includes(".") ?? false);
+  }).length;
+  if (aliasEmails > 0) {
+    warning.push({
+      id: "alias-emails",
+      severity: "warning",
+      title: `${aliasEmails} roster ${plural(aliasEmails, "email looks", "emails look")} like a name alias, not a NetID.`,
+      detail: "Google returns the NetID at sign-in, so these students may not be recognized.",
+      href: "/admin/roster",
+      linkLabel: "Roster",
     });
   }
 
