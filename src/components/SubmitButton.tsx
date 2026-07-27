@@ -32,3 +32,32 @@ export function SubmitButton({
     </ActionButton>
   );
 }
+
+/**
+ * The same submit-with-pending-state, drawn as an inline text link rather than a
+ * button, for a form action that belongs in a line of running text.
+ */
+export function SubmitTextLink({
+  pendingLabel,
+  children,
+}: {
+  pendingLabel?: string;
+  children: React.ReactNode;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} style={textLinkStyle}>
+      {pending ? pendingLabel : children}
+    </button>
+  );
+}
+
+const textLinkStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  font: "inherit",
+  color: "var(--color-text-info)",
+  textDecoration: "underline",
+  cursor: "pointer",
+};

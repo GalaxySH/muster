@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { AdminGridModel, AdminSubGrid } from "@/lib/admin/summary";
 import { computeCapacity } from "@/lib/domain/capacity";
 import { keysToSelection, selectionKey } from "@/lib/availability/selection";
+import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { formatTime } from "@/lib/domain/time";
 import {
   DAY_LABEL,
@@ -15,14 +17,20 @@ import {
 
 /**
  * Interactive preference grid + live hours calculator for the per-student admin
- * view. The admin clicks cells to mock a schedule; the corner readout shows the
- * hours that mock would come to, computed exactly like preference capacity
+ * view. The admin clicks cells to try a schedule; the corner readout shows the
+ * hours that trial would come to, computed exactly like preference capacity
  * (`computeCapacity`, cycle-averaged). Opens on the student's own picks, so the
  * readout starts at their preference capacity and the admin edits from there.
  *
  * The persisted overlay ("on" = student pick, "auto" = machine-assigned) is kept
  * as a reference layer so, as the admin trims cells, they still see what the
  * student actually offered.
+ *
+ * A trial stays local until the admin saves it (Save appears beside Reset/Clear
+ * once anything differs). Saving writes the selection and the rotation on the
+ * student's behalf, like the other on-behalf-of controls on the page. The saved
+ * state then arrives back as new props, which is what settles the button: the
+ * trial becomes the student's picks, so nothing reads as dirty any more.
  */
 
 // Compact fixed cell size; keeps the grid tight instead of stretching wide.
@@ -40,6 +48,8 @@ function describeCell(cell: SelectedShift, blocks: readonly ShiftBlock[]): strin
 
 export interface PrefGridCalculatorProps {
   grid: AdminGridModel;
+  /** Whose availability this is: the on-behalf-of target a save writes to. */
+  studentEmail: string;
   /** All of the position's blocks, for the live hours calculation. */
   blocks: ShiftBlock[];
   /** The student's weekend rotation: drives the badge and the weekend ×0.5 factor. */
@@ -49,6 +59,9 @@ export interface PrefGridCalculatorProps {
   /** Weekly hours cap (scheduler-side context), for the over-cap cue. */
   cap: number;
 }
+
+/** How long "Saved" stays up before the button retires itself. */
+const SAVED_MS = 2000;
 
 /** Pull the student's picks ("on") and auto-assigned ("auto") cells out of the overlay. */
 function referenceKeys(grid: AdminGridModel): { preferred: Set<string>; auto: Set<string> } {
@@ -68,12 +81,16 @@ function referenceKeys(grid: AdminGridModel): { preferred: Set<string>; auto: Se
 }
 
 export function PrefGridCalculator(props: PrefGridCalculatorProps) {
+  const router = useRouter();
   const { preferred, auto } = useMemo(() => referenceKeys(props.grid), [props.grid]);
   const [mock, setMock] = useState<Set<string>>(() => new Set(preferred));
   // The rotation is part of the trial too: flipping the pill re-weights the
   // weekend (x0.5 under A/B, x1.0 every-weekend) without touching the student's
   // real answer.
   const [optIn, setOptIn] = useState(props.everyWeekendOptIn);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
@@ -121,12 +138,60 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     mock.size !== preferred.size ||
     [...mock].some((k) => !preferred.has(k));
 
+  // Save offers itself only when there is something to save, and lingers just long
+  // enough afterwards to say so.
+  const saving = saveState === "saving";
+  const saved = saveState === "saved";
+  const showSave = dirty || saveState !== "idle";
+
+  // "Saved" is a receipt for the save that just landed, so it retires on its own
+  // rather than sitting there over a grid the admin has moved on from.
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const timer = setTimeout(() => setSaveState("idle"), SAVED_MS);
+    return () => clearTimeout(timer);
+  }, [saveState]);
+
+  function save() {
+    setSaveError(null);
+    setSaveState("saving");
+    startTransition(async () => {
+      const res = await saveAvailabilityFor(props.studentEmail, {
+        selection,
+        everyWeekendOptIn: optIn,
+      });
+      if (!res.ok) {
+        setSaveError(res.errors[0] ?? "Something went wrong.");
+        setSaveState("idle");
+        return;
+      }
+      setSaveState("saved");
+      // Re-renders the page around us: the trial we just saved comes back as the
+      // student's picks, which is what drops `dirty` and retires the button.
+      router.refresh();
+    });
+  }
+
+  // Every edit below drops any "Saved" receipt first: it describes the trial as it
+  // was saved, so it must not linger over one that has since changed.
   function reset() {
+    setSaveState("idle");
     setMock(new Set(preferred));
     setOptIn(props.everyWeekendOptIn);
   }
 
+  function clear() {
+    setSaveState("idle");
+    setMock(new Set());
+  }
+
+  function flipRotation() {
+    setSaveState("idle");
+    setOptIn((v) => !v);
+  }
+
   function toggle(blockId: string, day: Day) {
+    setSaveState("idle");
     setMock((prev) => {
       const next = new Set(prev);
       const key = selectionKey(blockId, day);
@@ -208,7 +273,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               <button
                 type="button"
                 aria-pressed={optIn}
-                onClick={() => setOptIn((v) => !v)}
+                onClick={flipRotation}
                 style={weekendModeBadge(optIn, rotationDeviates)}
                 title={
                   rotationDeviates
@@ -236,30 +301,46 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               Reset
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setMock(new Set())}
-            style={miniBtn}
-            title="Clear every cell"
-          >
+          <button type="button" onClick={clear} style={miniBtn} title="Clear every cell">
             Clear
           </button>
+          {showSave && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || saved}
+              style={saveBtn(saved)}
+              title={
+                saved
+                  ? "Saved to the student's availability"
+                  : "Save this as the student's availability"
+              }
+            >
+              {saving ? "Saving…" : saved ? "Saved" : "Save"}
+            </button>
+          )}
         </div>
       </div>
+
+      {saveError && (
+        <p role="status" style={saveErrorStyle}>
+          {saveError}
+        </p>
+      )}
     </>
   );
 }
 
 /**
- * The scheduling week starts on Sunday, so Sat and Sun sit at opposite ends of
- * the week rather than forming one contiguous weekend (PLAN §7). A wider gap
- * plus a thin vertical rule between the two weekend columns makes that visible,
+ * The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
+ * rather than the two forming one contiguous weekend (PLAN §7). A wider gap plus
+ * a thin vertical rule between the two weekend columns makes that visible,
  * mirroring the split in the student grid (AvailabilityForm). The 3px
- * borderSpacing sits on the Sat side of the rule, hence the smaller padding.
+ * borderSpacing sits on the Sun side of the rule, hence the smaller padding.
  */
 function weekSplit(sub: AdminSubGrid, day: Day): React.CSSProperties {
   if (sub.dayType !== "weekend") return {};
-  if (day === "sat") return { paddingRight: 7 };
+  if (day === "sun") return { paddingRight: 7 };
   return { borderLeft: "1px solid var(--color-border-secondary)", paddingLeft: 10 };
 }
 
@@ -411,6 +492,33 @@ const miniBtn: React.CSSProperties = {
   background: "var(--color-background-primary)",
   color: "var(--color-text-secondary)",
   cursor: "pointer",
+};
+/**
+ * Save is the one control here that writes, so it carries weight the quiet
+ * Reset/Clear pair doesn't. Once saved it drops to a green receipt: still the same
+ * button in the same spot, no longer offering to do anything.
+ */
+const saveBtn = (done: boolean): React.CSSProperties => ({
+  ...miniBtn,
+  fontWeight: 600,
+  ...(done
+    ? {
+        background: "var(--color-background-primary)",
+        border: "1px solid var(--color-text-success)",
+        color: "var(--color-text-success)",
+        cursor: "default",
+      }
+    : {
+        background: "var(--color-text-info)",
+        border: "1px solid var(--color-text-info)",
+        color: "#fff",
+      }),
+});
+const saveErrorStyle: React.CSSProperties = {
+  margin: "8px 0 0",
+  fontSize: 12,
+  textAlign: "right",
+  color: "var(--color-text-danger)",
 };
 const hotTick: React.CSSProperties = {
   position: "absolute",

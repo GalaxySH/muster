@@ -120,6 +120,20 @@
       "when": 1784226169341,
       "tag": "0016_perpetual_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1785112176250,
+      "tag": "0017_oval_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1785129367361,
+      "tag": "0018_old_ego",
+      "breakpoints": true
     }
   ]
 }

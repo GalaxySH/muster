@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
-import { SignOutButton } from "@/components/SignOutButton";
+import { SignOutLink } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -43,7 +43,6 @@ import {
 } from "@/lib/admin/dashboard-view";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type Day } from "@/lib/domain/types";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 
 /** Counts move constantly; never serve a cached hub. */
 export const dynamic = "force-dynamic";
@@ -76,7 +75,8 @@ export default async function AdminPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Admin</h1>
           <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-            {session.email} &nbsp;·&nbsp; <span style={muted}>as of {clock(now)}</span>
+            {session.email} &nbsp;·&nbsp; <SignOutLink /> &nbsp;·&nbsp;{" "}
+            <span style={muted}>as of {clock(now)}</span>
           </div>
         </div>
         <StudentQuickSearch
@@ -85,114 +85,72 @@ export default async function AdminPage() {
       </div>
 
       <div className="admin-shell">
-        {/* One tall nav rail: every admin surface, grouped by what it is for. */}
+        {/* One compact nav rail: every admin surface, grouped by what it is for. */}
         <AdminNav>
           <NavGroup title="Review">
             <NavCard
               icon={faList}
               title="Responses"
-              desc="Every student who has responded"
               href="/admin/responses"
               count={totals.submitted + totals.draft}
             />
             <NavCard
               icon={faUniversalAccess}
               title="Missing responses"
-              desc="Students who have not responded"
               href="/admin/non-responses"
               count={totals.notStarted}
             />
             <NavCard
               icon={faInbox}
               title="Change requests"
-              desc="Shift changes students have asked for"
               href="/admin/change-requests"
               count={tiles.changeRequests.open}
             />
             <NavCard
               icon={faPlaneDeparture}
               title="Upcoming travel"
-              desc="Students away in the coming weeks"
               href="/admin/travel"
               count={tiles.travel}
             />
             <NavCard
               icon={faMoon}
-              title="Shift lead weekend closes"
-              desc={`Close claims, ${REQUIRED_CLOSE_CLAIMS} per lead`}
+              title="Weekend closes"
               href="/admin/closes"
               count={
                 tiles.closes && tiles.closes.leadsShort > 0 ? tiles.closes.leadsShort : undefined
               }
               countTone="warning"
-              countSuffix="short"
+              countLabel="shift leads short of their close claims"
             />
-            <NavCard
-              icon={faChartColumn}
-              title="Schedule coverage"
-              desc="Who can cover each shift, against targets"
-              href="/admin/schedule"
-            />
+            <NavCard icon={faChartColumn} title="Schedule" href="/admin/schedule" />
           </NavGroup>
 
           <NavGroup title="Configuration">
             <NavCard
               icon={faCalendar}
-              title="Groups and form windows"
-              desc="Who can respond, and when"
+              title="Groups and windows"
               href="/admin/groups"
               count={view.ungrouped > 0 ? view.ungrouped : undefined}
               countTone="danger"
-              countSuffix="ungrouped"
+              countLabel="students with no group"
             />
             <NavCard
               icon={faTableList}
-              title="Positions and shift blocks"
-              desc="The shifts students can select"
+              title="Positions and shifts"
               href="/admin/positions"
               count={snapshot.ghostTitles.length > 0 ? snapshot.ghostTitles.length : undefined}
               countTone="warning"
-              countSuffix="titles"
+              countLabel="roster titles with no position"
             />
-            <NavCard
-              icon={faFileImport}
-              title="Roster import"
-              desc="Upload the PCPL workbook"
-              href="/admin/roster"
-            />
-            <NavCard
-              icon={faGoogleDrive}
-              title="Google Drive"
-              desc="Where uploaded proofs are stored"
-              href="/admin/drive"
-            />
-            <NavCard
-              icon={faUserGear}
-              title="Test accounts"
-              desc="Synthetic accounts for training"
-              href="/admin/test-users"
-            />
+            <NavCard icon={faFileImport} title="Roster import" href="/admin/roster" />
+            <NavCard icon={faGoogleDrive} title="Google Drive" href="/admin/drive" />
+            <NavCard icon={faUserGear} title="Test accounts" href="/admin/test-users" />
           </NavGroup>
 
           <NavGroup title="Email">
-            <NavCard
-              icon={faEnvelope}
-              title="Batch schedule email"
-              desc="Notify a group their schedule is ready"
-              href="/admin/schedule-email"
-            />
-            <NavCard
-              icon={faGear}
-              title="Email settings"
-              desc="Sending switch, digest, recipients"
-              href="/admin/email-settings"
-            />
+            <NavCard icon={faEnvelope} title="Batch schedule email" href="/admin/schedule-email" />
+            <NavCard icon={faGear} title="Email settings" href="/admin/email-settings" />
           </NavGroup>
-
-          {/* Pinned to the rail's foot; the rail runs the full page height. */}
-          <div style={{ marginTop: "auto" }}>
-            <SignOutButton />
-          </div>
         </AdminNav>
 
         <div className="admin-shell-body">
@@ -640,28 +598,31 @@ function SystemRow({
 function NavGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <SectionLabel>{title}</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{children}</div>
+      <div style={navGroupLabel}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{children}</div>
     </div>
   );
 }
 
+/**
+ * One rail link: icon, label, and an optional count. Every card is a single line
+ * of the same height, so the whole rail fits a desktop screen without scrolling;
+ * a count that needs explaining carries it as a tooltip rather than a second line.
+ */
 function NavCard({
   icon,
   title,
-  desc,
   href,
   count,
   countTone,
-  countSuffix,
+  countLabel,
 }: {
   icon: React.ComponentProps<typeof FontAwesomeIcon>["icon"];
   title: string;
-  desc: string;
   href: string;
   count?: number;
   countTone?: "warning" | "danger";
-  countSuffix?: string;
+  countLabel?: string;
 }) {
   const tone =
     countTone === "danger"
@@ -672,17 +633,15 @@ function NavCard({
 
   return (
     <Link href={href} style={navCard}>
-      <FontAwesomeIcon icon={icon} style={{ color: "var(--color-text-secondary)" }} />
-      <span style={{ flex: 1 }}>
-        <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{title}</span>
-        <span style={{ display: "block", fontSize: 12, color: "var(--color-text-tertiary)" }}>
-          {desc}
-        </span>
-      </span>
+      <FontAwesomeIcon icon={icon} style={{ color: "var(--color-text-secondary)", width: 15 }} />
+      <span style={navCardTitle}>{title}</span>
       {count !== undefined && (
-        <span style={{ ...navCount, ...tone }}>
+        <span
+          style={{ ...navCount, ...tone }}
+          title={countLabel ? `${count} ${countLabel}` : undefined}
+          aria-label={countLabel ? `${count} ${countLabel}` : undefined}
+        >
           {count}
-          {countSuffix ? ` ${countSuffix}` : ""}
         </span>
       )}
     </Link>
@@ -912,21 +871,43 @@ const footnote: React.CSSProperties = {
   marginBottom: 0,
 };
 
+const navGroupLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "var(--color-text-tertiary)",
+  marginBottom: 5,
+};
+
 const navCard: React.CSSProperties = {
   display: "flex",
-  gap: 9,
+  gap: 8,
   alignItems: "center",
-  padding: "0.5rem 0.6rem",
+  height: 30,
+  padding: "0 0.5rem",
   border: "0.5px solid var(--color-border-tertiary)",
   borderRadius: "var(--border-radius-md)",
   color: "var(--color-text-primary)",
   textDecoration: "none",
 };
 
-const navCount: React.CSSProperties = {
-  fontSize: 12,
+/** One line, ellipsized: a wrapped label would break the rail's uniform rows. */
+const navCardTitle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  fontSize: 13,
   fontWeight: 600,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const navCount: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: "16px",
   borderRadius: 10,
-  padding: "1px 7px",
+  padding: "0 6px",
   whiteSpace: "nowrap",
 };
