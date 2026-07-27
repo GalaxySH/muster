@@ -21,7 +21,7 @@ response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
 Sheet** in the Drive folder. The roster import reads **one sheet of the PC & Training
-Tracker** (v0.80; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
+Tracker** (v0.86; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
 export of a single sheet). **Being listed on the sheet is what puts someone on the
 roster**, and dropping out of it is what takes them off; the sheet's **Status** column
 is an administrative marker that says nothing about roster membership, so it is

@@ -669,7 +669,7 @@ be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-l
 
 ## Roster import (`src/lib/roster/`)
 
-Parses one sheet of the **PC & Training Tracker** (v0.80; one sheet per dining unit,
+Parses one sheet of the **PC & Training Tracker** (v0.86; one sheet per dining unit,
 default **Gordon**) → upserts `students` (minimized fields only — name, position,
 international, and a **Start Date** → `students.hiredOn`, located by header, tolerated
 when absent) + `admin_users`, idempotently.
