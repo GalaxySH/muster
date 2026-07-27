@@ -364,6 +364,10 @@ pure seam rather than re-deriving:
 - **Nudge lists are scoped to open windows**: reminding a student whose window has not
   opened (cannot start) or has closed (locked out) points the admin at people they cannot
   help.
+- **The test-accounts group (`TEST_GROUP_ID`, "Test accounts") never appears in the
+  Response progress table.** It is not a real cohort to track, so `buildDashboardView`
+  filters it out of `groups` before returning (`dashboard-view.ts`); it still appears
+  and is manageable on `/admin/groups`.
 
 **A few `app_settings` keys exist purely so the hub can be honest** about subsystems it
 cannot cheaply probe:
