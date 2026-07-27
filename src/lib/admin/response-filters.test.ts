@@ -11,6 +11,7 @@ import type { DbFlagType } from "@/lib/db/schema";
 type Row = {
   email: string;
   groupId: string | null;
+  positionId: string | null;
   flagTypes: DbFlagType[];
   onRoster: boolean;
   hiredOn: Date | null;
@@ -22,6 +23,7 @@ const rows: Row[] = [
   {
     email: "a@wisc.edu",
     groupId: "g1",
+    positionId: "p1",
     flagTypes: [],
     onRoster: true,
     hiredOn: iso("2025-08-20"),
@@ -31,6 +33,7 @@ const rows: Row[] = [
   {
     email: "b@wisc.edu",
     groupId: "g1",
+    positionId: "p1",
     flagTypes: ["auto_assigned_weekend"],
     onRoster: true,
     hiredOn: iso("2026-01-15"),
@@ -40,6 +43,7 @@ const rows: Row[] = [
   {
     email: "c@wisc.edu",
     groupId: "g2",
+    positionId: "p2",
     flagTypes: ["travel_late"],
     onRoster: true,
     hiredOn: iso("2026-06-01"),
@@ -49,6 +53,7 @@ const rows: Row[] = [
   {
     email: "d@wisc.edu",
     groupId: null,
+    positionId: null,
     flagTypes: ["auto_assigned_weekend", "travel_late"],
     onRoster: true,
     hiredOn: null,
@@ -58,6 +63,7 @@ const rows: Row[] = [
   {
     email: "e@wisc.edu",
     groupId: "g2",
+    positionId: "p2",
     flagTypes: ["position_change", "revalidation_failed"],
     onRoster: true,
     hiredOn: iso("2026-01-15"),
@@ -67,6 +73,7 @@ const rows: Row[] = [
   {
     email: "f@wisc.edu",
     groupId: null,
+    positionId: "p1",
     flagTypes: [],
     onRoster: false,
     hiredOn: iso("2024-09-03"),
@@ -77,6 +84,7 @@ const rows: Row[] = [
   {
     email: "g@wisc.edu",
     groupId: "g1",
+    positionId: "p1",
     flagTypes: [],
     onRoster: true,
     hiredOn: iso("2026-01-15"),
@@ -86,6 +94,7 @@ const rows: Row[] = [
   {
     email: "h@wisc.edu",
     groupId: null,
+    positionId: null,
     flagTypes: [],
     onRoster: true,
     hiredOn: null,
@@ -116,6 +125,19 @@ describe("parseResponseFilters", () => {
   it("ignores an 'all' / empty group value", () => {
     expect(parseResponseFilters({ group: "all" })).toEqual({});
     expect(parseResponseFilters({ group: "" })).toEqual({});
+  });
+
+  it("reads a position id", () => {
+    expect(parseResponseFilters({ position: "p1" })).toEqual({ positionId: "p1" });
+  });
+
+  it("reads the 'none' (no position) sentinel", () => {
+    expect(parseResponseFilters({ position: "none" })).toEqual({ positionId: "none" });
+  });
+
+  it("ignores an 'all' / empty position value", () => {
+    expect(parseResponseFilters({ position: "all" })).toEqual({});
+    expect(parseResponseFilters({ position: "" })).toEqual({});
   });
 
   it("reads a known flag filter and rejects unknown ones", () => {
@@ -251,6 +273,17 @@ describe("applyResponseFilters", () => {
     expect(emails(applyResponseFilters(rows, { groupId: "none" }))).toEqual(["d@wisc.edu"]);
   });
 
+  it("filters to a specific position", () => {
+    expect(emails(applyResponseFilters(rows, { positionId: "p1" }))).toEqual([
+      "a@wisc.edu",
+      "b@wisc.edu",
+    ]);
+  });
+
+  it("filters to responders with no position", () => {
+    expect(emails(applyResponseFilters(rows, { positionId: "none" }))).toEqual(["d@wisc.edu"]);
+  });
+
   it("filters to any-flagged responders", () => {
     expect(emails(applyResponseFilters(rows, { flag: "any" }))).toEqual([
       "b@wisc.edu",
@@ -332,13 +365,16 @@ describe("serializeResponseFilters", () => {
   it("round-trips through parse", () => {
     const f: ResponseFilters = {
       groupId: "g2",
+      positionId: "p2",
       flag: "travel_late",
       includeOffRoster: true,
       includeMissing: true,
       started: { mode: "on", date: "2026-01-15" },
     };
     const qs = serializeResponseFilters(f);
-    expect(qs).toBe("group=g2&flag=travel_late&roster=all&all=1&started=on&startedDate=2026-01-15");
+    expect(qs).toBe(
+      "group=g2&position=p2&flag=travel_late&roster=all&all=1&started=on&startedDate=2026-01-15",
+    );
     expect(parseResponseFilters(Object.fromEntries(new URLSearchParams(qs)))).toEqual(f);
   });
 

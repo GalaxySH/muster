@@ -10,12 +10,13 @@ spec; these notes describe how the implementation is layered.
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
 Coming into `students.hiredOn`, driving a **welcome-back** greeting on `/me` for
 returners (hired before June of the current cycle; pure `flow/returner.ts`); (2)
-**URL-driven group + flag filters** on `/admin/responses` that follow you into the
-per-student view (pure `admin/response-filters.ts`; `listResponses(filters)` is the
-single source for the list AND the prev/next walk; the per-student name is a jump-to
-dropdown; the flag filter replaces the never-built flags window; a later
-**show-off-roster switch**, `roster=all` in the same seam, reveals badged off-roster
-submissions); (3) an
+**URL-driven group + position + flag filters** on `/admin/responses` that follow you
+into the per-student view (pure `admin/response-filters.ts`; `listResponses(filters)`
+is the single source for the list AND the prev/next walk; the per-student name is a
+jump-to dropdown; the flag filter replaces the never-built flags window; the position
+filter (`positionId`, `NO_POSITION` sentinel) mirrors the group filter's "none"
+handling; a later **show-off-roster switch**, `roster=all` in the same seam, reveals
+badged off-roster submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
 Sunday-week, now through +3 weeks); (4) a **batch schedule-ready email**
 `/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
@@ -215,8 +216,8 @@ The three-way status is one exported rule, **`responseStatus(row)`** → `submit
 draft | missing`, shared by the list, `listNonResponses`, and the per-student header: a
 submission row alone means nothing (an admin action can create an empty draft), so
 `missing` covers both "no row" and "a draft the student never confirmed"
-(`confirmed_at IS NULL`; see the form-flow section). The **group + flag + off-roster +
-all-students + start-date filters** are a pure
+(`confirmed_at IS NULL`; see the form-flow section). The **group + position + flag +
+off-roster + all-students + start-date filters** are a pure
 seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
 `ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the

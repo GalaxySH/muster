@@ -190,8 +190,8 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   the set into the pure `parseRoster` — so a new non-worker title never requires a
   code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
-  **group + flag filters carried in the URL** so they follow the admin into the
-  per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
+  **group + position + flag filters carried in the URL** so they follow the admin into
+  the per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
   switch widens the list to the whole roster, badging everyone who never started (§10).
 - **Per-student detail** — expanded view + computed stats (§10). The name is a
   **jump-to dropdown** over the filtered list for direct hops. The page opens for **any
@@ -1173,6 +1173,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.87 (2026-07-27)** — **Position filter on the response dashboard** (roadmap 2.2).
+  `/admin/responses` gained a Position dropdown alongside Group, filtering to a
+  position (or "No position") the same way the group filter works; it lives in the
+  URL so it follows the admin into the per-student prev/next walk.
 - **0.86 (2026-07-27)** — **Roster import reads the PC & Training Tracker (§4.2, §9,
   §16.2).** The workbook changed shape for the new year: one sheet per dining unit
   (Muster reads **Gordon**) with a **Status** column, and no People Coming / People
