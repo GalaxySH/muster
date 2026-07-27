@@ -252,16 +252,36 @@ deliberately hidden until the student has started** (against an empty selection 
 check would read as failing) and a student with no position gets a notice instead of the
 calculator. The header rings red (`--color-border-danger`) with a draft/missing badge
 until the response is submitted; its button-shaped controls opt into the `.btn-hover`
-class in `globals.css`, since inline style objects can't express `:hover`. The client
+class in `globals.css`, since inline style objects can't express `:hover`.
+
+**Header timestamps (v0.82).** `ResponseStamps` renders both submission stamps as two
+label→value rows in one tinted panel: **Submitted** (write-once first submit, "not yet"
+on a draft) and **Last updated** (the student's own last edit). See the availability
+section for who is allowed to move each. Two constraints are load-bearing. The pair is
+**two lines, not four** (label inline with its value) and tuned to stay **under the 40px
+avatar** beside it, so the avatar remains the tallest element and the bar keeps the
+height it had when it showed one timestamp — if you change the font size, line height, or
+padding, re-measure. And the old header fell back to `updatedAt` when `submittedAt` was
+null, which labelled an edit time as a submit time; the stamps are now distinct fields
+and never substitute for each other. `fmtStamp` is the compact one-line form of
+`fmtDate` (same US Central rendering, seconds dropped). The client
 islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
 both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
-one **is** the availability card: the admin clicks grid cells to mock a schedule and a
+one **is** the availability card: the admin clicks grid cells to try a schedule and a
 corner readout shows the live hours from the same `computeCapacity` (cycle-averaged)
-that drives preference capacity, so the mock recomputes hours identically to entry. It
+that drives preference capacity, so the trial recomputes hours identically to entry. It
 seeds from the student's picks (readout opens at their pref. capacity), reads the
 persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a reference
-layer, offers Reset/Clear, and never persists — pure client state. The weekend rotation
+layer, and offers Reset/Clear. A trial is client state **until the admin saves it**
+(v0.81): once anything differs from the student's picks a **Save** joins Reset/Clear and
+runs `Save → Saving… → Saved`, calling `saveAvailabilityFor` (see the availability
+section) to write the selection + rotation on the student's behalf. Nothing else in the
+card persists, so it stays a calculator that can commit rather than an editor. The
+settle is prop-driven, not a local mutation: `router.refresh()` re-renders the page, the
+saved trial returns as the student's picks, `dirty` drops, and the button retires itself
+(the "Saved" receipt also self-clears after `SAVED_MS`, and **any** edit drops it
+immediately so it can never describe a trial that has moved on). The weekend rotation
 pill is part of the trial too: clicking it flips A/B ↔ every-weekend, re-weighting the
 weekend (×0.5 ↔ ×1.0) in the same `computeCapacity` call, and Reset restores the
 student's real rotation along with their picks. The pill keeps its submitted look (filled
@@ -400,12 +420,18 @@ FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `reval
 then also revalidates the admin's per-student page. The **travel cutoff refuses students
 only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
 cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
-Travel / Extracurriculars card headers on `/admin/students/[email]` (`SectionLabel` takes an
+Course schedule / Travel / Extracurriculars card headers on `/admin/students/[email]`
+(`SectionLabel` takes an
 `action` slot): one modal per kind, the same fields as the student form, with the
 extracurricular details box prefilled from the submission so the admin edits rather than
-replaces the student's text (details are one column, not per file). The form holds **one
-size** whatever happens inside it (fixed height, scrolling field area, an always-reserved
-error row), so a failed upload never shifts the buttons under the pointer.
+replaces the student's text (details are one column, not per file). The **course-schedule
+kind** (v0.81) is the same component against `uploadCourseSchedule`, which already took the
+on-behalf `student` field — it needed a caller, not a new path. A schedule is one column,
+not a list, so when one is on file the link reads **Replace** and the modal says so;
+`uploadCourseSchedule` relay-deletes the old Drive file itself. That kind is only a file
+picker, so it takes a shorter fixed height rather than opening mostly empty. The form holds
+**one size** whatever happens inside it (fixed height per kind, scrolling field area, an
+always-reserved error row), so a failed upload never shifts the buttons under the pointer.
 
 The modal shell is the shared `components/Modal.tsx` (backdrop, Escape, click-outside),
 extracted from `EvidenceThumb`'s lightbox and reused by it. The panel always **spends the
@@ -429,7 +455,39 @@ non-exempt students who picked none (pure `domain/auto-assign.ts`) as an `auto_a
 `shift_selections` row + an `auto_assigned_weekend` `flags` row, raises `travel_late`, and
 resyncs the Drive sheet. Both actions share a private `writeSelectionAndFlags` (auto-assign
 + flags run only when the effective status is `submitted`, so an already-submitted form
-stays consistent when edited). The client form (`components/AvailabilityForm.tsx`) runs the
+stays consistent when edited). `finalizeSubmission` stamps `submitted_at` **only when it is
+null**, so it records the first submit and a student finishing the wizard again keeps it.
+
+**Who moves `updated_at` (v0.82).** It means "when the student last changed their own
+answers", so it is deliberately **not** `ON UPDATE CURRENT_TIMESTAMP` (migration `0016`
+dropped the clause) — otherwise every admin write to the row silently moved it. Student
+paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
+`finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
+Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
+(notes, scheduled mark), the schedule-email stamp, and `saveAvailabilityFor`. The one shared
+seam that needs care is evidence, where the same action serves both callers: `editStamp(who)`
+spreads the column into a `.set()` that is already updating the submission, and
+`touchSubmission(id, who)` covers the actions that only wrote child rows (a travel entry, a
+proof file) and would otherwise leave the parent's stamp stale. Both key off the `onBehalf`
+flag the gate already returns. Downstream, this makes the hub's stalled-draft cutoff and
+"recent submissions" honest: an admin note no longer refreshes a stalled draft, and a
+re-submit no longer jumps someone to the top of recent.
+
+**`saveAvailabilityFor(student, …)` (v0.81)** is the admin's on-behalf save, called by
+`PrefGridCalculator` on the per-student page (§10a). It gates through
+`requireEditableStudent(student)` like the evidence actions, then shares the same
+persistence core as `saveAvailability`: a private `persistAvailability` owns the
+upsert + `writeSelectionAndFlags` + sheet resync, so an admin edit lands **exactly** how
+the student's own save would — including re-running the weekend auto-assign and flags on
+an already-submitted form. Two things differ, both because the admin is the authority
+rather than the window. There is **no hard-rule gate** (a scheduler can deliberately
+record a below-floor selection, as they can add travel past the cutoff); and it writes a
+narrower `SubmissionPatch` — **selection + rotation only**, never `desiredHours` or
+`studentNotes`, since the grid doesn't edit the student's own stated ask and must not
+blank it. Status behaviour matches every other on-behalf action: it starts a draft when
+there is none and never promotes, leaving `confirmed_at` NULL, so an admin-filled row
+still reads **missing** until the student confirms. The client form
+(`components/AvailabilityForm.tsx`) runs the
 same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
 continue** (the latter routes to `/travel` on success), and for an already-submitted form
 it shows **Save changes** (edit-in-place, no downgrade). The bottom buttons share the

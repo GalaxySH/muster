@@ -9,6 +9,9 @@
  * Every action also runs for an admin acting **on behalf of** a student (the
  * target email rides in the FormData `student` field, or a second argument for
  * the ones that don't take FormData); `requireEditableStudent` admin-gates it.
+ * Only the student's own path stamps `updated_at` (see `editStamp`): that column
+ * answers "when did the student last change their answers", so an admin filling
+ * something in for them must not disturb it.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -51,6 +54,27 @@ function revalidateEvidence(studentPath: string, who: { email: string; onBehalf:
   if (who.onBehalf) revalidatePath(`/admin/students/${encodeURIComponent(who.email)}`);
 }
 
+/**
+ * `updated_at` records when the STUDENT last changed their own answers (PLAN §9),
+ * so an admin acting on their behalf deliberately leaves it where it was.
+ *
+ * `editStamp` spreads into a `.set()` that is already updating the submission row;
+ * `touchSubmission` is for the actions that only wrote child rows (a travel entry,
+ * a proof file) and still need the parent's stamp moved.
+ */
+const editStamp = (who: { onBehalf: boolean }) => (who.onBehalf ? {} : { updatedAt: new Date() });
+
+async function touchSubmission(
+  submissionId: string,
+  who: { onBehalf: boolean },
+): Promise<void> {
+  if (who.onBehalf) return;
+  await getDb()
+    .update(submissions)
+    .set({ updatedAt: new Date() })
+    .where(eq(submissions.id, submissionId));
+}
+
 /** The admin-only "act for this student" field the response-page modal submits. */
 const onBehalfOf = (formData: FormData) => String(formData.get("student") ?? "").trim();
 
@@ -91,7 +115,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
       .limit(1);
     await db
       .update(submissions)
-      .set({ courseScheduleFileId: fileId })
+      .set({ courseScheduleFileId: fileId, ...editStamp(who) })
       .where(eq(submissions.id, submissionId));
     if (prev?.courseScheduleFileId) await relayDelete(prev.courseScheduleFileId);
     revalidateEvidence("/course-schedule", who);
@@ -128,6 +152,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
       ...upload,
     });
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
+    await touchSubmission(submissionId, who);
     revalidateEvidence("/course-schedule", who);
     return { ok: true };
   } catch (e) {
@@ -155,6 +180,7 @@ export async function removeExtracurricularFile(
 
   await db.delete(extracurricularFiles).where(eq(extracurricularFiles.id, rowId));
   await relayDelete(row.fileId);
+  await touchSubmission(submissionId, who);
   revalidateEvidence("/course-schedule", who);
   return { ok: true };
 }
@@ -170,7 +196,7 @@ export async function saveExtracurricularNotes(
   const submissionId = await ensureSubmissionId(who.email);
   await db
     .update(submissions)
-    .set({ extracurricularNotes: notes.slice(0, 2000) })
+    .set({ extracurricularNotes: notes.slice(0, 2000), ...editStamp(who) })
     .where(eq(submissions.id, submissionId));
   revalidateEvidence("/course-schedule", who);
   return { ok: true };
@@ -229,6 +255,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       note,
       excused,
     });
+    await touchSubmission(submissionId, who);
     revalidateEvidence("/travel", who);
     return { ok: true };
   } catch (e) {
@@ -259,6 +286,7 @@ export async function removeTravelRequest(id: string, onBehalfOf?: string): Prom
 
   await db.delete(travelRequests).where(eq(travelRequests.id, id));
   await relayDelete(row.proofFileId);
+  await touchSubmission(submissionId, who);
   revalidateEvidence("/travel", who);
   return { ok: true };
 }

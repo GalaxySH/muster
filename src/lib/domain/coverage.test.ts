@@ -72,7 +72,8 @@ describe("buildCoverageRows", () => {
   it("gives weekday rows five cells and weekend rows two, in day order", () => {
     const rows = buildCoverageRows(blocks, counts);
     expect(rows[0]!.cells.map((c) => c.day)).toEqual(["mon", "tue", "wed", "thu", "fri"]);
-    expect(rows[2]!.cells.map((c) => c.day)).toEqual(["sat", "sun"]);
+    // Sunday opens the scheduling week, so weekend cells run Sun then Sat (PLAN §7).
+    expect(rows[2]!.cells.map((c) => c.day)).toEqual(["sun", "sat"]);
   });
 
   it("fills counts per cell, defaulting missing cells to zero", () => {

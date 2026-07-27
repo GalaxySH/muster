@@ -31,9 +31,9 @@ describe("buildGridModel", () => {
     expect(weekday.rows[2]).toMatchObject({ isOpen: false, isClose: true });
   });
 
-  it("builds a weekend sub-grid with Sat/Sun columns", () => {
+  it("builds a weekend sub-grid with Sun/Sat columns", () => {
     const { weekend } = buildGridModel(blocks);
-    expect(weekend?.days).toEqual(["sat", "sun"]);
+    expect(weekend?.days).toEqual(["sun", "sat"]);
     expect(weekend?.rows.map((r) => r.block.id)).toEqual(["we-open", "we-close"]);
   });
 
