@@ -15,7 +15,13 @@ export interface ProductionGuardValues {
   AUTH_SECRET: string;
   ENCRYPTION_KEY: string;
   DEV_LOGIN_ENABLED: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  NEXTAUTH_URL: string;
 }
+
+/** A base URL still pointing at the local dev host (localhost or 127.0.0.1). */
+const isLocalhostUrl = (url: string): boolean => /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
 
 /**
  * Problems that must block a production boot. Empty outside production so
@@ -42,6 +48,19 @@ export function findProductionEnvIssues(
   // flag here too keeps a leftover local setting from riding into a prod env.
   if (values.DEV_LOGIN_ENABLED !== "") {
     issues.push("DEV_LOGIN_ENABLED is set. Remove the dev-login flag from production env");
+  }
+  // Empty Google credentials or a localhost base URL boot cleanly but break
+  // every sign-in and the Drive-grant OAuth silently, so fail fast instead.
+  if (values.GOOGLE_CLIENT_ID === "") {
+    issues.push("GOOGLE_CLIENT_ID is not set. Google sign-in and the Drive grant will fail");
+  }
+  if (values.GOOGLE_CLIENT_SECRET === "") {
+    issues.push("GOOGLE_CLIENT_SECRET is not set. Google sign-in and the Drive grant will fail");
+  }
+  if (isLocalhostUrl(values.NEXTAUTH_URL)) {
+    issues.push(
+      "NEXTAUTH_URL is still localhost. Set the public URL or OAuth redirects and email links break",
+    );
   }
   return issues;
 }

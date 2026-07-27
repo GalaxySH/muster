@@ -141,9 +141,44 @@ describe("blockSetWarnings", () => {
     expect(kinds(unreachable)).toContain("min_hours_unreachable");
   });
 
-  it("warns twice for an empty block set on a non-exempt position", () => {
+  it("warns when a position has no weekday blocks", () => {
+    const warnings = blockSetWarnings(position(), [block("we", "weekend", "9a", "7p")]);
+    expect(kinds(warnings)).toContain("no_weekday_blocks");
+  });
+
+  it("does not warn about weekdays when a weekday block exists", () => {
+    const warnings = blockSetWarnings(position(), [block("wd", "weekday", "8a", "6p")]);
+    expect(kinds(warnings)).not.toContain("no_weekday_blocks");
+  });
+
+  it("warns when the blocks cannot span the position's day floor", () => {
+    // A 3-day floor (Shift Lead) with only weekend blocks: 2 weekend days max.
+    const warnings = blockSetWarnings(position({ minDays: 3 }), [
+      block("we", "weekend", "9a", "9p"),
+    ]);
+    expect(kinds(warnings)).toContain("min_days_unreachable");
+    const warning = warnings.find((w) => w.kind === "min_days_unreachable")!;
+    expect(warning.message).toContain("2");
+    expect(warning.message).toContain("3");
+  });
+
+  it("does not warn about days when a weekday layout can reach the floor", () => {
+    // Weekday blocks open all five weekdays, over the 3-day floor.
+    const warnings = blockSetWarnings(position({ minDays: 3 }), [
+      block("wd", "weekday", "8a", "6p"),
+      block("we", "weekend", "9a", "1p"),
+    ]);
+    expect(kinds(warnings)).not.toContain("min_days_unreachable");
+  });
+
+  it("warns about everything wrong with an empty block set on a non-exempt position", () => {
     const warnings = blockSetWarnings(position(), []);
-    expect(kinds(warnings).sort()).toEqual(["min_hours_unreachable", "no_weekend_blocks"]);
+    expect(kinds(warnings).sort()).toEqual([
+      "min_days_unreachable",
+      "min_hours_unreachable",
+      "no_weekday_blocks",
+      "no_weekend_blocks",
+    ]);
   });
 
   it("writes plain messages without em dashes", () => {

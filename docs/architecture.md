@@ -331,23 +331,53 @@ Three layers, and the split is the point:
 
 **The alert list renders only what is actually wrong**, worst first, and collapses to one
 green line otherwise. Rows disappear when fixed; they are never greyed out. The dangers
-are the states that silently stop a student submitting (Drive disconnected, no group, a
-group whose window is `unconfigured`) or that mean stored data is now wrong
-(`revalidation_failed`, a dead digest scheduler); warnings are things to get to. The
-no-group and unconfigured-window cases were previously **invisible**: `windowState()`
-already returned `unconfigured` and `resolveStudentAccess()` already denied `no-group`,
-but nothing surfaced either to a human.
+are the states that silently stop a student submitting (Drive disconnected, Drive
+connected but **failing**, no group, a group whose window is `unconfigured`, a **position
+whose shift blocks a student can never satisfy**, email switched on with **no Resend key**
+in prod) or that mean stored data is now wrong (`revalidation_failed`, a dead digest
+scheduler); warnings are things to get to. The no-group and unconfigured-window cases were
+previously **invisible**: `windowState()` already returned `unconfigured` and
+`resolveStudentAccess()` already denied `no-group`, but nothing surfaced either to a human.
 
-**Two new `app_settings` keys exist purely so the hub can be honest** about subsystems it
+**Configuration and integration errors are now surfaced too**, each reusing an existing
+pure seam rather than re-deriving:
+- **Positions/shift-blocks** run through the same `blockSetWarnings` (`domain/config-validation.ts`)
+  the `/admin/positions` editor shows, over every active position with on-roster students.
+  A block set that cannot reach the hour or day floor (the extreme being **no blocks at
+  all**) is a `danger` (those students can never submit); a missing weekday or weekend
+  layout is a `warning`. `blockSetWarnings` gained `no_weekday_blocks` and
+  `min_days_unreachable` for this. Students left on a **deactivated or merged** position,
+  and roster emails that are **not `wisc.edu`** or that **look like a name alias** (dotted
+  NetID) rather than the sign-in address, are warnings: all three quietly lock a student
+  out with no other signal.
+- **Env/settings misconfig** the hub can read without a probe: `DRIVE_FOLDER_ID` unset
+  (uploads go to a personal Drive), the **travel cutoff already past** while a form window
+  is still open, a **recently closed window** that left members unsubmitted, and the
+  running **responses / SL-closes sheets that have never synced** while there is data to
+  mirror. Boot-time misconfig (`GOOGLE_CLIENT_ID`/`SECRET` empty, `NEXTAUTH_URL` still
+  localhost) is caught earlier, in `env-guard.ts`, which refuses to start prod.
+- **The digest-scheduler check is no longer gated on the open queue.** Because every run
+  stamps `change_digest_last_run`, a missing or stale stamp means the *scheduler* is dead
+  (it would stop all future catch-up), so `dashboard-view.ts` calls `digestRunHealth()`
+  directly and fires on `never-ran`/`stale` even on a quiet day (the startup grace covers
+  a just-booted process).
+- **Nudge lists are scoped to open windows**: reminding a student whose window has not
+  opened (cannot start) or has closed (locked out) points the admin at people they cannot
+  help.
+
+**A few `app_settings` keys exist purely so the hub can be honest** about subsystems it
 cannot cheaply probe:
 - `change_digest_last_run` — stamped by `runChangeDigest()` on **every** run, *before*
   any early return, so a run that sends nothing still proves the scheduler fired. Without
   it a dead scheduler is indistinguishable from a quiet week. It doubles as the
   compare-and-set target the scheduler claims runs through.
-- `drive_last_ok_at` — stamped after any successful Drive write (`relayUpload`,
-  `upsertManagedSheet`). No token expiry is stored and the only true probe
-  (`testDriveRelay`) uploads a live file, which must never run on page load. The tile says
-  *connected as X*, never *healthy*.
+- `drive_last_ok_at` / `drive_last_error_at` — stamped after any Drive write that
+  succeeds / throws (`relayUpload`, `upsertManagedSheet`). No token expiry is stored and
+  the only true probe (`testDriveRelay`) uploads a live file, which must never run on page
+  load. The tile says *connected as X*, never *healthy*; the **`drive-failing`** alert
+  fires when the error stamp is newer than the ok stamp, catching a revoked grant that the
+  row-existence "connected" check cannot see. A later success flips the order back and the
+  alert clears itself.
 
 **Least staffed shifts** counts, per (block, day), how many submitted on-roster students picked
 it **themselves** — machine-assigned weekend cells are excluded, since counting them
