@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.93
+- **Version:** 0.94
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -235,14 +235,15 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 5 | Must work a weekend shift; A/B rotation, cycle-averaged hours | **Soft** | missing → auto-assign + flag. **Barista exempt** (weekday-only) |
 | 6 | Must work at least one **open OR one close** | **Hard** | ≥1 opening or ≥1 closing block selected |
 | 7 | Shifts must span ≥2 days (≥3 for Shift Lead) | **Hard** | min distinct days available to satisfy |
-| 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** — the form stops accepting them (late policy "refuse", reversible to accept-and-flag — §7b) |
+| 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** by default — the form stops accepting them; the admin's accept-late toggle stores them late/unexcused instead (§7b) |
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
 > many shifts as they want; the only hours hard-block is #2 (min reachable via the
 > covered union of selected shifts). #5 soft for v1 (auto-pick + flag); Barista exempt.
 > #2/#6/#7 hard at entry. #8 travel cutoff = **default 9/1, admin-configurable, all
-> positions**; on/after it, new travel is refused outright.
+> positions**; on/after it, new travel is refused outright unless the admin's
+> accept-late toggle is on (then stored late/unexcused).
 
 ---
 
@@ -436,13 +437,16 @@ scheduler (not auto-parsed).
 - **Travel excusal (repeatable entries):** each entry = a **mandatory** proof-of-travel
   upload + an **inclusive start–end date range** (+ optional note). Multiple entries
   allowed. **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
-  admin-configurable; same cutoff for all positions) is excused. On/after the cutoff the
-  step **refuses new entries** and locks existing ones (decided 2026-07-09) — every
-  stored entry is excused by construction. The decision lives in one pure policy seam
-  (`LATE_TRAVEL_POLICY` in `domain/travel.ts`, `"refuse"`); flipping it to
-  `"accept-and-flag"` restores the old behavior end to end (late entries stored
-  `excused: false`, "not excused (late)" badges, `travel_late` flag on submit — those
-  paths are deliberately kept wired).
+  admin-configurable; same cutoff for all positions) is excused. What happens on/after
+  the cutoff is the **admin-set late policy** (the "Accept late travel" toggle beside the
+  cutoff on `/admin/groups`, stored in `app_settings`, read via `getLateTravelPolicy` in
+  `lib/settings.ts`). Off (the default, decided 2026-07-09): the step **refuses new
+  entries** and locks existing ones, so every stored entry is excused by construction.
+  On (`"accept-and-flag"`): the step keeps accepting entries (removal stays open with
+  them), but they are stored `excused: false` and render red "not excused (late)"
+  badges with a red outline (student list, upcoming-travel list, per-student card);
+  submit raises the `travel_late` flag. The pure seam is
+  `decideTravelSubmission`/`LATE_TRAVEL_POLICY` in `domain/travel.ts`.
 
 **Admin entry on a student's behalf (§10).** Travel entries and extracurriculars can also
 be added by an admin from the per-student response page (an *Add* link in each card
@@ -463,7 +467,7 @@ window closes.
 | ≥1 opening **or** ≥1 closing block selected | **Hard** | block submit |
 | Available across ≥2 days (≥3 for Shift Lead) | **Hard** | block submit |
 | A weekend shift selected (**Barista exempt**) | **Soft** | auto-assign a weekend shift + raise Flag; show *"I randomly chose this shift for you."* |
-| Travel entry created on/after the cutoff | **Refused** | the travel step stops accepting entries (server + UI); the accept-and-flag alternative stays one policy flip away (§7b) |
+| Travel entry created on/after the cutoff | **Refused** (default) | the travel step stops accepting entries (server + UI); with the admin's accept-late toggle on it accepts them as late/unexcused instead (§7b) |
 
 > **Cycle-averaging (decided):** weekday blocks count every week; **both** weekend
 > days are summed and then weighted ×0.5 under A/B (×1.0 with the every-weekend
@@ -519,8 +523,9 @@ columns from the roster.
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
-  `note?`, `createdAt`, `excused: bool` (always true under the active "refuse" late
-  policy; false rows only possible under accept-and-flag — kept for reversibility).
+  `note?`, `createdAt`, `excused: bool` (always true under the default "refuse" late
+  policy; false = late, stored when the admin's accept-late toggle is on — §7b),
+  `resolved: bool` (admin review marker — §10a).
 - **Flag**: `submissionId`, `type` (`auto_assigned_weekend`, `travel_late`,
   `position_change`, `revalidation_failed`), `detail`. `position_change` is written on
   any position modification of a student holding a submission (import, alias switch,
@@ -1177,6 +1182,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.94 (2026-07-27)** — **Admin toggle for late travel (§5 #8, §7b, §8).** The
+  late-travel policy is now runtime config instead of a code constant: an **"Accept late
+  travel"** checkbox beside the cutoff on `/admin/groups` (`setLateTravelAccepted`,
+  `SETTING_LATE_TRAVEL_ACCEPT`, read via `getLateTravelPolicy` in `lib/settings.ts`;
+  `LATE_TRAVEL_POLICY` in `domain/travel.ts` stays the "refuse" default). With it on,
+  the travel step keeps accepting entries past the cutoff (removal stays open with
+  them), the entries store `excused: false`, and finalize raises `travel_late` — the
+  dormant accept-and-flag paths now live. Every cutoff gate reads the setting
+  (`addTravelRequest`, `removeTravelRequest`, the `/travel` page state); an admin
+  on-behalf entry still stores excused. Late entries render a **red outline + red
+  "late"/"not excused (late)" pill** on the student's `/travel` list, the
+  upcoming-travel list, and the per-student travel card, and the student form shows a
+  marked-late notice instead of the closed notice. The hub's `travel-cutoff-past`
+  warning is suppressed while the toggle is on (there is no wall to warn about). +1
+  test, 617 pass.
 - **0.93 (2026-07-27)** — **Travel resolved marker + imminent-travel alert (§10a, §10b).**
   Travel entries gained a **`resolved`** boolean (migration `0020`), an admin review marker
   the scheduler ticks once a trip is worked into the W2W schedule; it is separate from the

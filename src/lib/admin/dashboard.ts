@@ -42,6 +42,7 @@ import {
   getDriveLastOkAt,
   getEmailSendingEnabled,
   getTravelCutoff,
+  getLateTravelPolicy,
 } from "@/lib/settings";
 import { CLOSES_SHEET, getLastSheetSync, getSheetUrl, RESPONSES_SHEET } from "./sheet-sync";
 import { loadUpcomingTravel } from "./data";
@@ -80,6 +81,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     positionConfigs,
     nonAssignablePositions,
     travelCutoff,
+    lateTravelPolicy,
     coverage,
     recent,
     perDay,
@@ -112,6 +114,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     loadPositionConfigs(),
     loadNonAssignablePositions(),
     getTravelCutoff(now).then((r) => r.cutoff),
+    getLateTravelPolicy(),
     loadCoverage(),
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
@@ -144,6 +147,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
       driveFolderConfigured: Boolean(env.DRIVE_FOLDER_ID),
       isProduction: process.env.NODE_ENV === "production",
       travelCutoff,
+      lateTravelAccepted: lateTravelPolicy === "accept-and-flag",
     },
     ghostTitles: roster.ghostTitles,
     positionConfigs,

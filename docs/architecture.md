@@ -179,11 +179,17 @@ ingest** — written by the admin (picker / pasted emails) or the dormant
 (superseded); `0007` adds `groups.lockAfterSubmit`. The seed inserts the "New Student"
 group only if absent (default-flagged only when no group holds the flag). The
 **travel-excusal cutoff** (default 9/1) lives in `app_settings` (`getTravelCutoff` in
-`settings.ts`), editable on `/admin/groups` (`TravelCutoffPanel`); on/after it the
-travel step **refuses** new entries and locks existing ones — the pure policy seam is
-`LATE_TRAVEL_POLICY`/`decideTravelSubmission` in `domain/travel.ts` (`"refuse"` now;
-flip to `"accept-and-flag"` to restore late-accept + `travel_late` flagging, whose
-paths stay wired).
+`settings.ts`), editable on `/admin/groups` (`TravelCutoffPanel`), which also carries
+the **"Accept late travel" toggle** (`SETTING_LATE_TRAVEL_ACCEPT`, read via
+`getLateTravelPolicy`, written by `setLateTravelAccepted`). Off (default), on/after the
+cutoff the travel step **refuses** new entries and locks existing ones; on, entries
+keep flowing but store `excused: false` (late) and finalize raises `travel_late`. The
+pure policy seam is `LATE_TRAVEL_POLICY`/`decideTravelSubmission` in
+`domain/travel.ts`; every gate (`addTravelRequest`, `removeTravelRequest`, the
+`/travel` page) passes the configured policy, and the hub's `travel-cutoff-past`
+warning is suppressed while late travel is accepted. Late entries render a red outline
+plus a red late pill on the student list, the upcoming-travel list, and the
+per-student card.
 
 ## Drive folder layout (PLAN §12)
 

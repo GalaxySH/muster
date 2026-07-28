@@ -419,6 +419,8 @@ export interface UpcomingTravelEntry {
   startDate: string; // ISO yyyy-mm-dd (inclusive)
   endDate: string; // ISO yyyy-mm-dd (inclusive)
   note: string | null;
+  /** False when the entry was added after the cutoff (late, PLAN §8). */
+  excused: boolean;
   /** Admin review marker: the scheduler has accounted for this trip. */
   resolved: boolean;
 }
@@ -444,6 +446,7 @@ export async function loadUpcomingTravel(
       startDate: travelRequests.startDate,
       endDate: travelRequests.endDate,
       note: travelRequests.note,
+      excused: travelRequests.excused,
       resolved: travelRequests.resolved,
     })
     .from(travelRequests)
@@ -462,6 +465,7 @@ export async function loadUpcomingTravel(
     startDate: toIsoDate(r.startDate),
     endDate: toIsoDate(r.endDate),
     note: r.note ?? null,
+    excused: r.excused,
     resolved: r.resolved,
   }));
 

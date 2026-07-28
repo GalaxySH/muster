@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadUpcomingTravel } from "@/lib/admin/data";
 import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
+import { dangerPillStyle } from "@/components/admin/ui";
 import { Page } from "@/components/ui";
 
 /**
@@ -40,7 +41,14 @@ export default async function AdminTravelPage() {
               <h2 style={weekHeader}>Week of {fmtDay(w.weekStart)}</h2>
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
                 {w.entries.map((entry) => (
-                  <li key={entry.id} style={entry.resolved ? { ...row, ...resolvedRow } : row}>
+                  <li
+                    key={entry.id}
+                    style={{
+                      ...row,
+                      ...(entry.excused ? null : lateRow),
+                      ...(entry.resolved ? resolvedRow : null),
+                    }}
+                  >
                     <div>
                       <Link
                         href={`/admin/students/${encodeURIComponent(entry.studentEmail)}`}
@@ -61,7 +69,10 @@ export default async function AdminTravelPage() {
                       )}
                     </div>
                     <div style={rowRight}>
-                      <span style={dateRange}>{fmtRange(entry.startDate, entry.endDate)}</span>
+                      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {!entry.excused && <span style={dangerPillStyle}>late</span>}
+                        <span style={dateRange}>{fmtRange(entry.startDate, entry.endDate)}</span>
+                      </span>
                       <TravelResolvedCheckbox id={entry.id} resolved={entry.resolved} />
                     </div>
                   </li>
@@ -106,6 +117,12 @@ const row: React.CSSProperties = {
 };
 const resolvedRow: React.CSSProperties = {
   background: "#f3faf5",
+  borderRadius: "var(--border-radius-md)",
+};
+/** Late (unexcused) entries: red outline so they stand out in the week list. */
+const lateRow: React.CSSProperties = {
+  border: "1px solid #e0847c",
+  background: "#fdf4f3",
   borderRadius: "var(--border-radius-md)",
 };
 const rowRight: React.CSSProperties = {

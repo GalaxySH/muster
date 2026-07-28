@@ -21,6 +21,7 @@ import {
   setSetting,
   deleteSetting,
   SETTING_TRAVEL_CUTOFF,
+  SETTING_LATE_TRAVEL_ACCEPT,
   SETTING_EMAIL_SENDING_ENABLED,
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
@@ -236,6 +237,22 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
   revalidatePath("/admin/groups");
   revalidatePath("/travel");
   revalidatePath("/intro");
+  return { ok: true };
+}
+
+/**
+ * Toggle the late-travel policy (PLAN §8; /admin/groups, beside the cutoff).
+ * On, the travel step keeps accepting entries after the cutoff but stores them
+ * unexcused ("accept-and-flag"); off restores the default "refuse". The hub's
+ * cutoff-past alert reads this too.
+ */
+export async function setLateTravelAccepted(accepted: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
+  revalidatePath("/admin/groups");
+  revalidatePath("/travel");
+  revalidatePath("/admin");
   return { ok: true };
 }
 

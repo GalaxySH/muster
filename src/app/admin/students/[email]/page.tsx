@@ -350,7 +350,7 @@ export default async function StudentDetailPage({
                     ok={false}
                     text={`${lateTravelCount} travel entr${
                       lateTravelCount === 1 ? "y" : "ies"
-                    } after 9/1, not excused (late)`}
+                    } added after the cutoff, not excused (late)`}
                   />
                 )}
               </div>
@@ -411,7 +411,11 @@ export default async function StudentDetailPage({
               {evidence.travel.map((t) => (
                 <div
                   key={t.id}
-                  style={t.resolved ? { ...travelEntry, ...travelEntryResolved } : travelEntry}
+                  style={{
+                    ...travelEntry,
+                    ...(t.excused ? null : travelEntryLate),
+                    ...(t.resolved ? travelEntryResolved : null),
+                  }}
                 >
                   <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
                   <div style={{ fontSize: 13, flex: 1 }}>
@@ -614,7 +618,13 @@ const travelEntry: React.CSSProperties = {
   gap: 10,
   alignItems: "flex-start",
   padding: "6px 8px",
+  border: "1px solid transparent",
   borderRadius: "var(--border-radius-md)",
+};
+/** A late (unexcused) entry reads as needing attention: red outline, faint red fill. */
+const travelEntryLate: React.CSSProperties = {
+  borderColor: "#e0847c",
+  background: "#fdf4f3",
 };
 /** A resolved travel entry reads as done: the same green tint as resolved requests. */
 const travelEntryResolved: React.CSSProperties = {

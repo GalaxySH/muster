@@ -156,6 +156,8 @@ export interface DashboardSnapshot {
     isProduction: boolean;
     /** Effective travel-excusal cutoff (admin value or the 9/1 default). */
     travelCutoff: Date;
+    /** The admin's late policy: true = travel past the cutoff is accepted as late (PLAN §8). */
+    lateTravelAccepted: boolean;
   };
   ghostTitles: { title: string | null; count: number }[];
   positionConfigs: PositionConfig[];
@@ -586,8 +588,13 @@ function buildAlerts(
 
   // Once the travel cutoff has passed the travel step refuses every new entry. If
   // a form window is still open, students are actively hitting that wall, which
-  // usually means the cutoff was set too early.
-  if (now >= s.config.travelCutoff && ctx.groupProgress.some((g) => g.state === "open")) {
+  // usually means the cutoff was set too early. With the accept-late toggle on
+  // there is no wall (entries land as late), so nothing needs attention.
+  if (
+    now >= s.config.travelCutoff &&
+    !s.config.lateTravelAccepted &&
+    ctx.groupProgress.some((g) => g.state === "open")
+  ) {
     warning.push({
       id: "travel-cutoff-past",
       severity: "warning",
@@ -691,7 +698,8 @@ function buildAlerts(
       id: "import-skipped-non-wisc",
       severity: "warning",
       title: `The last roster import skipped ${n} non-wisc.edu ${plural(n, "email", "emails")}.`,
-      detail: "Those people are not on the roster. Fix the email to a wisc.edu address and re-import.",
+      detail:
+        "Those people are not on the roster. Fix the email to a wisc.edu address and re-import.",
       href: "/admin/roster",
       linkLabel: "Roster",
     });

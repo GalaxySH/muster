@@ -8,11 +8,12 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
-import { defaultTravelCutoff } from "@/lib/domain/travel";
 import {
-  parseSchedulingParams,
-  type SchedulingParams,
-} from "@/lib/domain/scheduling/params";
+  defaultTravelCutoff,
+  LATE_TRAVEL_POLICY,
+  type LateTravelPolicy,
+} from "@/lib/domain/travel";
+import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import {
   effectiveExcludedTitles,
   SETTING_EXCLUDED_ROSTER_TITLES,
@@ -27,6 +28,8 @@ export const SETTING_CLOSES_SHEET_SYNCED_AT = "closes_sheet_synced_at";
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
 /** ISO instant overriding the default 9/1 travel cutoff (PLAN §8). Absent ⇒ default. */
 export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
+/** "1"/"0": accept travel after the cutoff as late/unexcused (PLAN §8). Absent ⇒ refuse. */
+export const SETTING_LATE_TRAVEL_ACCEPT = "late_travel_accept";
 /** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
 export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 /** "1"/"0": the daily schedule-change digest (roadmap 3.1). Absent ⇒ enabled. */
@@ -86,6 +89,18 @@ export async function getTravelCutoff(
     if (!Number.isNaN(d.getTime())) return { cutoff: d, isCustom: true };
   }
   return { cutoff: defaultTravelCutoff(now), isCustom: false };
+}
+
+/**
+ * The effective late-travel policy (PLAN §8), admin-toggled on /admin/groups.
+ * Off (the default) keeps the domain's "refuse" policy: nothing past the cutoff
+ * is stored. On, entries past the cutoff are accepted but stored unexcused
+ * ("accept-and-flag"), and finalize raises the travel_late flag.
+ */
+export async function getLateTravelPolicy(): Promise<LateTravelPolicy> {
+  return (await getSetting(SETTING_LATE_TRAVEL_ACCEPT)) === "1"
+    ? "accept-and-flag"
+    : LATE_TRAVEL_POLICY;
 }
 
 /**

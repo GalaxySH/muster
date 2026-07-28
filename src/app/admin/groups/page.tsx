@@ -8,7 +8,7 @@ import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPane
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
 import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
 import { Page } from "@/components/ui";
-import { getTravelCutoff } from "@/lib/settings";
+import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 
 /**
  * Admin: groups & form windows (PLAN §13). Define groups, schedule their
@@ -20,10 +20,11 @@ export default async function AdminGroupsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/groups");
   if (!session.isAdmin) redirect("/me");
 
-  const [groups, autoAssignEnabled, travelCutoff, positions] = await Promise.all([
+  const [groups, autoAssignEnabled, travelCutoff, lateTravelPolicy, positions] = await Promise.all([
     listGroups(),
     getDefaultAutoAssignEnabled(),
     getTravelCutoff(),
+    getLateTravelPolicy(),
     positionOptions(),
   ]);
 
@@ -47,16 +48,17 @@ export default async function AdminGroupsPage() {
       </AppHeader>
       <h1>Groups &amp; form windows</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        A student can only open the availability form if they&apos;re in a group whose response window is
-        open. Students with no group are denied. Schedule a group&apos;s window below, then assign
-        students. Enable default assignment to sweep all ungrouped employees into the group marked{" "}
-        <strong>default</strong>.
+        A student can only open the availability form if they&apos;re in a group whose response
+        window is open. Students with no group are denied. Schedule a group&apos;s window below,
+        then assign students. Enable default assignment to sweep all ungrouped employees into the
+        group marked <strong>default</strong>.
       </p>
 
       <GroupWindowsTable groups={groupViews} />
       <TravelCutoffPanel
         cutoffMs={travelCutoff.cutoff.getTime()}
         isCustom={travelCutoff.isCustom}
+        lateAccepted={lateTravelPolicy === "accept-and-flag"}
       />
       <DefaultAssignmentPanel initialEnabled={autoAssignEnabled} />
       <StudentAssigner groups={groupOptions} positions={positions} />

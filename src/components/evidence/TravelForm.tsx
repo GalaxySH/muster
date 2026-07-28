@@ -3,9 +3,11 @@
 /**
  * Travel excusals, its own page now (split out of the old combined EvidenceForm).
  * Each entry is proof + a date range. Travel must be added before the cutoff
- * (PLAN §8, admin-configurable): under the active "refuse" late policy the form
+ * (PLAN §8, admin-configurable): under the default "refuse" late policy the form
  * is replaced by a "too late" notice once the cutoff passes, and entries lock.
- * The excused/late badges stay wired for the "accept-and-flag" policy.
+ * With the admin's accept-late toggle on ("accept-and-flag"), the form keeps
+ * working past the cutoff but new entries store unexcused and render the red
+ * late badge and outline.
  */
 import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
@@ -19,6 +21,7 @@ import {
   uploadRow,
   fmtHint,
   travelRow,
+  travelRowLate,
   excusedBadge,
   lateBadge,
   CONTACT_EMAIL,
@@ -30,7 +33,8 @@ export function TravelForm({
   driveConnected,
   editable = true,
   cutoffMs,
-  canAddTravel,
+  pastCutoff,
+  lateAccepted,
   onBehalfOf,
 }: {
   initial: EvidenceView;
@@ -39,12 +43,16 @@ export function TravelForm({
   editable?: boolean;
   /** The effective travel cutoff (epoch ms), for display. */
   cutoffMs: number;
-  /** False once the cutoff has passed (server-decided): no new entries, entries lock. */
-  canAddTravel: boolean;
+  /** True once the cutoff has passed (server-decided). */
+  pastCutoff: boolean;
+  /** The admin's late policy: true keeps the form open past the cutoff, entries store late. */
+  lateAccepted: boolean;
   /** Set when an admin is filling this in for a student: their email, carried into every action. */
   onBehalfOf?: string;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
+  const canAddTravel = !pastCutoff || lateAccepted;
+  const lateNow = pastCutoff && lateAccepted;
   const canUpload = driveConnected && editable && canAddTravel;
   const cutoffLabel = new Date(cutoffMs).toLocaleDateString();
 
@@ -54,8 +62,11 @@ export function TravelForm({
       <p style={{ color: "#555" }}>
         Add any planned travel during the semester. Upload proof and a date range for each trip,
         these will be manually reviewed for eligibility. Travel is only excused if added before{" "}
-        {cutoffLabel}. After that date, the form no longer accepts travel entries. We will not
-        accept emails requesting excusal, unless for extenuating circumstances.
+        {cutoffLabel}.{" "}
+        {lateAccepted
+          ? "Travel added after that date is marked late and is not excused."
+          : "After that date, the form no longer accepts travel entries."}{" "}
+        We will not accept emails requesting excusal, unless for extenuating circumstances.
       </p>
 
       {!canAddTravel && (
@@ -70,6 +81,16 @@ export function TravelForm({
         </InfoCard>
       )}
 
+      {lateNow && (
+        <InfoCard title="The travel deadline has passed">
+          <p style={{ margin: 0 }}>
+            You can still add travel, but anything added now is marked <strong>late</strong> and is
+            not excused. If you think a trip should be excused anyway, contact{" "}
+            <strong>{CONTACT_EMAIL}</strong> or come into the office.
+          </p>
+        </InfoCard>
+      )}
+
       {canAddTravel && !driveConnected && (
         <DriveDisconnectedBanner>
           Uploads aren&apos;t available yet because an administrator hasn&apos;t connected Google
@@ -80,7 +101,7 @@ export function TravelForm({
       {initial.travel.length > 0 && (
         <div style={{ display: "grid", gap: 10, margin: "12px 0" }}>
           {initial.travel.map((t) => (
-            <div key={t.id} style={travelRow}>
+            <div key={t.id} style={t.excused ? travelRow : { ...travelRow, ...travelRowLate }}>
               <Thumb fileId={t.proofFileId} label="Travel proof" small />
               <div style={{ flex: 1, fontSize: 14 }}>
                 <div>

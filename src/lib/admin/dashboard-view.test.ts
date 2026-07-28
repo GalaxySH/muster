@@ -45,6 +45,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
       driveFolderConfigured: true,
       isProduction: false,
       travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+      lateTravelAccepted: false,
     },
     ghostTitles: [],
     positionConfigs: [],
@@ -447,6 +448,7 @@ describe("environment and settings alerts", () => {
     driveFolderConfigured: true,
     isProduction: false,
     travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+    lateTravelAccepted: false,
     ...over,
   });
 
@@ -489,6 +491,19 @@ describe("environment and settings alerts", () => {
 
   it("does not flag a passed cutoff when no window is open", () => {
     const snap = healthy({ config: config({ travelCutoff: ago(DAY_MS) }) });
+    expect(ids(snap)).not.toContain("travel-cutoff-past");
+  });
+
+  it("does not flag a passed cutoff when late travel is accepted", () => {
+    // The accept-late toggle removes the wall: entries land as late instead of
+    // being refused, so there is nothing for the admin to fix.
+    const snap = healthy({
+      config: config({ travelCutoff: ago(DAY_MS), lateTravelAccepted: true }),
+      groups: [
+        { id: "g1", name: "G", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+      ],
+      students: [student({ groupId: "g1" })],
+    });
     expect(ids(snap)).not.toContain("travel-cutoff-past");
   });
 
@@ -693,9 +708,7 @@ describe("window and roster alerts", () => {
         },
       },
     });
-    const a = buildDashboardView(snap, NOW).alerts.find(
-      (x) => x.id === "import-skipped-non-wisc",
-    );
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "import-skipped-non-wisc");
     expect(a?.severity).toBe("warning");
     expect(a?.title).toContain("2 non-wisc.edu emails");
     expect(a?.href).toBe("/admin/roster");
