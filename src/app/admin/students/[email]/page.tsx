@@ -294,8 +294,12 @@ export default async function StudentDetailPage({
       )}
 
       {/* Dashboard: cards pack into balanced columns so the whole response fits the
-          screen without scrolling on a wide display. Change requests pack in with the
-          rest as the last card, and scroll inside themselves when the list is long. */}
+          screen without scrolling on a wide display. The two cards the scheduler reads
+          together are pinned to the front of the flow so they always sit adjacent:
+          availability preferences first (top of the left column), then the course
+          schedule as the very next card, so it lands right below it or at the top of
+          the next column. Everything after them packs in wherever it fits. Change
+          requests stay last, and scroll inside themselves when the list is long. */}
       <div style={masonryStyle}>
         {/* Availability preferences + click-to-try hours calculator, saveable on the
             student's behalf. With no submission every cell starts empty and the
@@ -312,6 +316,36 @@ export default async function StudentDetailPage({
             />
           </section>
         )}
+
+        {/* Course schedule, pinned second so it stays adjacent to the availability
+            card above (the scheduler reads the two together to spot conflicts). It
+            renders for everyone on the roster, not just responders: the scheduler can
+            record details, and adding one starts the student's submission. */}
+        <section style={panelStyle}>
+          <SectionLabel
+            action={
+              <AddEvidenceButton
+                kind="course"
+                studentEmail={detail.email}
+                replaces={Boolean(evidence.courseScheduleFileId)}
+              />
+            }
+          >
+            Course schedule
+          </SectionLabel>
+          {evidence.courseScheduleFileId ? (
+            <EvidenceThumb
+              fileId={evidence.courseScheduleFileId}
+              label="Course schedule"
+              fill
+              fillHeight={320}
+            />
+          ) : (
+            <p style={{ color: "var(--color-text-warning)", fontSize: 13, margin: 0 }}>
+              No course schedule uploaded.
+            </p>
+          )}
+        </section>
 
         {/* Flags & checks. Only meaningful once the student has actually filled
             something in: against an empty selection every check would "fail". */}
@@ -368,33 +402,6 @@ export default async function StudentDetailPage({
         {/* Evidence and notes render for everyone on the roster, not just
             responders: the scheduler can record details, and adding any of them
             starts the student's submission. */}
-        {/* Course schedule */}
-        <section style={panelStyle}>
-          <SectionLabel
-            action={
-              <AddEvidenceButton
-                kind="course"
-                studentEmail={detail.email}
-                replaces={Boolean(evidence.courseScheduleFileId)}
-              />
-            }
-          >
-            Course schedule
-          </SectionLabel>
-          {evidence.courseScheduleFileId ? (
-            <EvidenceThumb
-              fileId={evidence.courseScheduleFileId}
-              label="Course schedule"
-              fill
-              fillHeight={320}
-            />
-          ) : (
-            <p style={{ color: "var(--color-text-warning)", fontSize: 13, margin: 0 }}>
-              No course schedule uploaded.
-            </p>
-          )}
-        </section>
-
         {/* Scheduler notes (editable) */}
         <section style={panelStyle}>
           <SchedulerNotes

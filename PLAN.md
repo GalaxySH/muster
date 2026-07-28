@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.92
+- **Version:** 0.93
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1173,6 +1173,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.93 (2026-07-27)** — **Per-student dashboard: pin availability + course schedule to
+  the front of the flow (§10a).** The scheduler reads the availability grid against the
+  course schedule to spot conflicts, so the two must sit adjacent. The dashboard is a CSS
+  multi-column masonry that fills column-by-column, so ordering **availability first**
+  (item #1, always top of the left column) and **course schedule second** (item #2)
+  guarantees course schedule lands either directly below availability or at the top of the
+  next column, never further off. Before, course schedule was the fourth card, so the
+  variable-height Flags and Close-claims cards between them pushed it to an unpredictable
+  column. Pure reorder in `/admin/students/[email]`; no other card is ordered.
 - **0.92 (2026-07-27)** — **Generate a sign-in link for a student from the per-student
   view (§11).** The per-student header (`/admin/students/[email]`) gains a **Sign-in link**
   control that mints a single-use magic-link token on demand and shows it in a modal with a
