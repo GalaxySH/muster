@@ -19,7 +19,7 @@ handling; a later **show-off-roster switch**, `roster=all` in the same seam, rev
 badged off-roster submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
 Sunday-week, now through +3 weeks). Each entry carries a **resolved** marker
-(`travel_requests.resolved`, migration `0019`): the admin-only `TravelResolvedCheckbox`
+(`travel_requests.resolved`, migration `0020`): the admin-only `TravelResolvedCheckbox`
 island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, revalidates
 the travel list + the student page + the hub), and a resolved row green-tints on both
 the travel list and the per-student travel card. It is a review marker only, distinct
@@ -355,7 +355,13 @@ pure seam rather than re-deriving:
   `min_days_unreachable` for this. Students left on a **deactivated or merged** position,
   and roster emails that are **not `wisc.edu`** or that **look like a name alias** (dotted
   NetID) rather than the sign-in address, are warnings: all three quietly lock a student
-  out with no other signal.
+  out with no other signal. The on-roster non-`wisc.edu` check is defence in depth: the
+  importer already skips those rows (they can sign in through neither Google nor
+  magic-link, both gated on `isWiscEmail`), so it fires only if one lands on the roster
+  another way. The live signal is the **import skip**: a real worker entered with a wrong
+  email silently never lands on the roster, so `roster_imports` carries a
+  `skipped_non_wisc` count and the hub flags **the last import's** non-`wisc.edu` skips
+  (it clears on a clean re-import).
 - **Env/settings misconfig** the hub can read without a probe: `DRIVE_FOLDER_ID` unset
   (uploads go to a personal Drive), the **travel cutoff already past** while a form window
   is still open, a **recently closed window** that left members unsubmitted, and the
@@ -377,6 +383,10 @@ pure seam rather than re-deriving:
 - **Nudge lists are scoped to open windows**: reminding a student whose window has not
   opened (cannot start) or has closed (locked out) points the admin at people they cannot
   help.
+- **The test-accounts group (`TEST_GROUP_ID`, "Test accounts") never appears in the
+  Response progress table.** It is not a real cohort to track, so `buildDashboardView`
+  filters it out of `groups` before returning (`dashboard-view.ts`); it still appears
+  and is manageable on `/admin/groups`.
 
 **A few `app_settings` keys exist purely so the hub can be honest** about subsystems it
 cannot cheaply probe:
@@ -685,6 +695,17 @@ provider in `config.ts`). The recipient's name is inferred from the roster via
 so a future self-add can broaden eligibility without coupling to name resolution. Access
 still requires the roster + group gates (§13); non-roster self-add stays deferred (the
 dormant `applyDefaultGroupOnSelfAdd` hook).
+
+Admins can also mint a link **for** a student from the per-student view
+(`/admin/students/[email]`): the **Sign-in link** header control
+(`components/admin/GenerateMagicLinkButton.tsx`) calls `generateStudentMagicLink`
+(`admin/actions.ts`), which reuses `issueMagicLink` and, like **Get link** on the
+test-account manager, assembles the `/magic/redeem` URL from `env.NEXTAUTH_URL` (never a
+caller-supplied one). It skips the self-service cooldown (explicit admin action, not
+roster-probing input) and sends no email; the raw URL and the student's email come back to
+the client, which shows them in the shared `Modal` + `MagicLinkCopy`. The email is **not**
+in the URL (redemption stays bound to token+email); the modal shows it separately as the
+reminder the student needs to enter at `/magic/redeem`.
 
 ## Test-account manager
 

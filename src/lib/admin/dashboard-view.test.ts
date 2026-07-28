@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
+import { TEST_GROUP_ID, TEST_GROUP_NAME } from "@/lib/test-accounts/constants";
 import {
   buildDashboardView,
   STALLED_DRAFT_DAYS,
@@ -51,7 +52,12 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
     roster: {
       onRoster: 0,
       offRoster: 0,
-      lastImport: { importedAt: ago(DAY_MS), rowCount: 10, importedBy: "admin@wisc.edu" },
+      lastImport: {
+        importedAt: ago(DAY_MS),
+        rowCount: 10,
+        importedBy: "admin@wisc.edu",
+        skippedNonWisc: 0,
+      },
     },
     coverage: [],
     recent: [],
@@ -150,6 +156,19 @@ describe("group progress", () => {
       draft: 1,
     });
     expect(view.groups[1]).toMatchObject({ name: "Unset", state: "unconfigured", memberCount: 1 });
+  });
+
+  it("never lists the test-accounts group; it is not a real cohort to track", () => {
+    const view = buildDashboardView(
+      healthy({
+        groups: [
+          { id: "g1", name: "Returning", opensAt: null, closesAt: null },
+          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null },
+        ],
+      }),
+      NOW,
+    );
+    expect(view.groups.map((g) => g.id)).toEqual(["g1"]);
   });
 });
 
@@ -659,6 +678,31 @@ describe("window and roster alerts", () => {
     });
     expect(ids(snap)).toContain("alias-emails");
     expect(ids(snap)).not.toContain("non-wisc-emails");
+  });
+
+  it("flags non-wisc emails the last import skipped off the roster", () => {
+    const snap = healthy({
+      roster: {
+        onRoster: 10,
+        offRoster: 0,
+        lastImport: {
+          importedAt: ago(DAY_MS),
+          rowCount: 10,
+          importedBy: "admin@wisc.edu",
+          skippedNonWisc: 2,
+        },
+      },
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "import-skipped-non-wisc",
+    );
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("2 non-wisc.edu emails");
+    expect(a?.href).toBe("/admin/roster");
+  });
+
+  it("stays quiet when the last import skipped no non-wisc emails", () => {
+    expect(ids(healthy())).not.toContain("import-skipped-non-wisc");
   });
 });
 

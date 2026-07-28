@@ -228,6 +228,7 @@ export async function importRoster({
       id: importId,
       rowCount: parsed.students.length + parsed.admins.length,
       importedBy,
+      skippedNonWisc: parsed.skipped.filter((s) => s.reason === "non_wisc_email").length,
     });
   });
 

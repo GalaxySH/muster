@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.90
+- **Version:** 0.93
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1177,8 +1177,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.90 (2026-07-27)** — **Travel resolved marker + imminent-travel alert (§10a, §10b).**
-  Travel entries gained a **`resolved`** boolean (migration `0019`), an admin review marker
+- **0.93 (2026-07-27)** — **Travel resolved marker + imminent-travel alert (§10a, §10b).**
+  Travel entries gained a **`resolved`** boolean (migration `0020`), an admin review marker
   the scheduler ticks once a trip is worked into the W2W schedule; it is separate from the
   cutoff-derived `excused` flag (which stays always-true under the "refuse" policy). A
   `TravelResolvedCheckbox` (mirroring `ChangeRequestResolvedCheckbox`) renders on the
@@ -1188,7 +1188,33 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   trip **starting within `IMMINENT_TRAVEL_DAYS` (2) days**, naming up to three students. All
   policy stays in the pure `dashboard-view.ts`: the snapshot's `travelCount: number` was
   replaced by a single de-duped `travel[]` list that drives both the travel tile count and the
-  alert (retiring `loadTravelCount`). +6 tests, 613 pass.
+  alert (retiring `loadTravelCount`). +6 tests.
+- **0.92 (2026-07-27)** — **Generate a sign-in link for a student from the per-student
+  view (§11).** The per-student header (`/admin/students/[email]`) gains a **Sign-in link**
+  control that mints a single-use magic-link token on demand and shows it in a modal with a
+  copy field, so an admin can send the link to someone Google won't let in without leaving
+  the response. New admin action `generateStudentMagicLink` (`admin/actions.ts`) reuses
+  `issueMagicLink`; it is admin-gated, checks the target is a known student, and assembles
+  the `/magic/redeem` URL from `env.NEXTAUTH_URL` (never a caller-supplied one). Unlike the
+  self-service `requestMagicLink` there is no cooldown (explicit admin action, not
+  roster-probing input) and no email is sent. The email is **not embedded** in the URL
+  (redemption stays bound to token+email); the modal shows it separately as the reminder the
+  student needs to activate the link. New client control
+  `components/admin/GenerateMagicLinkButton.tsx` reuses the shared `Modal` +
+  `MagicLinkCopy`.
+- **0.91 (2026-07-27)** — **Flag the last roster import's non-wisc.edu skips (§4.2, §10b).**
+  The importer already drops non-wisc.edu rows (they can sign in through neither Google nor
+  magic-link, both gated on `isWiscEmail`), so a real worker entered with a wrong email
+  silently never lands on the roster. A new `roster_imports.skipped_non_wisc` column
+  (migration 0019) records the per-import count, `getRosterStatus` carries it, and the admin
+  hub's "Needs attention" panel flags **the last import's** non-wisc skips as a warning
+  (`import-skipped-non-wisc`), which clears on a clean re-import. The on-roster
+  `non-wisc-emails` warning from 0.89 stays as defence in depth (it can only fire if such an
+  address reaches the roster another way). +2 tests.
+- **0.90 (2026-07-27)** — **Admin hub: the Test accounts group no longer shows in
+  Response progress (§10b).** It is not a real cohort to track submissions against, so
+  `buildDashboardView` filters it out of the group-progress table; it still appears and
+  is manageable on `/admin/groups`.
 - **0.89 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
   integration errors (§10b).** The alert list was blind to the positions/shift-blocks
   configuration and to several env/settings misconfigurations; each is now surfaced by

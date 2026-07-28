@@ -244,6 +244,12 @@ export const rosterImports = mysqlTable("roster_imports", {
   importedAt: timestamp("imported_at").notNull().defaultNow(),
   rowCount: int("row_count").notNull(),
   importedBy: varchar("imported_by", { length: 255 }).notNull(),
+  /**
+   * Rows this import skipped for a non-wisc.edu email (they never reach the
+   * roster, since neither Google nor magic-link accepts a non-wisc address).
+   * Kept so the admin hub can flag a legitimate worker silently left off.
+   */
+  skippedNonWisc: int("skipped_non_wisc").notNull().default(0),
 });
 
 /** Self-service magic-link fallback auth (PLAN.md §11). Token stored hashed only. */
