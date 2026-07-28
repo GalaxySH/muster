@@ -195,6 +195,11 @@ export const travelRow: React.CSSProperties = {
   borderRadius: 6,
   padding: 8,
 };
+/** Late (unexcused) entries read as needing attention: red outline, faint red fill. */
+export const travelRowLate: React.CSSProperties = {
+  borderColor: "#e0847c",
+  background: "#fdf4f3",
+};
 export const excusedBadge: React.CSSProperties = {
   background: "#e6f4ea",
   color: "#196127",

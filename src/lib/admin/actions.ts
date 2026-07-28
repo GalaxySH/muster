@@ -9,7 +9,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { flags, submissions } from "@/lib/db/schema";
+import { flags, submissions, travelRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { issueMagicLink } from "@/lib/auth/magic-link-store";
 import { env } from "@/lib/env";
@@ -21,6 +21,7 @@ import {
   setSetting,
   deleteSetting,
   SETTING_TRAVEL_CUTOFF,
+  SETTING_LATE_TRAVEL_ACCEPT,
   SETTING_EMAIL_SENDING_ENABLED,
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
@@ -191,6 +192,33 @@ export async function clearPositionChangeFlag(submissionId: string): Promise<Adm
 }
 
 /**
+ * Admin: mark one travel entry resolved once its trip is accounted for in the
+ * schedule, or reopen it (PLAN §10a). This is the review marker, not the
+ * cutoff-derived `excused` flag. Revalidates the per-student page, the upcoming
+ * travel list, and the hub (its imminent-travel alert reads this).
+ */
+export async function setTravelResolved(id: string, resolved: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [row] = await db
+    .select({ email: submissions.studentEmail })
+    .from(travelRequests)
+    .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
+    .where(eq(travelRequests.id, id))
+    .limit(1);
+  if (!row) return { ok: false, error: "That travel entry no longer exists." };
+
+  await db.update(travelRequests).set({ resolved }).where(eq(travelRequests.id, id));
+
+  revalidatePath(`/admin/students/${encodeURIComponent(row.email)}`);
+  revalidatePath("/admin/travel");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/**
  * Set (an ISO instant) or clear (null ⇒ revert to the 9/1 default) the
  * travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
  * new entries under the active late-travel policy (domain/travel.ts).
@@ -209,6 +237,22 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
   revalidatePath("/admin/groups");
   revalidatePath("/travel");
   revalidatePath("/intro");
+  return { ok: true };
+}
+
+/**
+ * Toggle the late-travel policy (PLAN §8; /admin/groups, beside the cutoff).
+ * On, the travel step keeps accepting entries after the cutoff but stores them
+ * unexcused ("accept-and-flag"); off restores the default "refuse". The hub's
+ * cutoff-past alert reads this too.
+ */
+export async function setLateTravelAccepted(accepted: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
+  revalidatePath("/admin/groups");
+  revalidatePath("/travel");
+  revalidatePath("/admin");
   return { ok: true };
 }
 

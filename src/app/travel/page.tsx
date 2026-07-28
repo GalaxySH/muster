@@ -18,8 +18,8 @@ import {
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
-import { getTravelCutoff } from "@/lib/settings";
-import { decideTravelSubmission } from "@/lib/domain/travel";
+import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
+import { isTravelExcused } from "@/lib/domain/travel";
 
 export default async function TravelPage({
   searchParams,
@@ -46,12 +46,14 @@ export default async function TravelPage({
   }
 
   const now = new Date();
-  const [evidence, drive, { cutoff }] = await Promise.all([
+  const [evidence, drive, { cutoff }, policy] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     getTravelCutoff(now),
+    getLateTravelPolicy(),
   ]);
-  const canAddTravel = decideTravelSubmission(now, cutoff).allowed;
+  const pastCutoff = !isTravelExcused(now, cutoff);
+  const lateAccepted = policy === "accept-and-flag";
 
   if (onBehalf) {
     return (
@@ -62,7 +64,8 @@ export default async function TravelPage({
           initial={evidence}
           driveConnected={drive.connected}
           cutoffMs={cutoff.getTime()}
-          canAddTravel={canAddTravel}
+          pastCutoff={pastCutoff}
+          lateAccepted={lateAccepted}
           onBehalfOf={onBehalf.email}
         />
       </Page>
@@ -105,7 +108,8 @@ export default async function TravelPage({
         driveConnected={drive.connected}
         editable={editable}
         cutoffMs={cutoff.getTime()}
-        canAddTravel={canAddTravel}
+        pastCutoff={pastCutoff}
+        lateAccepted={lateAccepted}
       />
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />

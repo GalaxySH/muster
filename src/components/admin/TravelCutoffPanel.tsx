@@ -2,22 +2,26 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setTravelCutoff } from "@/lib/admin/actions";
+import { setTravelCutoff, setLateTravelAccepted } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
 
 /**
  * Admin editor for the travel-excusal cutoff (PLAN §8). One global instant,
  * independent of the per-group form windows: students can add travel entries
- * until the cutoff; after it the travel step refuses new entries and locks the
- * existing ones (the "refuse" late policy in domain/travel.ts). Clearing the
- * date reverts to the 9/1 default.
+ * until the cutoff; what happens after it is the late-policy toggle below the
+ * date. Off (default), the travel step refuses new entries and locks the
+ * existing ones ("refuse" in domain/travel.ts); on, entries stay accepted but
+ * are stored late/unexcused ("accept-and-flag"). Clearing the date reverts to
+ * the 9/1 default.
  */
 export function TravelCutoffPanel({
   cutoffMs,
   isCustom,
+  lateAccepted,
 }: {
   cutoffMs: number;
   isCustom: boolean;
+  lateAccepted: boolean;
 }) {
   const router = useRouter();
   const [date, setDate] = useState(toLocalInput(cutoffMs));
@@ -29,6 +33,22 @@ export function TravelCutoffPanel({
     startTransition(async () => {
       const res = await setTravelCutoff(iso);
       setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
+      if (res.ok) router.refresh();
+    });
+  }
+
+  function toggleLate(accepted: boolean) {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await setLateTravelAccepted(accepted);
+      setMsg({
+        ok: res.ok,
+        text: res.ok
+          ? accepted
+            ? "Late travel is now accepted."
+            : "Travel now closes at the cutoff."
+          : (res.error ?? "Failed."),
+      });
       if (res.ok) router.refresh();
     });
   }
@@ -46,16 +66,12 @@ export function TravelCutoffPanel({
     <section style={card}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Travel excusal cutoff</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
-        Students can add travel entries until <strong>00:00 (midnight)</strong> on this date. This date affects all groups.
+        Students can add travel entries until <strong>00:00 (midnight)</strong> on this date. This
+        date affects all groups.
         {!isCustom && " Currently the September 1 default."}
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          style={input}
-        />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
         <button type="button" disabled={pending} onClick={save}>
           Save cutoff
         </button>
@@ -81,6 +97,21 @@ export function TravelCutoffPanel({
           </span>
         )}
       </div>
+      <label style={lateToggle}>
+        <input
+          type="checkbox"
+          checked={lateAccepted}
+          disabled={pending}
+          onChange={(e) => toggleLate(e.target.checked)}
+        />
+        <span>
+          Accept late travel
+          <span style={lateHint}>
+            Students can keep adding travel after the cutoff. Those entries are marked late and are
+            not excused.
+          </span>
+        </span>
+      </label>
     </section>
   );
 }
@@ -96,5 +127,18 @@ const input: React.CSSProperties = {
   borderRadius: "var(--border-radius-md)",
   border: "0.5px solid var(--color-border-secondary)",
   fontFamily: "var(--font-sans)",
+  fontSize: 13,
+};
+const lateToggle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-start",
+  marginTop: 12,
+  fontSize: 14,
+  cursor: "pointer",
+};
+const lateHint: React.CSSProperties = {
+  display: "block",
+  color: "var(--color-text-secondary)",
   fontSize: 13,
 };

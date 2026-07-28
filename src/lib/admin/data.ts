@@ -419,6 +419,10 @@ export interface UpcomingTravelEntry {
   startDate: string; // ISO yyyy-mm-dd (inclusive)
   endDate: string; // ISO yyyy-mm-dd (inclusive)
   note: string | null;
+  /** False when the entry was added after the cutoff (late, PLAN §8). */
+  excused: boolean;
+  /** Admin review marker: the scheduler has accounted for this trip. */
+  resolved: boolean;
 }
 
 const toIsoDate = (d: Date | string): string =>
@@ -426,8 +430,9 @@ const toIsoDate = (d: Date | string): string =>
 
 /**
  * On-roster students' travel grouped into the current + next weeks (roadmap 2.3),
- * so the scheduler can see who is away each week. Every stored entry is excused by
- * construction (PLAN §8 late policy "refuse"). Pure bucketing in `upcoming-travel.ts`.
+ * so the scheduler can see who is away each week. Entries added past the cutoff
+ * under the accept-late policy carry excused: false and render the red late cues
+ * (PLAN §8). Pure bucketing in `upcoming-travel.ts`.
  */
 export async function loadUpcomingTravel(
   now: Date = new Date(),
@@ -442,6 +447,8 @@ export async function loadUpcomingTravel(
       startDate: travelRequests.startDate,
       endDate: travelRequests.endDate,
       note: travelRequests.note,
+      excused: travelRequests.excused,
+      resolved: travelRequests.resolved,
     })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
@@ -459,6 +466,8 @@ export async function loadUpcomingTravel(
     startDate: toIsoDate(r.startDate),
     endDate: toIsoDate(r.endDate),
     note: r.note ?? null,
+    excused: r.excused,
+    resolved: r.resolved,
   }));
 
   return upcomingTravel(entries, now);
