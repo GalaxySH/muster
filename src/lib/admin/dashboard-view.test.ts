@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
+import { TEST_GROUP_ID, TEST_GROUP_NAME } from "@/lib/test-accounts/constants";
 import {
   buildDashboardView,
   STALLED_DRAFT_DAYS,
@@ -150,6 +151,19 @@ describe("group progress", () => {
       draft: 1,
     });
     expect(view.groups[1]).toMatchObject({ name: "Unset", state: "unconfigured", memberCount: 1 });
+  });
+
+  it("never lists the test-accounts group; it is not a real cohort to track", () => {
+    const view = buildDashboardView(
+      healthy({
+        groups: [
+          { id: "g1", name: "Returning", opensAt: null, closesAt: null },
+          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null },
+        ],
+      }),
+      NOW,
+    );
+    expect(view.groups.map((g) => g.id)).toEqual(["g1"]);
   });
 });
 

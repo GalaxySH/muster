@@ -1173,6 +1173,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.90 (2026-07-27)** — **Admin hub: the Test accounts group no longer shows in
+  Response progress (§10b).** It is not a real cohort to track submissions against, so
+  `buildDashboardView` filters it out of the group-progress table; it still appears and
+  is manageable on `/admin/groups`.
 - **0.89 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
   integration errors (§10b).** The alert list was blind to the positions/shift-blocks
   configuration and to several env/settings misconfigurations; each is now surfaced by
