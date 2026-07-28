@@ -109,13 +109,15 @@ the per-student page renders **all** of a student's requests independent of the
 submission, each anchored as `#change-request-<id>`. It is one card among the others in
 that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
 slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
-a long history never stretches the page below the other cards. Two cards buck the
+a long history never stretches the page below the other cards. Three cards buck the
 "position doesn't matter" packing and are pinned to the **front** of the flow so the
-scheduler always reads them together: **availability preferences** first (item #1, so
-it's top of the left column) then **course schedule** immediately after (item #2). Under
-the CSS multi-column masonry, filling proceeds column-by-column, so item #2 can only land
-directly below availability or at the top of the next column — never further off. Nothing
-else in the flow is ordered. That means the dashboard
+scheduler reads them as a group: **availability preferences** first (item #1, so it's top
+of the left column), then the automatic **flags**, then **course schedule**. The flags
+card is submission-gated, so for an unstarted response it drops out and course schedule
+becomes item #2. Under the CSS multi-column masonry, filling proceeds column-by-column, so
+the group stays contiguous (the short flags card packs under preferences or at the top of
+the next column, with course schedule right after it). Nothing else in the flow is
+ordered. That means the dashboard
 container renders unconditionally and the submission-dependent cards are conditional
 children of it, not the other way around. The queue at
 `/admin/change-requests` lists open requests oldest first (name + email +
