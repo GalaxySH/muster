@@ -292,8 +292,12 @@ export default async function StudentDetailPage({
       )}
 
       {/* Dashboard: cards pack into balanced columns so the whole response fits the
-          screen without scrolling on a wide display. Change requests pack in with the
-          rest as the last card, and scroll inside themselves when the list is long. */}
+          screen without scrolling on a wide display. The three cards the scheduler
+          reads together are pinned to the front of the flow so they stay grouped:
+          availability preferences first (top of the left column), then the automatic
+          flags, then the course schedule. Everything after them packs in wherever it
+          fits. Change requests stay last, and scroll inside themselves when the list
+          is long. */}
       <div style={masonryStyle}>
         {/* Availability preferences + click-to-try hours calculator, saveable on the
             student's behalf. With no submission every cell starts empty and the
@@ -311,62 +315,58 @@ export default async function StudentDetailPage({
           </section>
         )}
 
-        {/* Flags & checks. Only meaningful once the student has actually filled
-            something in: against an empty selection every check would "fail". */}
+        {/* Flags & checks, pinned second so they read as a group with the
+            availability card above. Only meaningful once the student has actually
+            filled something in: against an empty selection every check would "fail",
+            so this drops out for an unstarted response and the course schedule below
+            becomes the second card. */}
         {started && submission && validation && (
-          <>
-            <section style={panelStyle}>
-              <SectionLabel>
-                Flags{" "}
-                <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>
-                  (automatic)
-                </span>
-              </SectionLabel>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
-                <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-                {validation.checks
-                  .filter((c) => c.id !== "weekend")
-                  .map((c) => (
-                    <CheckLine key={c.id} ok={c.passed} text={c.detail} />
-                  ))}
-                {!position!.weekendExempt &&
-                  (autoAssigned.length > 0 ? (
-                    <CheckLine
-                      ok={false}
-                      text={`No weekend shift selected. Auto-assigned ${autoAssigned
-                        .map((c) => describeCell(c, blocks))
-                        .join(", ")}`}
-                    />
-                  ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
-                    <CheckLine ok text="Weekend shift selected" />
-                  ) : (
-                    <CheckLine
-                      ok={false}
-                      text="No weekend shift selected. Will auto-assign on submit."
-                    />
-                  ))}
-                {lateTravelCount > 0 && (
+          <section style={panelStyle}>
+            <SectionLabel>
+              Flags{" "}
+              <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>
+                (automatic)
+              </span>
+            </SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+              <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
+              {validation.checks
+                .filter((c) => c.id !== "weekend")
+                .map((c) => (
+                  <CheckLine key={c.id} ok={c.passed} text={c.detail} />
+                ))}
+              {!position!.weekendExempt &&
+                (autoAssigned.length > 0 ? (
                   <CheckLine
                     ok={false}
-                    text={`${lateTravelCount} travel entr${
-                      lateTravelCount === 1 ? "y" : "ies"
-                    } added after the cutoff, not excused (late)`}
+                    text={`No weekend shift selected. Auto-assigned ${autoAssigned
+                      .map((c) => describeCell(c, blocks))
+                      .join(", ")}`}
                   />
-                )}
-              </div>
-            </section>
-          </>
+                ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
+                  <CheckLine ok text="Weekend shift selected" />
+                ) : (
+                  <CheckLine
+                    ok={false}
+                    text="No weekend shift selected. Will auto-assign on submit."
+                  />
+                ))}
+              {lateTravelCount > 0 && (
+                <CheckLine
+                  ok={false}
+                  text={`${lateTravelCount} travel entr${
+                    lateTravelCount === 1 ? "y" : "ies"
+                  } added after the cutoff, not excused (late)`}
+                />
+              )}
+            </div>
+          </section>
         )}
 
-        {/* SL weekend closes: the one extra hard requirement the position carries.
-            Claims can be admin-assigned before a lead fills the form, so this packs
-            in whether or not there's a submission to sit under. */}
-        {closes && <CloseClaimsCard closes={closes} />}
-
-        {/* Evidence and notes render for everyone on the roster, not just
-            responders: the scheduler can record details, and adding any of them
-            starts the student's submission. */}
-        {/* Course schedule */}
+        {/* Course schedule, pinned right after the flags card so availability
+            preferences, flags, and course schedule read as one group. It renders for
+            everyone on the roster, not just responders: the scheduler can record
+            details, and adding one starts the student's submission. */}
         <section style={panelStyle}>
           <SectionLabel
             action={
@@ -393,6 +393,14 @@ export default async function StudentDetailPage({
           )}
         </section>
 
+        {/* SL weekend closes: the one extra hard requirement the position carries.
+            Claims can be admin-assigned before a lead fills the form, so this packs
+            in whether or not there's a submission to sit under. */}
+        {closes && <CloseClaimsCard closes={closes} />}
+
+        {/* Evidence and notes render for everyone on the roster, not just
+            responders: the scheduler can record details, and adding any of them
+            starts the student's submission. */}
         {/* Scheduler notes (editable) */}
         <section style={panelStyle}>
           <SchedulerNotes

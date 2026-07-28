@@ -35,8 +35,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.94
-- **Last updated:** 2026-07-27
+- **Version:** 0.95
+- **Last updated:** 2026-07-28
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1184,6 +1184,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.95 (2026-07-28)** — **Per-student dashboard: pin the availability group to the front
+  of the flow (§10a).** The scheduler reads the availability grid, its automatic flags, and
+  the course schedule together, so the three are pinned to the front of the card flow as a
+  group: **availability preferences** first (item #1, always top of the left column), then
+  the **flags** card, then **course schedule**. The dashboard is a CSS multi-column masonry
+  that fills column-by-column, so a contiguous front group stays contiguous (flags is short
+  and packs under preferences or at the top of the next column, with course schedule right
+  after). Before, course schedule was the fourth card and the flags card sat below it, so
+  the variable-height Close-claims card and the flags card scattered them across columns.
+  The flags card is submission-gated, so an unstarted response simply drops it and course
+  schedule becomes item #2. Pure reorder in `/admin/students/[email]` (plus dropping a
+  redundant single-child fragment on the flags card); no other card is ordered.
 - **0.94 (2026-07-27)** — **Admin toggle for late travel (§5 #8, §7b, §8).** The
   late-travel policy is now runtime config instead of a code constant: an **"Accept late
   travel"** checkbox beside the cutoff on `/admin/groups` (`setLateTravelAccepted`,
