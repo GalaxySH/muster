@@ -16,6 +16,7 @@ import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
+import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
@@ -231,6 +232,7 @@ export default async function StudentDetailPage({
           >
             New change request
           </Link>
+          <GenerateMagicLinkButton studentEmail={detail.email} />
           <MarkScheduledButton
             studentEmail={detail.email}
             scheduled={submission?.scheduled ?? false}

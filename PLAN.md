@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.89
+- **Version:** 0.90
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1173,6 +1173,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.90 (2026-07-27)** — **Generate a sign-in link for a student from the per-student
+  view (§11).** The per-student header (`/admin/students/[email]`) gains a **Sign-in link**
+  control that mints a single-use magic-link token on demand and shows it in a modal with a
+  copy field, so an admin can send the link to someone Google won't let in without leaving
+  the response. New admin action `generateStudentMagicLink` (`admin/actions.ts`) reuses
+  `issueMagicLink`; it is admin-gated, checks the target is a known student, and assembles
+  the `/magic/redeem` URL from `env.NEXTAUTH_URL` (never a caller-supplied one). Unlike the
+  self-service `requestMagicLink` there is no cooldown (explicit admin action, not
+  roster-probing input) and no email is sent. The email is **not embedded** in the URL
+  (redemption stays bound to token+email); the modal shows it separately as the reminder the
+  student needs to activate the link. New client control
+  `components/admin/GenerateMagicLinkButton.tsx` reuses the shared `Modal` +
+  `MagicLinkCopy`.
 - **0.89 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
   integration errors (§10b).** The alert list was blind to the positions/shift-blocks
   configuration and to several env/settings misconfigurations; each is now surfaced by
