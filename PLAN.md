@@ -124,10 +124,12 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
    change yet). Leaving with unsaved edits warns first: a native beforeunload prompt
    on tab close/refresh plus a confirm() on same-tab link clicks (breadcrumb/Home),
    via `useUnsavedChangesWarning`.
-6. **`/travel`** — optional, repeatable travel entries (proof + date range; must be added
-   **before the cutoff** — default 9/1, admin-configurable, §7b #8). Once the cutoff
-   passes, the step shows a "deadline has passed" notice instead of the add form and the
-   existing entries lock (server-refused too). Since travel is optional, **Next is gated
+6. **`/travel`** — optional, repeatable travel entries (proof + date range; excused only
+   if added **before the cutoff** — default 9/1, admin-configurable, §7b #8). Once the
+   cutoff passes, the step shows a "deadline has passed" notice instead of the add form
+   and the existing entries lock (server-refused too) — unless the admin's accept-late
+   toggle is on (§7b #8): then the form stays and new entries store late/unexcused.
+   Since travel is optional, **Next is gated
    on an explicit acknowledgement** ("I've added all my travel, or I have none").
 7. **`/exit`** — sets expectations (these are *preferences*, not a schedule; expect the
    schedule in a couple of weeks, by end of August) and holds the single **Submit** that

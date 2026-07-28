@@ -29,11 +29,16 @@ export const LATE_TRAVEL_POLICY: LateTravelPolicy = "refuse";
 
 export type TravelDecision = { allowed: true; excused: boolean } | { allowed: false };
 
-/** Decide a travel entry created at `now` under `cutoff` and the active policy. */
+/**
+ * Decide a travel entry created at `now` under `cutoff` and `policy`. Callers
+ * pass the admin-configured policy (getLateTravelPolicy in lib/settings.ts);
+ * there is deliberately no default, so a gate can never silently fall back to
+ * "refuse" while the admin has late travel switched on.
+ */
 export function decideTravelSubmission(
   now: Date,
   cutoff: Date,
-  policy: LateTravelPolicy = LATE_TRAVEL_POLICY,
+  policy: LateTravelPolicy,
 ): TravelDecision {
   if (isTravelExcused(now, cutoff)) return { allowed: true, excused: true };
   return policy === "refuse" ? { allowed: false } : { allowed: true, excused: false };

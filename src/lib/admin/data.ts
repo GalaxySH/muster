@@ -430,8 +430,9 @@ const toIsoDate = (d: Date | string): string =>
 
 /**
  * On-roster students' travel grouped into the current + next weeks (roadmap 2.3),
- * so the scheduler can see who is away each week. Every stored entry is excused by
- * construction (PLAN §8 late policy "refuse"). Pure bucketing in `upcoming-travel.ts`.
+ * so the scheduler can see who is away each week. Entries added past the cutoff
+ * under the accept-late policy carry excused: false and render the red late cues
+ * (PLAN §8). Pure bucketing in `upcoming-travel.ts`.
  */
 export async function loadUpcomingTravel(
   now: Date = new Date(),

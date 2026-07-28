@@ -183,7 +183,10 @@ export const extracurricularFiles = mysqlTable("extracurricular_files", {
   fileId: varchar("file_id", { length: 255 }).notNull(),
 });
 
-/** Repeatable travel-excusal entry (PLAN.md §7b, §9). Excused only if before the 9/1 cutoff. */
+/**
+ * Repeatable travel-excusal entry (PLAN.md §7b, §9). Excused only if created
+ * before the cutoff; a late row (accept-late policy, PLAN §8) stores excused false.
+ */
 export const travelRequests = mysqlTable("travel_requests", {
   id: varchar("id", { length: 36 }).primaryKey(),
   submissionId: varchar("submission_id", { length: 36 })

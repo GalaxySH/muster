@@ -486,9 +486,10 @@ group + window); an email ⇒ `requireAdmin` + `findStudentByEmail`, so an admin
 student without their window binding (the same shape as `resolveTargetStudent` in
 `changes/actions.ts`). `addTravelRequest` and `addExtracurricularFile` read that email from
 FormData `student` (`saveExtracurricularNotes` takes it as a second arg); `revalidateEvidence`
-then also revalidates the admin's per-student page. The **travel cutoff refuses students
-only** — an admin adding an entry is the excusal call, so it stores `excused: true` past the
-cutoff. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
+then also revalidates the admin's per-student page. The **travel cutoff binds students
+only** (refused by default; stored late/unexcused under the accept-late toggle) — an admin
+adding an entry is the excusal call, so it stores `excused: true` past the cutoff either
+way. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
 Course schedule / Travel / Extracurriculars card headers on `/admin/students/[email]`
 (`SectionLabel` takes an
 `action` slot): one modal per kind, the same fields as the student form, with the
