@@ -17,6 +17,7 @@ import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
 import type { DbFlagType } from "@/lib/db/schema";
+import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 /** A draft nobody has touched in this long is stalled, not in progress. */
 export const STALLED_DRAFT_DAYS = 3;
@@ -278,7 +279,9 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
 
   return {
     totals,
-    groups: groupProgress,
+    // Never a real cohort to track progress on; keep it out of the response-progress
+    // table (it still shows on /admin/groups, where its window is managed).
+    groups: groupProgress.filter((g) => g.id !== TEST_GROUP_ID),
     ungrouped,
     alerts: buildAlerts(snapshot, now, { ungrouped, groupProgress }),
     tiles: {
