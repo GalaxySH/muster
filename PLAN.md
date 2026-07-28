@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.89
+- **Version:** 0.91
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1173,6 +1173,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.91 (2026-07-27)** — **Flag the last roster import's non-wisc.edu skips (§4.2, §10b).**
+  The importer already drops non-wisc.edu rows (they can sign in through neither Google nor
+  magic-link, both gated on `isWiscEmail`), so a real worker entered with a wrong email
+  silently never lands on the roster. A new `roster_imports.skipped_non_wisc` column
+  (migration 0019) records the per-import count, `getRosterStatus` carries it, and the admin
+  hub's "Needs attention" panel flags **the last import's** non-wisc skips as a warning
+  (`import-skipped-non-wisc`), which clears on a clean re-import. The on-roster
+  `non-wisc-emails` warning from 0.89 stays as defence in depth (it can only fire if such an
+  address reaches the roster another way). +2 tests.
 - **0.90 (2026-07-27)** — **Admin hub: the Test accounts group no longer shows in
   Response progress (§10b).** It is not a real cohort to track submissions against, so
   `buildDashboardView` filters it out of the group-progress table; it still appears and
@@ -1192,11 +1201,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   `nonassignable-position-students` count), roster emails that are **not `wisc.edu`** or
   that **look like a name alias** rather than the NetID Google returns at sign-in, and the
   ghost-title alert now leads with the **affected student count** instead of the number of
-  titles. The importer already skips non-wisc.edu rows (they can sign in through neither
-  Google nor magic-link, both gated on `isWiscEmail`), so a new
-  `roster_imports.skipped_non_wisc` column records the count and the hub flags **the last
-  import's non-wisc skips**, so a real worker entered with a wrong email is not silently
-  left off the roster. **Env/settings:** email on with **no Resend key** in prod (`danger`),
+  titles. **Env/settings:** email on with **no Resend key** in prod (`danger`),
   `DRIVE_FOLDER_ID` unset, the **travel cutoff already past** while a window is open, a
   **recently closed window** that left members unsubmitted, and the running **responses /
   SL-closes sheets that have never synced**. **Integration health:** a new
@@ -1208,7 +1213,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   **Nudge lists** are scoped to open windows (a reminder cannot help a student whose window
   has not opened or has closed). **Boot guard:** `env-guard.ts` now refuses to start prod
   with empty `GOOGLE_CLIENT_ID`/`SECRET` or a localhost `NEXTAUTH_URL`. All policy stays in
-  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +36 tests, 609 pass.
+  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +34 tests, 602 pass.
 - **0.88 (2026-07-27)** — **Hire-date filter on the group-assignment picker** (§13,
   roadmap 2.2). "Assign students" on `/admin/groups` gained a before/after/on hire-date
   compare, alongside position/roster/group, resolving the "optional follow-up" noted in
