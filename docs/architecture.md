@@ -349,7 +349,13 @@ pure seam rather than re-deriving:
   `min_days_unreachable` for this. Students left on a **deactivated or merged** position,
   and roster emails that are **not `wisc.edu`** or that **look like a name alias** (dotted
   NetID) rather than the sign-in address, are warnings: all three quietly lock a student
-  out with no other signal.
+  out with no other signal. The on-roster non-`wisc.edu` check is defence in depth: the
+  importer already skips those rows (they can sign in through neither Google nor
+  magic-link, both gated on `isWiscEmail`), so it fires only if one lands on the roster
+  another way. The live signal is the **import skip**: a real worker entered with a wrong
+  email silently never lands on the roster, so `roster_imports` carries a
+  `skipped_non_wisc` count and the hub flags **the last import's** non-`wisc.edu` skips
+  (it clears on a clean re-import).
 - **Env/settings misconfig** the hub can read without a probe: `DRIVE_FOLDER_ID` unset
   (uploads go to a personal Drive), the **travel cutoff already past** while a form window
   is still open, a **recently closed window** that left members unsubmitted, and the

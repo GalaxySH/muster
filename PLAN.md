@@ -1188,7 +1188,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   `nonassignable-position-students` count), roster emails that are **not `wisc.edu`** or
   that **look like a name alias** rather than the NetID Google returns at sign-in, and the
   ghost-title alert now leads with the **affected student count** instead of the number of
-  titles. **Env/settings:** email on with **no Resend key** in prod (`danger`),
+  titles. The importer already skips non-wisc.edu rows (they can sign in through neither
+  Google nor magic-link, both gated on `isWiscEmail`), so a new
+  `roster_imports.skipped_non_wisc` column records the count and the hub flags **the last
+  import's non-wisc skips**, so a real worker entered with a wrong email is not silently
+  left off the roster. **Env/settings:** email on with **no Resend key** in prod (`danger`),
   `DRIVE_FOLDER_ID` unset, the **travel cutoff already past** while a window is open, a
   **recently closed window** that left members unsubmitted, and the running **responses /
   SL-closes sheets that have never synced**. **Integration health:** a new
@@ -1200,7 +1204,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   **Nudge lists** are scoped to open windows (a reminder cannot help a student whose window
   has not opened or has closed). **Boot guard:** `env-guard.ts` now refuses to start prod
   with empty `GOOGLE_CLIENT_ID`/`SECRET` or a localhost `NEXTAUTH_URL`. All policy stays in
-  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +34 tests, 602 pass.
+  the pure `dashboard-view.ts` / `config-validation.ts` / `env-guard.ts`; +36 tests, 609 pass.
 - **0.88 (2026-07-27)** — **Hire-date filter on the group-assignment picker** (§13,
   roadmap 2.2). "Assign students" on `/admin/groups` gained a before/after/on hire-date
   compare, alongside position/roster/group, resolving the "optional follow-up" noted in

@@ -148,7 +148,13 @@ export interface DashboardSnapshot {
   roster: {
     onRoster: number;
     offRoster: number;
-    lastImport: { importedAt: Date; rowCount: number; importedBy: string } | null;
+    lastImport: {
+      importedAt: Date;
+      rowCount: number;
+      importedBy: string;
+      /** Rows skipped for a non-wisc.edu email; they never reached the roster. */
+      skippedNonWisc: number;
+    } | null;
   };
   coverage: CoverageCell[];
   recent: RecentSubmission[];
@@ -627,6 +633,21 @@ function buildAlerts(
       severity: "warning",
       title: `${nonWisc} roster ${plural(nonWisc, "email is", "emails are")} not a wisc.edu address.`,
       detail: "Those students cannot sign in with Google and may be locked out of the form.",
+      href: "/admin/roster",
+      linkLabel: "Roster",
+    });
+  }
+
+  // The importer skips non-wisc.edu rows (they could never sign in), so a real
+  // worker entered with a wrong email silently never lands on the roster. The
+  // count rides on the last import's audit row, so it clears on a clean re-import.
+  if (s.roster.lastImport && s.roster.lastImport.skippedNonWisc > 0) {
+    const n = s.roster.lastImport.skippedNonWisc;
+    warning.push({
+      id: "import-skipped-non-wisc",
+      severity: "warning",
+      title: `The last roster import skipped ${n} non-wisc.edu ${plural(n, "email", "emails")}.`,
+      detail: "Those people are not on the roster. Fix the email to a wisc.edu address and re-import.",
       href: "/admin/roster",
       linkLabel: "Roster",
     });

@@ -51,7 +51,12 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
     roster: {
       onRoster: 0,
       offRoster: 0,
-      lastImport: { importedAt: ago(DAY_MS), rowCount: 10, importedBy: "admin@wisc.edu" },
+      lastImport: {
+        importedAt: ago(DAY_MS),
+        rowCount: 10,
+        importedBy: "admin@wisc.edu",
+        skippedNonWisc: 0,
+      },
     },
     coverage: [],
     recent: [],
@@ -583,6 +588,31 @@ describe("window and roster alerts", () => {
     });
     expect(ids(snap)).toContain("alias-emails");
     expect(ids(snap)).not.toContain("non-wisc-emails");
+  });
+
+  it("flags non-wisc emails the last import skipped off the roster", () => {
+    const snap = healthy({
+      roster: {
+        onRoster: 10,
+        offRoster: 0,
+        lastImport: {
+          importedAt: ago(DAY_MS),
+          rowCount: 10,
+          importedBy: "admin@wisc.edu",
+          skippedNonWisc: 2,
+        },
+      },
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "import-skipped-non-wisc",
+    );
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("2 non-wisc.edu emails");
+    expect(a?.href).toBe("/admin/roster");
+  });
+
+  it("stays quiet when the last import skipped no non-wisc emails", () => {
+    expect(ids(healthy())).not.toContain("import-skipped-non-wisc");
   });
 });
 
