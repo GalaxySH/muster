@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.90
+- **Version:** 0.92
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1173,7 +1173,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.90 (2026-07-27)** — **Generate a sign-in link for a student from the per-student
+- **0.92 (2026-07-27)** — **Generate a sign-in link for a student from the per-student
   view (§11).** The per-student header (`/admin/students/[email]`) gains a **Sign-in link**
   control that mints a single-use magic-link token on demand and shows it in a modal with a
   copy field, so an admin can send the link to someone Google won't let in without leaving
@@ -1186,6 +1186,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   student needs to activate the link. New client control
   `components/admin/GenerateMagicLinkButton.tsx` reuses the shared `Modal` +
   `MagicLinkCopy`.
+- **0.91 (2026-07-27)** — **Flag the last roster import's non-wisc.edu skips (§4.2, §10b).**
+  The importer already drops non-wisc.edu rows (they can sign in through neither Google nor
+  magic-link, both gated on `isWiscEmail`), so a real worker entered with a wrong email
+  silently never lands on the roster. A new `roster_imports.skipped_non_wisc` column
+  (migration 0019) records the per-import count, `getRosterStatus` carries it, and the admin
+  hub's "Needs attention" panel flags **the last import's** non-wisc skips as a warning
+  (`import-skipped-non-wisc`), which clears on a clean re-import. The on-roster
+  `non-wisc-emails` warning from 0.89 stays as defence in depth (it can only fire if such an
+  address reaches the roster another way). +2 tests.
+- **0.90 (2026-07-27)** — **Admin hub: the Test accounts group no longer shows in
+  Response progress (§10b).** It is not a real cohort to track submissions against, so
+  `buildDashboardView` filters it out of the group-progress table; it still appears and
+  is manageable on `/admin/groups`.
 - **0.89 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
   integration errors (§10b).** The alert list was blind to the positions/shift-blocks
   configuration and to several env/settings misconfigurations; each is now surfaced by
