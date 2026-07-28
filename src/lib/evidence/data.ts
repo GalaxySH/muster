@@ -21,6 +21,8 @@ export interface TravelEntry {
   endDate: string;
   note: string | null;
   excused: boolean;
+  /** Admin review marker: the scheduler has accounted for this trip. */
+  resolved: boolean;
 }
 
 export interface EvidenceView {
@@ -78,6 +80,7 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
       endDate: toIsoDate(t.endDate),
       note: t.note ?? null,
       excused: t.excused,
+      resolved: t.resolved,
     })),
   };
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `travel_requests` ADD `resolved` boolean DEFAULT false NOT NULL;

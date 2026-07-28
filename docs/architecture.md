@@ -18,7 +18,13 @@ filter (`positionId`, `NO_POSITION` sentinel) mirrors the group filter's "none"
 handling; a later **show-off-roster switch**, `roster=all` in the same seam, reveals
 badged off-roster submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
-Sunday-week, now through +3 weeks); (4) a **batch schedule-ready email**
+Sunday-week, now through +3 weeks). Each entry carries a **resolved** marker
+(`travel_requests.resolved`, migration `0019`): the admin-only `TravelResolvedCheckbox`
+island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, revalidates
+the travel list + the student page + the hub), and a resolved row green-tints on both
+the travel list and the per-student travel card. It is a review marker only, distinct
+from the cutoff-derived `excused` flag. The hub's imminent-travel alert reads it (see the
+admin-views section). (4) a **batch schedule-ready email**
 `/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
 callers; recipients = on-roster + submitted + scheduled; idempotent via
 `submissions.scheduleEmailSentAt`); (5) **computed high-demand** — the red bar now
@@ -356,6 +362,13 @@ pure seam rather than re-deriving:
   running **responses / SL-closes sheets that have never synced** while there is data to
   mirror. Boot-time misconfig (`GOOGLE_CLIENT_ID`/`SECRET` empty, `NEXTAUTH_URL` still
   localhost) is caught earlier, in `env-guard.ts`, which refuses to start prod.
+- **Imminent unresolved travel** (`travel-imminent-unresolved`, a warning): any travel
+  entry starting within `IMMINENT_TRAVEL_DAYS` (2) days that no one has ticked resolved,
+  naming up to three students. The snapshot no longer carries a `travelCount: number`;
+  `dashboard.ts` `loadTravel` hands the pure layer a single de-duped `travel[]` list
+  (`{ studentName, startDate, endDate, resolved }`) that drives **both** the travel tile
+  count (`travel.length`) and this alert. Start dates compare as ISO strings against the
+  UTC day, matching how `upcoming-travel.ts` buckets, so the alert and the list agree.
 - **The digest-scheduler check is no longer gated on the open queue.** Because every run
   stamps `change_digest_last_run`, a missing or stale stamp means the *scheduler* is dead
   (it would stop all future catch-up), so `dashboard-view.ts` calls `digestRunHealth()`

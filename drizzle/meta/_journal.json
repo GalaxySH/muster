@@ -134,6 +134,13 @@
       "when": 1785129367361,
       "tag": "0018_old_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1785202489954,
+      "tag": "0019_faithful_korvac",
+      "breakpoints": true
     }
   ]
 }

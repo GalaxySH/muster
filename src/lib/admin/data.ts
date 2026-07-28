@@ -419,6 +419,8 @@ export interface UpcomingTravelEntry {
   startDate: string; // ISO yyyy-mm-dd (inclusive)
   endDate: string; // ISO yyyy-mm-dd (inclusive)
   note: string | null;
+  /** Admin review marker: the scheduler has accounted for this trip. */
+  resolved: boolean;
 }
 
 const toIsoDate = (d: Date | string): string =>
@@ -442,6 +444,7 @@ export async function loadUpcomingTravel(
       startDate: travelRequests.startDate,
       endDate: travelRequests.endDate,
       note: travelRequests.note,
+      resolved: travelRequests.resolved,
     })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
@@ -459,6 +462,7 @@ export async function loadUpcomingTravel(
     startDate: toIsoDate(r.startDate),
     endDate: toIsoDate(r.endDate),
     note: r.note ?? null,
+    resolved: r.resolved,
   }));
 
   return upcomingTravel(entries, now);

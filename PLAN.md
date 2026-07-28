@@ -35,7 +35,7 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.89
+- **Version:** 0.90
 - **Last updated:** 2026-07-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -201,7 +201,11 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   the **flag filter on the response list** (roadmap 2.2), not a separate page. With
   `travel_late` retired (§8), that filter is effectively the auto-assigned-weekend queue.
 - **Upcoming travel** (`/admin/travel`, roadmap 2.3) — on-roster students traveling now
-  through the next three weeks, grouped by week, so the scheduler plans around them.
+  through the next three weeks, grouped by week, so the scheduler plans around them. Each
+  entry carries a **resolved** checkbox the scheduler ticks once the trip is worked into
+  the schedule (also on the per-student page's travel card); this review marker is
+  independent of the cutoff-derived `excused` flag. The hub's "Needs attention" panel
+  warns about any unresolved trip **starting within two days** (§10b).
 - **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
   the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
@@ -1173,6 +1177,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.90 (2026-07-27)** — **Travel resolved marker + imminent-travel alert (§10a, §10b).**
+  Travel entries gained a **`resolved`** boolean (migration `0019`), an admin review marker
+  the scheduler ticks once a trip is worked into the W2W schedule; it is separate from the
+  cutoff-derived `excused` flag (which stays always-true under the "refuse" policy). A
+  `TravelResolvedCheckbox` (mirroring `ChangeRequestResolvedCheckbox`) renders on the
+  **Upcoming travel** list (`/admin/travel`) and the per-student travel card, both green-tinting
+  a resolved row; the admin-gated `setTravelResolved` action persists it. The hub's **"Needs
+  attention"** panel now raises a **warning** (`travel-imminent-unresolved`) for any unresolved
+  trip **starting within `IMMINENT_TRAVEL_DAYS` (2) days**, naming up to three students. All
+  policy stays in the pure `dashboard-view.ts`: the snapshot's `travelCount: number` was
+  replaced by a single de-duped `travel[]` list that drives both the travel tile count and the
+  alert (retiring `loadTravelCount`). +6 tests, 613 pass.
 - **0.89 (2026-07-27)** — **The admin hub's "Needs attention" surfaces config and
   integration errors (§10b).** The alert list was blind to the positions/shift-blocks
   configuration and to several env/settings misconfigurations; each is now surfaced by

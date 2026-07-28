@@ -64,7 +64,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     groupRows,
     changeRequestRow,
     flagCounts,
-    travelCount,
+    travel,
     closes,
     drive,
     driveLastOkAt,
@@ -96,7 +96,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
       .orderBy(asc(groups.name)),
     loadChangeRequestCounts(now),
     loadFlagCounts(),
-    loadTravelCount(now),
+    loadTravel(now),
     loadCloses(),
     getDriveGrantStatus(),
     getDriveLastOkAt(),
@@ -122,7 +122,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     groups: groupRows,
     changeRequests: changeRequestRow,
     flagCounts,
-    travelCount,
+    travel,
     closes,
     drive: {
       connected: drive.connected,
@@ -237,9 +237,7 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
  * by id, but they drop out of coverage and the picker, so this is a quiet drift
  * an admin needs to clean up. Grouped by position so the alert can name them.
  */
-async function loadNonAssignablePositions(): Promise<
-  DashboardSnapshot["nonAssignablePositions"]
-> {
+async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssignablePositions"]> {
   const rows = await getDb()
     .select({ name: positions.name, n: sql<number>`count(*)` })
     .from(students)
@@ -291,13 +289,25 @@ async function loadFlagCounts(): Promise<{ type: DbFlagType; count: number }[]> 
 
 /**
  * Distinct travel entries in the next three weeks. `upcomingTravel` repeats an
- * entry in every week it straddles, so the buckets are de-duplicated by id
- * rather than summed.
+ * entry in every week it straddles, so the buckets are de-duplicated by id. The
+ * flat list drives both the hub's travel tile count and its imminent-travel
+ * alert (see `dashboard-view.ts`).
  */
-async function loadTravelCount(now: Date): Promise<number> {
+async function loadTravel(now: Date): Promise<DashboardSnapshot["travel"]> {
   const weeks = await loadUpcomingTravel(now);
-  const ids = new Set(weeks.flatMap((w) => w.entries.map((e) => e.id)));
-  return ids.size;
+  const byId = new Map<string, DashboardSnapshot["travel"][number]>();
+  for (const w of weeks) {
+    for (const e of w.entries) {
+      if (byId.has(e.id)) continue;
+      byId.set(e.id, {
+        studentName: e.studentName,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        resolved: e.resolved,
+      });
+    }
+  }
+  return [...byId.values()];
 }
 
 async function loadCloses(): Promise<DashboardSnapshot["closes"]> {

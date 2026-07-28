@@ -9,7 +9,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { flags, submissions } from "@/lib/db/schema";
+import { flags, submissions, travelRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { collectSubmissionDriveFileIds, ensureSubmissionId } from "@/lib/evidence/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
@@ -152,6 +152,33 @@ export async function clearPositionChangeFlag(submissionId: string): Promise<Adm
 
   revalidatePath(`/admin/students/${encodeURIComponent(sub.email)}`);
   revalidatePath("/admin/responses");
+  return { ok: true };
+}
+
+/**
+ * Admin: mark one travel entry resolved once its trip is accounted for in the
+ * schedule, or reopen it (PLAN §10a). This is the review marker, not the
+ * cutoff-derived `excused` flag. Revalidates the per-student page, the upcoming
+ * travel list, and the hub (its imminent-travel alert reads this).
+ */
+export async function setTravelResolved(id: string, resolved: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [row] = await db
+    .select({ email: submissions.studentEmail })
+    .from(travelRequests)
+    .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
+    .where(eq(travelRequests.id, id))
+    .limit(1);
+  if (!row) return { ok: false, error: "That travel entry no longer exists." };
+
+  await db.update(travelRequests).set({ resolved }).where(eq(travelRequests.id, id));
+
+  revalidatePath(`/admin/students/${encodeURIComponent(row.email)}`);
+  revalidatePath("/admin/travel");
+  revalidatePath("/admin");
   return { ok: true };
 }
 

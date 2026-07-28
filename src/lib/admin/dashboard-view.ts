@@ -23,6 +23,11 @@ export const STALLED_DRAFT_DAYS = 3;
 /** How many of the thinnest blocks the coverage panel lists. */
 export const COVERAGE_ROWS = 5;
 /**
+ * Travel starting within this many days that no one has marked resolved is worth
+ * chasing: the scheduler is about to be short a person and has not accounted for it.
+ */
+export const IMMINENT_TRAVEL_DAYS = 2;
+/**
  * A window that closed within this many days is still worth chasing (reopen,
  * follow up). Past it the alert would be permanent noise, so it drops off.
  */
@@ -84,6 +89,15 @@ export interface RecentSubmission {
   flagTypes: DbFlagType[];
 }
 
+/** One on-roster travel entry in the near horizon (de-duped by id upstream). */
+export interface DashboardTravel {
+  studentName: string;
+  startDate: string; // ISO yyyy-mm-dd (inclusive)
+  endDate: string; // ISO yyyy-mm-dd (inclusive)
+  /** Admin review marker; the imminent-travel alert fires only on unresolved trips. */
+  resolved: boolean;
+}
+
 /**
  * One active, assignable position that has on-roster students, with its full
  * block set. The alert layer runs the pure `blockSetWarnings` over these to
@@ -103,7 +117,8 @@ export interface DashboardSnapshot {
   groups: DashboardGroup[];
   changeRequests: { open: number; oldestCreatedAt: Date | null; newLast24h: number };
   flagCounts: { type: DbFlagType; count: number }[];
-  travelCount: number;
+  /** On-roster travel in the near horizon, feeding both the tile count and the alert. */
+  travel: DashboardTravel[];
   closes: {
     hasInventory: boolean;
     leadsTotal: number;
@@ -200,6 +215,9 @@ export interface DashboardView {
 const daysBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / DAY_MS);
 
+/** The UTC calendar day of `d` as ISO yyyy-mm-dd (matches the travel date storage). */
+const isoDayUtc = (d: Date): string => d.toISOString().slice(0, 10);
+
 /**
  * The whole hub in one pass. `now` is injected so the window states, the
  * stalled-draft cutoff, and the digest staleness check are all testable.
@@ -283,7 +301,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
         oldestDays,
       },
       flags: { total: flagTotal, byType: flagsByType },
-      travel: snapshot.travelCount,
+      travel: snapshot.travel.length,
       closes: snapshot.closes.hasInventory
         ? {
             leadsShort: snapshot.closes.leadsShort,
@@ -568,6 +586,29 @@ function buildAlerts(
       detail: "A form window is still open. Move the cutoff later if this is too early.",
       href: "/admin/groups",
       linkLabel: "Groups",
+    });
+  }
+
+  // Travel starting within the next couple of days that no one has ticked
+  // resolved: the scheduler is about to be short a person and has not accounted
+  // for it. ISO date strings compare lexicographically, matching the UTC day the
+  // upcoming-travel list buckets by.
+  const todayIso = isoDayUtc(now);
+  const horizonIso = isoDayUtc(new Date(now.getTime() + IMMINENT_TRAVEL_DAYS * DAY_MS));
+  const imminent = s.travel.filter(
+    (t) => !t.resolved && t.startDate >= todayIso && t.startDate <= horizonIso,
+  );
+  if (imminent.length > 0) {
+    const n = imminent.length;
+    const names = [...new Set(imminent.map((t) => t.studentName))];
+    const named = names.slice(0, 3).join(", ");
+    warning.push({
+      id: "travel-imminent-unresolved",
+      severity: "warning",
+      title: `${n} travel ${plural(n, "entry starts", "entries start")} in the next ${IMMINENT_TRAVEL_DAYS} days and ${plural(n, "is", "are")} not marked resolved.`,
+      detail: `${named}. Mark each resolved once its schedule is set.`,
+      href: "/admin/travel",
+      linkLabel: "Travel",
     });
   }
 

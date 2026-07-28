@@ -3,12 +3,14 @@ import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadUpcomingTravel } from "@/lib/admin/data";
+import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
 import { Page } from "@/components/ui";
 
 /**
  * Upcoming-travel tab (roadmap 2.3): on-roster students traveling now through the
- * next three weeks, grouped by week so the scheduler can plan around them. Every
- * stored entry is excused (PLAN §8), so this is a plain who-is-away-when list.
+ * next three weeks, grouped by week so the scheduler can plan around them. Each
+ * entry carries a "resolved" checkbox the scheduler ticks once the trip is
+ * accounted for; the hub warns about unresolved trips starting within two days.
  */
 export default async function AdminTravelPage() {
   const session = await getAppSession();
@@ -25,7 +27,8 @@ export default async function AdminTravelPage() {
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>Upcoming travel</h1>
       <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-        Travel excusals requested for the next three weeks. Schedule around these dates.
+        Travel for the next three weeks. Mark each one resolved once you have worked it into the
+        schedule.
       </p>
 
       {weeks.length === 0 ? (
@@ -37,7 +40,7 @@ export default async function AdminTravelPage() {
               <h2 style={weekHeader}>Week of {fmtDay(w.weekStart)}</h2>
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
                 {w.entries.map((entry) => (
-                  <li key={entry.id} style={row}>
+                  <li key={entry.id} style={entry.resolved ? { ...row, ...resolvedRow } : row}>
                     <div>
                       <Link
                         href={`/admin/students/${encodeURIComponent(entry.studentEmail)}`}
@@ -57,7 +60,10 @@ export default async function AdminTravelPage() {
                         </div>
                       )}
                     </div>
-                    <span style={dateRange}>{fmtRange(entry.startDate, entry.endDate)}</span>
+                    <div style={rowRight}>
+                      <span style={dateRange}>{fmtRange(entry.startDate, entry.endDate)}</span>
+                      <TravelResolvedCheckbox id={entry.id} resolved={entry.resolved} />
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -96,7 +102,17 @@ const row: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 12,
   borderTop: "0.5px solid var(--color-border-tertiary)",
-  paddingTop: 8,
+  padding: "8px 6px 4px",
+};
+const resolvedRow: React.CSSProperties = {
+  background: "#f3faf5",
+  borderRadius: "var(--border-radius-md)",
+};
+const rowRight: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: 6,
 };
 const dateRange: React.CSSProperties = {
   whiteSpace: "nowrap",
