@@ -11,6 +11,8 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { flags, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { issueMagicLink } from "@/lib/auth/magic-link-store";
+import { env } from "@/lib/env";
 import { collectSubmissionDriveFileIds, ensureSubmissionId } from "@/lib/evidence/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -88,6 +90,39 @@ export async function saveSchedulerNotes(
 ): Promise<AdminActionResult> {
   const trimmed = notes.trim();
   return updateSubmission(studentEmail, { schedulerNotes: trimmed.length ? trimmed : null });
+}
+
+export interface GenerateMagicLinkResult extends AdminActionResult {
+  /** The assembled /magic/redeem URL (on success). */
+  url?: string;
+  /** The email the student must enter to activate the link (returned separately, not embedded). */
+  email?: string;
+}
+
+/**
+ * Admin: mint a single-use sign-in link for a student so an admin can hand it to
+ * someone Google won't let in (PLAN §11). Same short-lived single-use token as the
+ * self-service flow (`issueMagicLink`), minted on demand with no cooldown since this
+ * is an explicit admin action, not roster-probing input.
+ *
+ * The email is deliberately NOT embedded in the URL: redemption is bound to
+ * token+email, so a link that leaks stays useless without the address. It is
+ * returned separately for the caller to show as a reminder and pass along.
+ */
+export async function generateStudentMagicLink(
+  studentEmail: string,
+): Promise<GenerateMagicLinkResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const email = normalizeEmail(studentEmail);
+  const student = await findStudentByEmail(email);
+  if (!student) return { ok: false, error: "That employee is not a known student." };
+
+  const token = await issueMagicLink(email);
+  // Assemble the URL from our own base + redeem path, never a caller-supplied one.
+  const url = `${env.NEXTAUTH_URL}/magic/redeem?token=${encodeURIComponent(token)}`;
+  return { ok: true, url, email };
 }
 
 /**

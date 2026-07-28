@@ -683,6 +683,17 @@ so a future self-add can broaden eligibility without coupling to name resolution
 still requires the roster + group gates (§13); non-roster self-add stays deferred (the
 dormant `applyDefaultGroupOnSelfAdd` hook).
 
+Admins can also mint a link **for** a student from the per-student view
+(`/admin/students/[email]`): the **Sign-in link** header control
+(`components/admin/GenerateMagicLinkButton.tsx`) calls `generateStudentMagicLink`
+(`admin/actions.ts`), which reuses `issueMagicLink` and, like **Get link** on the
+test-account manager, assembles the `/magic/redeem` URL from `env.NEXTAUTH_URL` (never a
+caller-supplied one). It skips the self-service cooldown (explicit admin action, not
+roster-probing input) and sends no email; the raw URL and the student's email come back to
+the client, which shows them in the shared `Modal` + `MagicLinkCopy`. The email is **not**
+in the URL (redemption stays bound to token+email); the modal shows it separately as the
+reminder the student needs to enter at `/magic/redeem`.
+
 ## Test-account manager
 
 The **throwaway test-account manager** is a **production admin feature** at
