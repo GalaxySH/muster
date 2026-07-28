@@ -1,0 +1,1 @@
+ALTER TABLE `roster_imports` ADD `skipped_non_wisc` int DEFAULT 0 NOT NULL;

@@ -10,7 +10,13 @@ import { students, adminUsers, rosterImports } from "@/lib/db/schema";
 import { listGhostTitles, type GhostTitle } from "@/lib/positions/data";
 
 export interface RosterStatus {
-  lastImport: { importedAt: Date; rowCount: number; importedBy: string } | null;
+  lastImport: {
+    importedAt: Date;
+    rowCount: number;
+    importedBy: string;
+    /** Rows the import skipped for a non-wisc.edu email (never reached the roster). */
+    skippedNonWisc: number;
+  } | null;
   onRoster: number;
   offRoster: number;
   admins: number;
@@ -29,6 +35,7 @@ export async function getRosterStatus(): Promise<RosterStatus> {
       importedAt: rosterImports.importedAt,
       rowCount: rosterImports.rowCount,
       importedBy: rosterImports.importedBy,
+      skippedNonWisc: rosterImports.skippedNonWisc,
     })
     .from(rosterImports)
     .orderBy(desc(rosterImports.importedAt))
