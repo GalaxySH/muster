@@ -24,7 +24,7 @@ import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
 import { isAtEvidenceCap, MAX_EXTRACURRICULAR_FILES, MAX_TRAVEL_REQUESTS } from "./limits";
 import { decideTravelSubmission } from "@/lib/domain/travel";
-import { getTravelCutoff } from "@/lib/settings";
+import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 
 export interface ActionResult {
   ok: boolean;
@@ -64,10 +64,7 @@ function revalidateEvidence(studentPath: string, who: { email: string; onBehalf:
  */
 const editStamp = (who: { onBehalf: boolean }) => (who.onBehalf ? {} : { updatedAt: new Date() });
 
-async function touchSubmission(
-  submissionId: string,
-  who: { onBehalf: boolean },
-): Promise<void> {
+async function touchSubmission(submissionId: string, who: { onBehalf: boolean }): Promise<void> {
   if (who.onBehalf) return;
   await getDb()
     .update(submissions)
@@ -185,10 +182,7 @@ export async function removeExtracurricularFile(
   return { ok: true };
 }
 
-export async function saveExtracurricularNotes(
-  notes: string,
-  student = "",
-): Promise<ActionResult> {
+export async function saveExtracurricularNotes(notes: string, student = ""): Promise<ActionResult> {
   const who = await requireStudent(student);
   if ("error" in who) return { ok: false, error: who.error };
 
@@ -206,20 +200,21 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   const who = await requireStudent(onBehalfOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
-  // The cutoff hard stop (PLAN §8) binds students: under the active "refuse"
-  // policy nothing they add on/after the cutoff is stored, so every entry they
-  // make is excused. An admin adding an entry for them IS the excusal call, so
-  // the cutoff doesn't stop it and the entry is stored excused.
+  // The cutoff (PLAN §8) binds students under the admin-set late policy:
+  // "refuse" (the default) stores nothing on/after the cutoff, so every entry
+  // is excused; "accept-and-flag" keeps accepting but stores the entry
+  // unexcused (late). An admin adding an entry for them IS the excusal call, so
+  // the cutoff doesn't stop it and the entry is stored excused either way.
   const now = new Date();
-  const { cutoff } = await getTravelCutoff(now);
-  const decision = decideTravelSubmission(now, cutoff);
+  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  const decision = decideTravelSubmission(now, cutoff, policy);
   if (!decision.allowed && !who.onBehalf) {
     return {
       ok: false,
       error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed. New travel can no longer be added.`,
     };
   }
-  const excused = decision.allowed ? decision.excused : true;
+  const excused = who.onBehalf || (decision.allowed && decision.excused);
 
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
@@ -267,11 +262,12 @@ export async function removeTravelRequest(id: string, onBehalfOf?: string): Prom
   const who = await requireStudent(onBehalfOf);
   if ("error" in who) return { ok: false, error: who.error };
 
-  // Travel is locked entirely after the cutoff, removal too, since a removed
-  // entry could never be re-added under the "refuse" policy.
+  // Under the "refuse" policy travel locks entirely after the cutoff, removal
+  // too, since a removed entry could never be re-added. Under "accept-and-flag"
+  // entries stay addable (as late), so removal stays open with them.
   const now = new Date();
-  const { cutoff } = await getTravelCutoff(now);
-  if (!decideTravelSubmission(now, cutoff).allowed) {
+  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  if (!decideTravelSubmission(now, cutoff, policy).allowed) {
     return { ok: false, error: "The travel deadline has passed. Travel entries are locked." };
   }
 

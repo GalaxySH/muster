@@ -21,7 +21,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
     groups: [],
     changeRequests: { open: 0, oldestCreatedAt: null, newLast24h: 0 },
     flagCounts: [],
-    travelCount: 0,
+    travel: [],
     closes: {
       hasInventory: false,
       leadsTotal: 0,
@@ -45,6 +45,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
       driveFolderConfigured: true,
       isProduction: false,
       travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+      lateTravelAccepted: false,
     },
     ghostTitles: [],
     positionConfigs: [],
@@ -384,7 +385,11 @@ describe("positions config alerts", () => {
     // One 1h weekday block, weekend-exempt: 5h a week, under the 10h floor.
     const snap = healthy({
       positionConfigs: [
-        { position: pos({ weekendExempt: true }), blocks: [blk("b", "weekday", 480, 540)], onRosterCount: 3 },
+        {
+          position: pos({ weekendExempt: true }),
+          blocks: [blk("b", "weekday", 480, 540)],
+          onRosterCount: 3,
+        },
       ],
     });
     const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "position-config-cashier");
@@ -395,7 +400,9 @@ describe("positions config alerts", () => {
   it("raises only a warning when a non-exempt position is missing weekend blocks", () => {
     // A 10h weekday block reaches the hour and day floors; only weekends are absent.
     const snap = healthy({
-      positionConfigs: [{ position: pos(), blocks: [blk("b", "weekday", 480, 1080)], onRosterCount: 5 }],
+      positionConfigs: [
+        { position: pos(), blocks: [blk("b", "weekday", 480, 1080)], onRosterCount: 5 },
+      ],
     });
     const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "position-config-cashier");
     expect(a?.severity).toBe("warning");
@@ -419,7 +426,11 @@ describe("positions config alerts", () => {
     const snap = healthy({
       positionConfigs: [
         { position: pos({ id: "a", name: "Aaa" }), blocks: [], onRosterCount: 2 },
-        { position: pos({ id: "z", name: "Zzz" }), blocks: [blk("b", "weekday", 480, 1080)], onRosterCount: 2 },
+        {
+          position: pos({ id: "z", name: "Zzz" }),
+          blocks: [blk("b", "weekday", 480, 1080)],
+          onRosterCount: 2,
+        },
       ],
     });
     const severities = buildDashboardView(snap, NOW)
@@ -430,11 +441,14 @@ describe("positions config alerts", () => {
 });
 
 describe("environment and settings alerts", () => {
-  const config = (over: Partial<DashboardSnapshot["config"]> = {}): DashboardSnapshot["config"] => ({
+  const config = (
+    over: Partial<DashboardSnapshot["config"]> = {},
+  ): DashboardSnapshot["config"] => ({
     resendConfigured: true,
     driveFolderConfigured: true,
     isProduction: false,
     travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
+    lateTravelAccepted: false,
     ...over,
   });
 
@@ -480,6 +494,19 @@ describe("environment and settings alerts", () => {
     expect(ids(snap)).not.toContain("travel-cutoff-past");
   });
 
+  it("does not flag a passed cutoff when late travel is accepted", () => {
+    // The accept-late toggle removes the wall: entries land as late instead of
+    // being refused, so there is nothing for the admin to fix.
+    const snap = healthy({
+      config: config({ travelCutoff: ago(DAY_MS), lateTravelAccepted: true }),
+      groups: [
+        { id: "g1", name: "G", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+      ],
+      students: [student({ groupId: "g1" })],
+    });
+    expect(ids(snap)).not.toContain("travel-cutoff-past");
+  });
+
   it("flags on-roster students left on a non-assignable position", () => {
     const snap = healthy({
       nonAssignablePositions: { studentCount: 3, positionNames: ["Cashier"] },
@@ -490,6 +517,68 @@ describe("environment and settings alerts", () => {
     expect(a?.severity).toBe("warning");
     expect(a?.title).toContain("3 on-roster students");
     expect(a?.detail).toContain("Cashier");
+  });
+});
+
+describe("imminent travel alerts", () => {
+  const iso = (offsetDays: number) =>
+    new Date(NOW.getTime() + offsetDays * DAY_MS).toISOString().slice(0, 10);
+  const trip = (
+    over: Partial<DashboardSnapshot["travel"][number]> = {},
+  ): DashboardSnapshot["travel"][number] => ({
+    studentName: "Sam",
+    startDate: iso(1),
+    endDate: iso(1),
+    resolved: false,
+    ...over,
+  });
+
+  it("warns about unresolved travel starting within two days", () => {
+    const snap = healthy({ travel: [trip({ studentName: "Sam", startDate: iso(1) })] });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "travel-imminent-unresolved",
+    );
+    expect(a?.severity).toBe("warning");
+    expect(a?.title).toContain("1 travel entry starts");
+    expect(a?.detail).toContain("Sam");
+  });
+
+  it("includes travel starting today (the near boundary)", () => {
+    const snap = healthy({ travel: [trip({ startDate: iso(0) })] });
+    expect(ids(snap)).toContain("travel-imminent-unresolved");
+  });
+
+  it("does not warn once a trip is marked resolved", () => {
+    const snap = healthy({ travel: [trip({ startDate: iso(1), resolved: true })] });
+    expect(ids(snap)).not.toContain("travel-imminent-unresolved");
+  });
+
+  it("does not warn about travel further out than the horizon", () => {
+    const snap = healthy({ travel: [trip({ startDate: iso(5) })] });
+    expect(ids(snap)).not.toContain("travel-imminent-unresolved");
+  });
+
+  it("counts the entries and de-dupes the named students", () => {
+    const snap = healthy({
+      travel: [
+        trip({ studentName: "Sam", startDate: iso(1) }),
+        trip({ studentName: "Sam", startDate: iso(2) }),
+        trip({ studentName: "Ada", startDate: iso(0) }),
+      ],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "travel-imminent-unresolved",
+    );
+    expect(a?.title).toContain("3 travel entries start");
+    // Two distinct names even though Sam has two imminent trips.
+    expect(a?.detail).toBe("Sam, Ada. Mark each resolved once its schedule is set.");
+  });
+
+  it("drives the travel tile count off the same list", () => {
+    const snap = healthy({
+      travel: [trip({ startDate: iso(1) }), trip({ startDate: iso(10), resolved: true })],
+    });
+    expect(buildDashboardView(snap, NOW).tiles.travel).toBe(2);
   });
 });
 
@@ -559,7 +648,9 @@ describe("integration health alerts", () => {
 describe("window and roster alerts", () => {
   it("flags a recently closed window that left members unsubmitted", () => {
     const snap = healthy({
-      groups: [{ id: "g1", name: "Returning", opensAt: ago(10 * DAY_MS), closesAt: ago(2 * DAY_MS) }],
+      groups: [
+        { id: "g1", name: "Returning", opensAt: ago(10 * DAY_MS), closesAt: ago(2 * DAY_MS) },
+      ],
       students: [
         student({ email: "1@wisc.edu", groupId: "g1", status: "submitted" }),
         student({ email: "2@wisc.edu", groupId: "g1", status: null }),
@@ -617,9 +708,7 @@ describe("window and roster alerts", () => {
         },
       },
     });
-    const a = buildDashboardView(snap, NOW).alerts.find(
-      (x) => x.id === "import-skipped-non-wisc",
-    );
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "import-skipped-non-wisc");
     expect(a?.severity).toBe("warning");
     expect(a?.title).toContain("2 non-wisc.edu emails");
     expect(a?.href).toBe("/admin/roster");
@@ -635,7 +724,12 @@ describe("who is worth a nudge", () => {
     const view = buildDashboardView(
       healthy({
         groups: [
-          { id: "g1", name: "Open", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+          {
+            id: "g1",
+            name: "Open",
+            opensAt: ago(DAY_MS),
+            closesAt: new Date(NOW.getTime() + DAY_MS),
+          },
         ],
         students: [
           student({
@@ -657,7 +751,12 @@ describe("who is worth a nudge", () => {
     const view = buildDashboardView(
       healthy({
         groups: [
-          { id: "open", name: "Open", opensAt: ago(DAY_MS), closesAt: new Date(NOW.getTime() + DAY_MS) },
+          {
+            id: "open",
+            name: "Open",
+            opensAt: ago(DAY_MS),
+            closesAt: new Date(NOW.getTime() + DAY_MS),
+          },
           { id: "shut", name: "Shut", opensAt: ago(3 * DAY_MS), closesAt: ago(DAY_MS) },
         ],
         students: [

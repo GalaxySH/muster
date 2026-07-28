@@ -47,9 +47,9 @@ describe("decideTravelSubmission", () => {
     });
   });
 
-  it("defaults to the active policy (refuse — owner decision 2026-07-09)", () => {
+  it("keeps refuse as the default policy (owner decision 2026-07-09)", () => {
     expect(LATE_TRAVEL_POLICY).toBe("refuse");
-    expect(decideTravelSubmission(after, cutoff)).toEqual({ allowed: false });
+    expect(decideTravelSubmission(after, cutoff, LATE_TRAVEL_POLICY)).toEqual({ allowed: false });
   });
 });
 

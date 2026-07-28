@@ -22,6 +22,7 @@ import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
+import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
 import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
@@ -221,10 +222,7 @@ export default async function StudentDetailPage({
             <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
           )}
           {submission && (
-            <ResponseStamps
-              submittedAt={submission.submittedAt}
-              updatedAt={submission.updatedAt}
-            />
+            <ResponseStamps submittedAt={submission.submittedAt} updatedAt={submission.updatedAt} />
           )}
           <Link
             href={`/change-requests?student=${encodeURIComponent(detail.email)}`}
@@ -352,7 +350,7 @@ export default async function StudentDetailPage({
                     ok={false}
                     text={`${lateTravelCount} travel entr${
                       lateTravelCount === 1 ? "y" : "ies"
-                    } after 9/1, not excused (late)`}
+                    } added after the cutoff, not excused (late)`}
                   />
                 )}
               </div>
@@ -411,9 +409,16 @@ export default async function StudentDetailPage({
           {evidence.travel.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {evidence.travel.map((t) => (
-                <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <div
+                  key={t.id}
+                  style={{
+                    ...travelEntry,
+                    ...(t.excused ? null : travelEntryLate),
+                    ...(t.resolved ? travelEntryResolved : null),
+                  }}
+                >
                   <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
-                  <div style={{ fontSize: 13 }}>
+                  <div style={{ fontSize: 13, flex: 1 }}>
                     <div>
                       {t.startDate} → {t.endDate}{" "}
                       <span style={t.excused ? successPillStyle : dangerPillStyle}>
@@ -421,6 +426,9 @@ export default async function StudentDetailPage({
                       </span>
                     </div>
                     {t.note && <div style={{ color: "var(--color-text-secondary)" }}>{t.note}</div>}
+                    <div style={{ marginTop: 5 }}>
+                      <TravelResolvedCheckbox id={t.id} resolved={t.resolved} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -605,6 +613,24 @@ const resolvedChangeRow: React.CSSProperties = {
   padding: "8px 10px",
 };
 
+const travelEntry: React.CSSProperties = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-start",
+  padding: "6px 8px",
+  border: "1px solid transparent",
+  borderRadius: "var(--border-radius-md)",
+};
+/** A late (unexcused) entry reads as needing attention: red outline, faint red fill. */
+const travelEntryLate: React.CSSProperties = {
+  borderColor: "#e0847c",
+  background: "#fdf4f3",
+};
+/** A resolved travel entry reads as done: the same green tint as resolved requests. */
+const travelEntryResolved: React.CSSProperties = {
+  background: "#f3faf5",
+};
+
 // --- presentational helpers (server) ---
 
 /**
@@ -680,13 +706,7 @@ function JumpMenu({
  * actions on this page (notes, the scheduled mark, anything saved on the student's
  * behalf) deliberately leave it alone, so it can't imply the student came back.
  */
-function ResponseStamps({
-  submittedAt,
-  updatedAt,
-}: {
-  submittedAt: Date | null;
-  updatedAt: Date;
-}) {
+function ResponseStamps({ submittedAt, updatedAt }: { submittedAt: Date | null; updatedAt: Date }) {
   return (
     <div style={stampPair}>
       <Stamp label="Submitted" at={submittedAt} empty="not yet" />

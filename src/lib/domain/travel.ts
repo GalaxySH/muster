@@ -16,23 +16,29 @@ export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
 export type LateTravelPolicy = "refuse" | "accept-and-flag";
 
 /**
- * The active late-travel policy (owner decision 2026-07-09): entries on/after
+ * The DEFAULT late-travel policy (owner decision 2026-07-09): entries on/after
  * the cutoff are REFUSED outright: nothing is stored, so every stored entry is
- * excused by construction and the `travel_late` flag never raises. Flipping
- * this to "accept-and-flag" restores the previous behavior end to end: late
- * entries are stored with `excused: false`, the "not excused (late)" badges
- * render again, and finalizeSubmission raises `travel_late`. All of those
- * paths are deliberately kept wired.
+ * excused by construction and the `travel_late` flag never raises. The
+ * effective policy is admin-configurable at runtime (`getLateTravelPolicy` in
+ * lib/settings.ts, toggled on /admin/groups); switching to "accept-and-flag"
+ * restores the previous behavior end to end: late entries are stored with
+ * `excused: false`, the "not excused (late)" badges render, and
+ * finalizeSubmission raises `travel_late`.
  */
 export const LATE_TRAVEL_POLICY: LateTravelPolicy = "refuse";
 
 export type TravelDecision = { allowed: true; excused: boolean } | { allowed: false };
 
-/** Decide a travel entry created at `now` under `cutoff` and the active policy. */
+/**
+ * Decide a travel entry created at `now` under `cutoff` and `policy`. Callers
+ * pass the admin-configured policy (getLateTravelPolicy in lib/settings.ts);
+ * there is deliberately no default, so a gate can never silently fall back to
+ * "refuse" while the admin has late travel switched on.
+ */
 export function decideTravelSubmission(
   now: Date,
   cutoff: Date,
-  policy: LateTravelPolicy = LATE_TRAVEL_POLICY,
+  policy: LateTravelPolicy,
 ): TravelDecision {
   if (isTravelExcused(now, cutoff)) return { allowed: true, excused: true };
   return policy === "refuse" ? { allowed: false } : { allowed: true, excused: false };
