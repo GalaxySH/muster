@@ -83,14 +83,19 @@ function pickWorksheet(wb: ExcelJS.Workbook, requested?: string): ExcelJS.Worksh
 
 function worksheetGrid(ws: ExcelJS.Worksheet): string[][] {
   const grid: string[][] = [];
-  // rowCount = last row with content. (actualRowCount counts only populated
-  // rows, so a blank row mid-sheet would truncate the read and drop people.)
-  for (let r = 1; r <= ws.rowCount; r++) {
-    const row = ws.getRow(r);
+  // eachRow visits only rows that hold values, keyed by their real row number,
+  // so a blank row mid-sheet cannot shift or truncate anyone; the holes become
+  // empty rows below. Never loop to ws.rowCount/ws.columnCount here: both are
+  // O(rows) getters in ExcelJS and getRow materializes every index it touches,
+  // so a sheet whose used range is polluted far down (stray formatting or a
+  // lone cell near the bottom) made the old nested loop quadratic and pinned
+  // the server's event loop for hours (the 2026-07-29 outage).
+  ws.eachRow((row, rowNumber) => {
     const cells: string[] = [];
-    for (let c = 1; c <= ws.columnCount; c++) cells.push(cellText(row.getCell(c).value));
-    grid.push(cells);
-  }
+    for (let c = 1; c <= row.cellCount; c++) cells.push(cellText(row.getCell(c).value));
+    grid[rowNumber - 1] = cells;
+  });
+  for (let r = 0; r < grid.length; r++) grid[r] ??= [];
   return grid;
 }
 

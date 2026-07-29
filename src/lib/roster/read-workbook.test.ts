@@ -72,6 +72,22 @@ describe("readRosterGrid (xlsx)", () => {
     expect(grid[2]?.[5]).toBe("2025-08-20");
   });
 
+  it("stays linear when a stray cell pollutes the used range far down", async () => {
+    // A lone value thousands of rows below the roster models the real tracker
+    // sheet that took prod down on 2026-07-29: the old grid loop re-evaluated
+    // ExcelJS's O(rows) columnCount getter per cell, so this test would time
+    // out (by minutes) if that quadratic read ever comes back.
+    const buf = await workbookBuffer((wb) => {
+      addUnitSheet(wb, "Gordon", [["Ann A", "Dishwasher", "Active", "ann@wisc.edu", "No"]]);
+      wb.getWorksheet("Gordon")!.getRow(20_000).getCell(1).value = "stray";
+    });
+    const { grid } = await readRosterGrid(buf);
+    expect(grid[2]?.[3]).toBe("ann@wisc.edu");
+    expect(grid[19_999]?.[0]).toBe("stray");
+    // The gap reads as empty rows, not holes, so the parse layer can scan it.
+    expect(grid[10_000]).toEqual([]);
+  });
+
   it("keeps rows after a blank row mid-sheet", async () => {
     const buf = await workbookBuffer((wb) =>
       addUnitSheet(wb, "Gordon", [
