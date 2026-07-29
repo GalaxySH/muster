@@ -62,8 +62,13 @@ the student board's `CloseSlotView` carries a server-computed `full` boolean ins
 a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead
 progress, per-slot claimants with **assign/remove controls**
 (`components/admin/CloseClaimsTable.tsx`, v0.53 — the picker only offers active leads
-with open picks, the server actions re-check everything), feasibility warning, and a
-second backup Drive sheet
+with open picks, the server actions re-check everything; v0.97 — `Page width="full"`
+(was the 1000px-capped `wide`) plus rendering as a `.stack-table` so the growing
+"Claimed by" column never forces a page-level horizontal scrollbar and the table
+stacks into cards under 720px; per-claimant name+remove-button spans stay
+`white-space: nowrap` but the `", "` separator between claimants sits outside that
+span so the browser has an actual line-break point between names), feasibility
+warning, and a second backup Drive sheet
 (`Muster SL Closes`) — `sheet-sync.ts` + `drive/relay.ts` are now **parametrized by
 sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
 `getSheetUrl`), the student-action gate is deduplicated into `groups/gate.ts`

@@ -39,7 +39,7 @@ export default async function AdminClosesPage() {
   const unfinished = view.leads.filter((l) => !l.complete);
 
   return (
-    <Page width="wide">
+    <Page width="full">
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
         <Crumb href="/admin/responses" label="Responses" />

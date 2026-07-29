@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Production status (read this first)
+
+**Muster is live in production at `muster.hauge.rocks` and has been released to
+employees** — real students and the scheduler use it daily. Treat every change from
+here on as high-stakes: keep diffs minimal and well-tested, avoid destructive
+migrations or mass rewrites, and give extra scrutiny to anything touching auth, the DB
+schema, the roster import, or performance-sensitive paths (a quadratic roster-read
+regression already caused a same-day outage, v0.96 — see the Changelog). When a change
+is risky or hard to reverse, confirm with the user before proceeding.
+
 ## Current state
 
 Phase 1 done; Phase 2 built; Phase 3 done; Phase 4 built; **edit-window enforcement
@@ -40,8 +50,8 @@ The Drive relay + the running sheet are **confirmed live**. The **magic-link fal
 security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
 CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, verified
 against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
-DB switched to the host's central MariaDB + scripted nightly backups (v0.29). Still
-to do: install the backup cron on the box + the production deploy dry-run.
+DB switched to the host's central MariaDB + scripted nightly backups (v0.29). The
+production deploy is live. Still to do: install the backup cron on the box.
 **Schedule change requests done** (roadmap 3.1, v0.48-0.49): the always-available
 `/change-requests` mini-flow (not window-gated; rolling 3-per-24h cap; withdrawable),
 admin review via the **unresolved queue** at `/admin/change-requests` + the per-student

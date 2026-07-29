@@ -34,8 +34,10 @@
   `submissions.confirmed_at` (§9, §13.1) keeps those admin-created rows out of the
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
-  targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.96
+  targets on phones; `README.md` carries the pre-send operational checklist.
+  **Live in production and released to employees** (see §15) — treat further changes
+  as high-stakes. Next: ops (backup cron install).
+- **Version:** 0.97
 - **Last updated:** 2026-07-29
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -992,6 +994,12 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 
 ## 15. Deployment & Ops
 
+- **Status:** ✅ **live in production, released to employees** (`muster.hauge.rocks`,
+  since 2026-07-29). Real students and the scheduler depend on it day to day, so
+  changes from here on must be careful and non-destructive: small, well-tested diffs;
+  no destructive migrations or mass rewrites; extra scrutiny on auth, the DB schema,
+  the roster import, and performance-sensitive paths (see the v0.96 launch-day
+  outage in the Changelog).
 - **Host:** Ubuntu server (existing box).
 - **Domain:** custom subdomain (e.g. `muster.hauge.rocks`).
 - **Resilience:** containerized app, restart-on-crash policy.
@@ -1184,6 +1192,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.97 (2026-07-29)** — **Record production go-live (§15); `/admin/closes` full-width
+  + no horizontal scroll.** Muster is live in production and released to employees;
+  §15 and CLAUDE.md now say so up front, since changes from here on need to be careful
+  and non-destructive. Separately: the Close Shifts table on `/admin/closes` overflowed
+  its page and showed a horizontal scrollbar once claims started populating the
+  "Claimed by" column. Two fixes: the page is now `Page width="full"` (matching the
+  other wide admin tables) instead of the 1000px-capped `wide`, so it uses the full
+  window on desktop; and `CloseClaimsTable` now renders as a `.stack-table` (the
+  existing responsive-table convention from `ResponseList`/`GroupWindowsTable`) so it
+  stacks into labeled cards under 720px with no scrolling. The actual overflow cause
+  was subtler than the page cap: multiple claimants rendered as adjacent
+  `white-space: nowrap` `<span>`s with no text node between them, so the browser had
+  no line-break opportunity between names and the whole claimant list became one
+  unbreakable run. Moved the ", " separator outside the per-claimant nowrap span so
+  names can wrap onto their own lines while each name stays glued to its own remove
+  button.
 - **0.96 (2026-07-29)** — **Roster workbook read made linear (§4.2); fixes the
   launch-day outage.** `worksheetGrid` in `roster/read-workbook.ts` looped to
   `ws.rowCount`/`ws.columnCount`; both are O(rows) getters in ExcelJS (columnCount

@@ -61,16 +61,16 @@ export function CloseClaimsTable({
         </p>
       )}
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table className="stack-table">
           <thead>
             <tr>
-              <th style={th}>Shift</th>
-              <th style={th}>Time</th>
-              <th style={th}>Claimed</th>
-              <th style={th}>Open</th>
-              <th style={th}>Claimed by</th>
-              <th style={th}>Add a lead</th>
-              <th style={th} />
+              <th>Shift</th>
+              <th>Time</th>
+              <th>Claimed</th>
+              <th>Open</th>
+              <th>Claimed by</th>
+              <th>Add a lead</th>
+              <th aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -83,37 +83,39 @@ export function CloseClaimsTable({
               );
               return (
                 <tr key={s.id}>
-                  <td style={{ ...td, whiteSpace: "nowrap", fontWeight: 600 }}>
+                  <td data-label="Shift" style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
                     {formatCloseDate(s.date)}
                   </td>
-                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                  <td data-label="Time" style={{ whiteSpace: "nowrap" }}>
                     {formatTime(s.startMinutes)}–{formatTime(s.endMinutes)}
                   </td>
-                  <td style={td}>
+                  <td data-label="Claimed">
                     {s.claimants.length} of {s.capacity}
                   </td>
-                  <td style={td}>{open}</td>
-                  <td style={td}>
+                  <td data-label="Open">{open}</td>
+                  <td data-label="Claimed by">
                     {s.claimants.map((c, i) => (
-                      <span key={c.email} style={{ whiteSpace: "nowrap" }}>
+                      <span key={c.email}>
                         {i > 0 && ", "}
-                        <Link href={`/admin/students/${encodeURIComponent(c.email)}`}>
-                          {c.displayName}
-                        </Link>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${c.displayName}`}
-                          title={`Remove ${c.displayName}`}
-                          disabled={pendingKey !== null}
-                          onClick={() => run(`u:${s.id}:${c.email}`, () => unassignCloseClaim(s.id, c.email))}
-                          style={removeButton}
-                        >
-                          {pendingKey === `u:${s.id}:${c.email}` ? "…" : "✕"}
-                        </button>
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          <Link href={`/admin/students/${encodeURIComponent(c.email)}`}>
+                            {c.displayName}
+                          </Link>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${c.displayName}`}
+                            title={`Remove ${c.displayName}`}
+                            disabled={pendingKey !== null}
+                            onClick={() => run(`u:${s.id}:${c.email}`, () => unassignCloseClaim(s.id, c.email))}
+                            style={removeButton}
+                          >
+                            {pendingKey === `u:${s.id}:${c.email}` ? "…" : "✕"}
+                          </button>
+                        </span>
                       </span>
                     ))}
                   </td>
-                  <td style={td}>
+                  <td data-label="Add a lead">
                     {open > 0 && eligible.length > 0 && (
                       <AssignPicker
                         leads={eligible}
@@ -123,7 +125,7 @@ export function CloseClaimsTable({
                       />
                     )}
                   </td>
-                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     <button
                       type="button"
                       disabled={pendingKey !== null}
@@ -197,18 +199,6 @@ function AssignPicker({
   );
 }
 
-const th: React.CSSProperties = {
-  textAlign: "left",
-  fontSize: 13,
-  padding: "6px 10px",
-  borderBottom: "1px solid var(--color-border-secondary)",
-};
-const td: React.CSSProperties = {
-  padding: "6px 10px",
-  borderBottom: "0.5px solid var(--color-border-tertiary)",
-  fontSize: 14,
-  verticalAlign: "top",
-};
 const select: React.CSSProperties = {
   padding: "3px 6px",
   border: "1px solid var(--color-border-secondary)",
