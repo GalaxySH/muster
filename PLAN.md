@@ -35,8 +35,8 @@
   response counts. **Launch-readiness UX fixes done** (§18c): the `/me` window-copy
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist. Next: ops.
-- **Version:** 0.95
-- **Last updated:** 2026-07-28
+- **Version:** 0.96
+- **Last updated:** 2026-07-29
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1184,6 +1184,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.96 (2026-07-29)** — **Roster workbook read made linear (§4.2); fixes the
+  launch-day outage.** `worksheetGrid` in `roster/read-workbook.ts` looped to
+  `ws.rowCount`/`ws.columnCount`; both are O(rows) getters in ExcelJS (columnCount
+  walks every row per access) and `getRow` materializes each index it touches, so a
+  sheet whose used range is polluted far below the roster (a stray value or
+  formatting near the sheet bottom, which the real tracker has) made the read
+  quadratic. The 2026-07-29 12:48 tracker upload pinned the Node event loop at 100%
+  CPU; the app stopped accepting connections and every request 502'd until the
+  container restart at 15:15. The grid is now built with `eachRow` over populated
+  rows only, bounded per row by `row.cellCount` (blank rows still read as empty
+  rows; header scan and mid-sheet blank handling unchanged; grid rows are now ragged
+  rather than padded to a uniform width, which the parse layer already tolerated).
+  Regression test: a stray cell 20,000 rows down must parse in milliseconds, so the
+  test times out if the quadratic read ever returns. Root-caused live via
+  `SIGUSR1` + inspector `Debugger.pause` on the wedged process.
 - **0.95 (2026-07-28)** — **Per-student dashboard: pin the availability group to the front
   of the flow (§10a).** The scheduler reads the availability grid, its automatic flags, and
   the course schedule together, so the three are pinned to the front of the card flow as a

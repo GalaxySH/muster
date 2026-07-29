@@ -768,7 +768,12 @@ makes the format differences cheap:
   (Excel's export; without this "Retail and Café Team Member" became an unmapped ghost),
   renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by
   `ROSTER_SHEET_CANDIDATES` (`Gordon`, then `People Coming`, so old PCPL workbooks
-  still import). It knows nothing about which columns matter.
+  still import). It knows nothing about which columns matter. The grid build must
+  stay **linear in populated rows** (`eachRow` + per-row `cellCount`): ExcelJS's
+  `ws.rowCount`/`ws.columnCount` are O(rows) getters and `getRow` materializes every
+  index it touches, so looping to them made the read quadratic on a sheet whose used
+  range is polluted far down — a stray cell near the bottom of the real tracker pinned
+  the event loop for hours and took the site down on launch day (2026-07-29, v0.96).
 - `csv.ts` (`parseCsv`) is a pure RFC 4180 reader — the tracker's names are
   `"Last, First"`, so fields need real quote handling.
 - `parse.ts` is pure and holds everything format-shaped: `extractRosterRows` finds the
