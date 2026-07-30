@@ -51,7 +51,8 @@ security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25)
 CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, verified
 against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
 DB switched to the host's central MariaDB + scripted nightly backups (v0.29). The
-production deploy is live. Still to do: install the backup cron on the box.
+production deploy is live and the **nightly backup cron is installed** on the box
+(`/usr/local/sbin/backup-mariadb`, root crontab, 03:17 daily).
 **Schedule change requests done** (roadmap 3.1, v0.48-0.49): the always-available
 `/change-requests` mini-flow (not window-gated; rolling 3-per-24h cap; withdrawable),
 admin review via the **unresolved queue** at `/admin/change-requests` + the per-student
@@ -163,11 +164,26 @@ considering the task done. Prefer Playwright MCP over running Playwright via Bas
 ## What Muster is (and is not)
 
 Muster **collects** student dining-worker availability/preferences uniformly,
-validates them at entry, and presents them to a human scheduler. It does **not**
-write schedules and does **not** integrate with WhenToWork (W2W) — the scheduler
-still writes the actual schedule in W2W by hand. Keep this boundary: anything that
-generates or pushes schedules is out of scope (§17), with the sole called-out
-exception being the SL weekend-close *claim* subsystem (§18a).
+validates them at entry, presents them to a human scheduler, and **generates
+recommended schedules** from them (in scope as of PLAN 0.98 — §17). Two limits on
+the generator are permanent: it is **advisory** (nothing student-facing is gated on
+it; the scheduler may ignore any of it) and **admin-only** (students never see a
+generated schedule).
+
+The boundary that remains is W2W: **no programmatic integration, ever** — no API, no
+credentials, no push or pull. The scheduler still enters the schedule in W2W by hand.
+The **ceiling** on that side is a **document Muster produces and a human uploads**, in
+whatever format W2W's importer takes; that is a possible future feature (roadmap 5.3),
+**not built**. Anything that talks to W2W directly is out of scope.
+
+**Wish / known gap — the app doesn't hold the final schedule.** The batch
+"your schedule has been created" email (roadmap 2.4) can only *announce* that a
+schedule exists; it can't contain one, because the authoritative schedule lives in W2W
+and Muster's generated run is a recommendation the scheduler may have edited away from.
+The email students would actually want is their **final shifts plus the reminders that
+go with them**. That needs Muster to hold the final schedule — which today means either
+5.3's export round-tripping back, or the scheduler confirming a run as final. Until one
+of those exists, don't grow the email feature; see the removal item in the roadmap.
 
 ## Domain concepts that drive the design
 

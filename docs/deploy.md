@@ -124,11 +124,33 @@ Watch the Actions run; it ends by verifying `/api/health`. Rollback = deploy
 the previous tag's commit again (on the server: `git checkout <prev-tag> &&
 docker compose up -d --build`, or push a new tag pointing at it).
 
-**One-time for v0.63:** after the deploy, run `npm run db:seed` once against the
-production DB (or insert the rows by hand) so the new `roster_title_mappings`
-table gets its initial title map. Seeding is insert-only-when-empty, so this is
-safe on a live DB; without it the next roster import reports every title as
-unmapped (ghosts).
+## Backups
+
+The nightly dump is **installed and running**: `/usr/local/sbin/backup-mariadb`
+from the root crontab at `17 3 * * *`, writing gzipped all-database dumps to
+`/var/backups/mariadb` with 14-day rotation (script + install notes:
+`ops/backup/backup-mariadb.sh`). To confirm it is healthy on the box:
+
+```bash
+sudo crontab -l | grep backup-mariadb    # the schedule line is installed
+systemctl is-active cron                 # the daemon that runs it is up
+sudo ls -lht /var/backups/mariadb | head # dumps exist, newest is from last night
+```
+
+The third command is the one that actually matters — a cron line that never fires
+looks identical to one that does until you check for output. If the newest dump is
+stale, check whether it ran and why it failed:
+
+```bash
+sudo journalctl -u cron --since '3 days ago' | grep backup-mariadb
+sudo /usr/local/sbin/backup-mariadb      # force a run; prints the file + size
+```
+
+Verify a dump is readable (should print `-- MariaDB dump …`):
+
+```bash
+sudo zcat /var/backups/mariadb/$(sudo ls -t /var/backups/mariadb | head -1) | head -1
+```
 
 ## Monitoring
 
