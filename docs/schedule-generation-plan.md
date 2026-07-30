@@ -10,12 +10,18 @@ student is untouchable by every pass — which replaced per-assignment pins and
 collapsed the incremental/full mode split into one "Update schedule" action.
 Schedules are admin-only; students never see them.
 
-**Scope boundary.** This feature crosses PLAN §17's "Writing or auto-generating
-schedules" non-goal, so §17 must be amended when implementation starts. The second
-half of the boundary stays fully intact: **no W2W integration, ever**. Muster
-*recommends* assignments; the human scheduler still writes the actual schedule in
-W2W by hand. Recommendations are advisory output, like the demand heatmap — they
-gate nothing student-facing.
+**Scope boundary (settled 2026-07-30, PLAN 0.98).** §17 has been amended:
+schedule generation **is in scope** and is no longer framed as an exception to a
+non-goal. Two limits are permanent — output is **advisory** (it gates nothing
+student-facing; the scheduler may ignore any of it) and **admin-only** (students
+never see a generated schedule).
+
+The W2W half of the boundary stands and is now stated precisely: **no
+programmatic integration, ever** — no API, no credentials, no push or pull. The
+**ceiling** is a **document Muster produces and a human uploads** into W2W, in
+whatever format its importer accepts. That is a possible future feature
+(roadmap 5.3), **not built and not designed**; today the scheduler reads
+`/admin/schedule` or its CSV and types into W2W by hand.
 
 Feasibility study: 2026-07-16. Problem size at fall peak (~400 students, 65 blocks,
 ~244 block×day cells, ≈6,000 binary assignment variables) is small enough for a

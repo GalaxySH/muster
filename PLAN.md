@@ -1,12 +1,15 @@
 # Muster — PLAN.md
 
 > **What it is:** A special-purpose web app that collects employee scheduling
-> information from student dining-services workers in a uniform way and displays
-> it back to the scheduler in an organized, decision-ready form.
+> information from student dining-services workers in a uniform way, displays it
+> back to the scheduler in an organized, decision-ready form, and generates
+> **recommended** schedules from it (admin-only, advisory — §17).
 >
-> **What it is *not*:** It does **not** write schedules, and it does **not**
-> integrate with WhenToWork (W2W). It replaces the *availability/preference
-> collection* step only. The human scheduler still writes schedules in W2W.
+> **What it is *not*:** It does **not** integrate with WhenToWork (W2W) — no API,
+> no credentials, no push, in either direction. The human scheduler still enters
+> the schedule in W2W. The **ceiling** on that side is an importable document
+> Muster produces and the scheduler uploads by hand: a possible future feature,
+> not built (§17).
 
 - **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
@@ -36,9 +39,13 @@
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist.
   **Live in production and released to employees** (see §15) — treat further changes
-  as high-stakes. Next: ops (backup cron install).
-- **Version:** 0.97
-- **Last updated:** 2026-07-29
+  as high-stakes. **Schedule generation is in scope** (§17, 0.98): target staffing +
+  coverage and the recommendation engine ship (`/admin/schedule`), with Phase C
+  (run history + restore, diffs, staleness banner, the schedule sheet) outstanding —
+  see `docs/schedule-generation-plan.md`. Ops is complete (the nightly backup cron is
+  installed). Next: schedule-generation Phase C.
+- **Version:** 0.98
+- **Last updated:** 2026-07-30
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -212,6 +219,11 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   warns about any unresolved trip **starting within two days** (§10b).
 - **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
   the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
+  **⚠️ Slated for removal (decided 2026-07-30 — roadmap 6.1):** it can only announce that
+  a schedule exists, since the final schedule lives in W2W and Muster holds a
+  recommendation the scheduler may have edited away from. The generic `sendEmail` core
+  and `submissions.scheduled` stay; the surface, the action, and
+  `scheduleEmailSentAt` go.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students); every name links straight to that student's page.
 - **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
@@ -241,11 +253,12 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 7 | Shifts must span ≥2 days (≥3 for Shift Lead) | **Hard** | min distinct days available to satisfy |
 | 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** by default — the form stops accepting them; the admin's accept-late toggle stores them late/unexcused instead (§7b) |
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
+| 10 | **Desired hours** must be stated and reach the position floor | **Hard** | `desiredHours` entered + finite + ≥ position `minHours` (v0.34; §7). The 20/30h cap is still not applied at entry — see #3 |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
-> many shifts as they want; the only hours hard-block is #2 (min reachable via the
-> covered union of selected shifts). #5 soft for v1 (auto-pick + flag); Barista exempt.
-> #2/#6/#7 hard at entry. #8 travel cutoff = **default 9/1, admin-configurable, all
+> many shifts as they want; the two hours hard-blocks are #2 (min reachable via the
+> covered union of selected shifts) and #10 (the number they ask for). #5 soft for v1
+> (auto-pick + flag); Barista exempt. #2/#6/#7/#10 hard at entry. #8 travel cutoff = **default 9/1, admin-configurable, all
 > positions**; on/after it, new travel is refused outright unless the admin's
 > accept-late toggle is on (then stored late/unexcused).
 
@@ -372,8 +385,9 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
 
 > **Weekend = Saturday + Sat/Sun template; Weekday = Mon–Fri.** The open/close
 > requirement (policy #6) is satisfied by selecting the open **or** close block of
-> the relevant day-type. Note Barista has no weekend block → see §16 open item on the
-> weekend requirement for weekday-only positions.
+> the relevant day-type. Barista has no weekend block because it is **weekend-exempt**
+> (§5 #5): the weekend requirement never applies to it, so the empty weekend column is
+> the config saying so, not a gap.
 
 ---
 
@@ -434,13 +448,13 @@ scheduler (not auto-parsed).
 
 - **Course schedule (required):** screenshot/PDF upload. Source of truth for the
   no-conflict rule (#1); students are not trusted to self-transcribe times.
-- **Extracurriculars (optional page):** evidence upload(s) + a free-text details box.
-  Helper text states that shifts are scheduled around course schedules **and
-  mandatory extracurriculars**. Only *mandatory* activities are excused; the scheduler
-  judges from the evidence + notes.
+- **Extracurriculars (optional page):** evidence upload(s) + a free-text details box,
+  **at most 10 files** (`MAX_EXTRACURRICULAR_FILES`). Helper text states that shifts are
+  scheduled around course schedules **and mandatory extracurriculars**. Only *mandatory*
+  activities are excused; the scheduler judges from the evidence + notes.
 - **Travel excusal (repeatable entries):** each entry = a **mandatory** proof-of-travel
   upload + an **inclusive start–end date range** (+ optional note). Multiple entries
-  allowed. **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
+  allowed, **at most 20** (`MAX_TRAVEL_REQUESTS`). **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
   admin-configurable; same cutoff for all positions) is excused. What happens on/after
   the cutoff is the **admin-set late policy** (the "Accept late travel" toggle beside the
   cutoff on `/admin/groups`, stored in `app_settings`, read via `getLateTravelPolicy` in
@@ -460,6 +474,12 @@ refuse them — an admin adding a travel entry *is* the excusal decision, so the
 stored `excused: true`. This covers what a student hands over in person or after their
 window closes.
 
+**Upload limits (all three pages).** Each proof file is **≤ 15 MB**
+(`MAX_EVIDENCE_BYTES`, `drive/upload-validation.ts`); images and PDFs only. The Next
+server-action body cap is **20 MB** (`next.config.ts`), which has to clear both the
+proof cap and the 10 MB roster workbook (§4.2). The per-page counts are above; change
+requests carry their own ≤ 3 files (§9).
+
 ---
 
 ## 8. Entry-time Validation
@@ -467,7 +487,8 @@ window closes.
 | Rule | Type | Behavior |
 |---|---|---|
 | Covered hours of selected shifts (union per day; cycle avg) ≥ min hours | **Hard** | block submit; prompt to select more shifts |
-| Max hours (20/30) | *not checked at entry* | over-selection allowed; cap applied scheduler-side (§5 #3, §10) |
+| Desired hours entered and ≥ min hours (§5 #10) | **Hard** | block submit; the field is required, not a hint |
+| Max hours (20/30) | *not checked at entry* | over-selection allowed; cap applied scheduler-side (§5 #3, §10) — first actually enforced by the generator (§17) |
 | ≥1 opening **or** ≥1 closing block selected | **Hard** | block submit |
 | Available across ≥2 days (≥3 for Shift Lead) | **Hard** | block submit |
 | A weekend shift selected (**Barista exempt**) | **Soft** | auto-assign a weekend shift + raise Flag; show *"I randomly chose this shift for you."* |
@@ -523,7 +544,7 @@ columns from the roster.
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
   §10a), `scheduleEmailSentAt?` (idempotency marker for the batch schedule-ready email —
-  roadmap 2.4), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  roadmap 2.4; **due for removal with that feature**, roadmap 6.1), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
@@ -541,17 +562,34 @@ columns from the roster.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
-  the flag holder can't be deleted). Students join via `students.groupId`. (The
+  the flag holder can't be deleted), `lockAfterSubmit: bool` (the optional third access
+  gate — §13 #3: once on, a submitted member can no longer edit even inside an open
+  window). Students join via `students.groupId`. (The
   **travel-excusal cutoff** is separate global config in `app_settings` — default 9/1,
   admin-set — not window-derived.)
 - **AdminUser**: `email`, allowlist.
 - **AdminGoogleGrant**: `drive.file` refresh token (encrypted) for the image relay
   (§12) — admin-only; one row.
-- **RosterImport**: `id`, `importedAt`, `rowCount`, `importedBy`.
+- **RosterImport**: `id`, `importedAt`, `rowCount`, `importedBy`, `skippedNonWisc`
+  (rows dropped for a non-`wisc.edu` email — neither auth path accepts one, so the admin
+  hub flags them rather than losing a real worker silently; §4.2, 0.91).
+- **AppSetting**: `key` (PK) → `value` (string; JSON where a key needs structure). The
+  one global key/value store for admin-set config that isn't per-student or per-group,
+  read through named accessors in `lib/settings.ts` (never ad-hoc). Current keys: the
+  Drive/proofs folder id, the responses and SL-closes sheet ids + their last-sync
+  stamps, `drive_last_ok_at` / `drive_last_error_at` (integration health — §10b), the
+  travel cutoff + `late_travel_accept` (§7b), `excluded_roster_titles` (§4.2),
+  `default_group_auto_assign` (§13), the email master switch + change-digest
+  enabled/recipients/last-run (§11), and `schedule_params` (the tunable generation
+  knobs — §17). Rows are created on first write, so an unset key means "use the coded
+  default", never "broken". *(The `scheduleEmailSentAt` marker on Submission is due to
+  go with roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
-  `tokenHash`, `requestedAt`, `expiresAt` (≤ form-window close), `redeemedAt?`,
-  `redeemedFrom?`, `revokedAt?`. Self-service issued; redemption sets a window-scoped
-  session. Store hash only.
+  `tokenHash`, `requestedAt`, `expiresAt` (**as built: 30 minutes from issue**, not the
+  form-window close the original design proposed), `redeemedAt?`, `redeemedFrom?`,
+  `revokedAt?`. Issued self-service, or by an admin from the per-student page (0.92).
+  Redemption establishes the **standard JWT `AppSession`** — the window-scoped session
+  cookie stays deferred (§11). Store hash only.
 - **ChangeRequest** (schedule change mini-flow — roadmap 3.1, §4.1): `id`,
   `studentEmail`, `day`, `shiftText` (the student's own words), `comment`,
   `permanent: bool` (false = one-time change), `status`
@@ -777,8 +815,9 @@ the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
    link."* (Never display the link; never confirm whether the email exists — avoids
    roster probing.) **Rate-limit** requests per address/IP.
 5. The user clicks the link → lands on a **"Confirm it's you" page** (re-enter email)
-   → on submit, a **session cookie scoped to the form window** is set. They're now a
-   normal logged-in student.
+   → on submit, a session is set and they're a normal logged-in student. *(As built it
+   is the standard JWT `AppSession`; the **form-window-scoped cookie** described in the
+   next paragraph stays **deferred** — see "As built" above.)*
 6. **Expired link** → the page shows a **"Request a new link"** button that re-sends to
    the same email (re-proving mailbox control in one click). No admin involvement.
 
@@ -795,16 +834,19 @@ prevents mail-scanner / link-preview bots from consuming a one-time link on a ba
 not a targeted attacker — sufficient given the low stakes.)
 
 **Token properties:** bound to one student email; high-entropy; stored **hashed**;
-expires (≤ form-window close); revocable from admin; issuance + redemption audited.
-Blast radius of a leak = that one student's availability prefs (no other student, no
-admin view, no records).
+expires (**as built: 30 minutes**, not the form-window close proposed here); issuance +
+redemption audited. **Deferred:** an admin **revoke UI** — the `revokedAt` column exists
+and *is* honored on redeem, but nothing writes it yet — and per-IP rate limiting (only
+the 60 s per-address cooldown ships). Blast radius of a leak = that one student's
+availability prefs (no other student, no admin view, no records).
 
 **Email transport (decided): app sends directly via a transactional email provider.**
 Power Automate is **ruled out** — its "When a HTTP request is received" trigger is
 **premium**, which this account doesn't have. Instead the app's backend sends the magic
-link itself via a provider (e.g. **Resend / SendGrid** free tier, or **AWS SES**), from
-an address on the owned domain (e.g. `sched@hauge.rocks`). Configure **SPF/DKIM/DMARC**
-on hauge.rocks for reliable delivery into M365 inboxes. The app still **generates and
+link itself via a provider (**decided: Resend**, v0.18), from an address on the owned
+domain — **as built, the verified sending domain is `re.hauge.rocks`**, not the
+`sched@hauge.rocks` originally sketched here. Configure **SPF/DKIM/DMARC** on
+hauge.rocks for reliable delivery into M365 inboxes. The app still **generates and
 owns the token**; the provider is only the wire. Losing the wisc.edu-from trust signal
 matters little here — the student requested the link seconds earlier, so it's expected;
 a clear from-name ("GDEC Scheduling") on a domain-authenticated message suffices.
@@ -823,10 +865,23 @@ Keep auth modular: Google sign-in and magic-link redemption both resolve to the 
 session abstraction** (a session bound to a student email). The rest of the app is
 auth-method-agnostic.
 
-### Roster-key risk
+### Third path: the dev-login bypass (non-production only)
+`/dev-login` signs in as any `@wisc.edu` address without OAuth, via a Credentials
+provider, so local work and Playwright runs don't need Google. It is **triple-gated**:
+`isDevLoginEnabled(flag, nodeEnv)` in `auth/policy.ts` returns false whenever
+`NODE_ENV=production` regardless of the flag, the `DEV_LOGIN_ENABLED` env var must be
+set, and `env-guard.ts` refuses a production boot that tries to enable it. It resolves
+to the same `AppSession` as the other two paths. The **production** equivalent for
+training walkthroughs is `/admin/test-users` (§18b), which is a different mechanism
+(admin-minted magic-link tokens on a synthetic domain), not this bypass.
+
+### Roster-key risk — ✅ confirmed (v0.9), still an operational check
 - The roster `Email` column **must equal the Google sign-in email** (`netid@wisc.edu`
-  form), not a `first.last@wisc.edu` alias, or the lookup silently misses. Confirm
-  which format PC stores; normalize on import if needed.
+  form), not a `first.last@wisc.edu` alias, or the lookup silently misses. **Confirmed:
+  PC stores the NetID form.** Import lowercases and trims but cannot repair an alias, so
+  this stays a per-import check, not a solved problem: the admin hub warns on
+  alias-looking and non-`wisc.edu` roster emails (§10b, 0.89/0.91), and it leads the
+  pre-send checklist in `README.md`.
 
 ---
 
@@ -859,7 +914,10 @@ auth-method-agnostic.
   - **Only the admin grants it, once** — students never grant Drive.
   - **Refresh token is durable** under Internal publishing (no Testing-mode 7-day
     expiry). Store it **encrypted server-side**; touch it periodically (6-month idle
-    rule).
+    rule). **The periodic touch is not built** — nothing exercises the grant over an
+    idle summer, so a long quiet stretch could expire it. Failure *detection* does ship
+    (`drive_last_error_at` vs `drive_last_ok_at` raises the `drive-failing` alert on the
+    admin hub — §10b), but that fires after the fact; a keepalive ping is still open.
   - **Destination = a department-owned Shared Drive** folder if possible, so the
     pipeline survives staff turnover instead of dying with the admin's account.
   - **Folder layout (`DRIVE_FOLDER_ID` = root):** the **root holds the running
@@ -875,11 +933,18 @@ auth-method-agnostic.
     **duplicates the data so it survives app failure/retirement**. Written via the
     **Google Sheets API v4** (clear → RAW values → freeze/bold header) within the
     `drive.file` grant (the Sheets API is enabled on the Cloud project). Only
-    `onRoster` students are included (People Leaving drop out). Rebuilt best-effort
-    after each submit **and** by an admin button, behind a **split cooldown: 30 s for
-    the manual rebuild, 10 min for the automatic post-submit resync**. The sheet id +
-    last-sync time live in `app_settings`.
-  - **Retention:** purge images after schedules are written.
+    `onRoster` students are included (people who drop off the tracker drop out).
+    Rebuilt best-effort after each submit **and** by an admin button, behind a **split
+    cooldown: 30 s for the manual rebuild, 10 min for the automatic post-submit
+    resync**. The sheet id + last-sync time live in `app_settings`. **Self-healing:** a
+    cached sheet id that returns **404** (someone deleted the sheet out of the folder)
+    makes the writer recreate the sheet and retry once, rather than failing forever on a
+    dead id (`drive/relay.ts`). The same target machinery backs the second **`Muster SL
+    Closes`** sheet (§18a).
+  - **Retention:** purge images after schedules are written. **Not built** — no purge
+    job exists and every relayed `fileId` is still live in Drive. Now actionable, since
+    the schedule-ready email (roadmap 2.4) marks the point where a cycle's images stop
+    being needed.
 - **Alternative (fallback):** if the Drive relay is unavailable, app-side storage with
   isolated, access-controlled, encrypted-at-rest blobs and a short retention window.
   Documented as a fallback, not the default.
@@ -972,17 +1037,17 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 - **UI:** React (Next.js).
 - **Auth:** **Auth.js (NextAuth)**, Google provider, `hd=wisc.edu` (student path,
   sign-in scopes only). Separate admin-only **`drive.file`** grant for image relay.
-- **Email (fallback links):** **transactional email provider** (Resend / SendGrid /
-  SES) sending from the owned domain (`sched@hauge.rocks`) with SPF/DKIM/DMARC. App
-  generates the link; the provider only delivers. (Power Automate ruled out — premium.)
+- **Email (fallback links + digests):** **Resend** (decided v0.18), sending from the
+  verified domain **`re.hauge.rocks`** with SPF/DKIM/DMARC. App generates the link; the
+  provider only delivers. (Power Automate ruled out — premium.)
 - **Image storage:** Google Drive (UW Workspace) via `drive.file`; app stores `fileId`
   only (§12).
 - **DB:** **MariaDB** — ✅ implemented as originally intended: production uses the
   **host's central instance** (app/migrate run host-networked → `127.0.0.1:3306` as
   the localhost-only `musteru` account; no db container, no MariaDB config changes).
   Local dev keeps the throwaway container in `compose.dev.yaml`.
-- **ORM:** Drizzle (TS-native, light) or Prisma (batteries-included) — both support
-  MariaDB/MySQL. Decision pending.
+- **ORM:** **Drizzle** (decided v0.8 — TS-native and light; Prisma was the alternative).
+  Migrations via `drizzle-kit`, committed in `drizzle/`.
 - **Reverse proxy / TLS:** the box-wide **host Apache** (it already fronts every
   site on the server) terminates HTTPS for `muster.hauge.rocks` and proxies to the
   app's loopback-only port — vhost in `apache/muster.conf`, cert via certbot.
@@ -1003,7 +1068,8 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 - **Host:** Ubuntu server (existing box).
 - **Domain:** custom subdomain (e.g. `muster.hauge.rocks`).
 - **Resilience:** containerized app, restart-on-crash policy.
-- **Backups:** ✅ scripted (`ops/backup/backup-mariadb.sh`) — nightly root-cron
+- **Backups:** ✅ scripted **and installed** (`ops/backup/backup-mariadb.sh` →
+  `/usr/local/sbin/backup-mariadb`, root crontab `17 3 * * *`) — nightly root-cron
   `mariadb-dump --all-databases --single-transaction` of the central host instance
   (Muster rides along with the box's other apps), gzip + integrity check, 14-day
   rotation, root-only dir; unix_socket auth so no password is stored (no
@@ -1016,13 +1082,21 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
   used as the compose `app` healthcheck and for external uptime monitoring).
   Separate prod vs test OAuth clients (register both redirect URIs on the prod
   client — see docs/deploy.md).
+- **Monitoring:** ✅ `GET /api/health` (unauthenticated DB round-trip probe) is both the
+  compose healthcheck and the external monitor's target. A live **UptimeRobot** status
+  page watches it; the admin hub links to it, and `README.md` carries its badge.
+- **Ops backlog: empty.** The last outstanding item (the backup cron) was installed
+  2026-07-30; verification commands are in `docs/deploy.md` § Backups.
 
 ---
 
 ## 16. Open Questions / To Confirm
 
-1. **Roster email key** — does PC's `Email` store `netid@wisc.edu` or a `first.last`
-   alias? (Affects lookup correctness — §11.)
+1. **Roster email key** — ✅ *resolved (v0.9):* the tracker's `Email` column stores the
+   `netid@wisc.edu` form, which is what Google returns at sign-in. Aliases remain an
+   **operational** risk per import (a hand-typed `first.last@wisc.edu` silently never
+   matches), so the admin hub warns on alias-shaped and non-`wisc.edu` roster emails and
+   the check leads the `README.md` pre-send list — §11.
 2. **Position ↔ title mapping** — ✅ *resolved (v0.63):* the mapping lives in the
    `roster_title_mappings` table, seeded once from the code fixture; unmapped titles
    surface as ghosts and are resolved by the admin on `/admin/positions` (§6.1). No
@@ -1032,10 +1106,14 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
    Drive folder by id** — so no app-creates-its-own-folder workaround is needed (§12).
 4. **Shared Drive destination** — ✅ confirmed: uploads land in the Shared Drive folder
    set via `DRIVE_FOLDER_ID` (verified via `/admin/drive` Test connection) — §12.
-5. **Email provider + domain auth** — pick a provider (Resend / SendGrid / SES) and set
-   up SPF/DKIM/DMARC on hauge.rocks for M365 deliverability (§11).
-6. **Admin export format** — what exact layout do you want to read from while typing
-   into W2W?
+5. **Email provider + domain auth** — ✅ *resolved (v0.18):* **Resend**, sending from the
+   verified domain `re.hauge.rocks` with SPF/DKIM/DMARC in place; delivery into M365
+   confirmed in production (§11).
+6. **Admin export format** — ⏳ *still open, and now broader.* What exact layout do you
+   want to read from while typing into W2W? Three surfaces answer to this: the responses
+   export matrix (CSV + running sheet, §10/§12), the schedule CSV (§17), and — if it is
+   ever built — the **W2W-importable document** (§17), whose format W2W dictates rather
+   than us. The existing matrix stands until the scheduler asks for changes.
 
 **Recently resolved:** ORM = Drizzle · test stack = Vitest + Playwright · reverse
 proxy = host Apache (vhost `apache/muster.conf`; bundled Caddy dropped) ·
@@ -1053,12 +1131,22 @@ under-18 test (deferred → fallback, §11).
 
 ## 17. Out of Scope / Non-Goals
 
-- Writing schedules. Generating schedule **recommendations** is no longer a blanket
-  non-goal: it is built, admin-facing and advisory only, per
-  `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79;
-  Phase B generation engine + run view in 0.84). Recommendations are never shown to
-  students. The human scheduler still writes the actual schedule in W2W by hand.
-- Any programmatic integration with WhenToWork.
+- ~~Writing schedules.~~ **Removed as a non-goal (0.98): schedule generation is in
+  scope.** It is a first-class feature, not a grudging exception — the engine, the
+  coverage grid, tunable parameters, and per-run history all ship per
+  `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79; Phase
+  B generation engine + run view in 0.84–0.85; Phase C regeneration ergonomics
+  outstanding). Two limits are permanent, and they are what keep the boundary meaningful:
+  output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
+  is gated on it), and it is **admin-only** (recommendations are never shown to
+  students).
+- **Any programmatic integration with WhenToWork** — no API, no credentials, no push or
+  pull, in either direction. The **ceiling** here is a **document Muster produces and a
+  human uploads**: an export in whatever format W2W's importer accepts. That is a
+  **possible future feature — not built, not scheduled, not designed** (roadmap 5.3).
+  Until it exists the scheduler reads `/admin/schedule` or its CSV and types into W2W.
+  Should it be built, it changes nothing about this bullet: Muster still never talks to
+  W2W, it just hands the human a better piece of paper.
 - Storing FERPA-protected records on the app server (by design — see §12).
 - Replacing the roster workbook (Muster *imports* it; it isn't the system of record).
 
@@ -1081,9 +1169,17 @@ under-18 test (deferred → fallback, §11).
   weekday/weekend preferences grid with the auto-assigned cell marked, proof
   thumbnails → lightbox, scheduler notes) + non-response tracking + export (CSV download
   and the running Drive responses spreadsheet, §10/§12).
-- **Phase 5 — Ops:** Docker, reverse proxy/TLS, CI/CD, backups.
-- **Phase 6+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
-  consolidation.
+- **Phase 5 — Ops:** ✅ Docker, host-Apache reverse proxy/TLS, CI/CD (quality gate +
+  tag deploy), central-MariaDB move, health endpoint + external monitoring, backup
+  script (v0.25–0.30). **Live in production since 2026-07-29** (§15), with the nightly
+  backup cron installed 2026-07-30. Nothing outstanding.
+- **Phase 6 — Schedule generation:** ✅ target staffing + coverage (0.79), the
+  recommendation engine + run view (0.84–0.85). **Phase C outstanding** — run history +
+  restore UI, diff view, staleness banner, the `Muster Schedule` sheet, optional manual
+  overrides (`docs/schedule-generation-plan.md`; roadmap 5.1).
+- **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
+  consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
+  W2W interop per §17.
 
 ### 18a. Shift-Lead weekend-close pickup — ✅ DONE (0.46)
 A **claim/inventory subsystem**, architecturally distinct from the rest of Muster
@@ -1192,6 +1288,48 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.98 (2026-07-30)** — **Schedule generation is in scope; W2W tops out at an
+  importable document; stale spec text reconciled (docs only, no code).** Two changes,
+  both to what the documentation *claims*. **(1) Scope.** §17 stops listing schedule
+  writing as a non-goal that generation is an exception to, and states it plainly:
+  generation is a first-class feature, permanently bounded by being advisory and
+  admin-only. The W2W bullet gains its ceiling — **no programmatic integration ever**,
+  but a **document Muster produces and a human uploads into W2W** is allowed and
+  recorded as a possible future feature (roadmap 5.3), not built and not scheduled. The
+  header block, §18's phase list, `docs/roadmap.md` (new Tier 4/5, rewritten Parked),
+  `docs/schedule-generation-plan.md` (whose "no W2W integration, **ever**" now reads as
+  the API boundary it meant), `CLAUDE.md`, and `README.md` all say the same thing.
+  **(2) Reconciliation** of the drift the 2026-07-08 audit logged and nothing folded in:
+  §5/§8 rule tables gain the `desired_hours` hard check (v0.34, previously documented
+  only in §7) as **#10** — appended, not inserted, so the many "§5 #8"-style references
+  stay valid; §9 gains `Group.lockAfterSubmit` and an **AppSetting** entity (the
+  key/value store was undocumented despite holding ~15 keys), corrects `MagicLink` to
+  the as-built 30-minute token + standard JWT, and records `RosterImport.skippedNonWisc`;
+  §11 annotates the window-scoped cookie and admin revoke UI as deferred where the prose
+  read as current, fixes `sched@` → the verified `re.hauge.rocks`, documents the
+  dev-login bypass as the third auth path, and marks the roster-key question resolved
+  while keeping it as a per-import operational check; §7b/§12 state the caps that were
+  changelog-only (10 extracurricular files, 20 travel entries, 15 MB proof, 10 MB
+  roster, 20 MB action body) plus the responses sheet's 404 self-healing recreate, and
+  flag the two §12 promises that were never built (image retention purge, Drive refresh
+  token idle touch); §14 records Drizzle as decided (v0.8) instead of "decision
+  pending"; §15 adds the UptimeRobot status page; §16 marks #1 and #5 resolved and
+  widens #6; §6.3 drops a cross-reference to a §16 item that no longer exists.
+  **(3) Ops closed out.** The nightly backup **cron is installed** on the box
+  (`/usr/local/sbin/backup-mariadb`, root crontab `17 3 * * *`) and the one-time v0.63
+  production seed of `roster_title_mappings` has been run, so both drop off the
+  open-items lists; `docs/deploy.md` swaps the stale one-time note for a **Backups**
+  section carrying the commands that confirm the cron actually fires (a schedule line
+  that never runs looks identical to one that does until you check for dumps). The ops
+  backlog is now empty. **(4) Decided: remove the batch schedule-ready email**
+  (roadmap **6.1**). All it can say is that a schedule exists — the final schedule lives
+  in W2W, and what Muster holds is a recommendation the scheduler may have edited away
+  from — so it carries an admin surface, a preview/throttle path, and a DB column to
+  deliver one line the scheduler could send by hand. §10a and §9 are marked accordingly;
+  the generic `sendEmail` core and `submissions.scheduled` (the generation freeze unit)
+  stay. The standing wish — mail students their **actual shifts plus reminders**, which
+  first needs Muster to hold the final schedule — is recorded in `CLAUDE.md`. No
+  behavior, schema, or code changed in this entry; 6.1 is a queued task, not a removal.
 - **0.97 (2026-07-29)** — **Record production go-live (§15); `/admin/closes` full-width
   + no horizontal scroll.** Muster is live in production and released to employees;
   §15 and CLAUDE.md now say so up front, since changes from here on need to be careful

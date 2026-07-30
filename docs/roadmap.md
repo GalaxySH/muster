@@ -10,11 +10,15 @@
 > **simplify and improve** the code they touch (deduplicate, extract a pure
 > seam, delete dead code) — never merely add alongside it.
 
-**Timeline pressure (fall semester):** the form window opens ~late August.
-Two items are deadline-bound regardless of size: **SL weekend-close picking
-(3.2)** must be live when the SL window opens, and **batch schedule-created
-email (2.4)** is needed when schedules get written (early September). Plan
-tiers 0–1 immediately, then interleave tier 2/3 so 3.2 lands before the window.
+**Status (2026-07-30):** Tiers 0–4 are **done**, and Muster is **live in
+production** (released to employees 2026-07-29 — PLAN §15), so every further
+change is high-stakes: small, well-tested diffs, nothing destructive. The two
+originally deadline-bound items both landed ahead of the fall window: SL
+weekend-close picking (3.2, v0.46) and the batch schedule-created email (2.4,
+v0.42). Ops is finished too: the nightly backup cron was installed 2026-07-30
+(verification commands in `docs/deploy.md` § Backups). What remains is **Tier 5.2**
+(schedule generation Phase C), **Tier 6.1** (removing the batch email), and the
+loose ends in "Still open" at the foot of this file.
 
 ---
 
@@ -164,7 +168,7 @@ by construction). Pure date logic
 (`upcomingTravel(requests, now)`, TDD) + a thin `/admin/travel` page joined
 against on-roster students; linked from the dashboard.
 
-### 2.4 Batch "your schedule has been created" email — **M** ✅ *shipped (PLAN 0.42)*
+### 2.4 Batch "your schedule has been created" email — **M** ✅ *shipped (PLAN 0.42)* — ⚠️ *slated for removal, see 6.1*
 - *Refactor first:* split `email/resend.ts` into a generic
   `sendEmail({to, subject, text, html})` core; the magic-link mail becomes a
   template caller (net-simpler seam, needed by 3.1's digest too).
@@ -305,13 +309,111 @@ app reads blocks from the DB) — the work is the admin surface + lifecycle:
 - Payoff: the cashier/stocker consolidation becomes a data change by an
   admin, as PLAN §6.1 intended (`mergedIntoId` already exists).
 
-## Parked (owner-designated low priority)
+## Tier 4 — Admin experience
 
-- **Recommended schedule generation (individual)** — start only after the
-  heatmap (2.5) proves the demand model. **Scope note:** PLAN §17 declares
-  schedule generation out of scope; doing this requires a deliberate §17
-  amendment first.
-- **Bulk recommended schedules for W2W import** — same §17 note; later still.
+### 4.1 Admin hub — ✅ DONE (2026-07-14, v0.68; extended through v0.90)
+
+`/admin` became a real landing page rather than a list of links: a grouped nav
+rail, stat tiles, group-level response progress, and a **"Needs attention"**
+panel whose policy lives in the pure `dashboard-view.ts`. Later passes added
+config/integration alerts (v0.89: unreachable block sets, non-wisc and
+alias-shaped roster emails, missing env/settings, Drive grant failures, digest
+scheduler health), the import skip counter (v0.91), the imminent-travel alert
+(v0.93), and a one-screen nav rail (v0.83). PLAN §10b is authoritative.
+
+## Tier 5 — Schedule generation
+
+**Scope status (2026-07-30, v0.98):** schedule generation **is in scope**. PLAN
+§17 no longer lists schedule writing as a non-goal — it is a first-class feature,
+permanently bounded by two things: output is **advisory** (the scheduler may
+ignore any of it; nothing student-facing is gated on it) and **admin-only**
+(students never see a generated schedule). The W2W half of the old boundary
+stands and hardens: **no programmatic integration, ever** — no API, no
+credentials, no push or pull. The most Muster will ever do on that side is
+**produce a document a human uploads** (5.3).
+
+### 5.1 Recommended schedule generation — ✅ Phases A + B DONE (v0.79, v0.84–0.85)
+
+Full design in `docs/schedule-generation-plan.md`; layering in
+`docs/architecture.md`. Shipped:
+
+- **Phase A (v0.79)** — `shift_blocks.desired_capacity` end-to-end plus the
+  coverage grid on `/admin/schedule`, useful on its own before any generator
+  existed (it grades selection supply against targets).
+- **Phase B (v0.84)** — the pure engine in `domain/scheduling/`: deterministic
+  FCFS by `submittedAt`, min-days concentration under a max-hours-per-day cap,
+  weekend cohort (A/B) assignment, a bounded same-day improvement pass, and
+  append-only `schedule_runs` / `schedule_assignments`. `submissions.scheduled`
+  is the **freeze unit** — a scheduled student is untouchable by every later
+  pass, which replaced per-assignment pins and collapsed the planned
+  incremental/full split into one **Update schedule** action.
+- **v0.85** — admin-tunable parameters (max hours/day, night/evening priority)
+  in one `app_settings` row, snapshotted into each run's report.
+- **Dev tooling** — `npm run dev:generate-availability`, seeded and
+  deterministic, whose submissions pass the real `validateAvailability`.
+
+### 5.2 Phase C — regeneration ergonomics — **M**, outstanding
+
+The runs and their reports are already persisted, so most of this is UI over
+data that exists:
+
+- **Run history + Restore** — list past runs, mark a superseded one current
+  again. This is the safety net that makes any regeneration reversible.
+- **Diff view** between two runs. Also the natural home for the known
+  frozen-rows-vs-edited-selections mismatch: a scheduled student who later
+  changes availability keeps their carried rows even if one now falls outside
+  their selections ("no modifications" wins), and nothing surfaces that today.
+- **Staleness banner** — "N submissions newer than this schedule."
+- **`Muster Schedule` Google Sheet** — a third `SheetTarget` beside the
+  responses and SL-closes sheets; `sheet-sync.ts` is already parametrized, so
+  this is a matrix builder plus a settings key. CSV export ships already.
+- **Manual per-assignment overrides** — only if wanted; would need a `source`
+  column back on `schedule_assignments`.
+
+Also open, and only now possible: the engine's weights were tuned against
+**synthetic** data because the dev DB had no submissions. A real form cycle has
+since run, so `nightPriority` / `eveningPriority` / max-hours-per-day should be
+re-tuned against real responses.
+
+### 5.3 W2W-importable schedule document — **future, not scheduled**
+
+The ceiling on W2W interop (PLAN §17). Muster would emit a file in whatever
+format W2W's importer accepts; a human uploads it. **Not built, not designed** —
+the format is dictated by W2W, so the first real work is finding out what its
+importer takes, and whether the scheduler's workflow actually wants a bulk
+import over reading `/admin/schedule` and typing. Explicitly **not** an
+integration: no API, no credentials, no automated transfer. Pairs with PLAN §16
+open question #6 (what layout the scheduler wants to read from).
+
+## Tier 6 — Simplification
+
+### 6.1 Remove the batch schedule-created email (2.4) — **S**, outstanding
+
+**Decided 2026-07-30 (owner).** Delete the feature to trim bloat. It earns less
+than it costs: all it can say is *a schedule now exists, go look at W2W*, which
+is one line the scheduler can send from their own mail client, and in exchange
+the app carries an admin surface, a recipient-preview flow, throttling, and the
+`submissions.scheduleEmailSentAt` idempotency marker.
+
+**Why it can't be made good instead.** The email students actually want is
+**their final shifts, plus the reminders that go with them**. Muster cannot send
+that, because it does not hold the final schedule: W2W does. What Muster holds
+is a *recommendation* the scheduler may have edited away from before entering
+it, so mailing it out risks telling a student they work a shift they don't.
+Getting there needs one of two things first — 5.3's export round-tripping back,
+or a way for the scheduler to confirm a generated run as final. Until then, more
+email is the wrong direction. (Recorded as the standing wish in `CLAUDE.md`.)
+
+**Scope of the removal:** the admin send surface and its action, the recipient
+preview/throttle path, and the `scheduleEmailSentAt` column (migration). **Keep**
+the generic `sendEmail({to, subject, text, html})` core from 2.4's refactor —
+the magic-link mail and the change-request digest both sit on it. **Keep**
+`submissions.scheduled`, which is load-bearing elsewhere: it is the freeze unit
+for schedule generation (5.1) and drives the To-review filter.
+
+Per CLAUDE.md's production rule this is a live system, so: confirm the scheduler
+is not mid-cycle on a send before dropping the column, and take it in two steps
+if useful — remove the UI/action first, drop the column once a cycle has passed.
 
 ## Completeness-validation results (2026-07-08 audit)
 
@@ -319,67 +421,58 @@ A full PLAN.md ↔ implementation audit found **no rule or behavior wrongly
 implemented** — the gaps are stale doc text, a few promised-but-unbuilt
 surfaces, and repo hygiene.
 
-### Repo hygiene (act soon)
-- **`main` is stale at `12c1371` (v0.31):** the v0.32–v0.36 commits
-  (`/admin/roster`, `/admin/test-users`, desired-hours fix, unsaved-changes
-  warning, info card) exist only on `build/phase-1-foundation`/`phase-2`.
-  `main`'s PLAN.md also carries the old un-bumped `Version: 0.23` header.
-  Merge forward (or let the first phase-2 PR carry it).
+### Repo hygiene — ✅ resolved
+- **`main` was stale at `12c1371` (v0.31)** — merged forward long since; `main`
+  is now the release branch and carries the current PLAN version.
 - **Verified (2026-07-09):** the destination Shared Drive folder is
   restricted to a Google group — not "Anyone with the link" — satisfying
   changelog 0.26's operational note (the responses sheet's embedded Drive
   view URLs stay member-only).
-- Known open ops items (per CLAUDE.md): install the backup cron on the box;
-  production deploy dry-run.
+- ✅ The production deploy is done (live since 2026-07-29) and the nightly backup
+  cron was installed 2026-07-30. The ops backlog is empty.
+- ✅ The one-time v0.63 production seed of `roster_title_mappings` was run; roster
+  imports resolve titles from the DB map, so it is no longer a deploy step.
 
-### Doc-only fixes (fold into the next PLAN bump)
-- §14 ORM bullet still reads "Drizzle … or Prisma … Decision pending" —
-  Drizzle was decided in v0.8. §14's email bullet also still says
-  `sched@hauge.rocks`; the verified sender domain is `re.hauge.rocks`.
-- §16 open questions **#1** (roster email key — confirmed netid@wisc.edu,
-  v0.9), **#2** (title mapping — resolved v0.9), **#5** (email provider —
-  Resend, v0.18) are resolved but still listed open; **#6** (export layout)
-  is satisfied by the export matrix unless the scheduler wants changes.
-- §9 data-model drift vs. `db/schema.ts`: `Submission` lacks `studentNotes` /
-  `scheduled` / `schedulerNotes`; `Group` lacks `lockAfterSubmit`;
-  `app_settings` has no entity entry; `MagicLink` still describes the
-  deferred window-scoped session ("expiresAt ≤ form-window close") vs. the
-  as-built 30-min token + standard JWT session. §11's un-annotated bullets
-  ("revocable from admin", window-scoped cookie) read as current but are
-  deferred.
-- §5/§8 rule tables were never updated for the v0.34 `desired_hours` hard
-  check (documented in §7 but missing from both tables).
-- §6.3 dangles a cross-reference to a §16 open item (Barista weekend rule)
-  that was resolved and removed.
-- Status header still says "Next: ops" and §18's "Phase 5 — Ops" lacks its ✅
-  although v0.25–0.30 shipped nearly all of it.
-- §7b/§12 body never mention the evidence caps (10 extracurricular files /
-  20 travel requests) or upload size limits (15 MB proof, 10 MB roster,
-  20 MB action body) — changelog-only. Same for the dev-login bypass (a third
-  auth path worth a §11 note), the sheet's 404 self-healing recreate, and the
-  live UptimeRobot status page linked from the admin dashboard.
+### Doc-only fixes — ✅ folded in (PLAN 0.98, 2026-07-30)
+Every item on the original list is now reconciled in PLAN.md: the §14 ORM and
+sender-domain bullets, §16 #1/#2/#5 marked resolved (#6 widened, still open),
+the §9 drift (`Group.lockAfterSubmit`, a new **AppSetting** entity, the
+as-built `MagicLink` token/session, `RosterImport.skippedNonWisc`), §11's
+deferred bullets annotated as deferred, the §5/§8 rule tables' missing
+`desired_hours` hard check (appended as **#10**, so existing "§5 #8"-style
+references still resolve), §6.3's dangling cross-reference, §18's Phase 5 ✅
+and the status header, and the changelog-only facts now stated in the body
+(evidence caps, upload limits, the dev-login third auth path, the sheet's 404
+self-healing recreate, the UptimeRobot status page).
 
-### Promised-but-unbuilt surfaces (validation-sourced backlog candidates)
-Not on the owner's todo list; listed so they aren't lost. None block the
-tiers above.
-- **Travel-excusal cutoff** — *promoted to Tier 1 as item 1.6 (2026-07-09,
-  owner's direction).*
-- **Positions/blocks admin config UI** (§3/§4.2/§6.2) — this *is* item 3.3;
-  the manual `highDemand` flag is superseded by 2.5 (decided 2026-07-09),
-  which reuses its rendering.
-- **Dedicated flags window** (§4.2/§10): *decided 2026-07-09* — no separate
-  page. 2.2's flag-type filter covers it; PLAN §4.2/§10 to be amended when
-  2.2 lands.
-- **Self-report of position/international** (§9/§10a): *deferred by owner
-  (2026-07-09)* — the roster remains the sole source of position/intl;
-  revisit only if magic-link self-add is ever built.
-- **Image retention purge** (§12 "purge images after schedules are
-  written") — pairs naturally with 2.4 (once schedule-created emails go out,
-  purging becomes actionable).
-- **E2E suite is configured but empty**: *left as-is by owner decision
-  (2026-07-09)* — `playwright.config.ts` points at `tests/e2e`, which doesn't
-  exist; revisit if regressions start slipping through.
-- **Drive refresh-token idle touch** (§12 6-month rule): nothing exercises
-  the grant over an idle summer; a periodic health ping would cover it.
-- Magic-link admin revoke UI and per-IP rate limiting remain deferred by
-  §11's own note (the `revokedAt` column is already honored on redeem).
+### Still open (validation-sourced; none block the tiers above)
+- **Image retention purge** (§12 "purge images after schedules are written") —
+  never built; no purge job exists and every relayed `fileId` is still live in
+  Drive. Now actionable: 2.4's schedule-created email marks the point where a
+  cycle's images stop being needed.
+- **Drive refresh-token idle touch** (§12's 6-month rule) — nothing exercises
+  the grant over an idle summer. v0.89 added failure *detection*
+  (`drive_last_error_at` → the `drive-failing` alert), but that fires after the
+  fact; a keepalive ping is still unbuilt.
+- **Magic-link admin revoke UI and per-IP rate limiting** — deferred by §11's
+  own note. The `revokedAt` column is honored on redeem; nothing writes it.
+  Only the 60 s per-address cooldown ships.
+- **E2E suite is configured but empty** — `playwright.config.ts` points at
+  `tests/e2e`, which does not exist. *Left as-is by owner decision
+  (2026-07-09);* revisit if regressions start slipping through.
+- **Open draft PR #21** (`worktree-api-docs`, an admin-gated `/admin/api`
+  reference) — parked as a draft since 2026-07-16 and the only unmerged
+  branch. It is based on `phase-2` and its changelog entry claims **0.76**,
+  which `main` has since spent on configurable excluded roster titles: rebase
+  onto `main` and renumber before it can land.
+
+### Closed by later work
+- **Travel-excusal cutoff** — shipped as item 1.6 (v0.40), made
+  admin-configurable, with the accept-late toggle added in v0.94.
+- **Positions/blocks admin config UI** — shipped as item 3.3 (v0.63). The
+  manual `highDemand` flag was superseded by 2.5, which reuses its rendering.
+- **Dedicated flags window** — *decided 2026-07-09:* no separate page; 2.2's
+  flag-type filter covers it.
+- **Self-report of position/international** — *deferred by owner
+  (2026-07-09)*; the roster remains the sole source. Revisit only if
+  magic-link self-add is ever built.

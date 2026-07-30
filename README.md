@@ -9,9 +9,11 @@ a short guided form: confirm who they are, upload their course schedule, mark ev
 they would be willing to work, and declare any travel. The rules that used to be checked
 by hand (a minimum reachable hours floor, an opening or closing shift, a spread of days,
 a weekend shift) are checked live while the student is still deciding, so what reaches the
-scheduler is already complete and already valid. Muster does **not** write schedules and
-does **not** talk to WhenToWork. The human scheduler still writes the schedule in W2W;
-Muster replaces the collection step that used to happen over email and spreadsheets.
+scheduler is already complete and already valid. From those responses Muster also
+generates a **recommended** schedule for the scheduler to work from — advisory and
+admin-only; students never see one. Muster does **not** talk to WhenToWork, and never
+will: the human scheduler still enters the schedule in W2W by hand. Muster replaces the
+collection step that used to happen over email and spreadsheets.
 
 ## Before you start
 
