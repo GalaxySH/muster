@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.02
+- **Version:** 1.04
 - **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -726,7 +726,10 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     shift, with engine and manual rows colored apart and a legend beneath. An **Edit
     mode** toggle picks the click target: **Edit preferences** is the trial/save above;
     **Edit schedule** (disabled until a run exists) toggles per-cell **manual
-    overrides** on the current run. Same-day overlapping shifts refuse; a cell outside
+    overrides** on the current run. A same-day shift refuses when it adds no time
+    the student's other shifts don't already cover, or when it would leave an
+    existing shift adding none (1.04); staggered overlaps are allowed and merge into
+    one continuous double; a cell outside
     the student's picks is allowed (the scheduler owns the schedule) and renders as the
     visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
     grid says so. See §17 and `docs/schedule-generation-plan.md`.
@@ -1313,6 +1316,44 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.04 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
+  add unique coverage.** 1.03's pairwise containment test left a merged-span
+  gap: a shift fully covered by the *union* of a legal staggered double (12p–3p
+  plus 2:45p–6p already cover all of 1p–5p) slipped through, as did a new shift
+  whose arrival made an existing one redundant. Now a candidate refuses when
+  any member of the day's resulting set would be fully covered by the union of
+  the others (the pure `redundantRangeIndex` in `domain/intervals.ts`), which
+  subsumes identical times and both containment directions. The union is a
+  covered set of minutes, not a hull: a shift between two disjoint ones adds
+  real time and stays legal, and staggered doubles remain schedulable. The
+  engine's candidate filter, the improvement pass (the day set checked with the
+  vacated cell excluded), and manual edits all share the predicate;
+  `findDayConflict` now reports which side is redundant and the manual refusal
+  copy names it ("already cover" vs "covering nothing new"); a day whose stored
+  rows already break the rule on their own (possible when block times change
+  under a live run) refuses with its own message naming the redundant shift
+  instead of blaming the new one, and the reported shift is deterministic
+  regardless of row order. Frozen students'
+  rows still carry forward verbatim even where history predates the rule.
+  `eitherContains` was deleted as subsumed.
+- **1.03 (2026-07-31)** — **Doubles: same-day assignments conflict only on
+  containment, not overlap.** Students often work a "double": two adjacent blocks
+  as one continuous shift, and most adjacent blocks in the real config overlap by
+  15 minutes for handoff coverage (e.g. Cashier weekday 2:30p–5:15p then
+  5p–8:30p), which the old any-overlap refusal made unschedulable. New rule
+  everywhere assignments are constrained: two same-day blocks may overlap by any
+  amount provided neither contains the other, inclusively — identical times, and
+  containment sharing an endpoint, still refuse, because the pair adds no time
+  beyond the larger shift. The pure `eitherContains` (`domain/time.ts`) carries
+  the rule; the engine's candidate filter, the improvement pass, and manual
+  edits (`findDayConflict`, renamed from `findDayOverlap`, with refusal copy
+  naming the covering shift) all consume it. The hours math was already right:
+  capacity and the engine's assigned-minutes both union overlapping spans with
+  shared time counted once (§5 #2), and the max-hours-per-day cap already binds
+  on the merged span, so a staggered double stretching past the cap still
+  refuses. The one exception was the weekend cohort-balance accumulator, which
+  summed raw block lengths; it now credits merged-span deltas so a double's
+  handoff overlap counts once there too.
 - **1.02 (2026-07-31)** — **Positions config surface (`/admin/positions`).** Three
   changes. The per-block pick count now excludes test accounts (a `realPickCount` from
   a join to the owning student that drops the `dev-test` group, the same convention the

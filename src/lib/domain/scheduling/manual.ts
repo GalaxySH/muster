@@ -2,13 +2,17 @@
  * Pure rules for an admin's manual schedule edits on the per-student grid.
  *
  * Manual edits mutate the current run's rows directly (no new run per edit).
- * The only hard rule is no same-day time overlap with the student's other
- * assigned blocks: overlapping shifts would double-book them, while touching
- * shifts merge into one span (domain/intervals.ts) and are fine. Assigning a
- * cell the student never selected is allowed; the scheduler owns the schedule
- * and the split grid makes the mismatch visible.
+ * The only hard rule is that every same-day shift must add unique time: a new
+ * block refuses when the student's other shifts already cover its whole span,
+ * or when adding it would leave an existing shift covering nothing of its own.
+ * Staggered or touching shifts merge into one longer span
+ * (domain/intervals.ts) and are fine, which is how a double across a handoff
+ * overlap gets scheduled. Assigning a cell the student never selected is
+ * allowed; the scheduler owns the schedule and the split grid makes the
+ * mismatch visible.
  */
-import { overlaps, type TimeRange } from "../time";
+import { redundantRangeIndex } from "../intervals";
+import type { TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import type { Cohort } from "./types";
 
@@ -22,23 +26,42 @@ export interface ExistingAssignment {
 }
 
 /**
- * The existing same-day assignment the new block truly overlaps, or null.
- * Touching endpoints (5p end against 5p start) are not an overlap.
+ * Why a new manual assignment refuses: it adds no time of its own, it would
+ * leave an existing shift adding none, or the day's stored shifts already
+ * break the rule on their own (possible when block times change under a live
+ * run) and need fixing before anything is added.
  */
-export function findDayOverlap(
+export type DayConflict =
+  | { kind: "candidate-covered" }
+  | { kind: "existing-covered"; row: ExistingAssignment }
+  | { kind: "day-invalid"; row: ExistingAssignment };
+
+/**
+ * The conflict a new same-day assignment would create, or null. Every shift
+ * on a day must cover at least one minute no other shift covers; the union is
+ * a set of minutes, not a hull, so a shift between two disjoint ones is fine,
+ * as are staggered overlaps and touching endpoints. The candidate goes first
+ * in the checked set, so identical times report candidate-covered. Rows are
+ * sorted here so the reported shift never depends on caller ordering.
+ */
+export function findDayConflict(
   block: ShiftBlock,
   day: Day,
   existing: readonly ExistingAssignment[],
-): ExistingAssignment | null {
-  const range: TimeRange = { start: block.start, end: block.end };
-  return (
-    existing.find(
-      (row) =>
-        row.day === day &&
-        row.blockId !== block.id &&
-        overlaps({ start: row.start, end: row.end }, range),
-    ) ?? null
-  );
+): DayConflict | null {
+  const rows = existing
+    .filter((r) => r.day === day && r.blockId !== block.id)
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.blockId.localeCompare(b.blockId));
+  const rowRanges: TimeRange[] = rows.map((r) => ({ start: r.start, end: r.end }));
+  // A day whose stored rows are already redundant among themselves is not the
+  // new shift's fault; report it as its own case so the copy stays honest.
+  const already = redundantRangeIndex(rowRanges);
+  if (already >= 0) return { kind: "day-invalid", row: rows[already]! };
+  const redundant = redundantRangeIndex([{ start: block.start, end: block.end }, ...rowRanges]);
+  if (redundant < 0) return null;
+  return redundant === 0
+    ? { kind: "candidate-covered" }
+    : { kind: "existing-covered", row: rows[redundant - 1]! };
 }
 
 /**
