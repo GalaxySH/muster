@@ -29,15 +29,19 @@ admin-views section). (4) a **batch schedule-ready email** at
 split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
 the magic-link mail and the change digest still sit on (the dead
 `submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
-high-demand** — the red bar now
-derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
-responses, then the busiest **~15%** of picked shifts **ranked within each day-type**
-via `DEMAND_TOP_SHARE`, a relative rank rather than an absolute cohort share so it
-actually fires; computed in `availability/data.ts` `loadHighDemandCells` as a set of
-`demandCellKey(blockId, day)` cells), retiring the manual `shift_blocks.high_demand`
-column + the `ShiftBlock.highDemand` field. The red mark renders **per (block × day)
-cell** (`grid.ts` `BlockRow.highDemandDays[]`, one flag per day), on both the student
-grid (with a short steering hint, `AvailabilityForm`) and the admin per-student grid.
+high-demand** — the red bar
+derives from live selection counts (pure `domain/demand.ts`): each (block × day) cell
+is gated on its own block target (at least `desiredCapacity` takers) plus an absolute
+floor (`DEMAND_MIN_CELL_COUNT`), with **no cohort-size floor**, then the busiest
+**~25%** (`DEMAND_TOP_SHARE`) of each day-type by **contention** (takers ÷ target) are
+flagged; computed in `availability/data.ts` `loadHighDemandCells` (loads per-block
+targets + per-cell distinct-submission counts) as a set of `demandCellKey(blockId, day)`
+cells. Retired the manual `shift_blocks.high_demand` column + the `ShiftBlock.highDemand`
+field. The mark renders **per (block × day) cell** (`grid.ts` `BlockRow.highDemandDays[]`,
+one flag per day) on both the student grid (`AvailabilityForm`, with a steering hint;
+the bar is a full-height rule down the cell's right edge, `.avail-hot`) and the admin
+per-student grid (`PrefGridCalculator`, its own inline `hotTick`). The two share the
+loader and cell set but not the bar styling.
 
 ## SL weekend-close picking (roadmap 3.2, PLAN §18a, v0.46)
 

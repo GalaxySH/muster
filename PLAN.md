@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.04
+- **Version:** 1.05
 - **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -416,16 +416,23 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   with a short **steering hint** ("a lot of students picked that shift; choosing less
   busy ones can help you get the hours you want"). The underlying counts and ranking stay
   hidden (avoid gaming). Purely **advisory** — the student can still select them;
-  selection isn't blocked. **Computed** (roadmap 2.5): once a position has **≥ 20
-  submitted responses**, shifts are ranked by responder pick count **within each
-  day-type** (weekday vs weekend, so weekend shifts aren't buried), and the **busiest
-  ~15%** of (block × day) cells are flagged (cells tied at the cutoff count are all
-  included). A **relative** rank, not an absolute share of the cohort — students
-  over-select, so what matters is which shifts stand out above the pack, and a fixed
-  cohort-percentage almost never fires. The signal is self-maintaining and supersedes the old admin-set flag (the
+  selection isn't blocked. **Computed** (roadmap 2.5): a (block × day) cell is flagged
+  when it clears two floors and ranks near the top of its day-type. Floors: it has at
+  least its block's **target staffing** (`desiredCapacity`) in takers, and at least an
+  **absolute minimum** (`DEMAND_MIN_CELL_COUNT`, 3) so a thin cohort or a tiny target
+  can't flag a shift off one or two picks. Ranking: among the cells that clear both
+  floors, the **busiest ~25%** (`DEMAND_TOP_SHARE`) of each **day-type** (weekday vs
+  weekend, so weekend shifts aren't buried) by **contention** (takers ÷ target, not raw
+  popularity: a shift that needs 2 people when 6 want it is harder to get than one that
+  needs 6 and 6 want it); cells tied at the cutoff are all included. There is **no
+  cohort-size floor**, so a small position (e.g. ~34 Shift Leads) shows a signal instead
+  of waiting for a large number of submissions, and the mark never steers students off
+  an **under-staffed** cell (below its target), only off ones that already have enough
+  people. Supersedes the old admin-set flag (the
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
-  (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
-  graded-intensity view, if ever wanted, stays admin-side.
+  (`DEMAND_TOP_SHARE`, `DEMAND_MIN_CELL_COUNT`); computed at grid load in
+  `availability/data.ts` (`loadHighDemandCells`, which also loads each block's target).
+  A graded-intensity view, if ever wanted, stays admin-side.
 - **Weekend Sun/Sat separation:** the weekend grids render **Sun then Sat**, because
   the scheduling week **starts on Sunday**: Sunday opens the week and Saturday closes
   it, so the two days sit at **opposite ends of the week** (a Sun + Sat pick is two
@@ -1316,6 +1323,25 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.05 (2026-07-31)** — **High-demand mark: per-cell target gating + contention
+  ranking, and a bolder bar (§7, roadmap 2.5).** The student availability picker's red
+  high-demand mark is recomputed. (1) The cohort-wide **≥ 20 submitted-responder floor
+  is removed** — it locked small positions out entirely (only ~34 Shift Leads, so the
+  signal never showed). (2) Each cell is gated on **its own block target**: it flags
+  only once it has at least its `desiredCapacity` in takers, plus an absolute floor
+  `DEMAND_MIN_CELL_COUNT` (3) so a thin cohort or a tiny target can't fire on one or two
+  picks. (3) Eligible cells rank by **contention** (takers ÷ target) within their
+  day-type, not raw pick count, so a shift with fewer takers but tighter capacity
+  outranks a well-supplied popular one; the mark never falls on an under-staffed cell.
+  (4) `DEMAND_TOP_SHARE` **0.15 → 0.25**. Pure-model signature is now
+  `highDemandCells(counts, { targets, topShare, minCellCount })` (dropped the
+  `responderCount` arg); `loadHighDemandCells` loads per-block targets and no longer
+  counts responders, so both the student grid and the admin per-student grid pick up the
+  change. UI (availability picker only): intro copy "These are preferences" → "This is
+  your **availability**", the red-bar legend enlarged to match the intro paragraph, and
+  the mark is now a **full-height bar down the cell's right edge** (`.avail-hot`) instead
+  of a small corner tick. No schema change (`desiredCapacity` already existed). Rewrote
+  `demand.test.ts` (8 tests); retired `DEMAND_MIN_RESPONDERS`.
 - **1.04 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
   add unique coverage.** 1.03's pairwise containment test left a merged-span
   gap: a shift fully covered by the *union* of a legal staggered double (12p–3p
