@@ -293,9 +293,11 @@ and never substitute for each other. `fmtStamp` is the compact one-line form of
 `fmtDate` (same US Central rendering, seconds dropped). The client
 islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
-both through the `/api/evidence/[fileId]` proxy), and `PrefGridCalculator`. That last
-one **is** the availability card: the admin clicks grid cells to try a schedule and a
-corner readout shows the live hours from the same `computeCapacity` (cycle-averaged)
+both through the `/api/evidence/[fileId]` proxy), `PrefGridCalculator`, and `JumpMenu`
+(the header name → responder-list disclosure; a client wrapper around the native
+`<details>` so a click outside or Escape closes it, not just a second click on the name).
+`PrefGridCalculator` **is** the availability card: the admin clicks grid cells to try a
+schedule and a corner readout shows the live hours from the same `computeCapacity` (cycle-averaged)
 that drives preference capacity, so the trial recomputes hours identically to entry. It
 seeds from the student's picks (readout opens at their pref. capacity), reads the
 persisted picks/auto overlay from `buildAdminGrid` (`admin/summary.ts`) as a reference
@@ -319,9 +321,12 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. Since 0.99 the card is titled
 **Availability and schedule** and carries the current run's assignments as a second
-layer: each cell splits diagonally (lower left the student's pick, upper right the
-scheduled shift — engine rows green, manual rows violet) with a legend, fed by
-`buildAdminGrid`'s optional assignments parameter (`AdminCell` = `{selected,
+layer: a cell splits diagonally **only when this student has a generated shift** (or
+while Edit schedule is active) — lower left the student's pick, upper right the
+scheduled shift (engine rows green, manual rows violet) with a legend. With no
+schedule to compare against, the preference fills the whole square and the legend
+drops the split explainer and the scheduled swatches (the `hasSchedule` prop, 1.01).
+The layer is fed by `buildAdminGrid`'s optional assignments parameter (`AdminCell` = `{selected,
 autoAssigned, assigned, assignmentSource}`, loaded via `loadStudentCurrentAssignments`
 in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
 preferences** is the trial/save behavior above; **Edit schedule** (disabled with a

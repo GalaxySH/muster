@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.00
-- **Last updated:** 2026-07-30
+- **Version:** 1.01
+- **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1313,6 +1313,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Four fixes to
+  `/admin/students/[email]`. The availability grid only splits a cell into
+  preference-vs-schedule halves when *this* student has a generated shift (or the
+  admin is in schedule-edit mode); with no schedule to compare against, the
+  preference fills the whole square, and the legend drops the split explainer and the
+  scheduled swatches (`PrefGridCalculator`, driven by a new `hasSchedule` prop). A
+  shift the student picked but that has been dropped from the trial now reads as a
+  clear mid-blue instead of a near-white tint. The student-name jump menu closes on
+  an outside click or Escape (extracted to a `JumpMenu` client component around the
+  native `<details>`). The identity/action header wraps within each group so the
+  buttons stay inside the card on a narrow screen (`response-identity` /
+  `response-actionbar` classes). Verified: 670 tests across 56 files, plus live
+  screenshots at desktop and phone widths.
 - **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
   (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
   `/admin/schedule` with one-click **Restore**: a superseded run flips back to
