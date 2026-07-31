@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ScheduleStudentRow } from "@/lib/schedule/data";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL } from "@/lib/domain/types";
+import { hoursLabel } from "@/lib/domain/config-validation";
 
 type SortKey = "name" | "position" | "hours" | "days" | "rotation" | "scheduled";
 
@@ -120,9 +121,6 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
     </tr>
   );
 }
-
-/** Whole hours plain, fractions with one decimal (10, 12.5). */
-const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
 
 function Th({
   children,

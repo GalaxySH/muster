@@ -23,7 +23,9 @@ const MINUTES_PER_DAY = 1440;
 // hour division); compare with a small tolerance.
 const EPSILON = 1e-6;
 
-const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
+/** Whole hours plain, fractions with one decimal (10, 12.5). */
+export const hoursLabel = (minutes: number) =>
+  (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
 
 /** Upper bound on a block's target staffing; keeps typos out of coverage math. */
 export const DESIRED_CAPACITY_MAX = 99;

@@ -186,29 +186,41 @@ export interface RestoreResult {
  * as fresh (it ranks by restore-or-generate time), so restoring an old run
  * does not put it next in line for pruning.
  */
+class RestoreTargetVanished extends Error {}
+
 export async function restoreScheduleRun(runId: string): Promise<RestoreResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const error = await db.transaction(async (tx) => {
-    const [run] = await tx
-      .select({ id: scheduleRuns.id, status: scheduleRuns.status })
-      .from(scheduleRuns)
-      .where(eq(scheduleRuns.id, runId))
-      .limit(1);
-    if (!run) return "That run no longer exists.";
-    if (run.status === "current") return "That run is already the current schedule.";
-    await tx
-      .update(scheduleRuns)
-      .set({ status: "superseded" })
-      .where(eq(scheduleRuns.status, "current"));
-    await tx
-      .update(scheduleRuns)
-      .set({ status: "current", restoredAt: new Date(), restoredBy: gate.email })
-      .where(eq(scheduleRuns.id, runId));
-    return null;
-  });
+  let error: string | null;
+  try {
+    error = await db.transaction(async (tx) => {
+      const [run] = await tx
+        .select({ id: scheduleRuns.id, status: scheduleRuns.status })
+        .from(scheduleRuns)
+        .where(eq(scheduleRuns.id, runId))
+        .limit(1);
+      if (!run) return "That run no longer exists.";
+      if (run.status === "current") return "That run is already the current schedule.";
+      await tx
+        .update(scheduleRuns)
+        .set({ status: "superseded" })
+        .where(eq(scheduleRuns.status, "current"));
+      // The guard SELECT is a snapshot read, so a concurrent generate can prune
+      // the target run between it and this write. Zero rows changed means the
+      // run is gone; the flip above must roll back or no run stays current.
+      const [flipped] = await tx
+        .update(scheduleRuns)
+        .set({ status: "current", restoredAt: new Date(), restoredBy: gate.email })
+        .where(eq(scheduleRuns.id, runId));
+      if (flipped.affectedRows === 0) throw new RestoreTargetVanished();
+      return null;
+    });
+  } catch (e) {
+    if (!(e instanceof RestoreTargetVanished)) throw e;
+    error = "That run no longer exists.";
+  }
   if (error) return { ok: false, error };
 
   revalidatePath("/admin/schedule");

@@ -41,6 +41,7 @@ import {
   type CoverageSummary,
 } from "@/lib/domain/coverage";
 import { demandCellKey } from "@/lib/domain/demand";
+import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
 import type { Cohort } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
@@ -283,9 +284,6 @@ const fmtRunTime = (d: Date) =>
     minute: "2-digit",
   });
 
-/** Whole hours plain, fractions with one decimal (10, 12.5). */
-const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
-
 function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
@@ -442,8 +440,8 @@ function StudentDiffRow({
     <details style={{ marginBottom: 6 }}>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>
         <strong>{name}</strong>
-        {s.before === null && " (new in this run)"}
-        {s.after === null && " (not in this run)"}
+        {s.before === null && s.after !== null && " (new in this run)"}
+        {s.after === null && s.before !== null && " (not in this run)"}
         {rollup.length > 0 && ` ${rollup.join(", ")}`}
         {s.changes.length > 0 &&
           ` (${s.changes.length} ${s.changes.length === 1 ? "change" : "changes"})`}
@@ -478,8 +476,13 @@ function delta(
   after: number | null,
   fmt: (n: number) => string,
 ): string | null {
-  if (before === after || before === null || after === null) return null;
-  return `${fmt(before)} to ${fmt(after)} ${label}`;
+  if (before === null || after === null) return null;
+  const from = fmt(before);
+  const to = fmt(after);
+  // Compare the labels, not the raw minutes, so a change smaller than the
+  // rounding never renders as "12.5 to 12.5 hours".
+  if (from === to) return null;
+  return `${from} to ${to} ${label}`;
 }
 
 function rotationDelta(before: Cohort | null, after: Cohort | null): string | null {

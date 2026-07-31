@@ -26,6 +26,7 @@ import { toDomainBlock } from "@/lib/db/mappers";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, dayTypeOf, type Day } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
+import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
 
@@ -36,9 +37,13 @@ export interface AssignmentEditResult {
 
 const fail = (error: string): AssignmentEditResult => ({ ok: false, error });
 
-function refreshAfterEdit(studentEmail: string): void {
+async function refreshAfterEdit(studentEmail: string): Promise<void> {
   revalidatePath(`/admin/students/${encodeURIComponent(studentEmail)}`);
   revalidatePath("/admin/schedule");
+  // Keep the Muster Schedule sheet from drifting behind hand edits; the
+  // default cooldown batches a burst of cell clicks into one resync, the same
+  // way student submits treat the responses sheet.
+  await trySyncSheet(SCHEDULE_SHEET);
 }
 
 /**
@@ -111,7 +116,7 @@ export async function setManualAssignment(
     source: "manual",
   });
 
-  refreshAfterEdit(email);
+  await refreshAfterEdit(email);
   return { ok: true };
 }
 
@@ -144,6 +149,6 @@ export async function removeManualAssignment(
       ),
     );
 
-  refreshAfterEdit(email);
+  await refreshAfterEdit(email);
   return { ok: true };
 }
