@@ -886,21 +886,27 @@ and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
 the details fields plus every dirty block edit, validated up front, written in a
 single transaction with a single revalidate; it replaced the per-row
 `updateBlock`/`updatePosition`, and time edits that touch picked shifts confirm once,
-aggregated client-side), block add/remove (`validateBlockTimes`; referenced blocks
-refuse delete), and ghost resolution
+aggregated client-side; toggling weekend exemption and removing an alias confirm too,
+alongside the existing block-remove and make-alias confirms — 1.02), block add/remove
+(`validateBlockTimes`; referenced blocks refuse delete), and ghost resolution
 (`createPositionForTitle`/`mapTitleToPosition` — mapping row + assign + carry-over).
 The UI is `/admin/positions` (server page → islands `GhostTitleCard`, `PositionCard`,
 `BlockEditor`, `AddPositionForm`); the block editor parses HH:MM live, re-derives
 Open/Close tags + warnings per keystroke from the pure helpers, and lifts row edits
-into `PositionCard`'s single dirty model behind the one Save button. It also renders
+into `PositionCard`'s single dirty model behind the one Save button. The per-block pick
+count shown to the admin excludes test accounts (a `realPickCount` from a join to the
+owning student that drops the `dev-test` group, alongside the all-inclusive
+`selectionCount` the FK delete guards still count — 1.02). It also renders
 `positionCapacityCheck` (`domain/config-validation.ts`, 0.99): weekly seat-hours from
-staffing targets (null targets count zero; weekday blocks staff five days, weekend
-blocks two — both rotation weeks are worked, and both sides of the comparison are
-weekly averages) against on-roster headcount × the position's minimum hours, rendered
-as an amber shortfall card, a quiet set-targets notice when no targets exist, and the
-hub's `position-capacity-<id>` warning alert (the snapshot's `PositionConfig` already
-carried blocks and `onRosterCount`; `positions/data.ts` grew its own `onRosterCount`
-for the page). Flag read-side: `FLAG_LABELS`/filters in
+staffing targets (the sum is the extracted pure `seatHoursPerWeek`, 1.02; null targets
+count zero; weekday blocks staff five days, weekend blocks two — both rotation weeks are
+worked, and both sides of the comparison are weekly averages) against on-roster
+headcount × the position's minimum hours, rendered as an amber shortfall card when
+demand outstrips supply, otherwise a plain seat-hours line so every position with
+targets shows what it can seat (1.02), a quiet set-targets notice when no targets exist,
+and the hub's `position-capacity-<id>` warning alert (the snapshot's `PositionConfig`
+already carried blocks and `onRosterCount`; `positions/data.ts` grew its own
+`onRosterCount` for the page). Flag read-side: `FLAG_LABELS`/filters in
 `admin/response-filters.ts`, pills in `ResponseList`, per-student flag alerts with
 the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 `ClearPositionChangeButton`), and the derived no-position pill on

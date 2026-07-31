@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.01
+- **Version:** 1.02
 - **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1313,6 +1313,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.02 (2026-07-31)** — **Positions config surface (`/admin/positions`).** Three
+  changes. The per-block pick count now excludes test accounts (a `realPickCount` from
+  a join to the owning student that drops the `dev-test` group, the same convention the
+  response surfaces use), so the number reflects real students; the FK delete guards
+  keep counting every selection. Each position shows the weekly seat hours its shift
+  targets provide (`seat = target x length x days`, extracted as the pure
+  `seatHoursPerWeek` and reused by the capacity check): a plain line when supply is fine
+  or there is no roster to compare against, folded into the existing shortfall warning
+  when demand outstrips it. Toggling weekend exemption and removing an alias now confirm
+  before they act, joining the block-remove and make-alias confirmations. Verified: 672
+  tests across 56 files, plus live checks against the F26-roster verify DB (a seeded
+  test-account pick excluded from the count, seat hours rendered, and each confirmation
+  dialog).
 - **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Five fixes to
   `/admin/students/[email]`. The POSITION quick-reference card now fills its blank
   subtext line with the student's form-window group (`Group: <name>`, or `Group:

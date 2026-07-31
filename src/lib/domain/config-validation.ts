@@ -130,6 +130,20 @@ export function blockSetWarnings(
   return warnings;
 }
 
+/**
+ * The weekly seat hours a position's blocks provide: for each block, its target
+ * staffing times its length times the days it runs (weekday layouts run five
+ * days, weekend layouts both weekend days at full weight, since a weekend seat is
+ * staffed every week as students rotate onto it). A block with no target
+ * contributes nothing. This is the supply side of positionCapacityCheck.
+ */
+export function seatHoursPerWeek(blocks: readonly ShiftBlock[]): number {
+  return blocks.reduce((sum, b) => {
+    const days = b.dayType === "weekend" ? WEEKEND_DAYS.length : WEEKDAY_DAYS.length;
+    return sum + (b.desiredCapacity ?? 0) * ((b.end - b.start) / 60) * days;
+  }, 0);
+}
+
 export type PositionCapacityCheck =
   | { kind: "ok"; supplyHours: number; demandHours: number }
   | { kind: "short"; supplyHours: number; demandHours: number; message: string }
@@ -153,10 +167,7 @@ export function positionCapacityCheck(
 ): PositionCapacityCheck {
   if (blocks.every((b) => b.desiredCapacity == null)) return { kind: "no_targets" };
 
-  const supplyHours = blocks.reduce((sum, b) => {
-    const days = b.dayType === "weekend" ? WEEKEND_DAYS.length : WEEKDAY_DAYS.length;
-    return sum + (b.desiredCapacity ?? 0) * ((b.end - b.start) / 60) * days;
-  }, 0);
+  const supplyHours = seatHoursPerWeek(blocks);
   const demandHours = onRosterCount * minHours;
   if (supplyHours + EPSILON < demandHours) {
     return {

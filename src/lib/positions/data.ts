@@ -8,10 +8,11 @@
  * hidden from pickers and from new assignment.
  */
 import "server-only";
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, shiftBlocks, shiftSelections, students } from "@/lib/db/schema";
+import { positions, shiftBlocks, shiftSelections, students, submissions } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
+import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import type { DayType, Position } from "@/lib/domain/types";
 
 export interface PositionListItem {
@@ -61,6 +62,8 @@ export interface AdminBlockItem {
   desiredCapacity: number | null;
   /** shift_selections rows referencing this block (delete/edit guards). */
   selectionCount: number;
+  /** Same, but excluding test accounts: the real student picks shown to the admin. */
+  realPickCount: number;
 }
 
 /** One position on /admin/positions: every row, plus blocks and reference counts. */
@@ -88,31 +91,45 @@ export interface AdminPositionItem {
  */
 export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
   const db = getDb();
-  const [posRows, blockRows, studentRows, onRosterRows, selectionRows] = await Promise.all([
-    db.select().from(positions).orderBy(asc(positions.name)),
-    db
-      .select()
-      .from(shiftBlocks)
-      .orderBy(asc(shiftBlocks.startMinutes), asc(shiftBlocks.endMinutes)),
-    db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .groupBy(students.positionId),
-    db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
-    db
-      .select({ blockId: shiftSelections.shiftBlockId, n: sql<number>`count(*)` })
-      .from(shiftSelections)
-      .groupBy(shiftSelections.shiftBlockId),
-  ]);
+  const [posRows, blockRows, studentRows, onRosterRows, selectionRows, realPickRows] =
+    await Promise.all([
+      db.select().from(positions).orderBy(asc(positions.name)),
+      db
+        .select()
+        .from(shiftBlocks)
+        .orderBy(asc(shiftBlocks.startMinutes), asc(shiftBlocks.endMinutes)),
+      db
+        .select({ positionId: students.positionId, n: sql<number>`count(*)` })
+        .from(students)
+        .groupBy(students.positionId),
+      db
+        .select({ positionId: students.positionId, n: sql<number>`count(*)` })
+        .from(students)
+        .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
+        .groupBy(students.positionId),
+      // All selections, for the FK delete/edit guards (a test account's pick still
+      // pins the block in the DB, so the guard must count it).
+      db
+        .select({ blockId: shiftSelections.shiftBlockId, n: sql<number>`count(*)` })
+        .from(shiftSelections)
+        .groupBy(shiftSelections.shiftBlockId),
+      // Real student picks only, for the count the admin reads: join to the owning
+      // student and drop the test-accounts group (the same convention the response
+      // surfaces use to hide throwaway accounts).
+      db
+        .select({ blockId: shiftSelections.shiftBlockId, n: sql<number>`count(*)` })
+        .from(shiftSelections)
+        .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .where(or(isNull(students.groupId), ne(students.groupId, TEST_GROUP_ID)))
+        .groupBy(shiftSelections.shiftBlockId),
+    ]);
 
   const nameById = new Map(posRows.map((p) => [p.id, p.name]));
   const studentCount = new Map(studentRows.map((r) => [r.positionId, Number(r.n)]));
   const onRosterCount = new Map(onRosterRows.map((r) => [r.positionId, Number(r.n)]));
   const selectionCount = new Map(selectionRows.map((r) => [r.blockId, Number(r.n)]));
+  const realPickCount = new Map(realPickRows.map((r) => [r.blockId, Number(r.n)]));
   const blocksByPosition = new Map<string, AdminBlockItem[]>();
   for (const b of blockRows) {
     const list = blocksByPosition.get(b.positionId) ?? [];
@@ -124,6 +141,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       end: b.endMinutes,
       desiredCapacity: b.desiredCapacity,
       selectionCount: selectionCount.get(b.id) ?? 0,
+      realPickCount: realPickCount.get(b.id) ?? 0,
     });
     blocksByPosition.set(b.positionId, list);
   }
