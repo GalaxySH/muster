@@ -1,7 +1,8 @@
 /**
  * Orchestrates the managed Drive spreadsheets behind a rate limit: build a
- * target's matrix and push it into its sheet. Two targets exist (PLAN.md §10,
- * §12, §18a): the running responses sheet and the SL closes backup sheet; each
+ * target's matrix and push it into its sheet. Three targets exist (PLAN.md §10,
+ * §12, §18a; docs/schedule-generation-plan.md Phase C): the running responses
+ * sheet, the SL closes backup sheet, and the recommended-schedule sheet; each
  * carries its own Drive name, cached sheet id, and matrix builder.
  *
  * Rate limit (per product decision): the cooldown is split by trigger. The
@@ -18,10 +19,14 @@ import {
   SETTING_RESPONSES_SHEET_SYNCED_AT,
   SETTING_CLOSES_SHEET_ID,
   SETTING_CLOSES_SHEET_SYNCED_AT,
+  SETTING_SCHEDULE_SHEET_ID,
+  SETTING_SCHEDULE_SHEET_SYNCED_AT,
 } from "@/lib/settings";
 import { upsertManagedSheet } from "@/lib/drive/relay";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { buildCloseClaimsMatrix } from "@/lib/closes/export";
+import { loadCurrentSchedule } from "@/lib/schedule/data";
+import { buildScheduleMatrix } from "@/lib/schedule/export";
 import { loadExportData } from "./export-data";
 import { buildExportMatrix } from "./export";
 
@@ -52,6 +57,13 @@ export const CLOSES_SHEET: SheetTarget = {
   idSettingKey: SETTING_CLOSES_SHEET_ID,
   syncedAtSettingKey: SETTING_CLOSES_SHEET_SYNCED_AT,
   buildValues: async () => buildCloseClaimsMatrix((await loadCloseAdmin()).slots),
+};
+
+export const SCHEDULE_SHEET: SheetTarget = {
+  name: "Muster Schedule",
+  idSettingKey: SETTING_SCHEDULE_SHEET_ID,
+  syncedAtSettingKey: SETTING_SCHEDULE_SHEET_SYNCED_AT,
+  buildValues: async () => buildScheduleMatrix((await loadCurrentSchedule())?.students ?? []),
 };
 
 export interface SheetSyncResult {
@@ -111,10 +123,17 @@ export async function syncSheet(
   return { synced: true, url, lastSyncedAt: now, nextEligibleAt: null };
 }
 
-/** Best-effort resync (rate-limited) for the student submit/claim path; never throws. */
-export async function trySyncSheet(target: SheetTarget): Promise<void> {
+/**
+ * Best-effort resync; never throws. The default cooldown rate-limits the
+ * student submit/claim path; bulk admin operations (delete, generate, restore)
+ * pass 0 to force the rebuild.
+ */
+export async function trySyncSheet(
+  target: SheetTarget,
+  cooldownMs: number = SHEET_AUTO_COOLDOWN_MS,
+): Promise<void> {
   try {
-    await syncSheet(target, { cooldownMs: SHEET_AUTO_COOLDOWN_MS });
+    await syncSheet(target, { cooldownMs });
   } catch (e) {
     console.error(`${target.name} sheet sync failed (non-fatal):`, e);
   }

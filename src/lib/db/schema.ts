@@ -132,8 +132,9 @@ export const submissions = mysqlTable("submissions", {
   // notes per student. Set by admins in the per-student view, never by students.
   scheduled: boolean("scheduled").notNull().default(false),
   schedulerNotes: text("scheduler_notes"),
-  // When the batch "your schedule is ready" email was sent (roadmap 2.4). Null =
-  // not yet notified; the batch send skips already-stamped rows (idempotent).
+  // DEPRECATED: the batch "your schedule is ready" email (roadmap 2.4) was removed
+  // in 0.99 (roadmap 6.1). Nothing reads or writes this column anymore; the physical
+  // drop is deferred to a later release, once a schedule cycle has passed.
   scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
   // When the student clicked "Yes, that's me" on /me. Null = they still owe the
   // confirmation, so /me shows the confirm card. The row itself is not proof: an
@@ -150,9 +151,9 @@ export const submissions = mysqlTable("submissions", {
   /**
    * When the STUDENT last changed their own answers. Deliberately NOT
    * `onUpdateNow()`: admins write to this row too (scheduler notes, the scheduled
-   * mark, the schedule-email stamp, and on-behalf-of edits), and an admin touching a
-   * response must not look like the student coming back to it. Every student-side
-   * write therefore sets this column explicitly; admin-side writes leave it alone.
+   * mark, and on-behalf-of edits), and an admin touching a response must not look
+   * like the student coming back to it. Every student-side write therefore sets
+   * this column explicitly; admin-side writes leave it alone.
    */
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -345,6 +346,7 @@ export const closeClaims = mysqlTable(
 
 export const scheduleRunStatusEnum = ["current", "superseded"] as const;
 export const cohortEnum = ["weekday", "a", "b", "every"] as const;
+export const assignmentSourceEnum = ["engine", "manual"] as const;
 
 /**
  * One generation of the recommended schedule (docs/schedule-generation-plan.md
@@ -359,6 +361,14 @@ export const scheduleRuns = mysqlTable("schedule_runs", {
   generatedBy: varchar("generated_by", { length: 255 }).notNull(),
   status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
   summaryJson: text("summary_json").notNull(),
+  /**
+   * Restore flips a superseded run back to current in place (no new run row)
+   * and stamps when and by whom. Retention ranks runs by
+   * coalesce(restored_at, generated_at), so a restored run moves to the front
+   * of the pruning queue; the current run is never pruned.
+   */
+  restoredAt: datetime("restored_at", { mode: "date" }),
+  restoredBy: varchar("restored_by", { length: 255 }),
 });
 
 /**
@@ -384,6 +394,9 @@ export const scheduleAssignments = mysqlTable(
       .references(() => shiftBlocks.id, { onDelete: "cascade" }),
     day: mysqlEnum("day", dayEnum).notNull(),
     cohort: mysqlEnum("cohort", cohortEnum).notNull(),
+    // Who wrote the row: the engine's solver, or an admin's manual override on
+    // the per-student grid. Frozen carry-forward preserves it across runs.
+    source: mysqlEnum("source", assignmentSourceEnum).notNull().default("engine"),
   },
   (t) => [primaryKey({ columns: [t.runId, t.studentEmail, t.shiftBlockId, t.day] })],
 );

@@ -8,7 +8,7 @@
  * hidden from pickers and from new assignment.
  */
 import "server-only";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { positions, shiftBlocks, shiftSelections, students } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
@@ -76,6 +76,8 @@ export interface AdminPositionItem {
   mergedIntoName: string | null;
   /** students.positionId references, on- and off-roster (delete guard). */
   studentCount: number;
+  /** On-roster students holding this position (the capacity check's demand side). */
+  onRosterCount: number;
   blocks: AdminBlockItem[];
 }
 
@@ -86,7 +88,7 @@ export interface AdminPositionItem {
  */
 export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
   const db = getDb();
-  const [posRows, blockRows, studentRows, selectionRows] = await Promise.all([
+  const [posRows, blockRows, studentRows, onRosterRows, selectionRows] = await Promise.all([
     db.select().from(positions).orderBy(asc(positions.name)),
     db
       .select()
@@ -97,6 +99,11 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       .from(students)
       .groupBy(students.positionId),
     db
+      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
+      .from(students)
+      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
+      .groupBy(students.positionId),
+    db
       .select({ blockId: shiftSelections.shiftBlockId, n: sql<number>`count(*)` })
       .from(shiftSelections)
       .groupBy(shiftSelections.shiftBlockId),
@@ -104,6 +111,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
 
   const nameById = new Map(posRows.map((p) => [p.id, p.name]));
   const studentCount = new Map(studentRows.map((r) => [r.positionId, Number(r.n)]));
+  const onRosterCount = new Map(onRosterRows.map((r) => [r.positionId, Number(r.n)]));
   const selectionCount = new Map(selectionRows.map((r) => [r.blockId, Number(r.n)]));
   const blocksByPosition = new Map<string, AdminBlockItem[]>();
   for (const b of blockRows) {
@@ -130,6 +138,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     mergedIntoId: p.mergedIntoId,
     mergedIntoName: p.mergedIntoId ? (nameById.get(p.mergedIntoId) ?? p.mergedIntoId) : null,
     studentCount: studentCount.get(p.id) ?? 0,
+    onRosterCount: onRosterCount.get(p.id) ?? 0,
     blocks: blocksByPosition.get(p.id) ?? [],
   }));
 }

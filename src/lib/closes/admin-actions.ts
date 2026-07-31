@@ -60,8 +60,7 @@ export async function generateCloseInventory(input: {
   const { start, end } = input;
   if (!ISO_DATE.test(start) || !ISO_DATE.test(end))
     return { ok: false, error: "Enter both dates." };
-  if (end < start)
-    return { ok: false, error: "The end date must be on or after the start date." };
+  if (end < start) return { ok: false, error: "The end date must be on or after the start date." };
   const capacity = Math.floor(input.capacity);
   if (!Number.isFinite(capacity) || capacity < 1 || capacity > MAX_CAPACITY)
     return { ok: false, error: `Capacity must be between 1 and ${MAX_CAPACITY}.` };
@@ -127,11 +126,7 @@ export async function generateCloseInventory(input: {
 
   revalidatePath("/admin/closes");
   revalidatePath("/closes");
-  try {
-    await syncSheet(CLOSES_SHEET, { cooldownMs: 0 });
-  } catch (e) {
-    console.error("Closes sheet sync after inventory change failed (non-fatal):", e);
-  }
+  await trySyncSheet(CLOSES_SHEET, 0);
   return { ok: true, summary };
 }
 
@@ -158,10 +153,7 @@ async function afterClaimChange() {
  * Goes through the same locking insert as student claims, so capacity and the
  * per-lead limit hold even against a concurrent student pick.
  */
-export async function assignCloseClaim(
-  slotId: string,
-  email: string,
-): Promise<CloseAssignResult> {
+export async function assignCloseClaim(slotId: string, email: string): Promise<CloseAssignResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 

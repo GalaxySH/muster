@@ -39,12 +39,15 @@
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist.
   **Live in production and released to employees** (see §15) — treat further changes
-  as high-stakes. **Schedule generation is in scope** (§17, 0.98): target staffing +
-  coverage and the recommendation engine ship (`/admin/schedule`), with Phase C
-  (run history + restore, diffs, staleness banner, the schedule sheet) outstanding —
-  see `docs/schedule-generation-plan.md`. Ops is complete (the nightly backup cron is
-  installed). Next: schedule-generation Phase C.
-- **Version:** 0.98
+  as high-stakes. **Schedule generation is in scope** (§17, 0.98) and **complete
+  through Phase C** (1.00): target staffing + coverage, the recommendation engine,
+  per-cell manual overrides (0.99), and regeneration ergonomics — run history +
+  restore, the run diff, the staleness banner, and the `Muster Schedule` sheet —
+  all ship on `/admin/schedule`; see `docs/schedule-generation-plan.md`. Ops is
+  complete (the nightly backup cron is installed). The batch schedule email is
+  removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
+  "Still open" loose ends.
+- **Version:** 1.00
 - **Last updated:** 2026-07-30
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -217,13 +220,13 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   the schedule (also on the per-student page's travel card); this review marker is
   independent of the cutoff-derived `excused` flag. The hub's "Needs attention" panel
   warns about any unresolved trip **starting within two days** (§10b).
-- **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
-  the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
-  **⚠️ Slated for removal (decided 2026-07-30 — roadmap 6.1):** it can only announce that
-  a schedule exists, since the final schedule lives in W2W and Muster holds a
-  recommendation the scheduler may have edited away from. The generic `sendEmail` core
-  and `submissions.scheduled` stay; the surface, the action, and
-  `scheduleEmailSentAt` go.
+- **Schedule-ready email** — **removed (0.99, roadmap 6.1; decided 2026-07-30)**. The
+  `/admin/schedule-email` batch send (pick a group, preview the on-roster + submitted +
+  marked-scheduled recipients, send once each) could only announce that a schedule
+  exists, since the final schedule lives in W2W and Muster holds a recommendation the
+  scheduler may have edited away from. The generic `sendEmail` core and
+  `submissions.scheduled` stay; the dead `scheduleEmailSentAt` column is dropped in a
+  later release.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students); every name links straight to that student's page.
 - **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
@@ -536,15 +539,16 @@ columns from the roster.
     submitted row has one). `updatedAt` is **when the student last changed their own
     answers**, and only student-side writes move it: their availability save, finalize,
     their evidence uploads/removals, and their `/me` confirm. **Admin writes never touch
-    it** — scheduler notes, the scheduled mark, the schedule-email stamp, and anything
+    it** — scheduler notes, the scheduled mark, and anything
     saved on the student's behalf (§10a) all leave it where the student left it, so it
     can never imply a student came back to a form they haven't. The column is therefore
     **not** `ON UPDATE CURRENT_TIMESTAMP`; every student-side write sets it explicitly.
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
-  §10a), `scheduleEmailSentAt?` (idempotency marker for the batch schedule-ready email —
-  roadmap 2.4; **due for removal with that feature**, roadmap 6.1), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  §10a), `scheduleEmailSentAt?` (**dead** — the batch schedule-ready email was removed
+  in 0.99, roadmap 6.1; nothing reads or writes it, and the column drop is deferred to
+  a later release), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
@@ -582,8 +586,8 @@ columns from the roster.
   `default_group_auto_assign` (§13), the email master switch + change-digest
   enabled/recipients/last-run (§11), and `schedule_params` (the tunable generation
   knobs — §17). Rows are created on first write, so an unset key means "use the coded
-  default", never "broken". *(The `scheduleEmailSentAt` marker on Submission is due to
-  go with roadmap 6.1.)*
+  default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
+  awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
   `tokenHash`, `requestedAt`, `expiresAt` (**as built: 30 minutes from issue**, not the
   form-window close the original design proposed), `redeemedAt?`, `redeemedFrom?`,
@@ -605,15 +609,21 @@ columns from the roster.
   double-claim guard), `claimedAt`. Cascades on slot or student deletion.
 - **ScheduleRun** (recommended schedule — `docs/schedule-generation-plan.md` §2.2):
   `id`, `generatedAt`, `generatedBy` (admin email), `status` (`current`|`superseded`),
-  `summaryJson` (the engine's run report). **Append-only:** generating writes a new
-  run and flips the old one to superseded (retention 10), so any generation can be
-  restored and nothing is ever erased.
+  `summaryJson` (the engine's run report), `restoredAt` + `restoredBy` (1.00 — stamped
+  when an admin restores the run; also its retention rank). **Append-only:** generating
+  writes a new run and flips the old one to superseded (retention 10, ranked by
+  restore-or-generate time so a restored run moves to the front of the queue; the
+  current run is never pruned), so any generation can be restored and nothing is ever
+  erased.
 - **ScheduleAssignment** (plan §2.3): `runId` + `studentEmail` + `shiftBlockId` +
   `day` (composite PK), `cohort` (`weekday`|`a`|`b`|`every` — the A/B weekend
-  rotation made concrete; every-weekend opt-ins count in both weeks). Always drawn
-  from the student's own selections; deliberately separate from ShiftSelection
-  because preferences (input) and recommendations (output) never share a table.
-  Fully cascading — derived, regenerable data.
+  rotation made concrete; every-weekend opt-ins count in both weeks), `source`
+  (`engine`|`manual`, 0.99 — engine output vs the admin's per-cell override on
+  §10a's grid; frozen students' carried rows keep it across runs). Engine rows are
+  always drawn from the student's own selections; a manual row may deliberately sit
+  outside them and the grid renders the mismatch. Deliberately separate from
+  ShiftSelection because preferences (input) and recommendations (output) never
+  share a table. Fully cascading — derived, regenerable data.
 
 ---
 
@@ -702,11 +712,24 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     the readout recomputes live. A trial is local until they **Save** it (the button joins
     Reset/Clear once anything differs, and runs Save → Saving → Saved). Saving writes the
     **selection + rotation only**: the student's own **requested hours** and **note** are
-    never touched, since the grid doesn't edit them. There is **no hard-rule gate** here —
-    the scheduler may deliberately record a below-floor selection, the same way an admin
-    may add travel past the cutoff. An already-submitted response stays submitted and has
-    its weekend auto-assign + flags re-applied, exactly as the student's own save would
-    (§5 #5); an unstarted one gets the draft row on demand and stays "missing" (§13.1).
+    never touched, since the grid doesn't edit them. The hard-rule gate is **soft**
+    (0.99): a save that fails the finalize checks warns with the failing rules and needs
+    an explicit **Save anyway**, which raises `revalidation_failed` through the generic
+    revalidation seam (a later clean save clears it) — the scheduler can still
+    deliberately record a below-floor selection, it just can't happen silently (before
+    0.99 such saves landed with no warning at all). An already-submitted response stays
+    submitted and has its weekend auto-assign + flags re-applied, exactly as the
+    student's own save would (§5 #5); an unstarted one gets the draft row on demand and
+    stays "missing" (§13.1).
+  - **The schedule shares the grid (0.99):** once a run exists, each cell splits
+    diagonally — lower left the student's pick, upper right the current run's assigned
+    shift, with engine and manual rows colored apart and a legend beneath. An **Edit
+    mode** toggle picks the click target: **Edit preferences** is the trial/save above;
+    **Edit schedule** (disabled until a run exists) toggles per-cell **manual
+    overrides** on the current run. Same-day overlapping shifts refuse; a cell outside
+    the student's picks is allowed (the scheduler owns the schedule) and renders as the
+    visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
+    grid says so. See §17 and `docs/schedule-generation-plan.md`.
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -942,9 +965,9 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
     dead id (`drive/relay.ts`). The same target machinery backs the second **`Muster SL
     Closes`** sheet (§18a).
   - **Retention:** purge images after schedules are written. **Not built** — no purge
-    job exists and every relayed `fileId` is still live in Drive. Now actionable, since
-    the schedule-ready email (roadmap 2.4) marks the point where a cycle's images stop
-    being needed.
+    job exists and every relayed `fileId` is still live in Drive. The scheduled mark
+    (§10a) gives a purge job its "schedules are written" signal (the batch
+    schedule-ready email that previously marked it was removed in 0.99, roadmap 6.1).
 - **Alternative (fallback):** if the Drive relay is unavailable, app-side storage with
   isolated, access-controlled, encrypted-at-rest blobs and a short retention window.
   Documented as a fallback, not the default.
@@ -1135,8 +1158,9 @@ under-18 test (deferred → fallback, §11).
   scope.** It is a first-class feature, not a grudging exception — the engine, the
   coverage grid, tunable parameters, and per-run history all ship per
   `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79; Phase
-  B generation engine + run view in 0.84–0.85; Phase C regeneration ergonomics
-  outstanding). Two limits are permanent, and they are what keep the boundary meaningful:
+  B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
+  C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
+  sheet — in 1.00). Two limits are permanent, and they are what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
   students).
@@ -1173,10 +1197,11 @@ under-18 test (deferred → fallback, §11).
   tag deploy), central-MariaDB move, health endpoint + external monitoring, backup
   script (v0.25–0.30). **Live in production since 2026-07-29** (§15), with the nightly
   backup cron installed 2026-07-30. Nothing outstanding.
-- **Phase 6 — Schedule generation:** ✅ target staffing + coverage (0.79), the
-  recommendation engine + run view (0.84–0.85). **Phase C outstanding** — run history +
-  restore UI, diff view, staleness banner, the `Muster Schedule` sheet, optional manual
-  overrides (`docs/schedule-generation-plan.md`; roadmap 5.1).
+- **Phase 6 — Schedule generation:** ✅ complete. Target staffing + coverage (0.79),
+  the recommendation engine + run view (0.84–0.85), per-cell manual overrides on the
+  per-student grid (0.99), and Phase C regeneration ergonomics (1.00): run history +
+  restore, the run diff, the staleness banner, the `Muster Schedule` sheet
+  (`docs/schedule-generation-plan.md`; roadmap 5.2).
 - **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
   consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
   W2W interop per §17.
@@ -1288,6 +1313,68 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
+  (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
+  `/admin/schedule` with one-click **Restore**: a superseded run flips back to
+  current in place, stamping the new `restoredAt`/`restoredBy` columns (migration
+  0022, §9); retention now ranks runs by restore-or-generate time
+  (`COALESCE(restoredAt, generatedAt)`) so a restored run moves to the front of the
+  queue, and the current run is never pruned. A **diff view** compares any two runs
+  through a picker defaulting to current vs previous: per-student hour/day/rotation
+  roll-ups with expandable per-shift added/removed/moved detail, plus the
+  frozen-rows-vs-edited-selections **mismatch list** (auto-assigned weekend cells
+  count as selections), all built on the new pure `domain/scheduling/diff.ts`
+  (`diffRuns`, `frozenSelectionMismatches`, `stalenessMessage`). A **staleness
+  banner** counts both new submissions and post-submit edits since the current run
+  (`submittedAt` is write-once, so `updatedAt` catches editors), mirrored by a
+  `schedule-stale` warning in the hub's Needs attention panel. The **`Muster
+  Schedule` Drive sheet** joins the responses and SL-closes sheets as a third
+  `SheetTarget`, sharing the new `buildScheduleMatrix` (`schedule/export.ts`) with
+  the shrunken CSV route; generate and restore end with a forced sync (swallowed
+  when Drive is disconnected) and the page carries a manual rebuild with a short
+  cooldown. Verified: 663 tests across 55 files, plus live restore/diff/prune
+  round-trips against an F26-roster dev DB. The run panel's warning lines (dropped
+  or skipped students, short of hours, below minimum days) now expand to the
+  affected students, each linking to their per-student page (pure
+  `domain/scheduling/problems.ts`, mirroring the engine's counters exactly).
+- **0.99 (2026-07-30)** — **Admin UX pass: native schedule buttons, one Save per
+  position, the position capacity warning, and the per-student schedule editor.**
+  Five owner-directed changes, verified end to end against the imported F26 roster
+  (353 on roster) plus 120 synthetic submissions. **(1)** The `/admin/schedule`
+  action buttons (Update schedule, its confirm step, Save settings) drop their
+  local chip styles for the default browser button look `/admin/positions` already
+  uses. **(2)** Each position card on `/admin/positions` gets a single **Save
+  changes** button writing the details fields and every edited block in one
+  transaction (new batched `savePosition` action; the per-row saves and
+  `updatePosition`/`updateBlock` are deleted), with one aggregate confirm when time
+  edits touch picked shifts. **(3)** New pure `positionCapacityCheck`
+  (`domain/config-validation.ts`): weekly seat-hours from staffing targets (null
+  targets count zero; weekday blocks staff five days, weekend blocks two, both
+  rotation weeks) against on-roster headcount × position minimum hours — an amber
+  shortfall card in the block editor, a quiet set-targets notice when a position
+  has no targets, and a `position-capacity-<id>` warning in the hub's Needs
+  attention panel. **(4)** The per-student availability card becomes
+  **Availability and schedule** (§10a): cells split diagonally between the
+  student's pick and the current run's assigned shift, and an Edit mode toggle
+  adds **Edit schedule** — per-cell manual overrides on the current run, backed by
+  the new `schedule_assignments.source` column (`engine`|`manual`, migration
+  0021, §9). Admin preference saves that fail hard rules now warn and require an
+  explicit Save anyway, raising `revalidation_failed` through the generic
+  revalidation seam (previously such saves landed silently). Carry-forward for
+  frozen students preserves `source` (fixed in `generateSchedule`, which would
+  have reset every carried row to engine). **(5)** The **batch schedule-created
+  email is removed** (roadmap 2.4, per the 6.1 decision): the
+  `/admin/schedule-email` page, its send action, the recipient preview and
+  throttle path (`loadScheduleEmailPreview`, `schedule-email-actions.ts`,
+  `ScheduleEmailPanel`), the `sendScheduleCreatedEmail` template caller, and
+  the hub's nav card are deleted. The generic
+  `sendEmail` core (the magic-link mail and the change digest sit on it) and
+  `submissions.scheduled` (the generation freeze unit and To-review filter)
+  stay. `submissions.schedule_email_sent_at` remains in the schema but is dead —
+  nothing reads or writes it; the physical drop is deferred to a later release
+  once a schedule cycle has passed (no migration in this change). Docs: §9,
+  §10, §10a, §12, §17, §18, `CLAUDE.md`, `docs/architecture.md`,
+  `docs/schedule-generation-plan.md`, `docs/roadmap.md`.
 - **0.98 (2026-07-30)** — **Schedule generation is in scope; W2W tops out at an
   importable document; stale spec text reconciled (docs only, no code).** Two changes,
   both to what the documentation *claims*. **(1) Scope.** §17 stops listing schedule

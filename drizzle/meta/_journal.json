@@ -148,6 +148,20 @@
       "when": 1785212849697,
       "tag": "0020_wonderful_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1785448717611,
+      "tag": "0021_fast_warbound",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1785465221516,
+      "tag": "0022_tough_veda",
+      "breakpoints": true
     }
   ]
 }

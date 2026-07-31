@@ -16,9 +16,13 @@ change is high-stakes: small, well-tested diffs, nothing destructive. The two
 originally deadline-bound items both landed ahead of the fall window: SL
 weekend-close picking (3.2, v0.46) and the batch schedule-created email (2.4,
 v0.42). Ops is finished too: the nightly backup cron was installed 2026-07-30
-(verification commands in `docs/deploy.md` § Backups). What remains is **Tier 5.2**
-(schedule generation Phase C), **Tier 6.1** (removing the batch email), and the
-loose ends in "Still open" at the foot of this file.
+(verification commands in `docs/deploy.md` § Backups). What remains is **Tier
+6.1**'s deferred column drop (step two) and the loose ends in "Still open" at
+the foot of this file. PLAN 0.99 (2026-07-30) shipped an owner-directed admin
+UX pass: native schedule-page buttons, one Save per position, the position
+capacity warning, and the per-student schedule editor with manual overrides,
+plus 6.1 step one: the batch schedule-created email is removed. PLAN 1.00
+(same day) completed **Tier 5.2**, schedule generation Phase C.
 
 ---
 
@@ -168,7 +172,7 @@ by construction). Pure date logic
 (`upcomingTravel(requests, now)`, TDD) + a thin `/admin/travel` page joined
 against on-roster students; linked from the dashboard.
 
-### 2.4 Batch "your schedule has been created" email — **M** ✅ *shipped (PLAN 0.42)* — ⚠️ *slated for removal, see 6.1*
+### 2.4 Batch "your schedule has been created" email — **M** ✅ *shipped (PLAN 0.42)* — ❌ *removed in 0.99, see 6.1*
 - *Refactor first:* split `email/resend.ts` into a generic
   `sendEmail({to, subject, text, html})` core; the magic-link mail becomes a
   template caller (net-simpler seam, needed by 3.1's digest too).
@@ -352,10 +356,12 @@ Full design in `docs/schedule-generation-plan.md`; layering in
 - **Dev tooling** — `npm run dev:generate-availability`, seeded and
   deterministic, whose submissions pass the real `validateAvailability`.
 
-### 5.2 Phase C — regeneration ergonomics — **M**, outstanding
+### 5.2 Phase C — regeneration ergonomics — ✅ DONE (2026-07-30, v1.00)
 
-The runs and their reports are already persisted, so most of this is UI over
-data that exists:
+Shipped as decided (see the owner-decisions paragraph below and
+`docs/schedule-generation-plan.md`). The one piece still open is re-tuning the
+generation weights against real responses (the note at the end of this
+section). Original scope:
 
 - **Run history + Restore** — list past runs, mark a superseded one current
   again. This is the safety net that makes any regeneration reversible.
@@ -367,8 +373,16 @@ data that exists:
 - **`Muster Schedule` Google Sheet** — a third `SheetTarget` beside the
   responses and SL-closes sheets; `sheet-sync.ts` is already parametrized, so
   this is a matrix builder plus a settings key. CSV export ships already.
-- **Manual per-assignment overrides** — only if wanted; would need a `source`
-  column back on `schedule_assignments`.
+- **Manual per-assignment overrides** — ✅ shipped early (PLAN 0.99): the
+  per-student grid's Edit schedule mode writes per-cell overrides on the
+  current run (`schedule_assignments.source`).
+
+Owner decisions for the remaining pieces (2026-07-30): restore flips a run's
+status in place and stamps `restoredAt`/`restoredBy`; pruning ranks on
+restore-or-generate time and never removes the current run; the diff compares
+any two runs at both the per-student and per-shift level; the staleness count
+includes post-submit edits; the schedule sheet syncs automatically after
+generate and restore.
 
 Also open, and only now possible: the engine's weights were tuned against
 **synthetic** data because the dev DB had no submissions. A real form cycle has
@@ -387,7 +401,7 @@ open question #6 (what layout the scheduler wants to read from).
 
 ## Tier 6 — Simplification
 
-### 6.1 Remove the batch schedule-created email (2.4) — **S**, outstanding
+### 6.1 Remove the batch schedule-created email (2.4) — **S** ✅ *step one done (PLAN 0.99)*
 
 **Decided 2026-07-30 (owner).** Delete the feature to trim bloat. It earns less
 than it costs: all it can say is *a schedule now exists, go look at W2W*, which
@@ -411,9 +425,13 @@ the magic-link mail and the change-request digest both sit on it. **Keep**
 `submissions.scheduled`, which is load-bearing elsewhere: it is the freeze unit
 for schedule generation (5.1) and drives the To-review filter.
 
-Per CLAUDE.md's production rule this is a live system, so: confirm the scheduler
-is not mid-cycle on a send before dropping the column, and take it in two steps
-if useful — remove the UI/action first, drop the column once a cycle has passed.
+Per CLAUDE.md's production rule this is a live system, so the removal is taken
+in the two steps this item prescribed. **Step one shipped 2026-07-30 (PLAN
+0.99):** the admin send surface, its action, the recipient preview/throttle
+path, and the hub nav card are removed; `schedule_email_sent_at` stays in the
+schema, dead. **Step two is outstanding:** drop the column once a full schedule
+cycle has passed, confirming the scheduler is not mid-cycle on a send first (no
+migration exists yet).
 
 ## Completeness-validation results (2026-07-08 audit)
 
@@ -448,8 +466,8 @@ self-healing recreate, the UptimeRobot status page).
 ### Still open (validation-sourced; none block the tiers above)
 - **Image retention purge** (§12 "purge images after schedules are written") —
   never built; no purge job exists and every relayed `fileId` is still live in
-  Drive. Now actionable: 2.4's schedule-created email marks the point where a
-  cycle's images stop being needed.
+  Drive. The per-student scheduled mark gives the "cycle is done" signal (2.4's
+  schedule-created email, which previously marked it, was removed in 0.99).
 - **Drive refresh-token idle touch** (§12's 6-month rule) — nothing exercises
   the grant over an idle summer. v0.89 added failure *detection*
   (`drive_last_error_at` → the `drive-failing` alert), but that fires after the

@@ -26,7 +26,9 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
         nightPriority: Number(night),
         eveningPriority: Number(evening),
       });
-      setMsg(res.ok ? "Saved. Applies the next time the schedule is updated." : (res.error ?? "Failed."));
+      setMsg(
+        res.ok ? "Saved. Applies the next time the schedule is updated." : (res.error ?? "Failed."),
+      );
     });
   };
 
@@ -57,12 +59,15 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
           min={0}
           max={100}
         />
-        <button type="button" onClick={submit} disabled={pending} style={saveButton}>
+        <button type="button" onClick={submit} disabled={pending}>
           {pending ? "Saving…" : "Save settings"}
         </button>
       </div>
       {msg && (
-        <p role="status" style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        <p
+          role="status"
+          style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}
+        >
           {msg}
         </p>
       )}
@@ -108,13 +113,3 @@ function Field({
     </label>
   );
 }
-
-const saveButton: React.CSSProperties = {
-  borderRadius: 8,
-  padding: "6px 14px",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "1px solid var(--color-border-primary)",
-  background: "var(--color-background-primary)",
-};

@@ -10,7 +10,6 @@ import {
   faChartColumn,
   faCircleCheck,
   faCircleExclamation,
-  faEnvelope,
   faFileImport,
   faGear,
   faInbox,
@@ -148,7 +147,6 @@ export default async function AdminPage() {
           </NavGroup>
 
           <NavGroup title="Email">
-            <NavCard icon={faEnvelope} title="Batch schedule email" href="/admin/schedule-email" />
             <NavCard icon={faGear} title="Email settings" href="/admin/email-settings" />
           </NavGroup>
         </AdminNav>

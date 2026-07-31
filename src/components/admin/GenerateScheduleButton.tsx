@@ -27,7 +27,7 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       {!confirming ? (
-        <button type="button" onClick={() => setConfirming(true)} disabled={pending} style={primary}>
+        <button type="button" onClick={() => setConfirming(true)} disabled={pending}>
           {pending ? "Working…" : label}
         </button>
       ) : (
@@ -37,10 +37,10 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
               ? "Rebuild recommendations for everyone not marked scheduled?"
               : "Generate recommendations for every submitted response?"}
           </span>
-          <button type="button" onClick={submit} style={primary}>
+          <button type="button" onClick={submit}>
             Yes, {hasRun ? "update" : "generate"}
           </button>
-          <button type="button" onClick={() => setConfirming(false)} style={secondary}>
+          <button type="button" onClick={() => setConfirming(false)}>
             Cancel
           </button>
         </>
@@ -53,18 +53,3 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
     </div>
   );
 }
-
-const primary: React.CSSProperties = {
-  borderRadius: 8,
-  padding: "6px 14px",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "1px solid var(--color-border-primary)",
-  background: "var(--color-background-primary)",
-};
-
-const secondary: React.CSSProperties = {
-  ...primary,
-  fontWeight: 400,
-};

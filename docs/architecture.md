@@ -24,10 +24,12 @@ island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, reva
 the travel list + the student page + the hub), and a resolved row green-tints on both
 the travel list and the per-student travel card. It is a review marker only, distinct
 from the cutoff-derived `excused` flag. The hub's imminent-travel alert reads it (see the
-admin-views section). (4) a **batch schedule-ready email**
-`/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
-callers; recipients = on-roster + submitted + scheduled; idempotent via
-`submissions.scheduleEmailSentAt`); (5) **computed high-demand** — the red bar now
+admin-views section). (4) a **batch schedule-ready email** at
+`/admin/schedule-email` — **removed in 0.99 (roadmap 6.1)**; its lasting piece is the
+split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
+the magic-link mail and the change digest still sit on (the dead
+`submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
+high-demand** — the red bar now
 derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
 responses, then the busiest **~15%** of picked shifts **ranked within each day-type**
 via `DEMAND_TOP_SHARE`, a relative rank rather than an absolute cohort share so it
@@ -234,8 +236,8 @@ flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonica
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
 count from one grouped query over `change_requests.status = "open"`),
 `getResponseNeighbors(email, filters)` (prev/next + the
-filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). `listResponses` is **roster-wide**: `FROM students LEFT
+filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
+`listResponses` is **roster-wide**: `FROM students LEFT
 JOIN submissions`, so a student with no response is a row with null submission fields.
 The three-way status is one exported rule, **`responseStatus(row)`** → `submitted |
 draft | missing`, shared by the list, `listNonResponses`, and the per-student header: a
@@ -266,10 +268,8 @@ that writes through the student evidence actions; see the evidence/Drive section
 `setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
 `ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
 notes and a scheduled mark on anyone on the roster (gated on the student existing, since
-`studentEmail` is an FK; `deleteResponse` still refuses when there is no row). The batch
-schedule-ready send is
-`schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
-`ScheduleEmailPanel` island). The per-student page is a server component that renders for
+`studentEmail` is an FK; `deleteResponse` still refuses when there is no row).
+The per-student page is a server component that renders for
 **any** roster student, submission or not: with no submission the selection is simply
 empty, so the KPI cards, the hours calculator over an empty grid, the scheduler-notes
 card, and the empty evidence cards (each with a quick link to add entries on the
@@ -317,7 +317,18 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 `computeCapacity` over picks + the auto cell (so it tracks the rotation), tinted
 `--color-text-auto` because those hours are additional and not the student's own pick.
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
-single number that pick already counts for. The flags & checks
+single number that pick already counts for. Since 0.99 the card is titled
+**Availability and schedule** and carries the current run's assignments as a second
+layer: each cell splits diagonally (lower left the student's pick, upper right the
+scheduled shift — engine rows green, manual rows violet) with a legend, fed by
+`buildAdminGrid`'s optional assignments parameter (`AdminCell` = `{selected,
+autoAssigned, assigned, assignmentSource}`, loaded via `loadStudentCurrentAssignments`
+in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
+preferences** is the trial/save behavior above; **Edit schedule** (disabled with a
+generate-first note until a run exists) toggles per-cell manual overrides through
+`setManualAssignment`/`removeManualAssignment` (see the schedule generation section).
+Preference saves that fail hard rules warn and need an explicit Save anyway (see the
+availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
 the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
 last hole in "everything about one student on one page": `loadStudentCloseClaims`
@@ -330,8 +341,9 @@ It renders through the pure `formatCloseSlot` (`domain/close-claims.ts`) and is 
 compact (a title+pill row, ≤3 lines, a link) because the page's design constraint is that
 it fits 1920×1080 without scrolling. It also renders standalone when a lead has claims but
 no submission, since an admin can assign closes before the lead ever opens the form.
-New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
-(2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
+New admin pages: `/admin/travel` (2.3); `/admin/schedule-email` (2.4) was added here
+too and removed in 0.99 (roadmap 6.1). Wireframe design tokens (`--color-*`,
+`--border-radius-*`) live in `globals.css`.
 
 ## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
 
@@ -547,7 +559,7 @@ dropped the clause) — otherwise every admin write to the row silently moved it
 paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
 `finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
 Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
-(notes, scheduled mark), the schedule-email stamp, and `saveAvailabilityFor`. The one shared
+(notes, scheduled mark) and `saveAvailabilityFor`. The one shared
 seam that needs care is evidence, where the same action serves both callers: `editStamp(who)`
 spreads the column into a `.set()` that is already updating the submission, and
 `touchSubmission(id, who)` covers the actions that only wrote child rows (a travel entry, a
@@ -563,8 +575,12 @@ persistence core as `saveAvailability`: a private `persistAvailability` owns the
 upsert + `writeSelectionAndFlags` + sheet resync, so an admin edit lands **exactly** how
 the student's own save would — including re-running the weekend auto-assign and flags on
 an already-submitted form. Two things differ, both because the admin is the authority
-rather than the window. There is **no hard-rule gate** (a scheduler can deliberately
-record a below-floor selection, as they can add travel past the cutoff); and it writes a
+rather than the window. The hard-rule gate is **soft** (0.99): a save that fails the
+finalize checks returns the failing rules and only goes through when re-invoked with
+`overrideInvalid`, and every admin save runs `syncRevalidationFlag` in the same
+transaction — an override raises `revalidation_failed`, a later clean save clears it
+(before 0.99 such saves landed silently; a scheduler can still deliberately record a
+below-floor selection, as they can add travel past the cutoff). And it writes a
 narrower `SubmissionPatch` — **selection + rotation only**, never `desiredHours` or
 `studentNotes`, since the grid doesn't edit the student's own stated ask and must not
 blank it. Status behaviour matches every other on-behalf action: it starts a draft when
@@ -686,10 +702,9 @@ cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redee
 **no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). All
 outbound email flows through one choke point, `sendEmail`, which obeys a **master switch**
 (`app_settings.email_sending_enabled`, `getEmailSendingEnabled`; enabled by default):
-when off it suppresses+logs every message, so sign-in links and the batch schedule-ready
-send both stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
-`EmailSettingsPanel`); the batch send also refuses up front when off so no one is marked
-notified. The same page also holds the **schedule-change digest settings** (roadmap 3.1
+when off it suppresses+logs every message, so sign-in links and the change digest both
+stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
+`EmailSettingsPanel`). The same page also holds the **schedule-change digest settings** (roadmap 3.1
 prep, v0.47; `DigestSettingsPanel`): a digest on/off toggle + the admin-configured
 recipient list, stored in `app_settings` (`change_digest_enabled`,
 `change_digest_recipients`; accessors `getChangeDigestEnabled`/
@@ -859,15 +874,28 @@ picks when resolved), always writes the `position_change` flag, and calls
 future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
 upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
 and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
-`ActionResult`): position CRUD with reference guards, `setAlias`/`clearAlias`
-(write-time canonicalization: students re-pointed, then `mergedIntoId` set; Shift
-Lead is delete- and alias-protected via `SHIFT_LEAD_POSITION_ID`), block CRUD
-(`validateBlockTimes`; referenced blocks refuse delete, time edits confirm
-client-side), and ghost resolution (`createPositionForTitle`/`mapTitleToPosition` —
-mapping row + assign + carry-over). The UI is `/admin/positions` (server page →
-islands `GhostTitleCard`, `PositionCard`, `BlockEditor`, `AddPositionForm`); the
-block editor parses HH:MM live and re-derives Open/Close tags + warnings per
-keystroke from the pure helpers. Flag read-side: `FLAG_LABELS`/filters in
+`ActionResult`): position create/deactivate/delete with reference guards,
+`setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
+`mergedIntoId` set; Shift Lead is delete- and alias-protected via
+`SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
+the details fields plus every dirty block edit, validated up front, written in a
+single transaction with a single revalidate; it replaced the per-row
+`updateBlock`/`updatePosition`, and time edits that touch picked shifts confirm once,
+aggregated client-side), block add/remove (`validateBlockTimes`; referenced blocks
+refuse delete), and ghost resolution
+(`createPositionForTitle`/`mapTitleToPosition` — mapping row + assign + carry-over).
+The UI is `/admin/positions` (server page → islands `GhostTitleCard`, `PositionCard`,
+`BlockEditor`, `AddPositionForm`); the block editor parses HH:MM live, re-derives
+Open/Close tags + warnings per keystroke from the pure helpers, and lifts row edits
+into `PositionCard`'s single dirty model behind the one Save button. It also renders
+`positionCapacityCheck` (`domain/config-validation.ts`, 0.99): weekly seat-hours from
+staffing targets (null targets count zero; weekday blocks staff five days, weekend
+blocks two — both rotation weeks are worked, and both sides of the comparison are
+weekly averages) against on-roster headcount × the position's minimum hours, rendered
+as an amber shortfall card, a quiet set-targets notice when no targets exist, and the
+hub's `position-capacity-<id>` warning alert (the snapshot's `PositionConfig` already
+carried blocks and `onRosterCount`; `positions/data.ts` grew its own `onRosterCount`
+for the page). Flag read-side: `FLAG_LABELS`/filters in
 `admin/response-filters.ts`, pills in `ResponseList`, per-student flag alerts with
 the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 `ClearPositionChangeButton`), and the derived no-position pill on
@@ -960,9 +988,45 @@ The generator itself, layered exactly like the rest of the app:
   students + submitted selections that pass the real `validateAvailability`;
   `--clean` removes exactly the `synthetic-` rows; refuses production.
 
+- **Manual overrides** (0.99, ahead of Phase C): `schedule_assignments.source`
+  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes the
+  admin-gated `setManualAssignment`/`removeManualAssignment`: current run only
+  (refuse cleanly when none exists), same-day true overlap refused via the pure
+  `domain/scheduling/manual.ts` (`findDayOverlap` — touching allowed,
+  `manualWeekendCohort` — reuse the student's current-run cohort, else `every`
+  for opt-ins, else `a`), cells outside the student's picks allowed (the
+  scheduler owns the schedule; the grid renders the mismatch). Edits mutate the
+  current run in place and never create a run. `generateSchedule`'s
+  carry-forward preserves `source` on frozen students' rows; a non-frozen
+  student's manual rows are superseded by the next update by design. The
+  per-student grid (PLAN §10a) is the UI.
+
+- **Phase C — regeneration ergonomics** (1.00): migration 0022 adds
+  `schedule_runs.restoredAt`/`restoredBy`. `restoreScheduleRun` flips a
+  superseded run back to current in place (one transaction, stamps the audit
+  columns), and pruning ranks by `COALESCE(restoredAt, generatedAt)` desc while
+  never touching the current run, so a restored run earns another full
+  retention window. `domain/scheduling/diff.ts` (pure, TDD) owns `diffRuns`
+  (added/removed/cohort-moved cells + per-student roll-ups, deterministic
+  ordering), `frozenSelectionMismatches` (a frozen student's current-run rows
+  outside their selections; auto-assigned cells count as selections), and
+  `stalenessMessage` (shared verbatim by the page banner and the hub's
+  `schedule-stale` warning; counts new submissions and post-submit edits,
+  because `submittedAt` is write-once). `schedule/data.ts` grew
+  `loadScheduleForRun` (extracted from `loadCurrentSchedule`, which now
+  delegates), `listScheduleRuns`, `loadRunAssignments`, `loadRunDiff`,
+  `loadFrozenMismatches`, and `loadScheduleStaleness`. The `Muster Schedule`
+  sheet is the third `SheetTarget`, sharing the pure `buildScheduleMatrix`
+  (`schedule/export.ts`) with the shrunken CSV route; generate and restore end
+  with a forced `trySyncSheet` (swallowed when Drive is disconnected) and the
+  page carries a manual rebuild with a short cooldown. UI on `/admin/schedule`:
+  the staleness banner beside the run stamp, the run history table with the
+  two-step `RestoreRunButton`, and the diff section (a `searchParams`-driven
+  GET form defaulting current vs previous, per-student `<details>` roll-ups,
+  the mismatch list — rendered standalone when only one run exists).
+
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
 protection concept. Frozen students' rows carry forward verbatim through every
 run and consume capacity first; marking scheduled still never changes response
-status or the non-response list (both key on `confirmedAt`). Phase C (run
-history + restore UI, diffs, staleness banner, the `Muster Schedule` sheet) is
-specified in `docs/schedule-generation-plan.md`.
+status or the non-response list (both key on `confirmedAt`). With Phase C
+above, `docs/schedule-generation-plan.md` is fully built.

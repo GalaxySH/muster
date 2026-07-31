@@ -7,12 +7,13 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import {
   DESIRED_CAPACITY_MAX,
   blockSetWarnings,
+  positionCapacityCheck,
   validateBlockTimes,
   validateDesiredCapacity,
 } from "@/lib/domain/config-validation";
 import { hhmmToMinutes, minutesToHHMM } from "@/lib/domain/time";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
-import { createBlock, deleteBlock, updateBlock } from "@/lib/positions/actions";
+import { createBlock, deleteBlock } from "@/lib/positions/actions";
 import type { AdminBlockItem } from "@/lib/positions/data";
 
 const DAY_TYPES: { dayType: DayType; label: string }[] = [
@@ -21,40 +22,99 @@ const DAY_TYPES: { dayType: DayType; label: string }[] = [
 ];
 
 /**
- * Per-position block editor (roadmap 3.3): two columns (weekdays/weekends) of
- * HH:MM time rows with add/remove, live derived Open/Close tags, and live
- * block-set warnings. Times are edited as time-input strings and converted to
- * minutes at the seam; unparseable edits fall back to the saved value for the
- * live derivation.
+ * One block row's unsaved values: times as HH:MM strings, target staffing as a
+ * number-input string ("" = no target).
  */
-export function BlockEditor({ position, blocks }: { position: Position; blocks: AdminBlockItem[] }) {
+export interface BlockRowEdit {
+  start: string;
+  end: string;
+  cap: string;
+}
+
+/** The saved row values in input-string form (what dirtiness is measured against). */
+export function savedBlockRow(b: AdminBlockItem): BlockRowEdit {
+  return {
+    start: minutesToHHMM(b.start),
+    end: minutesToHHMM(b.end),
+    cap: b.desiredCapacity === null ? "" : String(b.desiredCapacity),
+  };
+}
+
+export function blockRowDirty(b: AdminBlockItem, edit: BlockRowEdit | undefined): boolean {
+  if (!edit) return false;
+  const saved = savedBlockRow(b);
+  return edit.start !== saved.start || edit.end !== saved.end || edit.cap !== saved.cap;
+}
+
+/** Parse one row's strings into save-ready values, or say why they can't be saved. */
+export function parseBlockRow(
+  v: BlockRowEdit,
+):
+  | { ok: true; start: number; end: number; desiredCapacity: number | null }
+  | { ok: false; error: string } {
+  const start = hhmmToMinutes(v.start);
+  const end = hhmmToMinutes(v.end);
+  if (start === null || end === null) {
+    return { ok: false, error: "Enter both a start and an end time." };
+  }
+  const timeError = validateBlockTimes(start, end);
+  if (timeError) return { ok: false, error: timeError };
+  const trimmed = v.cap.trim();
+  const desiredCapacity = trimmed === "" ? null : Number(trimmed);
+  const capacityError = validateDesiredCapacity(desiredCapacity);
+  if (capacityError) return { ok: false, error: capacityError };
+  return { ok: true, start, end, desiredCapacity };
+}
+
+/**
+ * Per-position block editor (roadmap 3.3): two columns (weekdays/weekends) of
+ * HH:MM time rows with add/remove, live derived Open/Close tags, live
+ * block-set warnings, and the weekly capacity check against the roster. Times
+ * are edited as time-input strings and converted to minutes at the seam;
+ * unparseable edits fall back to the saved value for the live derivation.
+ * Row edits live in the parent card, whose single Save writes them; add and
+ * remove stay immediate here.
+ */
+export function BlockEditor({
+  position,
+  blocks,
+  onRosterCount,
+  edits,
+  onEdit,
+  saving,
+}: {
+  position: Position;
+  blocks: AdminBlockItem[];
+  /** On-roster students holding this position (the capacity check's demand side). */
+  onRosterCount: number;
+  /** Unsaved row edits, keyed by block id and owned by the card. */
+  edits: Record<string, BlockRowEdit>;
+  onEdit: (blockId: string, value: BlockRowEdit) => void;
+  /** True while the card's Save is in flight. */
+  saving: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  // Unsaved edits by block id (times as HH:MM strings, target staffing as a
-  // number-input string, "" = no target). Kept after save; dirtiness is
-  // computed against the saved values, so a refresh settles it back to clean.
-  const [edits, setEdits] = useState<Record<string, { start: string; end: string; cap: string }>>(
-    {},
-  );
-  const [adds, setAdds] = useState<Record<DayType, { start: string; end: string; cap: string }>>({
+  const [adds, setAdds] = useState<Record<DayType, BlockRowEdit>>({
     weekday: { start: "", end: "", cap: "" },
     weekend: { start: "", end: "", cap: "" },
   });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const busy = pending || saving;
 
-  const savedCap = (b: AdminBlockItem) => (b.desiredCapacity === null ? "" : String(b.desiredCapacity));
-  const valueOf = (b: AdminBlockItem) =>
-    edits[b.id] ?? { start: minutesToHHMM(b.start), end: minutesToHHMM(b.end), cap: savedCap(b) };
+  const valueOf = (b: AdminBlockItem) => edits[b.id] ?? savedBlockRow(b);
 
-  // The live view the Open/Close tags and warnings derive from.
+  // The live view the Open/Close tags, warnings, and capacity check derive from.
   const liveBlocks: ShiftBlock[] = blocks.map((b) => {
     const v = valueOf(b);
+    const cap = v.cap.trim() === "" ? null : Number(v.cap);
     return {
       id: b.id,
       positionId: b.positionId,
       dayType: b.dayType,
       start: hhmmToMinutes(v.start) ?? b.start,
       end: hhmmToMinutes(v.end) ?? b.end,
+      desiredCapacity: cap === null || Number.isFinite(cap) ? cap : b.desiredCapacity,
     };
   });
   const openClose = Object.fromEntries(
@@ -64,79 +124,33 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
     ]),
   );
   const warnings = blockSetWarnings(position, liveBlocks);
+  const capacity = positionCapacityCheck(liveBlocks, onRosterCount, position.minHours);
 
-  function act(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
+  function removeBlock(b: AdminBlockItem) {
+    if (!confirm("Remove this block?")) return;
     setMsg(null);
     startTransition(async () => {
-      const res = await fn();
-      setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
+      const res = await deleteBlock(b.id);
+      setMsg({ ok: res.ok, text: res.ok ? "Block removed." : (res.error ?? "Failed.") });
       if (res.ok) router.refresh();
     });
   }
 
-  /** Parse an edited pair, or surface why it can't be saved. */
-  function parsePair(start: string, end: string): { start: number; end: number } | null {
-    const s = hhmmToMinutes(start);
-    const e = hhmmToMinutes(end);
-    if (s === null || e === null) {
-      setMsg({ ok: false, text: "Enter both a start and an end time." });
-      return null;
-    }
-    const error = validateBlockTimes(s, e);
-    if (error) {
-      setMsg({ ok: false, text: error });
-      return null;
-    }
-    return { start: s, end: e };
-  }
-
-  /** Parse a target-staffing string ("" = no target), or surface why it can't be saved. */
-  function parseCapacity(raw: string): { value: number | null } | null {
-    const trimmed = raw.trim();
-    const value = trimmed === "" ? null : Number(trimmed);
-    const error = validateDesiredCapacity(value);
-    if (error) {
-      setMsg({ ok: false, text: error });
-      return null;
-    }
-    return { value };
-  }
-
-  function saveBlock(b: AdminBlockItem) {
-    const v = valueOf(b);
-    const parsed = parsePair(v.start, v.end);
-    if (!parsed) return;
-    const cap = parseCapacity(v.cap);
-    if (!cap) return;
-    // Only a time change moves shifts under students' saved picks; a staffing
-    // target change is admin-side context and needs no confirm.
-    const timesChanged = parsed.start !== b.start || parsed.end !== b.end;
-    if (
-      timesChanged &&
-      b.selectionCount > 0 &&
-      !confirm(
-        `${b.selectionCount} student${b.selectionCount === 1 ? " has" : "s have"} picked this shift. Change its time?`,
-      )
-    ) {
+  function addBlock(dayType: DayType) {
+    const parsed = parseBlockRow(adds[dayType]);
+    if (!parsed.ok) {
+      setMsg({ ok: false, text: parsed.error });
       return;
     }
-    act(() => updateBlock(b.id, parsed.start, parsed.end, cap.value), "Block saved.");
-  }
-
-  function removeBlock(b: AdminBlockItem) {
-    if (!confirm("Remove this block?")) return;
-    act(() => deleteBlock(b.id), "Block removed.");
-  }
-
-  function addBlock(dayType: DayType) {
-    const v = adds[dayType];
-    const parsed = parsePair(v.start, v.end);
-    if (!parsed) return;
-    const cap = parseCapacity(v.cap);
-    if (!cap) return;
     setMsg(null);
     startTransition(async () => {
-      const res = await createBlock(position.id, dayType, parsed.start, parsed.end, cap.value);
+      const res = await createBlock(
+        position.id,
+        dayType,
+        parsed.start,
+        parsed.end,
+        parsed.desiredCapacity,
+      );
       if (res.ok) {
         setAdds((prev) => ({ ...prev, [dayType]: { start: "", end: "", cap: "" } }));
         setMsg({ ok: true, text: "Block added." });
@@ -157,38 +171,29 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
             <div key={dayType}>
               <h3 style={h3}>{label}</h3>
               {dayBlocks.length === 0 && (
-                <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+                <p
+                  style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}
+                >
                   No blocks yet.
                 </p>
               )}
               {dayBlocks.map((b) => {
                 const v = valueOf(b);
-                const saved = {
-                  start: minutesToHHMM(b.start),
-                  end: minutesToHHMM(b.end),
-                  cap: savedCap(b),
-                };
-                const dirty =
-                  v.start !== saved.start || v.end !== saved.end || v.cap !== saved.cap;
                 return (
                   <div key={b.id} style={row}>
                     <input
                       type="time"
                       value={v.start}
-                      disabled={pending}
-                      onChange={(e) =>
-                        setEdits((prev) => ({ ...prev, [b.id]: { ...v, start: e.target.value } }))
-                      }
+                      disabled={busy}
+                      onChange={(e) => onEdit(b.id, { ...v, start: e.target.value })}
                       style={timeInput}
                     />
                     <span style={{ fontSize: 13 }}>to</span>
                     <input
                       type="time"
                       value={v.end}
-                      disabled={pending}
-                      onChange={(e) =>
-                        setEdits((prev) => ({ ...prev, [b.id]: { ...v, end: e.target.value } }))
-                      }
+                      disabled={busy}
+                      onChange={(e) => onEdit(b.id, { ...v, end: e.target.value })}
                       style={timeInput}
                     />
                     <input
@@ -196,15 +201,15 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                       min={1}
                       max={DESIRED_CAPACITY_MAX}
                       value={v.cap}
-                      disabled={pending}
+                      disabled={busy}
                       aria-label="Target staffing"
                       title="How many students this shift needs each day. Leave blank for no target."
-                      onChange={(e) =>
-                        setEdits((prev) => ({ ...prev, [b.id]: { ...v, cap: e.target.value } }))
-                      }
+                      onChange={(e) => onEdit(b.id, { ...v, cap: e.target.value })}
                       style={capInput}
                     />
-                    <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>staff</span>
+                    <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+                      staff
+                    </span>
                     {oc.openId === b.id && <span style={openTag}>Open</span>}
                     {oc.closeId === b.id && <span style={closeTag}>Close</span>}
                     {b.selectionCount > 0 && (
@@ -212,12 +217,9 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                         {b.selectionCount} pick{b.selectionCount === 1 ? "" : "s"}
                       </span>
                     )}
-                    <button type="button" disabled={pending || !dirty} onClick={() => saveBlock(b)}>
-                      Save
-                    </button>
                     <button
                       type="button"
-                      disabled={pending || b.selectionCount > 0}
+                      disabled={busy || b.selectionCount > 0}
                       title={
                         b.selectionCount > 0
                           ? `${b.selectionCount} student pick${b.selectionCount === 1 ? "" : "s"} reference this block`
@@ -235,7 +237,7 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                 <input
                   type="time"
                   value={adds[dayType].start}
-                  disabled={pending}
+                  disabled={busy}
                   onChange={(e) =>
                     setAdds((prev) => ({
                       ...prev,
@@ -248,7 +250,7 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                 <input
                   type="time"
                   value={adds[dayType].end}
-                  disabled={pending}
+                  disabled={busy}
                   onChange={(e) =>
                     setAdds((prev) => ({
                       ...prev,
@@ -262,7 +264,7 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                   min={1}
                   max={DESIRED_CAPACITY_MAX}
                   value={adds[dayType].cap}
-                  disabled={pending}
+                  disabled={busy}
                   aria-label="Target staffing"
                   title="How many students this shift needs each day. Leave blank for no target."
                   onChange={(e) =>
@@ -276,7 +278,7 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
                 <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>staff</span>
                 <button
                   type="button"
-                  disabled={pending || !adds[dayType].start || !adds[dayType].end}
+                  disabled={busy || !adds[dayType].start || !adds[dayType].end}
                   onClick={() => addBlock(dayType)}
                 >
                   Add block
@@ -299,10 +301,24 @@ export function BlockEditor({ position, blocks }: { position: Position; blocks: 
         </p>
       )}
       {warnings.map((w) => (
-        <InfoCard key={w.kind} tone="danger" style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}>
+        <InfoCard
+          key={w.kind}
+          tone="danger"
+          style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}
+        >
           <p style={{ margin: 0, fontSize: 14 }}>{w.message}</p>
         </InfoCard>
       ))}
+      {onRosterCount > 0 && capacity.kind === "short" && (
+        <InfoCard tone="warning" style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}>
+          <p style={{ margin: 0, fontSize: 14 }}>{capacity.message}</p>
+        </InfoCard>
+      )}
+      {onRosterCount > 0 && blocks.length > 0 && capacity.kind === "no_targets" && (
+        <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+          Set staffing targets to check weekly capacity against the roster.
+        </p>
+      )}
     </div>
   );
 }

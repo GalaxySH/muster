@@ -34,13 +34,15 @@ export function Page({
 const CARD_TONES = {
   info: { background: "#e7f0fb", border: "1px solid #b6d2f2" },
   success: { background: "#e6f4ea", border: "1px solid #b7dfc2" },
+  warning: { background: "#fdf6e3", border: "1px solid #eedc9a" },
   danger: { background: "#fdecea", border: "1px solid #f0b4ae" },
 } as const;
 
 /**
  * The tinted notice/call-to-action card (the /me hub boxes, the / greeting, the
  * /signin banners). `info` (blue) is the default; `success` (green) confirms;
- * `danger` (red) warns. `title` renders the standard card heading.
+ * `warning` (amber) cautions; `danger` (red) warns. `title` renders the
+ * standard card heading.
  */
 export function InfoCard({
   tone = "info",

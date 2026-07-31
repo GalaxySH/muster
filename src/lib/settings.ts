@@ -24,6 +24,8 @@ export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
 export const SETTING_RESPONSES_SHEET_SYNCED_AT = "responses_sheet_synced_at";
 export const SETTING_CLOSES_SHEET_ID = "closes_sheet_id";
 export const SETTING_CLOSES_SHEET_SYNCED_AT = "closes_sheet_synced_at";
+export const SETTING_SCHEDULE_SHEET_ID = "schedule_sheet_id";
+export const SETTING_SCHEDULE_SHEET_SYNCED_AT = "schedule_sheet_synced_at";
 /** "1"/"0": whether ungrouped students get swept into the default group (PLAN §13). Absent ⇒ off. */
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
 /** ISO instant overriding the default 9/1 travel cutoff (PLAN §8). Absent ⇒ default. */

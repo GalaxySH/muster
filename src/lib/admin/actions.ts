@@ -34,6 +34,7 @@ import {
 } from "@/lib/roster/position-mapping";
 import {
   syncSheet,
+  trySyncSheet,
   RESPONSES_SHEET,
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
@@ -154,11 +155,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
 
   // Best-effort Drive cleanup (relayDelete never throws) and sheet rebuild.
   for (const fileId of fileIds) await relayDelete(fileId);
-  try {
-    await syncSheet(RESPONSES_SHEET, { cooldownMs: 0 });
-  } catch (e) {
-    console.error("Sheet resync after delete failed (non-fatal):", e);
-  }
+  await trySyncSheet(RESPONSES_SHEET, 0);
 
   revalidatePath("/admin/responses");
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);

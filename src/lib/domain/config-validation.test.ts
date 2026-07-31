@@ -3,6 +3,7 @@ import { parseTime } from "./time";
 import {
   DESIRED_CAPACITY_MAX,
   blockSetWarnings,
+  positionCapacityCheck,
   validateBlockTimes,
   validateDesiredCapacity,
 } from "./config-validation";
@@ -76,8 +77,21 @@ function position(overrides: Partial<Position> = {}): Position {
   };
 }
 
-function block(id: string, dayType: DayType, start: string, end: string): ShiftBlock {
-  return { id, positionId: "ca", dayType, start: parseTime(start), end: parseTime(end) };
+function block(
+  id: string,
+  dayType: DayType,
+  start: string,
+  end: string,
+  desiredCapacity: number | null = null,
+): ShiftBlock {
+  return {
+    id,
+    positionId: "ca",
+    dayType,
+    start: parseTime(start),
+    end: parseTime(end),
+    desiredCapacity,
+  };
 }
 
 const kinds = (warnings: ReturnType<typeof blockSetWarnings>) => warnings.map((w) => w.kind);
@@ -185,5 +199,61 @@ describe("blockSetWarnings", () => {
     for (const w of blockSetWarnings(position(), [])) {
       expect(w.message).not.toContain("—");
     }
+  });
+});
+
+describe("positionCapacityCheck", () => {
+  it("says no targets when no block has one", () => {
+    expect(positionCapacityCheck([block("wd", "weekday", "8a", "6p")], 5, 10)).toEqual({
+      kind: "no_targets",
+    });
+    expect(positionCapacityCheck([], 5, 10)).toEqual({ kind: "no_targets" });
+  });
+
+  it("passes when the weekly seat hours cover every student's minimum", () => {
+    // 2 seats x 10h x 5 weekdays = 100 seat hours; 10 students x 10h = 100.
+    expect(positionCapacityCheck([block("wd", "weekday", "8a", "6p", 2)], 10, 10)).toEqual({
+      kind: "ok",
+      supplyHours: 100,
+      demandHours: 100,
+    });
+  });
+
+  it("reports a shortfall with the weekly numbers", () => {
+    // 2 seats x 4h x 5 weekdays = 40 seat hours; 5 students x 10h = 50.
+    const result = positionCapacityCheck([block("wd", "weekday", "8a", "12p", 2)], 5, 10);
+    expect(result.kind).toBe("short");
+    if (result.kind !== "short") return;
+    expect(result.supplyHours).toBe(40);
+    expect(result.demandHours).toBe(50);
+    expect(result.message).toContain("40");
+    expect(result.message).toContain("50");
+  });
+
+  it("counts weekend seats on both days at full weight", () => {
+    // 1 seat x 10h x 2 weekend days = 20 seat hours; 2 students x 10h = 20.
+    expect(positionCapacityCheck([block("we", "weekend", "9a", "7p", 1)], 2, 10).kind).toBe("ok");
+    // One fewer weekly hour of demand coverage tips it: 3 students need 30 > 20.
+    expect(positionCapacityCheck([block("we", "weekend", "9a", "7p", 1)], 3, 10).kind).toBe(
+      "short",
+    );
+  });
+
+  it("counts blocks without a target as zero seats", () => {
+    // Only the targeted block supplies seats: 1 x 4h x 5 = 20, under 3 x 10h = 30.
+    const result = positionCapacityCheck(
+      [block("wd-a", "weekday", "8a", "12p", 1), block("wd-b", "weekday", "8a", "6p")],
+      3,
+      10,
+    );
+    expect(result.kind).toBe("short");
+  });
+
+  it("writes singular copy for one student, without em dashes", () => {
+    const result = positionCapacityCheck([block("wd", "weekday", "8a", "9a", 1)], 1, 10);
+    expect(result.kind).toBe("short");
+    if (result.kind !== "short") return;
+    expect(result.message).toContain("1 rostered student needs");
+    expect(result.message).not.toContain("—");
   });
 });

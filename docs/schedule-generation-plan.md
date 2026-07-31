@@ -1,8 +1,27 @@
 # Schedule generation — implementation plan
 
 **Status: Phases A and B shipped** (A: targets + coverage, v0.79; B: the
-generation engine, runs, and the `/admin/schedule` run view, v0.84). Phase C
-(run history + restore UI, diffs, staleness banner, Sheet export) remains.
+generation engine, runs, and the `/admin/schedule` run view, v0.84). **Manual
+per-assignment overrides shipped early** (v0.99, ahead of Phase C): the
+`schedule_assignments.source` column plus per-cell schedule editing on the
+per-student grid (PLAN §10a). **Phase C shipped as v1.00** (2026-07-30): run
+history + restore, the run diff, the staleness banner, and the `Muster
+Schedule` sheet. Nothing in this plan remains unbuilt; the decisions block
+below records the as-built design.
+
+**Phase C decisions (owner, 2026-07-30):** restore flips a superseded run's
+status back in place and stamps new `restoredAt`/`restoredBy` columns (no new
+run row); retention ranks runs by restore-or-generate time
+(`COALESCE(restoredAt, generatedAt)`) so a restored run moves to the front of
+the queue, and the current run is never pruned; the diff view compares **any
+two runs** through a picker (defaulting to current vs previous) at both the
+per-student roll-up level and per-shift added/removed/moved detail, and hosts
+the frozen-rows-vs-edited-selections mismatch list; the staleness banner counts
+both new submissions and post-submit edits (`submittedAt` is write-once, so
+`updatedAt` catches editors); the `Muster Schedule` sheet syncs automatically
+after generate and restore (forced, like the other sheets' bulk-op syncs) with
+a manual rebuild, reusing a shared row-per-assignment matrix builder with the
+CSV route.
 PLAN.md stays authoritative for current behavior; sections below are updated to
 what shipped where the build diverged from the original proposal. The largest
 divergence: **`submissions.scheduled` is the freeze unit** — a scheduled
@@ -81,7 +100,9 @@ either).
 
 **Runs are append-only.** Generation never deletes a prior run's assignments;
 it writes a new run and flips `status`. **Restore** = mark a superseded run
-current again. This is the structural answer to "full re-optimize erases all
+current again (shipped v1.00: an in-place flip stamping `restoredAt`/
+`restoredBy`, migration 0022; pruning ranks by `COALESCE(restoredAt,
+generatedAt)` and never touches the current run). This is the structural answer to "full re-optimize erases all
 schedules": nothing is ever erased, and any regeneration — even a bad one — is
 one click away from being undone. Old runs beyond a retention count (say, keep
 the last 10) can be pruned.
@@ -93,10 +114,10 @@ the last 10) can be pruned.
 `(runId, studentEmail, shiftBlockId, day)`.
 
 Deliberately **separate from `shift_selections`** — preferences (input) and
-recommendations (output) never share a table. There is no `pinned` or `source`
-column: protection is per student via `submissions.scheduled` (a frozen
-student's rows are copied forward run-to-run verbatim), and manual overrides
-are a Phase C addition if wanted.
+recommendations (output) never share a table. There is no `pinned` column;
+`source` (`engine`|`manual`) landed in v0.99 with the per-student manual
+overrides. Protection is per student via `submissions.scheduled` (a frozen
+student's rows are copied forward run-to-run verbatim, keeping their source).
 
 ## 3. Algorithm (pure domain, `src/lib/domain/scheduling/`)
 
@@ -236,7 +257,8 @@ one NavCard in the hub.
   Phase C.
 - **Run history + Restore, diff view** — Phase C (runs and reports are already
   stored per §2.2, only the UI is missing).
-- Manual overrides — Phase C, if wanted; would need a `source` column back.
+- Manual overrides — **shipped, v0.99**: per-cell schedule editing on the
+  per-student grid (`source` column; PLAN §10a), current run only.
 
 ## 6. Synthetic availability generator (shipped, v0.84)
 
@@ -264,7 +286,7 @@ npm run dev:generate-availability -- --seed 42 [--students 400] [--fill 0.8]
 |---|---|---|
 | **A** | `desired_capacity` end-to-end + coverage grid vs selections (standalone value, no generator) | ✅ shipped, v0.79 |
 | **B** | Synthetic availability generator, then the domain engine (FCFS + min-days concentration + weights + cohorts + improvement pass, TDD), runs/assignments tables, generate action, `/admin/schedule` v1 (grid + per-student list + CSV) | ✅ shipped, v0.84 |
-| **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, manual per-assignment overrides if wanted, `Muster Schedule` sheet | ~1 week |
+| **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, `Muster Schedule` sheet (manual overrides shipped early, v0.99) | ✅ shipped, v1.00 |
 
 Docs shipped alongside each phase (same-commit rule): PLAN §17 amendment +
 §9 entities + a changelog entry, and a `docs/architecture.md` scheduling
@@ -285,5 +307,5 @@ section.
   their availability keeps their carried rows even if a row falls outside the
   new selections ("no modifications" wins). Surfacing that mismatch is a
   Phase C diff-view concern.
-- `submissions.scheduled` / schedule-ready email stay manual; keying them
-  off assignment presence is a possible later refinement.
+- `submissions.scheduled` stays manual; keying it off assignment presence is
+  a possible later refinement.

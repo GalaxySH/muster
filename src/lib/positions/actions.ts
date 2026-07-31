@@ -12,7 +12,13 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { positions, rosterTitleMappings, shiftBlocks, shiftSelections, students } from "@/lib/db/schema";
+import {
+  positions,
+  rosterTitleMappings,
+  shiftBlocks,
+  shiftSelections,
+  students,
+} from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
@@ -76,37 +82,94 @@ export interface PositionUpdate {
   weekendExempt: boolean;
 }
 
-export async function updatePosition(id: string, update: PositionUpdate): Promise<ActionResult> {
+/** One edited block inside a position save: minutes plus the target staffing. */
+export interface BlockEdit {
+  blockId: string;
+  start: number;
+  end: number;
+  desiredCapacity: number | null;
+}
+
+/**
+ * The position card's single Save: the details fields (when edited) and every
+ * edited block land together, validated up front and written in one
+ * transaction, with one revalidation at the end.
+ */
+export async function savePosition(
+  id: string,
+  changes: { details?: PositionUpdate; blockEdits: BlockEdit[] },
+): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  const checked = checkName(update.name);
-  if (!checked.ok) return checked;
-  if (!Number.isInteger(update.minHours) || update.minHours < 0) {
-    return { ok: false, error: "Minimum hours must be a whole number, 0 or more." };
+
+  let details: PositionUpdate | undefined;
+  if (changes.details) {
+    const checked = checkName(changes.details.name);
+    if (!checked.ok) return checked;
+    if (!Number.isInteger(changes.details.minHours) || changes.details.minHours < 0) {
+      return { ok: false, error: "Minimum hours must be a whole number, 0 or more." };
+    }
+    if (!Number.isInteger(changes.details.minDays) || changes.details.minDays < 0) {
+      return { ok: false, error: "Minimum days must be a whole number, 0 or more." };
+    }
+    details = { ...changes.details, name: checked.name };
   }
-  if (!Number.isInteger(update.minDays) || update.minDays < 0) {
-    return { ok: false, error: "Minimum days must be a whole number, 0 or more." };
+  for (const edit of changes.blockEdits) {
+    const timeError = validateBlockTimes(edit.start, edit.end);
+    if (timeError) return { ok: false, error: timeError };
+    const capacityError = validateDesiredCapacity(edit.desiredCapacity);
+    if (capacityError) return { ok: false, error: capacityError };
   }
+  if (!details && changes.blockEdits.length === 0) return { ok: true };
 
   const db = getDb();
-  const [row] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
-  if (!row) return { ok: false, error: "Position not found." };
-  const clash = await db
+  const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(and(eq(positions.name, checked.name), ne(positions.id, id)))
+    .where(eq(positions.id, id))
     .limit(1);
-  if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
+  if (!row) return { ok: false, error: "Position not found." };
+  if (details) {
+    const clash = await db
+      .select({ id: positions.id })
+      .from(positions)
+      .where(and(eq(positions.name, details.name), ne(positions.id, id)))
+      .limit(1);
+    if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
+  }
+  const blockIds = changes.blockEdits.map((e) => e.blockId);
+  if (blockIds.length > 0) {
+    const found = await db
+      .select({ id: shiftBlocks.id })
+      .from(shiftBlocks)
+      .where(and(eq(shiftBlocks.positionId, id), inArray(shiftBlocks.id, blockIds)));
+    if (found.length !== new Set(blockIds).size) return { ok: false, error: "Block not found." };
+  }
 
-  await db
-    .update(positions)
-    .set({
-      name: checked.name,
-      minHours: update.minHours,
-      minDays: update.minDays,
-      weekendExempt: update.weekendExempt,
-    })
-    .where(eq(positions.id, id));
+  await db.transaction(async (tx) => {
+    if (details) {
+      await tx
+        .update(positions)
+        .set({
+          name: details.name,
+          minHours: details.minHours,
+          minDays: details.minDays,
+          weekendExempt: details.weekendExempt,
+        })
+        .where(eq(positions.id, id));
+    }
+    for (const edit of changes.blockEdits) {
+      await tx
+        .update(shiftBlocks)
+        .set({
+          startMinutes: edit.start,
+          endMinutes: edit.end,
+          desiredCapacity: edit.desiredCapacity,
+        })
+        .where(eq(shiftBlocks.id, edit.blockId));
+    }
+  });
+
   revalidatePositions();
   revalidatePath("/availability");
   return { ok: true };
@@ -117,7 +180,11 @@ export async function setPositionActive(id: string, active: boolean): Promise<Ac
   if (!gate.ok) return gate;
 
   const db = getDb();
-  const [row] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
+  const [row] = await db
+    .select({ id: positions.id })
+    .from(positions)
+    .where(eq(positions.id, id))
+    .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
   await db.update(positions).set({ active }).where(eq(positions.id, id));
@@ -133,7 +200,11 @@ export async function deletePosition(id: string): Promise<ActionResult> {
   }
 
   const db = getDb();
-  const [row] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
+  const [row] = await db
+    .select({ id: positions.id })
+    .from(positions)
+    .where(eq(positions.id, id))
+    .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
   const [studentRef] = await db
@@ -234,7 +305,10 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
       .where(eq(students.positionId, sourceId));
     // Re-point positionId before the per-student routine so revalidation reads
     // the new position (same order the roster importer uses).
-    await tx.update(students).set({ positionId: targetId }).where(eq(students.positionId, sourceId));
+    await tx
+      .update(students)
+      .set({ positionId: targetId })
+      .where(eq(students.positionId, sourceId));
     for (const { email } of affected) {
       const change = await applyPositionChange(tx, {
         email,
@@ -263,7 +337,11 @@ export async function clearAlias(id: string): Promise<ActionResult> {
   if (!gate.ok) return gate;
 
   const db = getDb();
-  const [row] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
+  const [row] = await db
+    .select({ id: positions.id })
+    .from(positions)
+    .where(eq(positions.id, id))
+    .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
   await db.update(positions).set({ mergedIntoId: null }).where(eq(positions.id, id));
@@ -302,36 +380,6 @@ export async function createBlock(
   await db
     .insert(shiftBlocks)
     .values({ id, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
-  revalidatePositions();
-  revalidatePath("/availability");
-  return { ok: true };
-}
-
-export async function updateBlock(
-  blockId: string,
-  startMinutes: number,
-  endMinutes: number,
-  desiredCapacity: number | null,
-): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate;
-  const timeError = validateBlockTimes(startMinutes, endMinutes);
-  if (timeError) return { ok: false, error: timeError };
-  const capacityError = validateDesiredCapacity(desiredCapacity);
-  if (capacityError) return { ok: false, error: capacityError };
-
-  const db = getDb();
-  const [row] = await db
-    .select({ id: shiftBlocks.id })
-    .from(shiftBlocks)
-    .where(eq(shiftBlocks.id, blockId))
-    .limit(1);
-  if (!row) return { ok: false, error: "Block not found." };
-
-  await db
-    .update(shiftBlocks)
-    .set({ startMinutes, endMinutes, desiredCapacity })
-    .where(eq(shiftBlocks.id, blockId));
   revalidatePositions();
   revalidatePath("/availability");
   return { ok: true };
