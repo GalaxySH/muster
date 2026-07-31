@@ -13,9 +13,13 @@ vi.mock("@/lib/settings", () => ({
   SETTING_RESPONSES_SHEET_SYNCED_AT: "responses_sheet_synced_at",
   SETTING_CLOSES_SHEET_ID: "closes_sheet_id",
   SETTING_CLOSES_SHEET_SYNCED_AT: "closes_sheet_synced_at",
+  SETTING_SCHEDULE_SHEET_ID: "schedule_sheet_id",
+  SETTING_SCHEDULE_SHEET_SYNCED_AT: "schedule_sheet_synced_at",
 }));
 vi.mock("@/lib/drive/relay", () => ({ upsertManagedSheet: vi.fn() }));
 vi.mock("@/lib/closes/data", () => ({ loadCloseAdmin: vi.fn() }));
+vi.mock("@/lib/schedule/data", () => ({ loadCurrentSchedule: vi.fn() }));
+vi.mock("@/lib/schedule/export", () => ({ buildScheduleMatrix: vi.fn() }));
 vi.mock("./export-data", () => ({ loadExportData: vi.fn() }));
 vi.mock("./export", () => ({ buildExportMatrix: vi.fn() }));
 

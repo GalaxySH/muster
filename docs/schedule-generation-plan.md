@@ -4,8 +4,10 @@
 generation engine, runs, and the `/admin/schedule` run view, v0.84). **Manual
 per-assignment overrides shipped early** (v0.99, ahead of Phase C): the
 `schedule_assignments.source` column plus per-cell schedule editing on the
-per-student grid (PLAN §10a). Phase C
-(run history + restore UI, diffs, staleness banner, Sheet export) remains.
+per-student grid (PLAN §10a). **Phase C shipped as v1.00** (2026-07-30): run
+history + restore, the run diff, the staleness banner, and the `Muster
+Schedule` sheet. Nothing in this plan remains unbuilt; the decisions block
+below records the as-built design.
 
 **Phase C decisions (owner, 2026-07-30):** restore flips a superseded run's
 status back in place and stamps new `restoredAt`/`restoredBy` columns (no new
@@ -98,7 +100,9 @@ either).
 
 **Runs are append-only.** Generation never deletes a prior run's assignments;
 it writes a new run and flips `status`. **Restore** = mark a superseded run
-current again. This is the structural answer to "full re-optimize erases all
+current again (shipped v1.00: an in-place flip stamping `restoredAt`/
+`restoredBy`, migration 0022; pruning ranks by `COALESCE(restoredAt,
+generatedAt)` and never touches the current run). This is the structural answer to "full re-optimize erases all
 schedules": nothing is ever erased, and any regeneration — even a bad one — is
 one click away from being undone. Old runs beyond a retention count (say, keep
 the last 10) can be pruned.
@@ -282,7 +286,7 @@ npm run dev:generate-availability -- --seed 42 [--students 400] [--fill 0.8]
 |---|---|---|
 | **A** | `desired_capacity` end-to-end + coverage grid vs selections (standalone value, no generator) | ✅ shipped, v0.79 |
 | **B** | Synthetic availability generator, then the domain engine (FCFS + min-days concentration + weights + cohorts + improvement pass, TDD), runs/assignments tables, generate action, `/admin/schedule` v1 (grid + per-student list + CSV) | ✅ shipped, v0.84 |
-| **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, `Muster Schedule` sheet (manual overrides shipped early, v0.99) | ~1 week |
+| **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, `Muster Schedule` sheet (manual overrides shipped early, v0.99) | ✅ shipped, v1.00 |
 
 Docs shipped alongside each phase (same-commit rule): PLAN §17 amendment +
 §9 entities + a changelog entry, and a `docs/architecture.md` scheduling

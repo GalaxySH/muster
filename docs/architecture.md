@@ -1001,9 +1001,32 @@ The generator itself, layered exactly like the rest of the app:
   student's manual rows are superseded by the next update by design. The
   per-student grid (PLAN §10a) is the UI.
 
+- **Phase C — regeneration ergonomics** (1.00): migration 0022 adds
+  `schedule_runs.restoredAt`/`restoredBy`. `restoreScheduleRun` flips a
+  superseded run back to current in place (one transaction, stamps the audit
+  columns), and pruning ranks by `COALESCE(restoredAt, generatedAt)` desc while
+  never touching the current run, so a restored run earns another full
+  retention window. `domain/scheduling/diff.ts` (pure, TDD) owns `diffRuns`
+  (added/removed/cohort-moved cells + per-student roll-ups, deterministic
+  ordering), `frozenSelectionMismatches` (a frozen student's current-run rows
+  outside their selections; auto-assigned cells count as selections), and
+  `stalenessMessage` (shared verbatim by the page banner and the hub's
+  `schedule-stale` warning; counts new submissions and post-submit edits,
+  because `submittedAt` is write-once). `schedule/data.ts` grew
+  `loadScheduleForRun` (extracted from `loadCurrentSchedule`, which now
+  delegates), `listScheduleRuns`, `loadRunAssignments`, `loadRunDiff`,
+  `loadFrozenMismatches`, and `loadScheduleStaleness`. The `Muster Schedule`
+  sheet is the third `SheetTarget`, sharing the pure `buildScheduleMatrix`
+  (`schedule/export.ts`) with the shrunken CSV route; generate and restore end
+  with a forced `trySyncSheet` (swallowed when Drive is disconnected) and the
+  page carries a manual rebuild with a short cooldown. UI on `/admin/schedule`:
+  the staleness banner beside the run stamp, the run history table with the
+  two-step `RestoreRunButton`, and the diff section (a `searchParams`-driven
+  GET form defaulting current vs previous, per-student `<details>` roll-ups,
+  the mismatch list — rendered standalone when only one run exists).
+
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
 protection concept. Frozen students' rows carry forward verbatim through every
 run and consume capacity first; marking scheduled still never changes response
-status or the non-response list (both key on `confirmedAt`). Phase C (run
-history + restore UI, diffs, staleness banner, the `Muster Schedule` sheet) is
-specified in `docs/schedule-generation-plan.md`.
+status or the non-response list (both key on `confirmedAt`). With Phase C
+above, `docs/schedule-generation-plan.md` is fully built.

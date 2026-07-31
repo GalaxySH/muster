@@ -16,12 +16,12 @@ change is high-stakes: small, well-tested diffs, nothing destructive. The two
 originally deadline-bound items both landed ahead of the fall window: SL
 weekend-close picking (3.2, v0.46) and the batch schedule-created email (2.4,
 v0.42). Ops is finished too: the nightly backup cron was installed 2026-07-30
-(verification commands in `docs/deploy.md` § Backups). What remains is **Tier 5.2**
-(schedule generation Phase C), **Tier 6.1** (removing the batch email), and the
-loose ends in "Still open" at the foot of this file. PLAN 0.99 (2026-07-30)
-shipped an owner-directed admin UX pass alongside: native schedule-page
-buttons, one Save per position, the position capacity warning, and the
-per-student schedule editor with manual overrides.
+(verification commands in `docs/deploy.md` § Backups). What remains is **Tier 6.1**
+(removing the batch email) and the loose ends in "Still open" at the foot of
+this file. PLAN 0.99 (2026-07-30) shipped an owner-directed admin UX pass:
+native schedule-page buttons, one Save per position, the position capacity
+warning, and the per-student schedule editor with manual overrides. PLAN 1.00
+(same day) completed **Tier 5.2**, schedule generation Phase C.
 
 ---
 
@@ -355,10 +355,12 @@ Full design in `docs/schedule-generation-plan.md`; layering in
 - **Dev tooling** — `npm run dev:generate-availability`, seeded and
   deterministic, whose submissions pass the real `validateAvailability`.
 
-### 5.2 Phase C — regeneration ergonomics — **M**, outstanding
+### 5.2 Phase C — regeneration ergonomics — ✅ DONE (2026-07-30, v1.00)
 
-The runs and their reports are already persisted, so most of this is UI over
-data that exists:
+Shipped as decided (see the owner-decisions paragraph below and
+`docs/schedule-generation-plan.md`). The one piece still open is re-tuning the
+generation weights against real responses (the note at the end of this
+section). Original scope:
 
 - **Run history + Restore** — list past runs, mark a superseded one current
   again. This is the safety net that makes any regeneration reversible.

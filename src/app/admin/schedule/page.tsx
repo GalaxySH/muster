@@ -1,18 +1,37 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
-import { SectionLabel, StatTile, cardsGridStyle, panelStyle } from "@/components/admin/ui";
+import {
+  SectionLabel,
+  StatTile,
+  bannerStyle,
+  cardsGridStyle,
+  panelStyle,
+  successPillStyle,
+} from "@/components/admin/ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
+import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
+import { SheetControls } from "@/components/admin/SheetControls";
 import { getSchedulingParams } from "@/lib/settings";
+import { rebuildScheduleSheet } from "@/lib/schedule/actions";
 import {
+  listScheduleRuns,
   loadCoverage,
   loadCurrentSchedule,
+  loadFrozenMismatches,
+  loadRunDiff,
+  loadScheduleStaleness,
   type CurrentSchedule,
+  type FrozenMismatchView,
   type PositionCoverage,
+  type RunDiffData,
+  type ScheduleRunListItem,
 } from "@/lib/schedule/data";
+import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import {
   assignedCellCount,
   coverageStatus,
@@ -22,6 +41,8 @@ import {
   type CoverageSummary,
 } from "@/lib/domain/coverage";
 import { demandCellKey } from "@/lib/domain/demand";
+import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
+import type { Cohort } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
 
@@ -30,21 +51,43 @@ export const dynamic = "force-dynamic";
 
 /**
  * Admin: schedule coverage and the recommended schedule (roadmap 5.1;
- * docs/schedule-generation-plan.md Phases A and B). Before a run exists the
+ * docs/schedule-generation-plan.md Phases A to C). Before a run exists the
  * grid shows selection supply per (block × day) cell; once one is generated it
  * grades the run's assigned seats against the targets, with supply in the cell
- * tooltip, and lists every student's recommended shifts below.
+ * tooltip, and lists every student's recommended shifts below, plus the run
+ * history with restore, the run diff picker, and the Muster Schedule sheet.
  */
-export default async function AdminSchedulePage() {
+export default async function AdminSchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ before?: string; after?: string }>;
+}) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [coverage, schedule, params] = await Promise.all([
-    loadCoverage(),
-    loadCurrentSchedule(),
-    getSchedulingParams(),
-  ]);
+  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches] =
+    await Promise.all([
+      searchParams,
+      loadCoverage(),
+      loadCurrentSchedule(),
+      getSchedulingParams(),
+      listScheduleRuns(),
+      getSheetUrl(SCHEDULE_SHEET),
+      getLastSheetSync(SCHEDULE_SHEET),
+      loadFrozenMismatches(),
+    ]);
+  const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
+  const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
+
+  // Diff picker: any two runs, defaulting to current vs the newest other run.
+  const runIds = new Set(runs.map((r) => r.id));
+  const defaultAfter = runs.find((r) => r.status === "current")?.id ?? runs[0]?.id;
+  const afterId = sp.after && runIds.has(sp.after) ? sp.after : defaultAfter;
+  const defaultBefore = runs.find((r) => r.id !== afterId)?.id;
+  const beforeId = sp.before && runIds.has(sp.before) ? sp.before : defaultBefore;
+  const diffData =
+    beforeId && afterId && beforeId !== afterId ? await loadRunDiff(beforeId, afterId) : null;
   const summaryOf = (p: PositionCoverage): CoverageSummary =>
     schedule ? summarizeAssignedCoverage(p.rows, schedule.assignedCells) : p.summary;
   const totals = coverage.reduce(
@@ -73,7 +116,13 @@ export default async function AdminSchedulePage() {
           : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Set targets per block on the Positions and shift blocks page."}
       </p>
 
-      <SchedulePanel schedule={schedule} responders={totals.responders} />
+      <SchedulePanel
+        schedule={schedule}
+        responders={totals.responders}
+        staleLine={staleLine}
+        sheetUrl={sheetUrl}
+        sheetSyncedAt={sheetSyncedAt}
+      />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <SectionLabel>Generation settings</SectionLabel>
@@ -117,6 +166,24 @@ export default async function AdminSchedulePage() {
       ))}
 
       {schedule && <StudentTable schedule={schedule} />}
+
+      {runs.length > 0 && <RunHistorySection runs={runs} />}
+
+      {runs.length > 1 && beforeId && afterId ? (
+        <DiffSection
+          runs={runs}
+          beforeId={beforeId}
+          afterId={afterId}
+          data={diffData}
+          mismatches={mismatches}
+        />
+      ) : (
+        mismatches.length > 0 && (
+          <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+            <MismatchList mismatches={mismatches} />
+          </section>
+        )
+      )}
     </Page>
   );
 }
@@ -124,17 +191,23 @@ export default async function AdminSchedulePage() {
 function SchedulePanel({
   schedule,
   responders,
+  staleLine,
+  sheetUrl,
+  sheetSyncedAt,
 }: {
   schedule: CurrentSchedule | null;
   responders: number;
+  staleLine: string | null;
+  sheetUrl: string | null;
+  sheetSyncedAt: Date | null;
 }) {
   if (!schedule) {
     return (
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <SectionLabel>Recommended schedule</SectionLabel>
         <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
-          No schedule has been generated yet. Responses are placed in the order they came in,
-          later shifts first.
+          No schedule has been generated yet. Responses are placed in the order they came in, later
+          shifts first.
         </p>
         <GenerateScheduleButton hasRun={false} />
       </section>
@@ -182,8 +255,256 @@ function SchedulePanel({
           {notes.join("; ")}.
         </p>
       )}
+      {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
       <GenerateScheduleButton hasRun />
+      <div style={{ marginTop: 12, marginBottom: -14 }}>
+        <SheetControls
+          sheetUrl={sheetUrl}
+          lastSyncedAtMs={sheetSyncedAt ? sheetSyncedAt.getTime() : null}
+          rebuild={rebuildScheduleSheet}
+        />
+      </div>
     </section>
+  );
+}
+
+const ROTATION_LABEL: Record<Cohort, string> = {
+  weekday: "",
+  a: "week A",
+  b: "week B",
+  every: "every weekend",
+};
+
+const fmtRunTime = (d: Date) =>
+  d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+/** Whole hours plain, fractions with one decimal (10, 12.5). */
+const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
+
+function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
+  return (
+    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
+      <SectionLabel>Run history</SectionLabel>
+      <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
+        replaced run stays here.
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+          <thead>
+            <tr>
+              <th style={{ ...cellTh, textAlign: "left" }}>Generated</th>
+              <th style={{ ...cellTh, textAlign: "left" }}>By</th>
+              <th style={cellTh}>Assignments</th>
+              <th style={cellTh}>Students</th>
+              <th style={cellTh}>Short of hours</th>
+              <th style={{ ...cellTh, textAlign: "left" }}>Restored</th>
+              <th style={{ ...cellTh, textAlign: "left" }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.id}>
+                <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
+                  {fmtRunTime(r.generatedAt)}
+                </td>
+                <td style={{ ...cellTd, textAlign: "left" }}>{r.generatedBy}</td>
+                <td style={cellTd}>{r.assignments}</td>
+                <td style={cellTd}>{r.students}</td>
+                <td style={cellTd}>{r.shortOfTarget}</td>
+                <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
+                  {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
+                </td>
+                <td style={{ ...cellTd, textAlign: "left" }}>
+                  {r.status === "current" ? (
+                    <span style={successPillStyle}>current</span>
+                  ) : (
+                    <RestoreRunButton runId={r.id} />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function DiffSection({
+  runs,
+  beforeId,
+  afterId,
+  data,
+  mismatches,
+}: {
+  runs: ScheduleRunListItem[];
+  beforeId: string;
+  afterId: string;
+  data: RunDiffData | null;
+  mismatches: FrozenMismatchView[];
+}) {
+  const runLabel = (r: ScheduleRunListItem) =>
+    `${fmtRunTime(r.generatedAt)}${r.status === "current" ? " (current)" : ""}`;
+
+  return (
+    <section id="diff" style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
+      <SectionLabel>Compare runs</SectionLabel>
+      <form
+        method="get"
+        action="/admin/schedule#diff"
+        style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}
+      >
+        <label>
+          From{" "}
+          <select name="before" defaultValue={beforeId}>
+            {runs.map((r) => (
+              <option key={r.id} value={r.id}>
+                {runLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          to{" "}
+          <select name="after" defaultValue={afterId}>
+            {runs.map((r) => (
+              <option key={r.id} value={r.id}>
+                {runLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit">Compare</button>
+      </form>
+
+      {data === null ? (
+        <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+          Pick two different runs to compare.
+        </p>
+      ) : (
+        <DiffResult data={data} />
+      )}
+
+      {mismatches.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <MismatchList mismatches={mismatches} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DiffResult({ data }: { data: RunDiffData }) {
+  const { diff, names, spans } = data;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+        {diff.added} shifts added, {diff.removed} removed, {diff.moved} moved between rotation
+        weeks. {diff.unchanged} students unchanged.
+      </p>
+      {diff.students.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
+          The two runs hold the same schedule.
+        </p>
+      ) : (
+        diff.students.map((s) => (
+          <StudentDiffRow key={s.email} s={s} name={names.get(s.email) ?? s.email} spans={spans} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function StudentDiffRow({
+  s,
+  name,
+  spans,
+}: {
+  s: StudentRunDiff;
+  name: string;
+  spans: Map<string, { start: number; end: number }>;
+}) {
+  const rollup = [
+    delta("hours", s.before?.assignedMinutes ?? null, s.after?.assignedMinutes ?? null, (m) =>
+      hoursLabel(m),
+    ),
+    delta("days", s.before?.daysUsed ?? null, s.after?.daysUsed ?? null, String),
+    rotationDelta(s.before?.cohort ?? null, s.after?.cohort ?? null),
+  ].filter((part): part is string => part !== null);
+
+  return (
+    <details style={{ marginBottom: 6 }}>
+      <summary style={{ cursor: "pointer", fontSize: 13 }}>
+        <strong>{name}</strong>
+        {s.before === null && " (new in this run)"}
+        {s.after === null && " (not in this run)"}
+        {rollup.length > 0 && ` ${rollup.join(", ")}`}
+        {s.changes.length > 0 &&
+          ` (${s.changes.length} ${s.changes.length === 1 ? "change" : "changes"})`}
+      </summary>
+      <ul style={{ margin: "6px 0 8px", paddingLeft: 26, fontSize: 13 }}>
+        {s.changes.map((c) => {
+          const span = spans.get(c.blockId);
+          const time = span ? formatSpan(span.start, span.end) : c.blockId;
+          const rotation = c.cohort !== "weekday" ? ` (${ROTATION_LABEL[c.cohort]})` : "";
+          return (
+            <li key={`${c.kind}|${c.blockId}|${c.day}`}>
+              {c.kind === "added" && `Added ${DAY_LABEL[c.day]} ${time}${rotation}`}
+              {c.kind === "removed" && `Removed ${DAY_LABEL[c.day]} ${time}${rotation}`}
+              {c.kind === "moved" &&
+                `Moved ${DAY_LABEL[c.day]} ${time} from ${ROTATION_LABEL[c.fromCohort!]} to ${ROTATION_LABEL[c.cohort]}`}
+              {c.source === "manual" && " [manual]"}
+            </li>
+          );
+        })}
+        {s.changes.length === 0 && (
+          <li style={{ color: "var(--color-text-secondary)" }}>No shift changes.</li>
+        )}
+      </ul>
+    </details>
+  );
+}
+
+/** "10 to 12.5 hours" when the value changed, null when it did not. */
+function delta(
+  label: string,
+  before: number | null,
+  after: number | null,
+  fmt: (n: number) => string,
+): string | null {
+  if (before === after || before === null || after === null) return null;
+  return `${fmt(before)} to ${fmt(after)} ${label}`;
+}
+
+function rotationDelta(before: Cohort | null, after: Cohort | null): string | null {
+  if (before === after || before === null || after === null) return null;
+  return `${ROTATION_LABEL[before]} to ${ROTATION_LABEL[after]}`;
+}
+
+function MismatchList({ mismatches }: { mismatches: FrozenMismatchView[] }) {
+  return (
+    <div>
+      <SectionLabel>Kept shifts outside current picks</SectionLabel>
+      <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        These students are marked scheduled, so their shifts were kept, but they have since changed
+        their availability and no longer pick these cells.
+      </p>
+      <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+        {mismatches.map((m) => (
+          <li key={m.email}>
+            <Link href={`/admin/students/${encodeURIComponent(m.email)}`}>{m.displayName}</Link>
+            {": "}
+            {m.cells.map((c) => `${DAY_LABEL[c.day]} ${formatSpan(c.start, c.end)}`).join(", ")}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

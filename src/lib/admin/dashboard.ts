@@ -44,6 +44,7 @@ import {
   getTravelCutoff,
   getLateTravelPolicy,
 } from "@/lib/settings";
+import { loadCurrentRunRow, loadScheduleStaleness } from "@/lib/schedule/data";
 import { CLOSES_SHEET, getLastSheetSync, getSheetUrl, RESPONSES_SHEET } from "./sheet-sync";
 import { loadUpcomingTravel } from "./data";
 import type {
@@ -85,6 +86,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     coverage,
     recent,
     perDay,
+    schedule,
   ] = await Promise.all([
     loadStudentRoll(),
     getDb()
@@ -118,6 +120,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     loadCoverage(),
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
+    loadScheduleStatus(),
   ]);
 
   return {
@@ -160,7 +163,21 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     coverage,
     recent,
     perDay,
+    schedule,
   };
+}
+
+/**
+ * Whether a recommended schedule exists and how much eligible input has changed
+ * since it was generated (feeds the hub's schedule-stale alert). Staleness is
+ * measured from the run's generation time; restoring an old run does not make
+ * its content any newer.
+ */
+async function loadScheduleStatus(): Promise<DashboardSnapshot["schedule"]> {
+  const run = await loadCurrentRunRow();
+  if (!run) return { hasRun: false, newSubmissions: 0, edited: 0 };
+  const staleness = await loadScheduleStaleness(run.generatedAt);
+  return { hasRun: true, ...staleness };
 }
 
 /**

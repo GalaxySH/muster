@@ -360,6 +360,14 @@ export const scheduleRuns = mysqlTable("schedule_runs", {
   generatedBy: varchar("generated_by", { length: 255 }).notNull(),
   status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
   summaryJson: text("summary_json").notNull(),
+  /**
+   * Restore flips a superseded run back to current in place (no new run row)
+   * and stamps when and by whom. Retention ranks runs by
+   * coalesce(restored_at, generated_at), so a restored run moves to the front
+   * of the pruning queue; the current run is never pruned.
+   */
+  restoredAt: datetime("restored_at", { mode: "date" }),
+  restoredBy: varchar("restored_by", { length: 255 }),
 });
 
 /**

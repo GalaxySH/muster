@@ -63,6 +63,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
     coverage: [],
     recent: [],
     perDay: [],
+    schedule: { hasRun: true, newSubmissions: 0, edited: 0 },
     ...overrides,
   };
 }
@@ -871,5 +872,34 @@ describe("coverage", () => {
     );
     expect(view.coverage.cells).toEqual([]);
     expect(view.coverage.max).toBe(0);
+  });
+});
+
+describe("schedule staleness alert", () => {
+  it("warns when responses arrived or changed after the current run", () => {
+    const snap = healthy({ schedule: { hasRun: true, newSubmissions: 4, edited: 2 } });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "schedule-stale");
+    expect(a?.severity).toBe("warning");
+    expect(a?.detail).toBe("4 new submissions and 2 edited since this schedule was generated.");
+    expect(a?.href).toBe("/admin/schedule");
+  });
+
+  it("stays quiet while the schedule still matches every response", () => {
+    expect(
+      ids(healthy({ schedule: { hasRun: true, newSubmissions: 0, edited: 0 } })),
+    ).not.toContain("schedule-stale");
+  });
+
+  it("stays quiet before any schedule has been generated", () => {
+    // New submissions with no run are the normal collect phase, not staleness.
+    expect(
+      ids(healthy({ schedule: { hasRun: false, newSubmissions: 9, edited: 0 } })),
+    ).not.toContain("schedule-stale");
+  });
+
+  it("names edits alone when nothing new was submitted", () => {
+    const snap = healthy({ schedule: { hasRun: true, newSubmissions: 0, edited: 1 } });
+    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "schedule-stale");
+    expect(a?.detail).toBe("1 response edited since this schedule was generated.");
   });
 });

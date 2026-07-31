@@ -13,6 +13,7 @@
 import { windowState, type WindowState } from "@/lib/domain/window";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { blockSetWarnings, positionCapacityCheck } from "@/lib/domain/config-validation";
+import { stalenessMessage } from "@/lib/domain/scheduling/diff";
 import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
@@ -177,6 +178,14 @@ export interface DashboardSnapshot {
   coverage: CoverageCell[];
   recent: RecentSubmission[];
   perDay: { date: string; count: number }[];
+  /** The recommended schedule's freshness (docs/schedule-generation-plan.md Phase C). */
+  schedule: {
+    hasRun: boolean;
+    /** Eligible responses first submitted after the current run was generated. */
+    newSubmissions: number;
+    /** Eligible responses submitted before the run but edited after it. */
+    edited: number;
+  };
 }
 
 export interface GroupProgress {
@@ -526,6 +535,22 @@ function buildAlerts(
       title: `${s.closes.leadsShort} shift ${plural(s.closes.leadsShort, "lead is", "leads are")} short of ${REQUIRED_CLOSE_CLAIMS} weekend closes.`,
       href: "/admin/closes",
       linkLabel: "Closes",
+    });
+  }
+
+  // Responses arrived or changed after the current run was generated, so the
+  // recommended schedule no longer reflects what students actually said.
+  const staleDetail = s.schedule.hasRun
+    ? stalenessMessage(s.schedule.newSubmissions, s.schedule.edited)
+    : null;
+  if (staleDetail !== null) {
+    warning.push({
+      id: "schedule-stale",
+      severity: "warning",
+      title: "The recommended schedule is out of date.",
+      detail: staleDetail,
+      href: "/admin/schedule",
+      linkLabel: "Schedule",
     });
   }
 

@@ -39,13 +39,14 @@
   contradiction, the SL close-claims card on the per-student view, and 44px grid touch
   targets on phones; `README.md` carries the pre-send operational checklist.
   **Live in production and released to employees** (see §15) — treat further changes
-  as high-stakes. **Schedule generation is in scope** (§17, 0.98): target staffing +
-  coverage and the recommendation engine ship (`/admin/schedule`), per-cell manual
-  overrides ride the per-student grid (0.99), and Phase C (run history + restore,
-  diffs, staleness banner, the schedule sheet) is outstanding —
-  see `docs/schedule-generation-plan.md`. Ops is complete (the nightly backup cron is
-  installed). Next: schedule-generation Phase C.
-- **Version:** 0.99
+  as high-stakes. **Schedule generation is in scope** (§17, 0.98) and **complete
+  through Phase C** (1.00): target staffing + coverage, the recommendation engine,
+  per-cell manual overrides (0.99), and regeneration ergonomics — run history +
+  restore, the run diff, the staleness banner, and the `Muster Schedule` sheet —
+  all ship on `/admin/schedule`; see `docs/schedule-generation-plan.md`. Ops is
+  complete (the nightly backup cron is installed). Next: roadmap 6.1 (remove the
+  batch schedule email) and the "Still open" loose ends.
+- **Version:** 1.00
 - **Last updated:** 2026-07-30
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -606,9 +607,12 @@ columns from the roster.
   double-claim guard), `claimedAt`. Cascades on slot or student deletion.
 - **ScheduleRun** (recommended schedule — `docs/schedule-generation-plan.md` §2.2):
   `id`, `generatedAt`, `generatedBy` (admin email), `status` (`current`|`superseded`),
-  `summaryJson` (the engine's run report). **Append-only:** generating writes a new
-  run and flips the old one to superseded (retention 10), so any generation can be
-  restored and nothing is ever erased.
+  `summaryJson` (the engine's run report), `restoredAt` + `restoredBy` (1.00 — stamped
+  when an admin restores the run; also its retention rank). **Append-only:** generating
+  writes a new run and flips the old one to superseded (retention 10, ranked by
+  restore-or-generate time so a restored run moves to the front of the queue; the
+  current run is never pruned), so any generation can be restored and nothing is ever
+  erased.
 - **ScheduleAssignment** (plan §2.3): `runId` + `studentEmail` + `shiftBlockId` +
   `day` (composite PK), `cohort` (`weekday`|`a`|`b`|`every` — the A/B weekend
   rotation made concrete; every-weekend opt-ins count in both weeks), `source`
@@ -1154,7 +1158,7 @@ under-18 test (deferred → fallback, §11).
   `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79; Phase
   B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
   C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
-  sheet — outstanding). Two limits are permanent, and they are what keep the boundary meaningful:
+  sheet — in 1.00). Two limits are permanent, and they are what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
   students).
@@ -1191,10 +1195,10 @@ under-18 test (deferred → fallback, §11).
   tag deploy), central-MariaDB move, health endpoint + external monitoring, backup
   script (v0.25–0.30). **Live in production since 2026-07-29** (§15), with the nightly
   backup cron installed 2026-07-30. Nothing outstanding.
-- **Phase 6 — Schedule generation:** ✅ target staffing + coverage (0.79), the
-  recommendation engine + run view (0.84–0.85), per-cell manual overrides on the
-  per-student grid (0.99). **Phase C outstanding** — run history + restore UI, diff
-  view, staleness banner, the `Muster Schedule` sheet
+- **Phase 6 — Schedule generation:** ✅ complete. Target staffing + coverage (0.79),
+  the recommendation engine + run view (0.84–0.85), per-cell manual overrides on the
+  per-student grid (0.99), and Phase C regeneration ergonomics (1.00): run history +
+  restore, the run diff, the staleness banner, the `Muster Schedule` sheet
   (`docs/schedule-generation-plan.md`; roadmap 5.2).
 - **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
   consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
@@ -1307,7 +1311,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **0.99 (2026-07-30)** — **Admin UX pass: native schedule buttons, one Save per
+- **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
+  (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
+  `/admin/schedule` with one-click **Restore**: a superseded run flips back to
+  current in place, stamping the new `restoredAt`/`restoredBy` columns (migration
+  0022, §9); retention now ranks runs by restore-or-generate time
+  (`COALESCE(restoredAt, generatedAt)`) so a restored run moves to the front of the
+  queue, and the current run is never pruned. A **diff view** compares any two runs
+  through a picker defaulting to current vs previous: per-student hour/day/rotation
+  roll-ups with expandable per-shift added/removed/moved detail, plus the
+  frozen-rows-vs-edited-selections **mismatch list** (auto-assigned weekend cells
+  count as selections), all built on the new pure `domain/scheduling/diff.ts`
+  (`diffRuns`, `frozenSelectionMismatches`, `stalenessMessage`). A **staleness
+  banner** counts both new submissions and post-submit edits since the current run
+  (`submittedAt` is write-once, so `updatedAt` catches editors), mirrored by a
+  `schedule-stale` warning in the hub's Needs attention panel. The **`Muster
+  Schedule` Drive sheet** joins the responses and SL-closes sheets as a third
+  `SheetTarget`, sharing the new `buildScheduleMatrix` (`schedule/export.ts`) with
+  the shrunken CSV route; generate and restore end with a forced sync (swallowed
+  when Drive is disconnected) and the page carries a manual rebuild with a short
+  cooldown. Verified: 663 tests across 55 files, plus live restore/diff/prune
+  round-trips against an F26-roster dev DB.
   position, the position capacity warning, and the per-student schedule editor.**
   Four owner-directed changes, verified end to end against the imported F26 roster
   (353 on roster) plus 120 synthetic submissions. **(1)** The `/admin/schedule`

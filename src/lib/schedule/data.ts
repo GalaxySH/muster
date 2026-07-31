@@ -28,13 +28,25 @@ import {
   type CoverageSummary,
 } from "@/lib/domain/coverage";
 import { demandCellKey, type CellCount } from "@/lib/domain/demand";
+import {
+  diffRuns,
+  frozenSelectionMismatches,
+  type RunCell,
+  type RunDiff,
+} from "@/lib/domain/scheduling/diff";
 import type {
   AssignmentSource,
   Cohort,
   EngineReport,
   StudentScheduleReport,
 } from "@/lib/domain/scheduling/types";
-import { ALL_DAYS, type Day, type DayType, type ShiftBlock } from "@/lib/domain/types";
+import {
+  ALL_DAYS,
+  type Day,
+  type DayType,
+  type SelectedShift,
+  type ShiftBlock,
+} from "@/lib/domain/types";
 
 /** Who the schedule surfaces consider: on-roster students who submitted. */
 export const eligibleSubmittedFilter = () =>
@@ -163,6 +175,9 @@ export interface CurrentSchedule {
 
 const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 
+/** A schedule_runs row as the loaders pass it around. */
+export type ScheduleRunRow = typeof scheduleRuns.$inferSelect;
+
 /** The run marked current (newest wins if a race ever leaves two), or null. */
 export async function loadCurrentRunRow() {
   const db = getDb();
@@ -213,9 +228,13 @@ export async function loadStudentCurrentAssignments(
 
 /** The current run with its per-student rows, or null before any generation. */
 export async function loadCurrentSchedule(): Promise<CurrentSchedule | null> {
-  const db = getDb();
   const run = await loadCurrentRunRow();
-  if (!run) return null;
+  return run ? loadScheduleForRun(run) : null;
+}
+
+/** One run (current or historical) with its per-student rows. */
+export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSchedule> {
+  const db = getDb();
   const report = JSON.parse(run.summaryJson) as EngineReport;
 
   const rows = await db
@@ -311,4 +330,212 @@ export async function loadCurrentSchedule(): Promise<CurrentSchedule | null> {
     students: studentRows,
     totalAssignments: rows.length,
   };
+}
+
+/** One run in the history table, with its stored report's headline numbers. */
+export interface ScheduleRunListItem {
+  id: string;
+  generatedAt: Date;
+  generatedBy: string;
+  status: "current" | "superseded";
+  restoredAt: Date | null;
+  restoredBy: string | null;
+  assignments: number;
+  /** Students the run's report covers. */
+  students: number;
+  shortOfTarget: number;
+}
+
+/** Every kept run, newest generation first. */
+export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
+  const db = getDb();
+  const [runs, counts] = await Promise.all([
+    db.select().from(scheduleRuns).orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
+    db
+      .select({ runId: scheduleAssignments.runId, n: sql<number>`count(*)` })
+      .from(scheduleAssignments)
+      .groupBy(scheduleAssignments.runId),
+  ]);
+  const countByRun = new Map(counts.map((r) => [r.runId, Number(r.n)]));
+  return runs.map((r) => {
+    const report = JSON.parse(r.summaryJson) as EngineReport;
+    return {
+      id: r.id,
+      generatedAt: r.generatedAt,
+      generatedBy: r.generatedBy,
+      status: r.status,
+      restoredAt: r.restoredAt,
+      restoredBy: r.restoredBy,
+      assignments: countByRun.get(r.id) ?? 0,
+      students: report.students.length,
+      shortOfTarget: report.shortOfTarget,
+    };
+  });
+}
+
+/** One run's assignment rows with their block spans (for diffing and lists). */
+export interface RunAssignmentRow extends RunCell {
+  start: number;
+  end: number;
+}
+
+export async function loadRunAssignments(runId: string): Promise<RunAssignmentRow[]> {
+  return getDb()
+    .select({
+      studentEmail: scheduleAssignments.studentEmail,
+      blockId: scheduleAssignments.shiftBlockId,
+      day: scheduleAssignments.day,
+      cohort: scheduleAssignments.cohort,
+      source: scheduleAssignments.source,
+      start: shiftBlocks.startMinutes,
+      end: shiftBlocks.endMinutes,
+    })
+    .from(scheduleAssignments)
+    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
+    .where(eq(scheduleAssignments.runId, runId));
+}
+
+export interface RunDiffData {
+  diff: RunDiff;
+  /** Display name per diffed student; students gone from the DB keep their email. */
+  names: Map<string, string>;
+  /** Block time spans for rendering changed cells. */
+  spans: Map<string, { start: number; end: number }>;
+}
+
+/** Diff two stored runs, or null when either id no longer exists. */
+export async function loadRunDiff(
+  beforeRunId: string,
+  afterRunId: string,
+): Promise<RunDiffData | null> {
+  const db = getDb();
+  const runRows = await db
+    .select()
+    .from(scheduleRuns)
+    .where(inArray(scheduleRuns.id, [beforeRunId, afterRunId]));
+  const beforeRun = runRows.find((r) => r.id === beforeRunId);
+  const afterRun = runRows.find((r) => r.id === afterRunId);
+  if (!beforeRun || !afterRun) return null;
+
+  const [beforeCells, afterCells] = await Promise.all([
+    loadRunAssignments(beforeRunId),
+    loadRunAssignments(afterRunId),
+  ]);
+  const beforeReport = JSON.parse(beforeRun.summaryJson) as EngineReport;
+  const afterReport = JSON.parse(afterRun.summaryJson) as EngineReport;
+  const diff = diffRuns(
+    { assignments: beforeCells, students: beforeReport.students },
+    { assignments: afterCells, students: afterReport.students },
+  );
+
+  const spans = new Map<string, { start: number; end: number }>();
+  for (const c of [...beforeCells, ...afterCells]) {
+    spans.set(c.blockId, { start: c.start, end: c.end });
+  }
+
+  const names = new Map<string, string>();
+  const emails = diff.students.map((s) => s.email);
+  if (emails.length > 0) {
+    const nameRows = await db
+      .select({ email: students.email, displayName: students.displayName })
+      .from(students)
+      .where(inArray(students.email, emails));
+    for (const r of nameRows) names.set(r.email, r.displayName);
+  }
+
+  return { diff, names, spans };
+}
+
+/** One kept (frozen) student whose current-run rows fall outside their picks. */
+export interface FrozenMismatchView {
+  email: string;
+  displayName: string;
+  cells: { day: Day; start: number; end: number }[];
+}
+
+/**
+ * Frozen rows vs edited selections, always against the current run: students
+ * marked scheduled keep their rows through regeneration, so a later
+ * availability edit can leave a kept row outside their current selections
+ * (auto-assigned weekend cells count as selections). Empty before any run.
+ */
+export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
+  const db = getDb();
+  const run = await loadCurrentRunRow();
+  if (!run) return [];
+
+  const frozenEligible = and(eligibleSubmittedFilter(), eq(submissions.scheduled, true));
+  const [assignments, frozenRows, selectionRows] = await Promise.all([
+    loadRunAssignments(run.id),
+    db
+      .select({ email: submissions.studentEmail })
+      .from(submissions)
+      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .where(frozenEligible),
+    db
+      .select({
+        email: submissions.studentEmail,
+        blockId: shiftSelections.shiftBlockId,
+        day: shiftSelections.day,
+      })
+      .from(shiftSelections)
+      .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .where(frozenEligible),
+  ]);
+
+  const selections = new Map<string, SelectedShift[]>();
+  for (const row of selectionRows) {
+    const list = selections.get(row.email) ?? [];
+    list.push({ blockId: row.blockId, day: row.day });
+    selections.set(row.email, list);
+  }
+  const mismatches = frozenSelectionMismatches(
+    assignments,
+    new Set(frozenRows.map((r) => r.email)),
+    selections,
+  );
+  if (mismatches.length === 0) return [];
+
+  const spans = new Map(assignments.map((a) => [a.blockId, { start: a.start, end: a.end }]));
+  const nameRows = await db
+    .select({ email: students.email, displayName: students.displayName })
+    .from(students)
+    .where(
+      inArray(
+        students.email,
+        mismatches.map((m) => m.email),
+      ),
+    );
+  const names = new Map(nameRows.map((r) => [r.email, r.displayName]));
+
+  return mismatches.map((m) => ({
+    email: m.email,
+    displayName: names.get(m.email) ?? m.email,
+    cells: m.cells.map((c) => ({
+      day: c.day,
+      start: spans.get(c.blockId)?.start ?? 0,
+      end: spans.get(c.blockId)?.end ?? 0,
+    })),
+  }));
+}
+
+export interface ScheduleStaleness {
+  /** Eligible responses first submitted after the run was generated. */
+  newSubmissions: number;
+  /** Eligible responses submitted before the run but edited after it. */
+  edited: number;
+}
+
+/** How much eligible input changed since the current run was generated. */
+export async function loadScheduleStaleness(since: Date): Promise<ScheduleStaleness> {
+  const [row] = await getDb()
+    .select({
+      newer: sql<number>`sum(case when ${submissions.submittedAt} > ${since} then 1 else 0 end)`,
+      edited: sql<number>`sum(case when ${submissions.submittedAt} <= ${since} and ${submissions.updatedAt} > ${since} then 1 else 0 end)`,
+    })
+    .from(submissions)
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .where(eligibleSubmittedFilter());
+  return { newSubmissions: Number(row?.newer ?? 0), edited: Number(row?.edited ?? 0) };
 }
