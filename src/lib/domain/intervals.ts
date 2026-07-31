@@ -31,3 +31,18 @@ export function mergeRanges(ranges: readonly TimeRange[]): TimeRange[] {
 export function coveredMinutes(ranges: readonly TimeRange[]): number {
   return mergeRanges(ranges).reduce((sum, r) => sum + (r.end - r.start), 0);
 }
+
+/**
+ * Index of the first range fully covered by the union of the others, or -1.
+ * Coverage means the union as a set of minutes, not the hull: a range between
+ * two disjoint others is never redundant. Assignment rules require every
+ * same-day shift to add at least one unique minute, so callers test a day's
+ * ranges with the candidate included.
+ */
+export function redundantRangeIndex(ranges: readonly TimeRange[]): number {
+  const total = coveredMinutes(ranges);
+  for (let i = 0; i < ranges.length; i++) {
+    if (coveredMinutes(ranges.filter((_, j) => j !== i)) === total) return i;
+  }
+  return -1;
+}

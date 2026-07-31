@@ -12,8 +12,20 @@ const CA: Position = {
   minDays: 2,
   weekendExempt: false,
 };
-const SL: Position = { id: "sl", name: "Shift Lead", minHours: 15, minDays: 3, weekendExempt: false };
-const BAR: Position = { id: "barista", name: "Barista", minHours: 10, minDays: 2, weekendExempt: true };
+const SL: Position = {
+  id: "sl",
+  name: "Shift Lead",
+  minHours: 15,
+  minDays: 3,
+  weekendExempt: false,
+};
+const BAR: Position = {
+  id: "barista",
+  name: "Barista",
+  minHours: 10,
+  minDays: 2,
+  weekendExempt: true,
+};
 const POSITIONS = [CA, SL, BAR];
 
 function block(
@@ -111,9 +123,7 @@ describe("targetMinutes", () => {
   });
   it("caps at 30h domestic and 20h international", () => {
     expect(targetMinutes(student("s@w", { desiredHours: 40 }), CA)).toBe(1800);
-    expect(
-      targetMinutes(student("s@w", { desiredHours: 40, international: true }), CA),
-    ).toBe(1200);
+    expect(targetMinutes(student("s@w", { desiredHours: 40, international: true }), CA)).toBe(1200);
   });
 });
 
@@ -195,10 +205,7 @@ describe("generateAssignments", () => {
   });
 
   it("gives a contested last seat to the earlier responder", () => {
-    const blocks = [
-      block("scarce", "barista", "weekday", "12p", "4p", 1),
-      ...barGrid,
-    ];
+    const blocks = [block("scarce", "barista", "weekday", "12p", "4p", 1), ...barGrid];
     const selection = [sel("scarce", "mon"), ...barSelection];
     const r = run(
       [
@@ -239,25 +246,142 @@ describe("generateAssignments", () => {
     expect(ids).not.toContain("untargeted");
   });
 
-  it("never assigns two overlapping staggered blocks on the same day", () => {
+  it("assigns a staggered pair as a double when neither block contains the other", () => {
     const blocks = [
       block("first", "barista", "weekday", "12p", "4p"),
-      block("stagger", "barista", "weekday", "2p", "6p"),
+      block("stagger", "barista", "weekday", "3:45p", "7:45p"),
       ...barGrid,
     ];
     const r = run(
       [
         student("b@w", {
           positionId: "barista",
-          selection: [sel("first", "mon"), sel("stagger", "mon"), ...barSelection],
+          desiredHours: 10,
+          selection: [sel("first", "mon"), sel("stagger", "mon"), sel("bar-am", "tue")],
         }),
       ],
       blocks,
     );
     const monIds = rowsOf(r, "b@w")
       .filter((a) => a.day === "mon")
+      .map((a) => a.blockId)
+      .sort();
+    expect(monIds).toEqual(["first", "stagger"]);
+    // The 15-minute handoff overlap is counted once: 12p to 7:45p is 7.75h.
+    expect(dayLoads(rowsOf(r, "b@w"), blocks).get("mon")).toBe(465);
+  });
+
+  it("still refuses stacking a block inside another on the same day", () => {
+    const blocks = [
+      block("long", "barista", "weekday", "12p", "8p"),
+      block("inner", "barista", "weekday", "2p", "6p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [sel("long", "mon"), sel("inner", "mon"), sel("bar-am", "tue")],
+        }),
+      ],
+      blocks,
+    );
+    // The contained block adds no covered time (the day cap alone would not
+    // refuse it), so Monday keeps only the long block.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
       .map((a) => a.blockId);
-    expect(monIds.includes("first") && monIds.includes("stagger")).toBe(false);
+    expect(monIds).toEqual(["long"]);
+  });
+
+  it("refuses a staggered double whose merged span exceeds the day cap", () => {
+    const blocks = [
+      block("first", "barista", "weekday", "11a", "4p"),
+      block("stagger", "barista", "weekday", "3:45p", "8:45p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [sel("first", "mon"), sel("stagger", "mon"), sel("bar-am", "tue")],
+        }),
+      ],
+      blocks,
+    );
+    // Neither contains the other, but the merged 11a-8:45p span is 9.75h,
+    // past the 8h cap, so only one of the pair lands on Monday.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId);
+    expect(monIds).toEqual(["stagger"]);
+    for (const load of dayLoads(rowsOf(r, "b@w"), blocks).values()) {
+      expect(load).toBeLessThanOrEqual(DAY_CAP_MINUTES);
+    }
+  });
+
+  it("refuses a cell that would leave another shift covering nothing unique", () => {
+    const blocks = [
+      block("a-first", "barista", "weekday", "12p", "3p"),
+      block("b-late", "barista", "weekday", "2:45p", "6p"),
+      block("c-mid", "barista", "weekday", "1p", "5p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [
+            sel("a-first", "mon"),
+            sel("b-late", "mon"),
+            sel("c-mid", "mon"),
+            sel("bar-am", "tue"),
+          ],
+        }),
+      ],
+      blocks,
+    );
+    // b-late and c-mid form a legal double, but adding a-first would leave
+    // c-mid covered by the union of the other two, so a-first stays off
+    // Monday even though no single pair of these blocks nests.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId)
+      .sort();
+    expect(monIds).toEqual(["b-late", "c-mid"]);
+  });
+
+  it("allows a shift between two disjoint ones (coverage is a set, not a hull)", () => {
+    const blocks = [
+      block("early", "barista", "weekday", "8a", "10a"),
+      block("mid", "barista", "weekday", "12p", "2p"),
+      block("late", "barista", "weekday", "4p", "6p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 10,
+          selection: [
+            sel("early", "mon"),
+            sel("mid", "mon"),
+            sel("late", "mon"),
+            sel("bar-am", "tue"),
+          ],
+        }),
+      ],
+      blocks,
+    );
+    // mid sits inside the hull of the other two but adds real time.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId)
+      .sort();
+    expect(monIds).toEqual(["early", "late", "mid"]);
   });
 
   it("assigns only cells the student selected", () => {
@@ -282,12 +406,7 @@ describe("generateAssignments", () => {
       block("wd2", "ca", "weekday", "8a", "4p"),
       block("we", "ca", "weekend", "11a", "7p"),
     ];
-    const selection = [
-      sel("wd", "mon"),
-      sel("wd", "tue"),
-      sel("wd2", "wed"),
-      sel("we", "sat"),
-    ];
+    const selection = [sel("wd", "mon"), sel("wd", "tue"), sel("wd2", "wed"), sel("we", "sat")];
     const r = run(
       [
         student("one@w", { selection, submittedAt: at(1) }),
@@ -295,11 +414,41 @@ describe("generateAssignments", () => {
       ],
       blocks,
     );
-    const cohortOf = (email: string) =>
-      rowsOf(r, email).find((a) => a.day === "sat")!.cohort;
+    const cohortOf = (email: string) => rowsOf(r, email).find((a) => a.day === "sat")!.cohort;
     expect(cohortOf("one@w")).toBe("a");
     expect(cohortOf("two@w")).toBe("b");
     expect(reportOf(r, "one@w").cohort).toBe("a");
+  });
+
+  it("balances weekend cohorts on merged spans, not raw block sums", () => {
+    const blocks = [
+      block("we-early", "ca", "weekend", "11a", "3p"),
+      block("we-late", "ca", "weekend", "2:45p", "7p"),
+      block("we-full", "ca", "weekend", "11a", "7p"),
+      block("wd", "ca", "weekday", "8a", "4p"),
+    ];
+    // Cohort a holds a staggered double (raw sum 495, merged 480); cohort b
+    // holds a single 480-minute block. True loads are equal.
+    const previous: ScheduleAssignment[] = [
+      { studentEmail: "double@w", blockId: "we-early", day: "sat", cohort: "a" },
+      { studentEmail: "double@w", blockId: "we-late", day: "sat", cohort: "a" },
+      { studentEmail: "single@w", blockId: "we-full", day: "sat", cohort: "b" },
+    ];
+    const r = run(
+      [
+        student("double@w", { scheduled: true, selection: [], submittedAt: at(1) }),
+        student("single@w", { scheduled: true, selection: [], submittedAt: at(2) }),
+        student("new@w", {
+          selection: [sel("we-full", "sun"), sel("wd", "mon"), sel("wd", "tue")],
+          submittedAt: at(3),
+        }),
+      ],
+      blocks,
+      previous,
+    );
+    // The double's 15-minute handoff overlap counts once, so the loads tie
+    // and the tie goes to cohort a; raw sums would have steered to b.
+    expect(rowsOf(r, "new@w").find((a) => a.day === "sun")!.cohort).toBe("a");
   });
 
   it("counts an every-weekend opt-in against both rotation weeks", () => {

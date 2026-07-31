@@ -6,9 +6,9 @@
  * place: no new run per edit, so Update still supersedes them for non-frozen
  * students by design (the freeze model in docs/architecture.md). Manual rows
  * carry source "manual"; removing an engine row is allowed, since the
- * scheduler owns the schedule. The only hard rule is the same-day overlap
- * refusal (domain/scheduling/manual.ts); assigning a cell the student never
- * selected is deliberate scheduler prerogative.
+ * scheduler owns the schedule. The only hard rule is that every same-day
+ * shift must add unique time (domain/scheduling/manual.ts); assigning a cell
+ * the student never selected is deliberate scheduler prerogative.
  */
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -17,13 +17,13 @@ import { scheduleAssignments, shiftBlocks, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import {
-  findDayOverlap,
+  findDayConflict,
   manualWeekendCohort,
   type ExistingAssignment,
 } from "@/lib/domain/scheduling/manual";
 import type { Cohort } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
-import { formatTime } from "@/lib/domain/time";
+import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, dayTypeOf, type Day } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
@@ -90,10 +90,14 @@ export async function setManualAssignment(
 
   if (existing.some((r) => r.blockId === blockId && r.day === day)) return { ok: true };
 
-  const clash = findDayOverlap(block, day, existing);
+  const clash = findDayConflict(block, day, existing);
   if (clash) {
     return fail(
-      `Overlaps their ${formatTime(clash.start)}–${formatTime(clash.end)} shift that day.`,
+      clash.kind === "candidate-covered"
+        ? `Their ${DAY_LABEL[day]} shifts already cover ${formatSpan(block.start, block.end)}.`
+        : clash.kind === "day-invalid"
+          ? `Their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift already covers nothing new. Remove that one first.`
+          : `That would leave their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift covering nothing new. Remove that one first.`,
     );
   }
 

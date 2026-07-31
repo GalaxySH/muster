@@ -9,13 +9,14 @@
  * with the seat lifted out of the ledger. Invariants: a relocation stays
  * within the student's selections and the same day (so the min-days
  * concentration and the daily cap survive), never lowers the student's covered
- * hours, and never touches a student marked scheduled. Deterministic
+ * hours, keeps every shift on the day contributing unique time, and never
+ * touches a student marked scheduled. Deterministic
  * first-improvement order with a fixed round cap; each move strictly raises
  * the weighted-coverage objective, so the pass always terminates.
  */
 import { demandCellKey } from "../demand";
-import { coveredMinutes } from "../intervals";
-import { overlaps, type TimeRange } from "../time";
+import { coveredMinutes, redundantRangeIndex } from "../intervals";
+import type { TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { DAY_INDEX, EPSILON_MINUTES, SeatLedger, byEmail, tierBonus } from "./seats";
@@ -149,7 +150,9 @@ function bestRelocation(
     if (pull <= state.vacated + MIN_GAIN) continue;
 
     const range: TimeRange = { start: block.start, end: block.end };
-    if (otherRanges.some((r) => overlaps(r, range))) continue;
+    // otherRanges already excludes the vacated row; every shift in the
+    // resulting day set must keep at least one minute of unique coverage.
+    if (redundantRangeIndex([...otherRanges, range]) >= 0) continue;
     if (otherRanges.length > 0 && dayMinutes(otherRanges, range) > state.dayCapMinutes) continue;
     if (dayMinutes(otherRanges, range) + EPSILON_MINUTES < oldAvg) continue;
 

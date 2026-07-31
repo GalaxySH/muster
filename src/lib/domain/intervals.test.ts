@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeRanges, coveredMinutes } from "./intervals";
+import { mergeRanges, coveredMinutes, redundantRangeIndex } from "./intervals";
 import { parseTime, type TimeRange } from "./time";
 
 const r = (start: string, end: string): TimeRange => ({
@@ -54,5 +54,38 @@ describe("coveredMinutes", () => {
 
   it("counts a fully-nested shift only once", () => {
     expect(coveredMinutes([r("2p", "8p"), r("4p", "6p")])).toBe(360);
+  });
+});
+
+describe("redundantRangeIndex", () => {
+  it("finds no redundancy in a staggered pair", () => {
+    expect(redundantRangeIndex([r("12p", "4p"), r("3:45p", "7:45p")])).toBe(-1);
+  });
+
+  it("finds no redundancy in disjoint or touching ranges", () => {
+    expect(redundantRangeIndex([r("8a", "10a"), r("12p", "2p")])).toBe(-1);
+    expect(redundantRangeIndex([r("8a", "12p"), r("12p", "4p")])).toBe(-1);
+  });
+
+  it("reports the first of an identical pair", () => {
+    expect(redundantRangeIndex([r("10a", "2p"), r("10a", "2p")])).toBe(0);
+  });
+
+  it("reports a nested range, containment sharing an endpoint included", () => {
+    expect(redundantRangeIndex([r("2p", "8p"), r("4p", "6p")])).toBe(1);
+    expect(redundantRangeIndex([r("12p", "2p"), r("10a", "2p")])).toBe(0);
+  });
+
+  it("reports a range covered only by the union of two others", () => {
+    // 12p-3p and 2:45p-6p together cover all of 1p-5p, though neither does alone.
+    expect(redundantRangeIndex([r("12p", "3p"), r("2:45p", "6p"), r("1p", "5p")])).toBe(2);
+  });
+
+  it("does not treat the hull as coverage: a range between two disjoint ones stands", () => {
+    expect(redundantRangeIndex([r("8a", "10a"), r("4p", "6p"), r("12p", "2p")])).toBe(-1);
+  });
+
+  it("never flags a single range", () => {
+    expect(redundantRangeIndex([r("8a", "10a")])).toBe(-1);
   });
 });
