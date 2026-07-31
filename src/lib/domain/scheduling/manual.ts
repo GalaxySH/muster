@@ -26,31 +26,38 @@ export interface ExistingAssignment {
 }
 
 /**
- * Why a new manual assignment refuses: it adds no time of its own, or it
- * would leave an existing shift adding none.
+ * Why a new manual assignment refuses: it adds no time of its own, it would
+ * leave an existing shift adding none, or the day's stored shifts already
+ * break the rule on their own (possible when block times change under a live
+ * run) and need fixing before anything is added.
  */
 export type DayConflict =
   | { kind: "candidate-covered" }
-  | { kind: "existing-covered"; row: ExistingAssignment };
+  | { kind: "existing-covered"; row: ExistingAssignment }
+  | { kind: "day-invalid"; row: ExistingAssignment };
 
 /**
  * The conflict a new same-day assignment would create, or null. Every shift
  * on a day must cover at least one minute no other shift covers; the union is
  * a set of minutes, not a hull, so a shift between two disjoint ones is fine,
  * as are staggered overlaps and touching endpoints. The candidate goes first
- * in the checked set, so identical times report candidate-covered.
+ * in the checked set, so identical times report candidate-covered. Rows are
+ * sorted here so the reported shift never depends on caller ordering.
  */
 export function findDayConflict(
   block: ShiftBlock,
   day: Day,
   existing: readonly ExistingAssignment[],
 ): DayConflict | null {
-  const rows = existing.filter((r) => r.day === day && r.blockId !== block.id);
-  const set: TimeRange[] = [
-    { start: block.start, end: block.end },
-    ...rows.map((r) => ({ start: r.start, end: r.end })),
-  ];
-  const redundant = redundantRangeIndex(set);
+  const rows = existing
+    .filter((r) => r.day === day && r.blockId !== block.id)
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.blockId.localeCompare(b.blockId));
+  const rowRanges: TimeRange[] = rows.map((r) => ({ start: r.start, end: r.end }));
+  // A day whose stored rows are already redundant among themselves is not the
+  // new shift's fault; report it as its own case so the copy stays honest.
+  const already = redundantRangeIndex(rowRanges);
+  if (already >= 0) return { kind: "day-invalid", row: rows[already]! };
+  const redundant = redundantRangeIndex([{ start: block.start, end: block.end }, ...rowRanges]);
   if (redundant < 0) return null;
   return redundant === 0
     ? { kind: "candidate-covered" }

@@ -1329,9 +1329,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   engine's candidate filter, the improvement pass (the day set checked with the
   vacated cell excluded), and manual edits all share the predicate;
   `findDayConflict` now reports which side is redundant and the manual refusal
-  copy names it ("already cover" vs "covering nothing new"). Frozen students'
+  copy names it ("already cover" vs "covering nothing new"); a day whose stored
+  rows already break the rule on their own (possible when block times change
+  under a live run) refuses with its own message naming the redundant shift
+  instead of blaming the new one, and the reported shift is deterministic
+  regardless of row order. Frozen students'
   rows still carry forward verbatim even where history predates the rule.
-  `eitherContains` and `conflictCovers` were deleted as subsumed.
+  `eitherContains` was deleted as subsumed.
 - **1.01 (2026-07-31)** — **Doubles: same-day assignments conflict only on
   containment, not overlap.** Students often work a "double": two adjacent blocks
   as one continuous shift, and most adjacent blocks in the real config overlap by

@@ -95,7 +95,9 @@ export async function setManualAssignment(
     return fail(
       clash.kind === "candidate-covered"
         ? `Their ${DAY_LABEL[day]} shifts already cover ${formatSpan(block.start, block.end)}.`
-        : `That would leave their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift covering nothing new. Remove that one first.`,
+        : clash.kind === "day-invalid"
+          ? `Their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift already covers nothing new. Remove that one first.`
+          : `That would leave their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift covering nothing new. Remove that one first.`,
     );
   }
 

@@ -81,6 +81,27 @@ describe("findDayConflict", () => {
     const own = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
     expect(findDayConflict(block("morning", 8 * 60, 12 * 60), "mon", own)).toBeNull();
   });
+
+  it("reports a day whose stored rows already break the rule, not the new shift", () => {
+    // Nested pair predates the edit (block times changed under a live run);
+    // even a disjoint candidate refuses, blaming the stored redundancy.
+    const broken = [
+      row("outer", "mon", "weekday", 14 * 60, 20 * 60),
+      row("nested", "mon", "weekday", 16 * 60, 18 * 60),
+    ];
+    const hit = findDayConflict(block("am", 8 * 60, 10 * 60), "mon", broken);
+    expect(hit).toMatchObject({ kind: "day-invalid", row: { blockId: "nested" } });
+  });
+
+  it("names the same redundant shift no matter the row order given", () => {
+    const swallow = block("allday", 8 * 60, 12 * 60);
+    const early = row("early", "mon", "weekday", 8 * 60, 9 * 60);
+    const late = row("late", "mon", "weekday", 11 * 60, 12 * 60);
+    const forward = findDayConflict(swallow, "mon", [early, late]);
+    const reversed = findDayConflict(swallow, "mon", [late, early]);
+    expect(forward).toMatchObject({ kind: "existing-covered", row: { blockId: "early" } });
+    expect(reversed).toEqual(forward);
+  });
 });
 
 describe("manualWeekendCohort", () => {
