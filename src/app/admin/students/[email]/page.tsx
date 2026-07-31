@@ -279,7 +279,7 @@ export default async function StudentDetailPage({
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={position!.name} sub="" />
+          <StatTile label="POSITION" value={position!.name} sub={`Group: ${detail.group ?? "none"}`} />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}

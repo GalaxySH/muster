@@ -1313,8 +1313,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Four fixes to
-  `/admin/students/[email]`. The availability grid only splits a cell into
+- **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Five fixes to
+  `/admin/students/[email]`. The POSITION quick-reference card now fills its blank
+  subtext line with the student's form-window group (`Group: <name>`, or `Group:
+  none` when ungrouped), resolved by `loadStudentDetail`. The availability grid only
+  splits a cell into
   preference-vs-schedule halves when *this* student has a generated shift (or the
   admin is in schedule-edit mode); with no schedule to compare against, the
   preference fills the whole square, and the legend drops the split explainer and the
