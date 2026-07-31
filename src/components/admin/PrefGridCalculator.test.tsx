@@ -483,14 +483,16 @@ describe("PrefGridCalculator", () => {
       const user = userEvent.setup();
       vi.mocked(setManualAssignment).mockResolvedValue({
         ok: false,
-        error: "Overlaps their 8a–12p shift that day.",
+        error: "Their Mon 8a to 12p shift already covers that time.",
       });
       renderCalc({ hasCurrentRun: true });
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       await user.click(screen.getByRole("button", { name: "1p–5p Mon" }));
 
-      expect(await screen.findByText("Overlaps their 8a–12p shift that day.")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Their Mon 8a to 12p shift already covers that time."),
+      ).toBeInTheDocument();
       expect(refresh).not.toHaveBeenCalled();
     });
 

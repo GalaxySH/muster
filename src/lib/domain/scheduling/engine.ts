@@ -21,7 +21,7 @@
 import { hourCap } from "../caps";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
-import { overlaps, type TimeRange } from "../time";
+import { eitherContains, type TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
 import { improveAssignments } from "./improve";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
@@ -274,7 +274,9 @@ function bestCandidate(
 
     const range: TimeRange = { start: block.start, end: block.end };
     if (dayOpen) {
-      if (dayRanges.some((r) => overlaps(r, range))) continue;
+      // Staggered overlaps are fine (they merge into a double); only a block
+      // contained by or containing an assigned one adds nothing and refuses.
+      if (dayRanges.some((r) => eitherContains(r, range))) continue;
       if (coveredMinutes([...dayRanges, range]) > dayCapMinutes) continue;
     }
 

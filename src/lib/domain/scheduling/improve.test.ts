@@ -46,7 +46,10 @@ const row = (
 
 describe("improveAssignments", () => {
   it("moves a seat from an untargeted cell into a scarcer, later one", () => {
-    const blocks = [block("morning", "weekday", "8a", "12p"), block("night", "weekday", "5p", "9p", 3)];
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "5p", "9p", 3),
+    ];
     const students = [student("s@w", { selection: [sel("morning", "mon"), sel("night", "mon")] })];
     const r = improveAssignments([row("s@w", "morning", "mon")], students, blocks);
     expect(r.moved).toBe(1);
@@ -54,7 +57,10 @@ describe("improveAssignments", () => {
   });
 
   it("never lowers the student's covered hours", () => {
-    const blocks = [block("morning", "weekday", "8a", "12p"), block("short", "weekday", "5p", "7p", 3)];
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("short", "weekday", "5p", "7p", 3),
+    ];
     const students = [student("s@w", { selection: [sel("morning", "mon"), sel("short", "mon")] })];
     const r = improveAssignments([row("s@w", "morning", "mon")], students, blocks);
     expect(r.moved).toBe(0);
@@ -62,7 +68,10 @@ describe("improveAssignments", () => {
   });
 
   it("never touches a student marked scheduled", () => {
-    const blocks = [block("morning", "weekday", "8a", "12p"), block("night", "weekday", "5p", "9p", 3)];
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "5p", "9p", 3),
+    ];
     const students = [
       student("s@w", { scheduled: true, selection: [sel("morning", "mon"), sel("night", "mon")] }),
     ];
@@ -71,7 +80,10 @@ describe("improveAssignments", () => {
   });
 
   it("respects the target cell's remaining capacity", () => {
-    const blocks = [block("morning", "weekday", "8a", "12p"), block("night", "weekday", "5p", "9p", 1)];
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "5p", "9p", 1),
+    ];
     const students = [
       student("s@w", { selection: [sel("morning", "mon"), sel("night", "mon")] }),
       student("holder@w", { selection: [sel("night", "mon")] }),
@@ -85,26 +97,53 @@ describe("improveAssignments", () => {
   });
 
   it("only relocates within the same day", () => {
-    const blocks = [block("morning", "weekday", "8a", "12p"), block("night", "weekday", "5p", "9p", 3)];
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "5p", "9p", 3),
+    ];
     const students = [student("s@w", { selection: [sel("morning", "mon"), sel("night", "tue")] })];
     const r = improveAssignments([row("s@w", "morning", "mon")], students, blocks);
     expect(r.moved).toBe(0);
   });
 
-  it("refuses a move that would overlap a sibling assignment", () => {
+  it("moves into a cell that staggers over a sibling, forming a double", () => {
     const blocks = [
-      block("early", "weekday", "8a", "12p"),
-      block("mid", "weekday", "12p", "4p"),
-      block("wedge", "weekday", "10a", "2p", 5),
+      block("noon", "weekday", "12p", "2p"),
+      block("evening", "weekday", "2p", "4p"),
+      block("late", "weekday", "1:45p", "4:30p", 3),
     ];
     const students = [
-      student("s@w", { selection: [sel("early", "mon"), sel("mid", "mon"), sel("wedge", "mon")] }),
+      student("s@w", {
+        selection: [sel("noon", "mon"), sel("evening", "mon"), sel("late", "mon")],
+      }),
     ];
     const r = improveAssignments(
-      [row("s@w", "early", "mon"), row("s@w", "mid", "mon")],
+      [row("s@w", "noon", "mon"), row("s@w", "evening", "mon")],
       students,
       blocks,
     );
+    // The 15-minute handoff overlap with noon is no conflict; the destination
+    // extends the merged span, so coverage never drops.
+    expect(r.moved).toBe(1);
+    expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["late", "noon"]);
+  });
+
+  it("refuses a move whose destination would swallow a sibling assignment", () => {
+    const blocks = [
+      block("inner", "weekday", "12p", "2p"),
+      block("tail", "weekday", "2p", "3p"),
+      block("big", "weekday", "11:30a", "3:30p", 3),
+    ];
+    const students = [
+      student("s@w", { selection: [sel("inner", "mon"), sel("tail", "mon"), sel("big", "mon")] }),
+    ];
+    const r = improveAssignments(
+      [row("s@w", "inner", "mon"), row("s@w", "tail", "mon")],
+      students,
+      blocks,
+    );
+    // big contains each sibling, so neither row may relocate into it, even
+    // though the move would raise coverage and fit the cap.
     expect(r.moved).toBe(0);
   });
 

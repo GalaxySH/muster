@@ -7,6 +7,7 @@ import {
   hhmmToMinutes,
   minutesBetween,
   overlaps,
+  eitherContains,
   type TimeRange,
 } from "./time";
 
@@ -106,6 +107,36 @@ describe("overlaps", () => {
 
   it("detects disjoint ranges", () => {
     expect(overlaps(r("6:45a", "10a"), r("12:30p", "2:30p"))).toBe(false);
+  });
+});
+
+describe("eitherContains", () => {
+  const r = (s: string, e: string): TimeRange => ({ start: parseTime(s), end: parseTime(e) });
+
+  it("is false for a partial overlap", () => {
+    expect(eitherContains(r("12p", "4p"), r("2p", "6p"))).toBe(false);
+  });
+
+  it("is false for disjoint ranges", () => {
+    expect(eitherContains(r("8a", "10a"), r("12p", "2p"))).toBe(false);
+  });
+
+  it("is false for touching endpoints", () => {
+    expect(eitherContains(r("8a", "12p"), r("12p", "4p"))).toBe(false);
+  });
+
+  it("is true for identical ranges", () => {
+    expect(eitherContains(r("10a", "2p"), r("10a", "2p"))).toBe(true);
+  });
+
+  it("is true for strict containment, either side", () => {
+    expect(eitherContains(r("10a", "6p"), r("12p", "2p"))).toBe(true);
+    expect(eitherContains(r("12p", "2p"), r("10a", "6p"))).toBe(true);
+  });
+
+  it("is true for containment sharing an endpoint, either side", () => {
+    expect(eitherContains(r("10a", "2p"), r("12p", "2p"))).toBe(true);
+    expect(eitherContains(r("10a", "12p"), r("10a", "2p"))).toBe(true);
   });
 });
 

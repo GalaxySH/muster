@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.00
+- **Version:** 1.01
 - **Last updated:** 2026-07-30
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -726,7 +726,9 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     shift, with engine and manual rows colored apart and a legend beneath. An **Edit
     mode** toggle picks the click target: **Edit preferences** is the trial/save above;
     **Edit schedule** (disabled until a run exists) toggles per-cell **manual
-    overrides** on the current run. Same-day overlapping shifts refuse; a cell outside
+    overrides** on the current run. A same-day shift refuses only when one shift's
+    times contain the other's (1.01); staggered overlaps are allowed and merge into
+    one continuous double; a cell outside
     the student's picks is allowed (the scheduler owns the schedule) and renders as the
     visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
     grid says so. See §17 and `docs/schedule-generation-plan.md`.
@@ -1313,6 +1315,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.01 (2026-07-31)** — **Doubles: same-day assignments conflict only on
+  containment, not overlap.** Students often work a "double": two adjacent blocks
+  as one continuous shift, and most adjacent blocks in the real config overlap by
+  15 minutes for handoff coverage (e.g. Cashier weekday 2:30p–5:15p then
+  5p–8:30p), which the old any-overlap refusal made unschedulable. New rule
+  everywhere assignments are constrained: two same-day blocks may overlap by any
+  amount provided neither contains the other, inclusively — identical times, and
+  containment sharing an endpoint, still refuse, because the pair adds no time
+  beyond the larger shift. The pure `eitherContains` (`domain/time.ts`) carries
+  the rule; the engine's candidate filter, the improvement pass, and manual
+  edits (`findDayConflict`, renamed from `findDayOverlap`, with refusal copy
+  naming the covering shift) all consume it. The hours math needed no change:
+  capacity and the engine's assigned-minutes both union overlapping spans with
+  shared time counted once (§5 #2), and the max-hours-per-day cap already binds
+  on the merged span, so a staggered double stretching past the cap still
+  refuses.
 - **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
   (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
   `/admin/schedule` with one-click **Restore**: a superseded run flips back to

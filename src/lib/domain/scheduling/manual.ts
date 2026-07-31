@@ -2,13 +2,15 @@
  * Pure rules for an admin's manual schedule edits on the per-student grid.
  *
  * Manual edits mutate the current run's rows directly (no new run per edit).
- * The only hard rule is no same-day time overlap with the student's other
- * assigned blocks: overlapping shifts would double-book them, while touching
- * shifts merge into one span (domain/intervals.ts) and are fine. Assigning a
- * cell the student never selected is allowed; the scheduler owns the schedule
- * and the split grid makes the mismatch visible.
+ * The only hard rule is no same-day containment against the student's other
+ * assigned blocks: a shift whose times sit inside an existing one (or swallow
+ * one) adds no working time, while staggered or touching shifts merge into one
+ * longer span (domain/intervals.ts) and are fine, which is how a double across
+ * a handoff overlap gets scheduled. Assigning a cell the student never
+ * selected is allowed; the scheduler owns the schedule and the split grid
+ * makes the mismatch visible.
  */
-import { overlaps, type TimeRange } from "../time";
+import { eitherContains, type TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import type { Cohort } from "./types";
 
@@ -22,10 +24,11 @@ export interface ExistingAssignment {
 }
 
 /**
- * The existing same-day assignment the new block truly overlaps, or null.
- * Touching endpoints (5p end against 5p start) are not an overlap.
+ * The existing same-day assignment that contains the new block's times or is
+ * contained by them (identical times included), or null. Staggered overlaps
+ * and touching endpoints are not conflicts.
  */
-export function findDayOverlap(
+export function findDayConflict(
   block: ShiftBlock,
   day: Day,
   existing: readonly ExistingAssignment[],
@@ -36,7 +39,7 @@ export function findDayOverlap(
       (row) =>
         row.day === day &&
         row.blockId !== block.id &&
-        overlaps({ start: row.start, end: row.end }, range),
+        eitherContains({ start: row.start, end: row.end }, range),
     ) ?? null
   );
 }

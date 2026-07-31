@@ -991,8 +991,10 @@ The generator itself, layered exactly like the rest of the app:
 - **Manual overrides** (0.99, ahead of Phase C): `schedule_assignments.source`
   (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes the
   admin-gated `setManualAssignment`/`removeManualAssignment`: current run only
-  (refuse cleanly when none exists), same-day true overlap refused via the pure
-  `domain/scheduling/manual.ts` (`findDayOverlap` — touching allowed,
+  (refuse cleanly when none exists), same-day containment refused via the pure
+  `domain/scheduling/manual.ts` (`findDayConflict` — a block containing or
+  contained by an existing assignment refuses; staggered overlaps and touching
+  are allowed since 1.01, so handoff doubles are schedulable —
   `manualWeekendCohort` — reuse the student's current-run cohort, else `every`
   for opt-ins, else `a`), cells outside the student's picks allowed (the
   scheduler owns the schedule; the grid renders the mismatch). Edits mutate the

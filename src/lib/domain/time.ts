@@ -96,3 +96,13 @@ export function minutesBetween(range: TimeRange): number {
 export function overlaps(a: TimeRange, b: TimeRange): boolean {
   return a.start < b.end && b.start < a.end;
 }
+
+/**
+ * True if one range contains the other, inclusive: identical ranges count, and
+ * so does containment sharing an endpoint. A contained pair adds no time beyond
+ * the larger range, so assignment conflicts test this, not `overlaps`: a merely
+ * staggered pair extends the merged span and can be worked as one double.
+ */
+export function eitherContains(a: TimeRange, b: TimeRange): boolean {
+  return (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end);
+}

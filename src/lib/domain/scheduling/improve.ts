@@ -15,7 +15,7 @@
  */
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
-import { overlaps, type TimeRange } from "../time";
+import { eitherContains, type TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { DAY_INDEX, EPSILON_MINUTES, SeatLedger, byEmail, tierBonus } from "./seats";
@@ -149,7 +149,7 @@ function bestRelocation(
     if (pull <= state.vacated + MIN_GAIN) continue;
 
     const range: TimeRange = { start: block.start, end: block.end };
-    if (otherRanges.some((r) => overlaps(r, range))) continue;
+    if (otherRanges.some((r) => eitherContains(r, range))) continue;
     if (otherRanges.length > 0 && dayMinutes(otherRanges, range) > state.dayCapMinutes) continue;
     if (dayMinutes(otherRanges, range) + EPSILON_MINUTES < oldAvg) continue;
 

@@ -180,10 +180,15 @@ Deterministic tie-breaks (day, block id). The knobs are admin-edited on
 `/admin/schedule` (one JSON `app_settings` row, `schedule_params`), applied at
 the next update, and snapshotted into each run's stored report.
 
-Hard constraints per assignment: cell below `desired_capacity`; no time overlap
-with another assigned block on the same day (touching is fine — the interval
-merge in `domain/intervals.ts` credits back-to-back spans correctly; truly
-overlapping staggered blocks cannot both be worked).
+Hard constraints per assignment: cell below `desired_capacity`; no same-day
+assignment may **contain** another, inclusively — identical times, or nested
+times sharing an endpoint, both refuse (`eitherContains` in `domain/time.ts`),
+because the pair adds no time beyond the larger block. Any lesser overlap is
+allowed (1.01): most adjacent blocks in the real config overlap by 15 minutes
+for handoff coverage, and students want to work such a pair as one continuous
+"double". The interval merge in `domain/intervals.ts` counts the shared time
+once, and the day cap binds on the merged span, so doubles are credited and
+capped correctly.
 
 ### 3.3 Weekend cohort assignment
 
