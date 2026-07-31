@@ -8,6 +8,7 @@ import {
   DESIRED_CAPACITY_MAX,
   blockSetWarnings,
   positionCapacityCheck,
+  seatHoursPerWeek,
   validateBlockTimes,
   validateDesiredCapacity,
 } from "@/lib/domain/config-validation";
@@ -125,6 +126,8 @@ export function BlockEditor({
   );
   const warnings = blockSetWarnings(position, liveBlocks);
   const capacity = positionCapacityCheck(liveBlocks, onRosterCount, position.minHours);
+  // Supply side alone (no roster needed): what this position can seat each week.
+  const seatHours = seatHoursPerWeek(liveBlocks);
 
   function removeBlock(b: AdminBlockItem) {
     if (!confirm("Remove this block?")) return;
@@ -212,9 +215,9 @@ export function BlockEditor({
                     </span>
                     {oc.openId === b.id && <span style={openTag}>Open</span>}
                     {oc.closeId === b.id && <span style={closeTag}>Close</span>}
-                    {b.selectionCount > 0 && (
+                    {b.realPickCount > 0 && (
                       <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                        {b.selectionCount} pick{b.selectionCount === 1 ? "" : "s"}
+                        {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"}
                       </span>
                     )}
                     <button
@@ -309,11 +312,19 @@ export function BlockEditor({
           <p style={{ margin: 0, fontSize: 14 }}>{w.message}</p>
         </InfoCard>
       ))}
-      {onRosterCount > 0 && capacity.kind === "short" && (
-        <InfoCard tone="warning" style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}>
-          <p style={{ margin: 0, fontSize: 14 }}>{capacity.message}</p>
-        </InfoCard>
-      )}
+      {/* Seat hours, once any block has a target. A shortfall against the roster
+          reads as a warning (and already names the seat hours); otherwise the
+          total shows as a plain line, roster or not. */}
+      {seatHours > 0 &&
+        (onRosterCount > 0 && capacity.kind === "short" ? (
+          <InfoCard tone="warning" style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}>
+            <p style={{ margin: 0, fontSize: 14 }}>{capacity.message}</p>
+          </InfoCard>
+        ) : (
+          <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Shift targets add up to about {Math.round(seatHours)} seat hours a week.
+          </p>
+        ))}
       {onRosterCount > 0 && blocks.length > 0 && capacity.kind === "no_targets" && (
         <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
           Set staffing targets to check weekly capacity against the roster.

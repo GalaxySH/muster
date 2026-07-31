@@ -28,6 +28,7 @@ import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChang
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
+import { JumpMenu } from "@/components/admin/JumpMenu";
 import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
 import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
@@ -197,9 +198,10 @@ export default async function StudentDetailPage({
       </AppHeader>
 
       {/* Identity header. Ringed red until the student has actually submitted, so
-          an unfinished or unstarted response is obvious at a glance. */}
+          an unfinished or unstarted response is obvious at a glance. The two groups
+          each wrap on their own so the buttons never overflow the card on mobile. */}
       <div style={status === "submitted" ? cardStyle : { ...cardStyle, ...cardUnsubmitted }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="response-identity">
           <NavArrow href={nav.prevEmail ? studentHref(nav.prevEmail) : null} dir="prev" />
           <div style={avatar}>{initials(detail.displayName)}</div>
           <div>
@@ -207,9 +209,8 @@ export default async function StudentDetailPage({
               displayName={detail.displayName}
               index={nav.index}
               total={nav.total}
-              people={nav.people}
+              people={nav.people.map((p) => ({ ...p, href: studentHref(p.email) }))}
               currentEmail={detail.email}
-              studentHref={studentHref}
             />
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
               <SelectableEmail email={detail.email} />
@@ -223,7 +224,7 @@ export default async function StudentDetailPage({
           </div>
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="response-actionbar">
           {status !== "submitted" && (
             <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
           )}
@@ -278,7 +279,7 @@ export default async function StudentDetailPage({
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={position!.name} sub="" />
+          <StatTile label="POSITION" value={position!.name} sub={`Group: ${detail.group ?? "none"}`} />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}
@@ -319,6 +320,7 @@ export default async function StudentDetailPage({
               everyWeekendOptIn={submission?.everyWeekendOptIn ?? false}
               cap={cap}
               hasCurrentRun={schedule !== null}
+              hasSchedule={(schedule?.cells.length ?? 0) > 0}
             />
           </section>
         )}
@@ -650,68 +652,6 @@ const travelEntryResolved: React.CSSProperties = {
 // --- presentational helpers (server) ---
 
 /**
- * The student name as a "jump to" disclosure (roadmap 2.2): the summary shows the
- * name + position in the filtered list; expanding it lists every responder in the
- * active filter for a one-click jump (each link preserves the filter). Falls back
- * to a plain name when there's no list to jump within.
- */
-function JumpMenu({
-  displayName,
-  index,
-  total,
-  people,
-  currentEmail,
-  studentHref,
-}: {
-  displayName: string;
-  index: number;
-  total: number;
-  people: { email: string; displayName: string }[];
-  currentEmail: string;
-  studentHref: (email: string) => string;
-}) {
-  const counter =
-    index > 0 ? (
-      <span style={{ color: "var(--color-text-tertiary)", fontWeight: 400, fontSize: 13 }}>
-        {" "}
-        · {index} of {total}
-      </span>
-    ) : null;
-
-  if (people.length === 0) {
-    return (
-      <div style={{ fontWeight: 500 }}>
-        {displayName}
-        {counter}
-      </div>
-    );
-  }
-
-  return (
-    <details style={{ position: "relative" }}>
-      <summary style={{ cursor: "pointer", fontWeight: 500, listStyle: "revert" }}>
-        {displayName}
-        {counter}
-      </summary>
-      <div style={jumpMenu}>
-        {people.map((p) => (
-          <Link
-            key={p.email}
-            href={studentHref(p.email)}
-            style={{
-              ...jumpItem,
-              ...(p.email === currentEmail ? jumpItemCurrent : null),
-            }}
-          >
-            {p.displayName}
-          </Link>
-        ))}
-      </div>
-    </details>
-  );
-}
-
-/**
  * The two timestamps every response carries, side by side in the header: when the
  * student first submitted, and when they last changed anything. They read as one
  * paired unit rather than a line of fine print, because the scheduler uses them to
@@ -951,35 +891,6 @@ const avatar: React.CSSProperties = {
   justifyContent: "center",
   fontWeight: 500,
   color: "var(--color-text-info)",
-};
-const jumpMenu: React.CSSProperties = {
-  position: "absolute",
-  zIndex: 20,
-  top: "100%",
-  left: 0,
-  marginTop: 4,
-  minWidth: 220,
-  maxHeight: 320,
-  overflowY: "auto",
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-  padding: 4,
-};
-const jumpItem: React.CSSProperties = {
-  display: "block",
-  padding: "5px 8px",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 13,
-  color: "var(--color-text-primary)",
-  textDecoration: "none",
-  whiteSpace: "nowrap",
-};
-const jumpItemCurrent: React.CSSProperties = {
-  background: "var(--color-background-info)",
-  color: "var(--color-text-info)",
-  fontWeight: 600,
 };
 const closeList: React.CSSProperties = {
   listStyle: "none",

@@ -61,6 +61,7 @@ function renderCalc(
     desiredHours?: number | null;
     cap?: number;
     hasCurrentRun?: boolean;
+    hasSchedule?: boolean;
   } = {},
 ) {
   return render(
@@ -79,6 +80,7 @@ function renderCalc(
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
       cap={opts.cap ?? 30}
       hasCurrentRun={opts.hasCurrentRun ?? false}
+      hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
     />,
   );
 }
@@ -232,6 +234,23 @@ describe("PrefGridCalculator", () => {
     expect(cell).toHaveAttribute("title", expect.stringContaining("not one the student picked"));
   });
 
+  it("fills the whole cell with no generated schedule, and splits once the student has one", () => {
+    const { unmount } = renderCalc(); // no assignments: nothing to compare against
+    expect(screen.getByRole("button", { name: "8a–12p Mon" }).style.background).not.toContain(
+      "linear-gradient",
+    );
+    unmount();
+
+    // A generated shift for this student brings back the diagonal preference/schedule split.
+    renderCalc({
+      hasCurrentRun: true,
+      assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
+    });
+    expect(screen.getByRole("button", { name: "8a–12p Mon" }).style.background).toContain(
+      "linear-gradient",
+    );
+  });
+
   describe("auto-assigned weekend range", () => {
     // Picks: weekday only (8h). The weekend is machine-assigned (we-a, 4h), so it
     // sits outside preference capacity and shows as an optional upper bound.
@@ -354,6 +373,7 @@ describe("PrefGridCalculator", () => {
           everyWeekendOptIn={false}
           cap={30}
           hasCurrentRun={false}
+          hasSchedule={false}
         />,
       );
       expect(screen.getByText("preferred")).toBeInTheDocument();

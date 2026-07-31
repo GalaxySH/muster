@@ -188,7 +188,7 @@ gap 1.01 left open: identical times, both containment directions, and a shift
 covered only by the union of a staggered double all refuse alike, as does a
 candidate whose arrival would leave an existing shift redundant). The union is
 a covered set of minutes, not a hull, so a shift between two disjoint ones is
-legal. Staggered overlaps remain allowed (1.01): most adjacent blocks in the
+legal. Staggered overlaps remain allowed (1.03): most adjacent blocks in the
 real config overlap by 15 minutes for handoff coverage, and students work such
 a pair as one continuous "double". The interval merge in `domain/intervals.ts`
 counts the shared time once, and the day cap binds on the merged span, so

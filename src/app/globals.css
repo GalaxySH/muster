@@ -419,3 +419,27 @@ body {
     border-radius: 0;
   }
 }
+
+/* Per-student response header (app/admin/students/[email]/page.tsx): the identity
+   block and the action buttons share one card. Each group wraps within itself, so a
+   narrow screen stacks the buttons instead of letting them run off the card's edge.
+   On mobile the action bar takes the full width and tightens its spacing, packing
+   the buttons into a neat block. */
+.response-identity,
+.response-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.response-actionbar {
+  justify-content: flex-end;
+}
+@media (max-width: 719.98px) {
+  .response-actionbar {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+}

@@ -83,9 +83,9 @@ export function PositionCard({
       });
       // Only a time change moves shifts under students' saved picks; details
       // and staffing targets are admin-side context and need no confirm.
-      if ((parsed.start !== b.start || parsed.end !== b.end) && b.selectionCount > 0) {
+      if ((parsed.start !== b.start || parsed.end !== b.end) && b.realPickCount > 0) {
         repicked.push(
-          `${b.dayType === "weekend" ? "weekend" : "weekday"} ${minutesToHHMM(b.start)} to ${minutesToHHMM(b.end)} (${plural(b.selectionCount, "pick")})`,
+          `${b.dayType === "weekend" ? "weekend" : "weekday"} ${minutesToHHMM(b.start)} to ${minutesToHHMM(b.end)} (${plural(b.realPickCount, "pick")})`,
         );
       }
     }
@@ -94,6 +94,14 @@ export function PositionCard({
       !confirm(`Students have picked these shifts: ${repicked.join(", ")}. Change their times?`)
     ) {
       return;
+    }
+    // Toggling weekend exemption changes whether students in this position must
+    // work weekends, so confirm it before the save carries it through.
+    if (weekendExempt !== position.weekendExempt) {
+      const ask = weekendExempt
+        ? `Make ${position.name} weekend exempt? Students in it will no longer work weekends.`
+        : `Remove the weekend exemption from ${position.name}? Students in it will need to work weekends.`;
+      if (!confirm(ask)) return;
     }
     const details = detailsDirty
       ? { name, minHours: Number(minHours), minDays: Number(minDays), weekendExempt }
@@ -188,7 +196,15 @@ export function PositionCard({
           <button
             type="button"
             disabled={pending}
-            onClick={() => act(() => clearAlias(position.id), "Alias removed.")}
+            onClick={() => {
+              if (
+                confirm(
+                  `Remove the alias on ${position.name}? It becomes its own position again.`,
+                )
+              ) {
+                act(() => clearAlias(position.id), "Alias removed.");
+              }
+            }}
           >
             Remove alias
           </button>

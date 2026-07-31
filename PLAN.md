@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.02
+- **Version:** 1.04
 - **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -728,7 +728,7 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     **Edit schedule** (disabled until a run exists) toggles per-cell **manual
     overrides** on the current run. A same-day shift refuses when it adds no time
     the student's other shifts don't already cover, or when it would leave an
-    existing shift adding none (1.02); staggered overlaps are allowed and merge into
+    existing shift adding none (1.04); staggered overlaps are allowed and merge into
     one continuous double; a cell outside
     the student's picks is allowed (the scheduler owns the schedule) and renders as the
     visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
@@ -1316,8 +1316,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.02 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
-  add unique coverage.** 1.01's pairwise containment test left a merged-span
+- **1.04 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
+  add unique coverage.** 1.03's pairwise containment test left a merged-span
   gap: a shift fully covered by the *union* of a legal staggered double (12p–3p
   plus 2:45p–6p already cover all of 1p–5p) slipped through, as did a new shift
   whose arrival made an existing one redundant. Now a candidate refuses when
@@ -1336,7 +1336,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   regardless of row order. Frozen students'
   rows still carry forward verbatim even where history predates the rule.
   `eitherContains` was deleted as subsumed.
-- **1.01 (2026-07-31)** — **Doubles: same-day assignments conflict only on
+- **1.03 (2026-07-31)** — **Doubles: same-day assignments conflict only on
   containment, not overlap.** Students often work a "double": two adjacent blocks
   as one continuous shift, and most adjacent blocks in the real config overlap by
   15 minutes for handoff coverage (e.g. Cashier weekday 2:30p–5:15p then
@@ -1354,6 +1354,35 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   refuses. The one exception was the weekend cohort-balance accumulator, which
   summed raw block lengths; it now credits merged-span deltas so a double's
   handoff overlap counts once there too.
+- **1.02 (2026-07-31)** — **Positions config surface (`/admin/positions`).** Three
+  changes. The per-block pick count now excludes test accounts (a `realPickCount` from
+  a join to the owning student that drops the `dev-test` group, the same convention the
+  response surfaces use), so the number reflects real students; the FK delete guards
+  keep counting every selection. Each position shows the weekly seat hours its shift
+  targets provide (`seat = target x length x days`, extracted as the pure
+  `seatHoursPerWeek` and reused by the capacity check): a plain line when supply is fine
+  or there is no roster to compare against, folded into the existing shortfall warning
+  when demand outstrips it. Toggling weekend exemption and removing an alias now confirm
+  before they act, joining the block-remove and make-alias confirmations. Verified: 672
+  tests across 56 files, plus live checks against the F26-roster verify DB (a seeded
+  test-account pick excluded from the count, seat hours rendered, and each confirmation
+  dialog).
+- **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Five fixes to
+  `/admin/students/[email]`. The POSITION quick-reference card now fills its blank
+  subtext line with the student's form-window group (`Group: <name>`, or `Group:
+  none` when ungrouped), resolved by `loadStudentDetail`. The availability grid only
+  splits a cell into
+  preference-vs-schedule halves when *this* student has a generated shift (or the
+  admin is in schedule-edit mode); with no schedule to compare against, the
+  preference fills the whole square, and the legend drops the split explainer and the
+  scheduled swatches (`PrefGridCalculator`, driven by a new `hasSchedule` prop). A
+  shift the student picked but that has been dropped from the trial now reads as a
+  clear mid-blue instead of a near-white tint. The student-name jump menu closes on
+  an outside click or Escape (extracted to a `JumpMenu` client component around the
+  native `<details>`). The identity/action header wraps within each group so the
+  buttons stay inside the card on a narrow screen (`response-identity` /
+  `response-actionbar` classes). Verified: 670 tests across 56 files, plus live
+  screenshots at desktop and phone widths.
 - **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
   (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
   `/admin/schedule` with one-click **Restore**: a superseded run flips back to
