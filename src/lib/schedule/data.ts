@@ -28,7 +28,12 @@ import {
   type CoverageSummary,
 } from "@/lib/domain/coverage";
 import { demandCellKey, type CellCount } from "@/lib/domain/demand";
-import type { EngineReport, StudentScheduleReport } from "@/lib/domain/scheduling/types";
+import type {
+  AssignmentSource,
+  Cohort,
+  EngineReport,
+  StudentScheduleReport,
+} from "@/lib/domain/scheduling/types";
 import { ALL_DAYS, type Day, type DayType, type ShiftBlock } from "@/lib/domain/types";
 
 /** Who the schedule surfaces consider: on-roster students who submitted. */
@@ -168,6 +173,42 @@ export async function loadCurrentRunRow() {
     .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
     .limit(1);
   return run ?? null;
+}
+
+/** One current-run row for one student, as the per-student grid reads it. */
+export interface StudentAssignment {
+  blockId: string;
+  day: Day;
+  cohort: Cohort;
+  source: AssignmentSource;
+}
+
+export interface StudentCurrentAssignments {
+  runId: string;
+  cells: StudentAssignment[];
+}
+
+/**
+ * The current run's rows for one student, or null before any generation. A
+ * student with no rows still gets an empty list, so callers can tell "no run
+ * yet" from "run holds nothing for them".
+ */
+export async function loadStudentCurrentAssignments(
+  email: string,
+): Promise<StudentCurrentAssignments | null> {
+  const db = getDb();
+  const run = await loadCurrentRunRow();
+  if (!run) return null;
+  const cells = await db
+    .select({
+      blockId: scheduleAssignments.shiftBlockId,
+      day: scheduleAssignments.day,
+      cohort: scheduleAssignments.cohort,
+      source: scheduleAssignments.source,
+    })
+    .from(scheduleAssignments)
+    .where(and(eq(scheduleAssignments.runId, run.id), eq(scheduleAssignments.studentEmail, email)));
+  return { runId: run.id, cells };
 }
 
 /** The current run with its per-student rows, or null before any generation. */

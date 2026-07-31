@@ -3,23 +3,26 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { minutesToHHMM } from "@/lib/domain/time";
 import {
   clearAlias,
   deletePosition,
+  savePosition,
   setAlias,
   setPositionActive,
-  updatePosition,
+  type BlockEdit,
 } from "@/lib/positions/actions";
 import type { AdminPositionItem } from "@/lib/positions/data";
-import { BlockEditor } from "./BlockEditor";
+import { BlockEditor, blockRowDirty, parseBlockRow, type BlockRowEdit } from "./BlockEditor";
 import type { PositionOption } from "./GhostTitleCard";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * One position on /admin/positions (roadmap 3.3): the min-config edit form,
- * the block editor (or the alias note for aliases), the active toggle, the
- * alias control, and delete when nothing references the position.
+ * the block editor (or the alias note for aliases), one Save covering both,
+ * the active toggle, the alias control, and delete when nothing references
+ * the position.
  */
 export function PositionCard({
   position,
@@ -35,6 +38,9 @@ export function PositionCard({
   const [minHours, setMinHours] = useState(String(position.minHours));
   const [minDays, setMinDays] = useState(String(position.minDays));
   const [weekendExempt, setWeekendExempt] = useState(position.weekendExempt);
+  // Unsaved block-row edits, keyed by block id. Kept after save; dirtiness is
+  // computed against the saved values, so a refresh settles it back to clean.
+  const [edits, setEdits] = useState<Record<string, BlockRowEdit>>({});
   const [aliasTarget, setAliasTarget] = useState("");
 
   const isShiftLead = position.id === SHIFT_LEAD_POSITION_ID;
@@ -42,6 +48,14 @@ export function PositionCard({
   const selectionTotal = position.blocks.reduce((n, b) => n + b.selectionCount, 0);
   const deletable = !isShiftLead && position.studentCount === 0 && selectionTotal === 0;
   const targets = aliasTargets.filter((t) => t.id !== position.id);
+
+  const detailsDirty =
+    name !== position.name ||
+    minHours !== String(position.minHours) ||
+    minDays !== String(position.minDays) ||
+    weekendExempt !== position.weekendExempt;
+  const dirtyBlocks = position.blocks.filter((b) => blockRowDirty(b, edits[b.id]));
+  const dirty = detailsDirty || dirtyBlocks.length > 0;
 
   function act(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
     setMsg(null);
@@ -52,17 +66,39 @@ export function PositionCard({
     });
   }
 
-  function saveDetails() {
-    act(
-      () =>
-        updatePosition(position.id, {
-          name,
-          minHours: Number(minHours),
-          minDays: Number(minDays),
-          weekendExempt,
-        }),
-      "Saved.",
-    );
+  function save() {
+    const blockEdits: BlockEdit[] = [];
+    const repicked: string[] = [];
+    for (const b of dirtyBlocks) {
+      const parsed = parseBlockRow(edits[b.id]!);
+      if (!parsed.ok) {
+        setMsg({ ok: false, text: parsed.error });
+        return;
+      }
+      blockEdits.push({
+        blockId: b.id,
+        start: parsed.start,
+        end: parsed.end,
+        desiredCapacity: parsed.desiredCapacity,
+      });
+      // Only a time change moves shifts under students' saved picks; details
+      // and staffing targets are admin-side context and need no confirm.
+      if ((parsed.start !== b.start || parsed.end !== b.end) && b.selectionCount > 0) {
+        repicked.push(
+          `${b.dayType === "weekend" ? "weekend" : "weekday"} ${minutesToHHMM(b.start)} to ${minutesToHHMM(b.end)} (${plural(b.selectionCount, "pick")})`,
+        );
+      }
+    }
+    if (
+      repicked.length > 0 &&
+      !confirm(`Students have picked these shifts: ${repicked.join(", ")}. Change their times?`)
+    ) {
+      return;
+    }
+    const details = detailsDirty
+      ? { name, minHours: Number(minHours), minDays: Number(minDays), weekendExempt }
+      : undefined;
+    act(() => savePosition(position.id, { details, blockEdits }), "Saved.");
   }
 
   function makeAlias() {
@@ -141,9 +177,6 @@ export function PositionCard({
           />
           Weekend exempt
         </label>
-        <button type="button" disabled={pending} onClick={saveDetails}>
-          Save
-        </button>
       </div>
 
       {isAlias ? (
@@ -171,9 +204,19 @@ export function PositionCard({
               weekendExempt: position.weekendExempt,
             }}
             blocks={position.blocks}
+            onRosterCount={position.onRosterCount}
+            edits={edits}
+            onEdit={(blockId, value) => setEdits((prev) => ({ ...prev, [blockId]: value }))}
+            saving={pending}
           />
         </div>
       )}
+
+      <div style={{ margin: "12px 0" }}>
+        <button type="button" disabled={pending || !dirty} onClick={save}>
+          Save changes
+        </button>
+      </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button

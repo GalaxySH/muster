@@ -345,6 +345,7 @@ export const closeClaims = mysqlTable(
 
 export const scheduleRunStatusEnum = ["current", "superseded"] as const;
 export const cohortEnum = ["weekday", "a", "b", "every"] as const;
+export const assignmentSourceEnum = ["engine", "manual"] as const;
 
 /**
  * One generation of the recommended schedule (docs/schedule-generation-plan.md
@@ -384,6 +385,9 @@ export const scheduleAssignments = mysqlTable(
       .references(() => shiftBlocks.id, { onDelete: "cascade" }),
     day: mysqlEnum("day", dayEnum).notNull(),
     cohort: mysqlEnum("cohort", cohortEnum).notNull(),
+    // Who wrote the row: the engine's solver, or an admin's manual override on
+    // the per-student grid. Frozen carry-forward preserves it across runs.
+    source: mysqlEnum("source", assignmentSourceEnum).notNull().default("engine"),
   },
   (t) => [primaryKey({ columns: [t.runId, t.studentEmail, t.shiftBlockId, t.day] })],
 );

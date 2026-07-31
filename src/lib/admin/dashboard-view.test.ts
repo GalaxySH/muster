@@ -364,12 +364,19 @@ describe("positions config alerts", () => {
     weekendExempt: false,
     ...over,
   });
-  const blk = (id: string, dayType: DayType, start: number, end: number): ShiftBlock => ({
+  const blk = (
+    id: string,
+    dayType: DayType,
+    start: number,
+    end: number,
+    desiredCapacity: number | null = null,
+  ): ShiftBlock => ({
     id,
     positionId: "cashier",
     dayType,
     start,
     end,
+    desiredCapacity,
   });
 
   it("raises a danger when a staffed position has no shift blocks", () => {
@@ -437,6 +444,53 @@ describe("positions config alerts", () => {
       .alerts.filter((x) => x.id.startsWith("position-config-"))
       .map((x) => x.severity);
     expect(severities).toEqual(["danger", "warning"]);
+  });
+
+  it("warns when the shift targets cannot give every student their minimum hours", () => {
+    // 2 seats x 10h x 5 weekdays = 100 seat hours; 18 students x 10h need 180.
+    const snap = healthy({
+      positionConfigs: [
+        {
+          position: pos(),
+          blocks: [blk("wd", "weekday", 480, 1080, 2), blk("we", "weekend", 540, 1140)],
+          onRosterCount: 18,
+        },
+      ],
+    });
+    const a = buildDashboardView(snap, NOW).alerts.find(
+      (x) => x.id === "position-capacity-cashier",
+    );
+    expect(a?.severity).toBe("warning");
+    expect(a?.detail).toContain("100");
+    expect(a?.detail).toContain("180");
+    expect(a?.href).toBe("/admin/positions");
+  });
+
+  it("stays quiet when the targets cover the roster", () => {
+    // 4 x 10h x 5 + 1 x 10h x 2 = 220 seat hours covers 18 x 10h = 180.
+    const snap = healthy({
+      positionConfigs: [
+        {
+          position: pos(),
+          blocks: [blk("wd", "weekday", 480, 1080, 4), blk("we", "weekend", 540, 1140, 1)],
+          onRosterCount: 18,
+        },
+      ],
+    });
+    expect(ids(snap)).not.toContain("position-capacity-cashier");
+  });
+
+  it("does not raise the capacity warning when no block has a target", () => {
+    const snap = healthy({
+      positionConfigs: [
+        {
+          position: pos(),
+          blocks: [blk("wd", "weekday", 480, 1080), blk("we", "weekend", 540, 1140)],
+          onRosterCount: 18,
+        },
+      ],
+    });
+    expect(ids(snap)).not.toContain("position-capacity-cashier");
   });
 });
 

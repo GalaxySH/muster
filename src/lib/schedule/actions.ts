@@ -24,15 +24,8 @@ import {
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
-import {
-  validateSchedulingParams,
-  type SchedulingParams,
-} from "@/lib/domain/scheduling/params";
-import type {
-  Cohort,
-  ScheduleAssignment,
-  ScheduleStudent,
-} from "@/lib/domain/scheduling/types";
+import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
+import type { Cohort, ScheduleAssignment, ScheduleStudent } from "@/lib/domain/scheduling/types";
 import type { Day } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
@@ -56,32 +49,32 @@ export async function generateSchedule(): Promise<GenerateResult> {
     await Promise.all([
       db.select().from(positions),
       db.select().from(shiftBlocks),
-    db
-      .select({
-        email: students.email,
-        positionId: students.positionId,
-        international: students.international,
-        everyWeekendOptIn: submissions.everyWeekendOptIn,
-        desiredHours: submissions.desiredHours,
-        submittedAt: submissions.submittedAt,
-        scheduled: submissions.scheduled,
-      })
-      .from(submissions)
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
-      .where(eligibleSubmittedFilter()),
-    db
-      .select({
-        email: submissions.studentEmail,
-        blockId: shiftSelections.shiftBlockId,
-        day: shiftSelections.day,
-      })
-      .from(shiftSelections)
-      .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
-      .where(eligibleSubmittedFilter()),
-    loadCurrentRunRow(),
-    getSchedulingParams(),
-  ]);
+      db
+        .select({
+          email: students.email,
+          positionId: students.positionId,
+          international: students.international,
+          everyWeekendOptIn: submissions.everyWeekendOptIn,
+          desiredHours: submissions.desiredHours,
+          submittedAt: submissions.submittedAt,
+          scheduled: submissions.scheduled,
+        })
+        .from(submissions)
+        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .where(eligibleSubmittedFilter()),
+      db
+        .select({
+          email: submissions.studentEmail,
+          blockId: shiftSelections.shiftBlockId,
+          day: shiftSelections.day,
+        })
+        .from(shiftSelections)
+        .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .where(eligibleSubmittedFilter()),
+      loadCurrentRunRow(),
+      getSchedulingParams(),
+    ]);
 
   const selectionByEmail = new Map<string, { blockId: string; day: Day }[]>();
   for (const row of selectionRows) {
@@ -109,6 +102,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
             blockId: scheduleAssignments.shiftBlockId,
             day: scheduleAssignments.day,
             cohort: scheduleAssignments.cohort,
+            source: scheduleAssignments.source,
           })
           .from(scheduleAssignments)
           .where(eq(scheduleAssignments.runId, currentRun.id))
@@ -142,6 +136,8 @@ export async function generateSchedule(): Promise<GenerateResult> {
       shiftBlockId: a.blockId,
       day: a.day,
       cohort: a.cohort,
+      // Frozen students' carried rows keep their source; new rows are the engine's.
+      source: a.source ?? ("engine" as const),
     }));
     for (let i = 0; i < rows.length; i += 500) {
       await tx.insert(scheduleAssignments).values(rows.slice(i, i + 500));

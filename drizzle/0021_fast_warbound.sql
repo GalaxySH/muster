@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_assignments` ADD `source` enum('engine','manual') DEFAULT 'engine' NOT NULL;

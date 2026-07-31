@@ -317,7 +317,18 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 `computeCapacity` over picks + the auto cell (so it tracks the rotation), tinted
 `--color-text-auto` because those hours are additional and not the student's own pick.
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
-single number that pick already counts for. The flags & checks
+single number that pick already counts for. Since 0.99 the card is titled
+**Availability and schedule** and carries the current run's assignments as a second
+layer: each cell splits diagonally (lower left the student's pick, upper right the
+scheduled shift — engine rows green, manual rows violet) with a legend, fed by
+`buildAdminGrid`'s optional assignments parameter (`AdminCell` = `{selected,
+autoAssigned, assigned, assignmentSource}`, loaded via `loadStudentCurrentAssignments`
+in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
+preferences** is the trial/save behavior above; **Edit schedule** (disabled with a
+generate-first note until a run exists) toggles per-cell manual overrides through
+`setManualAssignment`/`removeManualAssignment` (see the schedule generation section).
+Preference saves that fail hard rules warn and need an explicit Save anyway (see the
+availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
 the persisted `flags` rows. The **`Weekend closes` card** (v0.70, PLAN §18c) closes the
 last hole in "everything about one student on one page": `loadStudentCloseClaims`
@@ -563,8 +574,12 @@ persistence core as `saveAvailability`: a private `persistAvailability` owns the
 upsert + `writeSelectionAndFlags` + sheet resync, so an admin edit lands **exactly** how
 the student's own save would — including re-running the weekend auto-assign and flags on
 an already-submitted form. Two things differ, both because the admin is the authority
-rather than the window. There is **no hard-rule gate** (a scheduler can deliberately
-record a below-floor selection, as they can add travel past the cutoff); and it writes a
+rather than the window. The hard-rule gate is **soft** (0.99): a save that fails the
+finalize checks returns the failing rules and only goes through when re-invoked with
+`overrideInvalid`, and every admin save runs `syncRevalidationFlag` in the same
+transaction — an override raises `revalidation_failed`, a later clean save clears it
+(before 0.99 such saves landed silently; a scheduler can still deliberately record a
+below-floor selection, as they can add travel past the cutoff). And it writes a
 narrower `SubmissionPatch` — **selection + rotation only**, never `desiredHours` or
 `studentNotes`, since the grid doesn't edit the student's own stated ask and must not
 blank it. Status behaviour matches every other on-behalf action: it starts a draft when
@@ -859,15 +874,28 @@ picks when resolved), always writes the `position_change` flag, and calls
 future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
 upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
 and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
-`ActionResult`): position CRUD with reference guards, `setAlias`/`clearAlias`
-(write-time canonicalization: students re-pointed, then `mergedIntoId` set; Shift
-Lead is delete- and alias-protected via `SHIFT_LEAD_POSITION_ID`), block CRUD
-(`validateBlockTimes`; referenced blocks refuse delete, time edits confirm
-client-side), and ghost resolution (`createPositionForTitle`/`mapTitleToPosition` —
-mapping row + assign + carry-over). The UI is `/admin/positions` (server page →
-islands `GhostTitleCard`, `PositionCard`, `BlockEditor`, `AddPositionForm`); the
-block editor parses HH:MM live and re-derives Open/Close tags + warnings per
-keystroke from the pure helpers. Flag read-side: `FLAG_LABELS`/filters in
+`ActionResult`): position create/deactivate/delete with reference guards,
+`setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
+`mergedIntoId` set; Shift Lead is delete- and alias-protected via
+`SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
+the details fields plus every dirty block edit, validated up front, written in a
+single transaction with a single revalidate; it replaced the per-row
+`updateBlock`/`updatePosition`, and time edits that touch picked shifts confirm once,
+aggregated client-side), block add/remove (`validateBlockTimes`; referenced blocks
+refuse delete), and ghost resolution
+(`createPositionForTitle`/`mapTitleToPosition` — mapping row + assign + carry-over).
+The UI is `/admin/positions` (server page → islands `GhostTitleCard`, `PositionCard`,
+`BlockEditor`, `AddPositionForm`); the block editor parses HH:MM live, re-derives
+Open/Close tags + warnings per keystroke from the pure helpers, and lifts row edits
+into `PositionCard`'s single dirty model behind the one Save button. It also renders
+`positionCapacityCheck` (`domain/config-validation.ts`, 0.99): weekly seat-hours from
+staffing targets (null targets count zero; weekday blocks staff five days, weekend
+blocks two — both rotation weeks are worked, and both sides of the comparison are
+weekly averages) against on-roster headcount × the position's minimum hours, rendered
+as an amber shortfall card, a quiet set-targets notice when no targets exist, and the
+hub's `position-capacity-<id>` warning alert (the snapshot's `PositionConfig` already
+carried blocks and `onRosterCount`; `positions/data.ts` grew its own `onRosterCount`
+for the page). Flag read-side: `FLAG_LABELS`/filters in
 `admin/response-filters.ts`, pills in `ResponseList`, per-student flag alerts with
 the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 `ClearPositionChangeButton`), and the derived no-position pill on
@@ -959,6 +987,19 @@ The generator itself, layered exactly like the rest of the app:
   (`npm run dev:generate-availability`): seeded, deterministic synthetic
   students + submitted selections that pass the real `validateAvailability`;
   `--clean` removes exactly the `synthetic-` rows; refuses production.
+
+- **Manual overrides** (0.99, ahead of Phase C): `schedule_assignments.source`
+  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes the
+  admin-gated `setManualAssignment`/`removeManualAssignment`: current run only
+  (refuse cleanly when none exists), same-day true overlap refused via the pure
+  `domain/scheduling/manual.ts` (`findDayOverlap` — touching allowed,
+  `manualWeekendCohort` — reuse the student's current-run cohort, else `every`
+  for opt-ins, else `a`), cells outside the student's picks allowed (the
+  scheduler owns the schedule; the grid renders the mismatch). Edits mutate the
+  current run in place and never create a run. `generateSchedule`'s
+  carry-forward preserves `source` on frozen students' rows; a non-frozen
+  student's manual rows are superseded by the next update by design. The
+  per-student grid (PLAN §10a) is the UI.
 
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
 protection concept. Frozen students' rows carry forward verbatim through every

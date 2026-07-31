@@ -40,11 +40,12 @@
   targets on phones; `README.md` carries the pre-send operational checklist.
   **Live in production and released to employees** (see §15) — treat further changes
   as high-stakes. **Schedule generation is in scope** (§17, 0.98): target staffing +
-  coverage and the recommendation engine ship (`/admin/schedule`), with Phase C
-  (run history + restore, diffs, staleness banner, the schedule sheet) outstanding —
+  coverage and the recommendation engine ship (`/admin/schedule`), per-cell manual
+  overrides ride the per-student grid (0.99), and Phase C (run history + restore,
+  diffs, staleness banner, the schedule sheet) is outstanding —
   see `docs/schedule-generation-plan.md`. Ops is complete (the nightly backup cron is
   installed). Next: schedule-generation Phase C.
-- **Version:** 0.98
+- **Version:** 0.99
 - **Last updated:** 2026-07-30
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -610,10 +611,13 @@ columns from the roster.
   restored and nothing is ever erased.
 - **ScheduleAssignment** (plan §2.3): `runId` + `studentEmail` + `shiftBlockId` +
   `day` (composite PK), `cohort` (`weekday`|`a`|`b`|`every` — the A/B weekend
-  rotation made concrete; every-weekend opt-ins count in both weeks). Always drawn
-  from the student's own selections; deliberately separate from ShiftSelection
-  because preferences (input) and recommendations (output) never share a table.
-  Fully cascading — derived, regenerable data.
+  rotation made concrete; every-weekend opt-ins count in both weeks), `source`
+  (`engine`|`manual`, 0.99 — engine output vs the admin's per-cell override on
+  §10a's grid; frozen students' carried rows keep it across runs). Engine rows are
+  always drawn from the student's own selections; a manual row may deliberately sit
+  outside them and the grid renders the mismatch. Deliberately separate from
+  ShiftSelection because preferences (input) and recommendations (output) never
+  share a table. Fully cascading — derived, regenerable data.
 
 ---
 
@@ -702,11 +706,24 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     the readout recomputes live. A trial is local until they **Save** it (the button joins
     Reset/Clear once anything differs, and runs Save → Saving → Saved). Saving writes the
     **selection + rotation only**: the student's own **requested hours** and **note** are
-    never touched, since the grid doesn't edit them. There is **no hard-rule gate** here —
-    the scheduler may deliberately record a below-floor selection, the same way an admin
-    may add travel past the cutoff. An already-submitted response stays submitted and has
-    its weekend auto-assign + flags re-applied, exactly as the student's own save would
-    (§5 #5); an unstarted one gets the draft row on demand and stays "missing" (§13.1).
+    never touched, since the grid doesn't edit them. The hard-rule gate is **soft**
+    (0.99): a save that fails the finalize checks warns with the failing rules and needs
+    an explicit **Save anyway**, which raises `revalidation_failed` through the generic
+    revalidation seam (a later clean save clears it) — the scheduler can still
+    deliberately record a below-floor selection, it just can't happen silently (before
+    0.99 such saves landed with no warning at all). An already-submitted response stays
+    submitted and has its weekend auto-assign + flags re-applied, exactly as the
+    student's own save would (§5 #5); an unstarted one gets the draft row on demand and
+    stays "missing" (§13.1).
+  - **The schedule shares the grid (0.99):** once a run exists, each cell splits
+    diagonally — lower left the student's pick, upper right the current run's assigned
+    shift, with engine and manual rows colored apart and a legend beneath. An **Edit
+    mode** toggle picks the click target: **Edit preferences** is the trial/save above;
+    **Edit schedule** (disabled until a run exists) toggles per-cell **manual
+    overrides** on the current run. Same-day overlapping shifts refuse; a cell outside
+    the student's picks is allowed (the scheduler owns the schedule) and renders as the
+    visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
+    grid says so. See §17 and `docs/schedule-generation-plan.md`.
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -1135,8 +1152,9 @@ under-18 test (deferred → fallback, §11).
   scope.** It is a first-class feature, not a grudging exception — the engine, the
   coverage grid, tunable parameters, and per-run history all ship per
   `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79; Phase
-  B generation engine + run view in 0.84–0.85; Phase C regeneration ergonomics
-  outstanding). Two limits are permanent, and they are what keep the boundary meaningful:
+  B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
+  C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
+  sheet — outstanding). Two limits are permanent, and they are what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
   students).
@@ -1174,9 +1192,10 @@ under-18 test (deferred → fallback, §11).
   script (v0.25–0.30). **Live in production since 2026-07-29** (§15), with the nightly
   backup cron installed 2026-07-30. Nothing outstanding.
 - **Phase 6 — Schedule generation:** ✅ target staffing + coverage (0.79), the
-  recommendation engine + run view (0.84–0.85). **Phase C outstanding** — run history +
-  restore UI, diff view, staleness banner, the `Muster Schedule` sheet, optional manual
-  overrides (`docs/schedule-generation-plan.md`; roadmap 5.1).
+  recommendation engine + run view (0.84–0.85), per-cell manual overrides on the
+  per-student grid (0.99). **Phase C outstanding** — run history + restore UI, diff
+  view, staleness banner, the `Muster Schedule` sheet
+  (`docs/schedule-generation-plan.md`; roadmap 5.2).
 - **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
   consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
   W2W interop per §17.
@@ -1288,6 +1307,33 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **0.99 (2026-07-30)** — **Admin UX pass: native schedule buttons, one Save per
+  position, the position capacity warning, and the per-student schedule editor.**
+  Four owner-directed changes, verified end to end against the imported F26 roster
+  (353 on roster) plus 120 synthetic submissions. **(1)** The `/admin/schedule`
+  action buttons (Update schedule, its confirm step, Save settings) drop their
+  local chip styles for the default browser button look `/admin/positions` already
+  uses. **(2)** Each position card on `/admin/positions` gets a single **Save
+  changes** button writing the details fields and every edited block in one
+  transaction (new batched `savePosition` action; the per-row saves and
+  `updatePosition`/`updateBlock` are deleted), with one aggregate confirm when time
+  edits touch picked shifts. **(3)** New pure `positionCapacityCheck`
+  (`domain/config-validation.ts`): weekly seat-hours from staffing targets (null
+  targets count zero; weekday blocks staff five days, weekend blocks two, both
+  rotation weeks) against on-roster headcount × position minimum hours — an amber
+  shortfall card in the block editor, a quiet set-targets notice when a position
+  has no targets, and a `position-capacity-<id>` warning in the hub's Needs
+  attention panel. **(4)** The per-student availability card becomes
+  **Availability and schedule** (§10a): cells split diagonally between the
+  student's pick and the current run's assigned shift, and an Edit mode toggle
+  adds **Edit schedule** — per-cell manual overrides on the current run, backed by
+  the new `schedule_assignments.source` column (`engine`|`manual`, migration
+  0021, §9). Admin preference saves that fail hard rules now warn and require an
+  explicit Save anyway, raising `revalidation_failed` through the generic
+  revalidation seam (previously such saves landed silently). Carry-forward for
+  frozen students preserves `source` (fixed in `generateSchedule`, which would
+  have reset every carried row to engine). Docs: §9, §10a, §17, §18,
+  `docs/architecture.md`, `docs/schedule-generation-plan.md`, `docs/roadmap.md`.
 - **0.98 (2026-07-30)** — **Schedule generation is in scope; W2W tops out at an
   importable document; stale spec text reconciled (docs only, no code).** Two changes,
   both to what the documentation *claims*. **(1) Scope.** §17 stops listing schedule

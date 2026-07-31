@@ -16,12 +16,20 @@ import type { SchedulingParams } from "./params";
  */
 export type Cohort = "weekday" | "a" | "b" | "every";
 
+/** Who wrote an assignment row: the engine's solver, or an admin's manual edit. */
+export type AssignmentSource = "engine" | "manual";
+
 /** One recommended (student, block, day) cell. */
 export interface ScheduleAssignment {
   studentEmail: string;
   blockId: string;
   day: Day;
   cohort: Cohort;
+  /**
+   * Absent means engine. Carried on previous-run rows so a frozen student's
+   * manual edits survive regeneration; the engine itself never sets it.
+   */
+  source?: AssignmentSource;
 }
 
 /** One eligible student as the engine sees them (submitted, on roster). */

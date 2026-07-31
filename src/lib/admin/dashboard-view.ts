@@ -12,7 +12,7 @@
  */
 import { windowState, type WindowState } from "@/lib/domain/window";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
-import { blockSetWarnings } from "@/lib/domain/config-validation";
+import { blockSetWarnings, positionCapacityCheck } from "@/lib/domain/config-validation";
 import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
@@ -450,33 +450,50 @@ function buildAlerts(
   // same check the positions editor shows.
   for (const pc of s.positionConfigs) {
     const warnings = blockSetWarnings(pc.position, pc.blocks);
-    if (warnings.length === 0) continue;
+    if (warnings.length > 0) {
+      const affected = `${pc.onRosterCount} ${plural(pc.onRosterCount, "student", "students")}`;
+      const blocking = warnings.some(
+        (w) => w.kind === "min_hours_unreachable" || w.kind === "min_days_unreachable",
+      );
+      const missing = [
+        warnings.some((w) => w.kind === "no_weekday_blocks") ? "weekday" : null,
+        warnings.some((w) => w.kind === "no_weekend_blocks") ? "weekend" : null,
+      ].filter((m): m is string => m !== null);
 
-    const affected = `${pc.onRosterCount} ${plural(pc.onRosterCount, "student", "students")}`;
-    const blocking = warnings.some(
-      (w) => w.kind === "min_hours_unreachable" || w.kind === "min_days_unreachable",
-    );
-    const missing = [
-      warnings.some((w) => w.kind === "no_weekday_blocks") ? "weekday" : null,
-      warnings.some((w) => w.kind === "no_weekend_blocks") ? "weekend" : null,
-    ].filter((m): m is string => m !== null);
+      const alert: DashboardAlert = {
+        id: `position-config-${pc.position.id}`,
+        severity: blocking ? "danger" : "warning",
+        title:
+          pc.blocks.length === 0
+            ? `${pc.position.name} has no shift blocks, so its ${affected} cannot pick anything.`
+            : blocking
+              ? `${pc.position.name}'s shift blocks leave its ${affected} unable to submit.`
+              : `${pc.position.name} is missing ${missing.join(" and ")} shift blocks.`,
+        // The title already says it all when there are no blocks; otherwise the
+        // warning messages carry the specifics (how short of the floor, etc.).
+        detail: pc.blocks.length === 0 ? undefined : warnings.map((w) => w.message).join(" "),
+        href: "/admin/positions",
+        linkLabel: "Positions",
+      };
+      (blocking ? danger : warning).push(alert);
+    }
 
-    const alert: DashboardAlert = {
-      id: `position-config-${pc.position.id}`,
-      severity: blocking ? "danger" : "warning",
-      title:
-        pc.blocks.length === 0
-          ? `${pc.position.name} has no shift blocks, so its ${affected} cannot pick anything.`
-          : blocking
-            ? `${pc.position.name}'s shift blocks leave its ${affected} unable to submit.`
-            : `${pc.position.name} is missing ${missing.join(" and ")} shift blocks.`,
-      // The title already says it all when there are no blocks; otherwise the
-      // warning messages carry the specifics (how short of the floor, etc.).
-      detail: pc.blocks.length === 0 ? undefined : warnings.map((w) => w.message).join(" "),
-      href: "/admin/positions",
-      linkLabel: "Positions",
-    };
-    (blocking ? danger : warning).push(alert);
+    // Even a complete block layout can be targeted too thin: the staffing
+    // targets may add up to fewer weekly seat hours than the position's
+    // rostered students need for their minimum. Positions with no targets set
+    // stay quiet here (the positions page notes those); alerting on every
+    // untargeted position would drown the page.
+    const capacity = positionCapacityCheck(pc.blocks, pc.onRosterCount, pc.position.minHours);
+    if (capacity.kind === "short") {
+      warning.push({
+        id: `position-capacity-${pc.position.id}`,
+        severity: "warning",
+        title: `${pc.position.name}'s shift targets are too low to give every student their minimum hours.`,
+        detail: capacity.message,
+        href: "/admin/positions",
+        linkLabel: "Positions",
+      });
+    }
   }
 
   // Sending is on but there is no Resend key, so every message (sign-in links,

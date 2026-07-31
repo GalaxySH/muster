@@ -18,7 +18,10 @@ weekend-close picking (3.2, v0.46) and the batch schedule-created email (2.4,
 v0.42). Ops is finished too: the nightly backup cron was installed 2026-07-30
 (verification commands in `docs/deploy.md` § Backups). What remains is **Tier 5.2**
 (schedule generation Phase C), **Tier 6.1** (removing the batch email), and the
-loose ends in "Still open" at the foot of this file.
+loose ends in "Still open" at the foot of this file. PLAN 0.99 (2026-07-30)
+shipped an owner-directed admin UX pass alongside: native schedule-page
+buttons, one Save per position, the position capacity warning, and the
+per-student schedule editor with manual overrides.
 
 ---
 
@@ -367,8 +370,16 @@ data that exists:
 - **`Muster Schedule` Google Sheet** — a third `SheetTarget` beside the
   responses and SL-closes sheets; `sheet-sync.ts` is already parametrized, so
   this is a matrix builder plus a settings key. CSV export ships already.
-- **Manual per-assignment overrides** — only if wanted; would need a `source`
-  column back on `schedule_assignments`.
+- **Manual per-assignment overrides** — ✅ shipped early (PLAN 0.99): the
+  per-student grid's Edit schedule mode writes per-cell overrides on the
+  current run (`schedule_assignments.source`).
+
+Owner decisions for the remaining pieces (2026-07-30): restore flips a run's
+status in place and stamps `restoredAt`/`restoredBy`; pruning ranks on
+restore-or-generate time and never removes the current run; the diff compares
+any two runs at both the per-student and per-shift level; the staleness count
+includes post-submit edits; the schedule sheet syncs automatically after
+generate and restore.
 
 Also open, and only now possible: the engine's weights were tuned against
 **synthetic** data because the dev DB had no submissions. A real form cycle has

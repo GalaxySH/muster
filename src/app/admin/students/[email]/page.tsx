@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors, responseStatus } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
+import { loadStudentCurrentAssignments } from "@/lib/schedule/data";
 import {
   parseResponseFilters,
   serializeResponseFilters,
@@ -177,7 +178,12 @@ export default async function StudentDetailPage({
     : null;
 
   const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
-  const grid = position ? buildAdminGrid(blocks, selection, autoAssigned, highDemand) : null;
+  // The current run's rows for this student, overlaid as the schedule half of
+  // the split grid. Null before any generation, which keeps schedule mode off.
+  const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
+  const grid = position
+    ? buildAdminGrid(blocks, selection, autoAssigned, highDemand, schedule?.cells ?? [])
+    : null;
   const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
   const cap = hourCap(detail.international);
 
@@ -308,9 +314,11 @@ export default async function StudentDetailPage({
               grid={grid}
               studentEmail={detail.email}
               blocks={blocks}
+              position={position!}
+              desiredHours={submission?.desiredHours ?? null}
               everyWeekendOptIn={submission?.everyWeekendOptIn ?? false}
-              minHours={position!.minHours}
               cap={cap}
+              hasCurrentRun={schedule !== null}
             />
           </section>
         )}

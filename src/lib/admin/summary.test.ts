@@ -45,30 +45,47 @@ describe("hourCap", () => {
 });
 
 describe("buildAdminGrid", () => {
-  it("marks a manually selected cell 'on' and leaves the rest 'off'", () => {
+  it("marks a manually selected cell and leaves the rest off", () => {
     const grid = buildAdminGrid(allBlocks, [{ blockId: "wd-open", day: "mon" }], []);
     const row = grid.weekday.rows.find((r) => r.block.id === "wd-open")!;
     // weekday days are [mon, tue, wed, thu, fri]
     expect(grid.weekday.days).toEqual(["mon", "tue", "wed", "thu", "fri"]);
-    expect(row.cells).toEqual(["on", "off", "off", "off", "off"]);
+    expect(row.cells.map((c) => c.selected)).toEqual([true, false, false, false, false]);
+    expect(row.cells.every((c) => !c.autoAssigned && !c.assigned)).toBe(true);
+    expect(row.cells[0]!.assignmentSource).toBeNull();
   });
 
-  it("marks an auto-assigned weekend cell 'auto'", () => {
+  it("marks an auto-assigned weekend cell", () => {
     const grid = buildAdminGrid(allBlocks, [], [{ blockId: "we-b", day: "sat" }]);
     const row = grid.weekend!.rows.find((r) => r.block.id === "we-b")!;
     // Sunday opens the week, so Sat is the second cell.
     expect(grid.weekend!.days).toEqual(["sun", "sat"]);
-    expect(row.cells).toEqual(["off", "auto"]);
+    expect(row.cells.map((c) => c.autoAssigned)).toEqual([false, true]);
+    expect(row.cells[1]!.selected).toBe(false);
   });
 
-  it("prefers 'auto' over 'on' when a cell is both (auto-assign overlay wins)", () => {
-    const grid = buildAdminGrid(
-      allBlocks,
-      [{ blockId: "we-b", day: "sat" }],
-      [{ blockId: "we-b", day: "sat" }],
-    );
-    const row = grid.weekend!.rows.find((r) => r.block.id === "we-b")!;
-    expect(row.cells[1]).toBe("auto");
+  it("overlays the current run's assignments with their source", () => {
+    const grid = buildAdminGrid(allBlocks, [{ blockId: "wd-open", day: "mon" }], [], new Set(), [
+      { blockId: "wd-open", day: "mon", source: "engine" },
+      { blockId: "wd-close", day: "tue", source: "manual" },
+    ]);
+    const open = grid.weekday.rows.find((r) => r.block.id === "wd-open")!;
+    const close = grid.weekday.rows.find((r) => r.block.id === "wd-close")!;
+    // Selected and assigned are independent layers on the same cell.
+    expect(open.cells[0]).toEqual({
+      selected: true,
+      autoAssigned: false,
+      assigned: true,
+      assignmentSource: "engine",
+    });
+    // A manual assignment on a cell the student never picked stays visible.
+    expect(close.cells[1]).toEqual({
+      selected: false,
+      autoAssigned: false,
+      assigned: true,
+      assignmentSource: "manual",
+    });
+    expect(close.cells[0]!.assigned).toBe(false);
   });
 
   it("carries through derived open/close and the per-day high-demand overlay", () => {
@@ -88,10 +105,10 @@ describe("buildAdminGrid", () => {
     expect(grid.weekend).toBeNull();
   });
 
-  it("keeps one cell state per day, aligned to the day order", () => {
+  it("keeps one cell per day, aligned to the day order", () => {
     const grid = buildAdminGrid(allBlocks, [{ blockId: "wd-open", day: "fri" }], []);
     const row = grid.weekday.rows.find((r) => r.block.id === "wd-open")!;
     expect(row.cells).toHaveLength(grid.weekday.days.length);
-    expect(row.cells[grid.weekday.days.indexOf("fri")]).toBe("on");
+    expect(row.cells[grid.weekday.days.indexOf("fri")]!.selected).toBe(true);
   });
 });

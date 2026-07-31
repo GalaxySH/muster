@@ -7,15 +7,21 @@ vi.mock("@/lib/availability/actions", () => ({
   saveAvailabilityFor: vi.fn(async () => ({ ok: true, errors: [] })),
 }));
 
+vi.mock("@/lib/schedule/manual", () => ({
+  setManualAssignment: vi.fn(async () => ({ ok: true })),
+  removeManualAssignment: vi.fn(async () => ({ ok: true })),
+}));
+
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 import { PrefGridCalculator } from "./PrefGridCalculator";
 import { saveAvailabilityFor } from "@/lib/availability/actions";
-import { buildAdminGrid } from "@/lib/admin/summary";
+import { removeManualAssignment, setManualAssignment } from "@/lib/schedule/manual";
+import { buildAdminGrid, type AssignedCellRef } from "@/lib/admin/summary";
 import { demandCellKey } from "@/lib/domain/demand";
 import { parseTime } from "@/lib/domain/time";
-import type { DayType, SelectedShift, ShiftBlock } from "@/lib/domain/types";
+import type { DayType, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
 function b(id: string, dt: DayType, s: string, e: string): ShiftBlock {
   return { id, positionId: "ca", dayType: dt, start: parseTime(s), end: parseTime(e) };
@@ -36,14 +42,25 @@ const picks: SelectedShift[] = [
   { blockId: "we-a", day: "sat" },
 ];
 
+const position = (minHours: number): Position => ({
+  id: "ca",
+  name: "Culinary Assistant",
+  minHours,
+  minDays: 2,
+  weekendExempt: false,
+});
+
 function renderCalc(
   opts: {
     selection?: SelectedShift[];
     autoAssigned?: SelectedShift[];
     highDemand?: Set<string>;
+    assignments?: AssignedCellRef[];
     everyWeekendOptIn?: boolean;
     minHours?: number;
+    desiredHours?: number | null;
     cap?: number;
+    hasCurrentRun?: boolean;
   } = {},
 ) {
   return render(
@@ -53,12 +70,15 @@ function renderCalc(
         opts.selection ?? picks,
         opts.autoAssigned ?? [],
         opts.highDemand ?? new Set(),
+        opts.assignments ?? [],
       )}
       studentEmail="stu@wisc.edu"
       blocks={blocks}
+      position={position(opts.minHours ?? 10)}
+      desiredHours={opts.desiredHours === undefined ? 12 : opts.desiredHours}
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
-      minHours={opts.minHours ?? 10}
       cap={opts.cap ?? 30}
+      hasCurrentRun={opts.hasCurrentRun ?? false}
     />,
   );
 }
@@ -66,6 +86,10 @@ function renderCalc(
 beforeEach(() => {
   vi.mocked(saveAvailabilityFor).mockClear();
   vi.mocked(saveAvailabilityFor).mockResolvedValue({ ok: true, errors: [] });
+  vi.mocked(setManualAssignment).mockClear();
+  vi.mocked(setManualAssignment).mockResolvedValue({ ok: true });
+  vi.mocked(removeManualAssignment).mockClear();
+  vi.mocked(removeManualAssignment).mockResolvedValue({ ok: true });
   refresh.mockClear();
 });
 
@@ -73,7 +97,7 @@ describe("PrefGridCalculator", () => {
   it("opens on the student's picks and reads their preference capacity", () => {
     renderCalc();
     expect(screen.getByText("10h")).toBeInTheDocument();
-    // Untouched, this is their own selection — not a trial schedule yet. Anchored so
+    // Untouched, this is their own selection, not a trial schedule yet. Anchored so
     // the "in trial schedule" legend entry doesn't satisfy it.
     expect(screen.getByText("preferred")).toBeInTheDocument();
     expect(screen.queryByText(/^trial schedule$/i)).not.toBeInTheDocument();
@@ -257,6 +281,24 @@ describe("PrefGridCalculator", () => {
     );
   });
 
+  it("names the current run's assignments and their source in the cell titles", () => {
+    renderCalc({
+      assignments: [
+        { blockId: "wd-a", day: "mon", source: "engine" },
+        { blockId: "wd-b", day: "wed", source: "manual" },
+      ],
+      hasCurrentRun: true,
+    });
+    expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
+      "title",
+      expect.stringContaining("scheduled this run"),
+    );
+    expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+      "title",
+      expect.stringContaining("scheduled by hand"),
+    );
+  });
+
   describe("saving on the student's behalf", () => {
     const save = () => screen.queryByRole("button", { name: /^(Save|Saving…|Saved)$/ });
 
@@ -285,6 +327,7 @@ describe("PrefGridCalculator", () => {
           { blockId: "wd-b", day: "wed" },
         ]),
         everyWeekendOptIn: true,
+        overrideInvalid: false,
       });
       expect(vi.mocked(saveAvailabilityFor).mock.calls[0]![1].selection).toHaveLength(4);
       await waitFor(() => expect(refresh).toHaveBeenCalled());
@@ -306,9 +349,11 @@ describe("PrefGridCalculator", () => {
           grid={buildAdminGrid(blocks, [...picks, { blockId: "wd-b", day: "wed" }], [], new Set())}
           studentEmail="stu@wisc.edu"
           blocks={blocks}
+          position={position(10)}
+          desiredHours={12}
           everyWeekendOptIn={false}
-          minHours={10}
           cap={30}
+          hasCurrentRun={false}
         />,
       );
       expect(screen.getByText("preferred")).toBeInTheDocument();
@@ -343,6 +388,119 @@ describe("PrefGridCalculator", () => {
       expect(refresh).not.toHaveBeenCalled();
       expect(save()).toHaveTextContent("Save");
       expect(save()).toBeEnabled();
+    });
+
+    describe("hard-rule override", () => {
+      it("warns with the failing checks and saves only after Save anyway", async () => {
+        const user = userEvent.setup();
+        renderCalc();
+
+        // Drop to one 4h day: below the floor and the day minimum.
+        await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
+        await user.click(screen.getByRole("button", { name: "9a–1p Sat" }));
+        await user.click(save()!);
+
+        expect(saveAvailabilityFor).not.toHaveBeenCalled();
+        expect(screen.getByText(/does not pass the availability checks/i)).toBeInTheDocument();
+        expect(screen.getByText(/of 10h minimum/i)).toBeInTheDocument();
+        expect(screen.getByText(/required days selected/i)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Save anyway" }));
+        expect(saveAvailabilityFor).toHaveBeenCalledWith(
+          "stu@wisc.edu",
+          expect.objectContaining({ overrideInvalid: true }),
+        );
+        await waitFor(() => expect(refresh).toHaveBeenCalled());
+      });
+
+      it("lists a missing desired-hours answer among the failing checks", async () => {
+        const user = userEvent.setup();
+        renderCalc({ desiredHours: null });
+
+        await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+        await user.click(save()!);
+
+        expect(saveAvailabilityFor).not.toHaveBeenCalled();
+        expect(screen.getByText(/desired weekly hours/i)).toBeInTheDocument();
+      });
+
+      it("Keep editing dismisses the warning without saving", async () => {
+        const user = userEvent.setup();
+        renderCalc();
+
+        await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
+        await user.click(screen.getByRole("button", { name: "9a–1p Sat" }));
+        await user.click(save()!);
+        await user.click(screen.getByRole("button", { name: "Keep editing" }));
+
+        expect(saveAvailabilityFor).not.toHaveBeenCalled();
+        expect(
+          screen.queryByText(/does not pass the availability checks/i),
+        ).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("schedule mode", () => {
+    it("stays disabled with a note before any run", () => {
+      renderCalc();
+      expect(screen.getByRole("button", { name: "Edit schedule" })).toBeDisabled();
+      expect(
+        screen.getByText("Generate a schedule first on the schedule page."),
+      ).toBeInTheDocument();
+    });
+
+    it("toggles assignments through the manual actions, not the preference save", async () => {
+      const user = userEvent.setup();
+      renderCalc({
+        hasCurrentRun: true,
+        assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
+      });
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      expect(
+        screen.getByText(
+          "Updating the schedule can replace these shifts unless the student is marked scheduled.",
+        ),
+      ).toBeInTheDocument();
+
+      // An unassigned cell gets scheduled, even one the student never picked.
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await waitFor(() =>
+        expect(setManualAssignment).toHaveBeenCalledWith("stu@wisc.edu", "wd-b", "wed"),
+      );
+
+      // An assigned cell is removed, engine rows included.
+      await user.click(screen.getByRole("button", { name: "8a–12p Mon" }));
+      await waitFor(() =>
+        expect(removeManualAssignment).toHaveBeenCalledWith("stu@wisc.edu", "wd-a", "mon"),
+      );
+      expect(saveAvailabilityFor).not.toHaveBeenCalled();
+      await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    });
+
+    it("surfaces a refused assignment", async () => {
+      const user = userEvent.setup();
+      vi.mocked(setManualAssignment).mockResolvedValue({
+        ok: false,
+        error: "Overlaps their 8a–12p shift that day.",
+      });
+      renderCalc({ hasCurrentRun: true });
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      await user.click(screen.getByRole("button", { name: "1p–5p Mon" }));
+
+      expect(await screen.findByText("Overlaps their 8a–12p shift that day.")).toBeInTheDocument();
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it("keeps preference clicks off the schedule actions", async () => {
+      const user = userEvent.setup();
+      renderCalc({ hasCurrentRun: true });
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      expect(setManualAssignment).not.toHaveBeenCalled();
+      expect(removeManualAssignment).not.toHaveBeenCalled();
     });
   });
 });

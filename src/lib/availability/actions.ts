@@ -33,6 +33,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/schema";
 import { requireEditableStudent } from "@/lib/groups/gate";
+import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
@@ -186,6 +187,12 @@ interface SubmissionPatch {
  * `studentEdit` decides whether this counts as the student changing their own
  * answers, which is exactly what `updated_at` records (PLAN §9): true for their
  * own save, false for an admin's on-behalf one.
+ *
+ * `revalidate` runs the generic revalidation seam (`syncRevalidationFlag`)
+ * after the write, so the admin's override-save raises `revalidation_failed`
+ * and a clean save clears it, exactly like a position change. The student's own
+ * save skips it: their path is gated up front and self-heals via the blanket
+ * flag rewrite in `writeSelectionAndFlags`.
  */
 async function persistAvailability(args: {
   email: string;
@@ -194,6 +201,7 @@ async function persistAvailability(args: {
   position: Position;
   blocks: ShiftBlock[];
   studentEdit: boolean;
+  revalidate?: boolean;
 }): Promise<AutoAssignedShift | null> {
   const { email, selection, position, blocks } = args;
   const patch = args.studentEdit ? { ...args.patch, updatedAt: new Date() } : args.patch;
@@ -229,6 +237,7 @@ async function persistAvailability(args: {
       position,
       blocks,
     });
+    if (args.revalidate) await syncRevalidationFlag(tx, submissionId);
     return { effectiveStatus: status, autoAssigned: auto };
   });
 
@@ -241,8 +250,7 @@ async function persistAvailability(args: {
 export async function saveAvailability(input: SaveAvailabilityInput): Promise<SaveResult> {
   const gate = await requireEditableStudent();
   if (!gate.ok) return { ok: false, errors: [gate.error] };
-  if (!gate.positionId)
-    return { ok: false, errors: ["No position is set for your account yet."] };
+  if (!gate.positionId) return { ok: false, errors: ["No position is set for your account yet."] };
 
   const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
   if (!posWithBlocks) return { ok: false, errors: ["Your position configuration is missing."] };
@@ -292,17 +300,20 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
  * response page (PLAN §10a). Writes only what that grid edits: the selected
  * cells and the weekend rotation.
  *
- * The admin is the authority here, not the form window, so there is no hard-rule
- * gate: a scheduler can deliberately record a below-floor selection, exactly as
- * they can add travel past the cutoff. Status behaviour matches the other
- * on-behalf-of actions: this starts a draft when there is no submission and never
- * promotes one, so a row an admin created still reads "missing" until the student
- * confirms it themselves (`responseStatus`). It also leaves `updated_at` alone,
- * which tracks the student's own edits only.
+ * The admin is the authority here, not the form window, so hard rules warn
+ * instead of blocking: a save that fails them is refused with the failing
+ * checks until the caller re-sends with `overrideInvalid` (the grid's "Save
+ * anyway" step). An override-save persists and raises `revalidation_failed`
+ * through the generic revalidation seam, which a later clean save clears; the
+ * student-facing form keeps refusing exactly as before. Status behaviour
+ * matches the other on-behalf-of actions: this starts a draft when there is no
+ * submission and never promotes one, so a row an admin created still reads
+ * "missing" until the student confirms it themselves (`responseStatus`). It
+ * also leaves `updated_at` alone, which tracks the student's own edits only.
  */
 export async function saveAvailabilityFor(
   student: string,
-  input: { selection: SelectedShift[]; everyWeekendOptIn: boolean },
+  input: { selection: SelectedShift[]; everyWeekendOptIn: boolean; overrideInvalid?: boolean },
 ): Promise<SaveResult> {
   if (!student.trim()) return { ok: false, errors: ["No student was named."] };
 
@@ -319,6 +330,26 @@ export async function saveAvailabilityFor(
   const validIds = new Set(blocks.map((b) => b.id));
   const selection = input.selection.filter((s) => validIds.has(s.blockId));
 
+  // Same failure set the revalidation seam flags, so the warn list, the refusal,
+  // and the stored flag always agree.
+  if (!input.overrideInvalid) {
+    const result = validateAvailability(selection, position, blocks, {
+      everyWeekendOptIn: input.everyWeekendOptIn,
+    });
+    const failures = result.checks
+      .filter((c) => c.severity === "hard" && !c.passed)
+      .map((c) => c.detail);
+    const db = getDb();
+    const [sub] = await db
+      .select({ desiredHours: submissions.desiredHours })
+      .from(submissions)
+      .where(eq(submissions.studentEmail, gate.email))
+      .limit(1);
+    const desiredCheck = checkDesiredHours(sub?.desiredHours ?? null, position);
+    if (!desiredCheck.passed) failures.push(desiredCheck.detail);
+    if (failures.length > 0) return { ok: false, errors: failures };
+  }
+
   const autoAssigned = await persistAvailability({
     email: gate.email,
     selection,
@@ -326,6 +357,7 @@ export async function saveAvailabilityFor(
     position,
     blocks,
     studentEdit: false,
+    revalidate: true,
   });
 
   revalidatePath("/availability");
