@@ -1335,6 +1335,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   or skipped students, short of hours, below minimum days) now expand to the
   affected students, each linking to their per-student page (pure
   `domain/scheduling/problems.ts`, mirroring the engine's counters exactly).
+- **0.99 (2026-07-30)** — **Admin UX pass: native schedule buttons, one Save per
   position, the position capacity warning, and the per-student schedule editor.**
   Four owner-directed changes, verified end to end against the imported F26 roster
   (353 on roster) plus 120 synthetic submissions. **(1)** The `/admin/schedule`
