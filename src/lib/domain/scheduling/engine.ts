@@ -110,11 +110,12 @@ export function generateAssignments(input: EngineInput): EngineResult {
       const block = blockById.get(row.blockId)!;
       ledger.add(row.blockId, row.day, row.cohort);
       const list = ranges.get(row.day) ?? [];
+      const before = coveredMinutes(list);
       list.push({ start: block.start, end: block.end });
       ranges.set(row.day, list);
       if (row.cohort !== "weekday") {
         cohort = row.cohort;
-        addWeekendMinutes(weekendMinutes, row.cohort, block.end - block.start);
+        addWeekendMinutes(weekendMinutes, row.cohort, coveredMinutes(list) - before);
       }
       assignments.push(row);
     }
@@ -319,27 +320,34 @@ function assign(
       }
     }
     cohort = state.cohort;
-    addWeekendMinutes(weekendMinutes, cohort, block.end - block.start);
   }
 
   ledger.add(block.id, day, cohort);
   state.taken.add(demandCellKey(block.id, day));
   const list = state.ranges.get(day) ?? [];
+  const before = coveredMinutes(list);
   list.push({ start: block.start, end: block.end });
   state.ranges.set(day, list);
+  if (cohort !== "weekday") {
+    addWeekendMinutes(weekendMinutes, cohort, coveredMinutes(list) - before);
+  }
   state.assignments.push({ studentEmail: state.student.email, blockId: block.id, day, cohort });
 }
 
-/** Track per-rotation weekend load for the cohort-balance choice. */
+/**
+ * Track per-rotation weekend load for the cohort-balance choice. Callers pass
+ * the day's merged-span delta, not the raw block length, so a staggered
+ * double's handoff overlap counts once.
+ */
 function addWeekendMinutes(
   totals: { a: number; b: number },
   cohort: Exclude<Cohort, "weekday">,
-  span: number,
+  delta: number,
 ): void {
-  if (cohort === "a") totals.a += span;
-  else if (cohort === "b") totals.b += span;
+  if (cohort === "a") totals.a += delta;
+  else if (cohort === "b") totals.b += delta;
   else {
-    totals.a += span;
-    totals.b += span;
+    totals.a += delta;
+    totals.b += delta;
   }
 }

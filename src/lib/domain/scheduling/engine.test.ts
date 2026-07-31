@@ -358,6 +358,37 @@ describe("generateAssignments", () => {
     expect(reportOf(r, "one@w").cohort).toBe("a");
   });
 
+  it("balances weekend cohorts on merged spans, not raw block sums", () => {
+    const blocks = [
+      block("we-early", "ca", "weekend", "11a", "3p"),
+      block("we-late", "ca", "weekend", "2:45p", "7p"),
+      block("we-full", "ca", "weekend", "11a", "7p"),
+      block("wd", "ca", "weekday", "8a", "4p"),
+    ];
+    // Cohort a holds a staggered double (raw sum 495, merged 480); cohort b
+    // holds a single 480-minute block. True loads are equal.
+    const previous: ScheduleAssignment[] = [
+      { studentEmail: "double@w", blockId: "we-early", day: "sat", cohort: "a" },
+      { studentEmail: "double@w", blockId: "we-late", day: "sat", cohort: "a" },
+      { studentEmail: "single@w", blockId: "we-full", day: "sat", cohort: "b" },
+    ];
+    const r = run(
+      [
+        student("double@w", { scheduled: true, selection: [], submittedAt: at(1) }),
+        student("single@w", { scheduled: true, selection: [], submittedAt: at(2) }),
+        student("new@w", {
+          selection: [sel("we-full", "sun"), sel("wd", "mon"), sel("wd", "tue")],
+          submittedAt: at(3),
+        }),
+      ],
+      blocks,
+      previous,
+    );
+    // The double's 15-minute handoff overlap counts once, so the loads tie
+    // and the tie goes to cohort a; raw sums would have steered to b.
+    expect(rowsOf(r, "new@w").find((a) => a.day === "sun")!.cohort).toBe("a");
+  });
+
   it("counts an every-weekend opt-in against both rotation weeks", () => {
     const blocks = [
       block("wd", "ca", "weekday", "8a", "4p"),

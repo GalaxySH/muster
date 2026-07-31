@@ -45,6 +45,16 @@ export function findDayConflict(
 }
 
 /**
+ * True when the conflicting assignment's times cover the whole new block
+ * (identical times included); false when the new block swallows it instead.
+ * Only meaningful for a pair findDayConflict reported, which guarantees the
+ * containment runs one way or the other.
+ */
+export function conflictCovers(row: ExistingAssignment, block: ShiftBlock): boolean {
+  return row.start <= block.start && block.end <= row.end;
+}
+
+/**
  * Weekend cohort for a new manual weekend assignment: the student's existing
  * current-run weekend rows already fix their rotation, so reuse it; otherwise
  * "every" for every-weekend opt-ins; otherwise default to "a".

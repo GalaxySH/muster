@@ -48,7 +48,7 @@
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
 - **Version:** 1.01
-- **Last updated:** 2026-07-30
+- **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1326,11 +1326,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   beyond the larger shift. The pure `eitherContains` (`domain/time.ts`) carries
   the rule; the engine's candidate filter, the improvement pass, and manual
   edits (`findDayConflict`, renamed from `findDayOverlap`, with refusal copy
-  naming the covering shift) all consume it. The hours math needed no change:
+  naming the covering shift) all consume it. The hours math was already right:
   capacity and the engine's assigned-minutes both union overlapping spans with
   shared time counted once (§5 #2), and the max-hours-per-day cap already binds
   on the merged span, so a staggered double stretching past the cap still
-  refuses.
+  refuses. The one exception was the weekend cohort-balance accumulator, which
+  summed raw block lengths; it now credits merged-span deltas so a double's
+  handoff overlap counts once there too.
 - **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
   (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
   `/admin/schedule` with one-click **Restore**: a superseded run flips back to

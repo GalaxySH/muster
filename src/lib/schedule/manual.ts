@@ -17,6 +17,7 @@ import { scheduleAssignments, shiftBlocks, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import {
+  conflictCovers,
   findDayConflict,
   manualWeekendCohort,
   type ExistingAssignment,
@@ -94,7 +95,7 @@ export async function setManualAssignment(
   if (clash) {
     const shift = `${DAY_LABEL[day]} ${formatSpan(clash.start, clash.end)}`;
     return fail(
-      clash.start <= block.start && block.end <= clash.end
+      conflictCovers(clash, block)
         ? `Their ${shift} shift already covers that time.`
         : `That covers their ${shift} shift. Remove that one first.`,
     );

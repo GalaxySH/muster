@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "../types";
-import { findDayConflict, manualWeekendCohort, type ExistingAssignment } from "./manual";
+import {
+  conflictCovers,
+  findDayConflict,
+  manualWeekendCohort,
+  type ExistingAssignment,
+} from "./manual";
 
 const block = (id: string, start: number, end: number): ShiftBlock => ({
   id,
@@ -51,6 +56,22 @@ describe("findDayConflict", () => {
   it("ignores the block's own row (idempotent re-set)", () => {
     const own = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
     expect(findDayConflict(block("morning", 8 * 60, 12 * 60), "mon", own)).toBeNull();
+  });
+});
+
+describe("conflictCovers", () => {
+  const morning = row("morning", "mon", "weekday", 8 * 60, 12 * 60);
+
+  it("is true when the existing shift covers the new block", () => {
+    expect(conflictCovers(morning, block("inner", 9 * 60, 11 * 60))).toBe(true);
+  });
+
+  it("is false when the new block swallows the existing shift", () => {
+    expect(conflictCovers(morning, block("big", 7 * 60, 13 * 60))).toBe(false);
+  });
+
+  it("treats identical times as covered", () => {
+    expect(conflictCovers(morning, block("twin", 8 * 60, 12 * 60))).toBe(true);
   });
 });
 
