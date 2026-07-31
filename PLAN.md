@@ -218,13 +218,13 @@ remains as a manual fallback trigger (docs/deploy.md §7).
   the schedule (also on the per-student page's travel card); this review marker is
   independent of the cutoff-derived `excused` flag. The hub's "Needs attention" panel
   warns about any unresolved trip **starting within two days** (§10b).
-- **Schedule-ready email** (`/admin/schedule-email`, roadmap 2.4) — pick a group, preview
-  the recipients (on-roster + submitted + marked scheduled, not yet emailed), send once each.
-  **⚠️ Slated for removal (decided 2026-07-30 — roadmap 6.1):** it can only announce that
-  a schedule exists, since the final schedule lives in W2W and Muster holds a
-  recommendation the scheduler may have edited away from. The generic `sendEmail` core
-  and `submissions.scheduled` stay; the surface, the action, and
-  `scheduleEmailSentAt` go.
+- **Schedule-ready email** — **removed (0.99, roadmap 6.1; decided 2026-07-30)**. The
+  `/admin/schedule-email` batch send (pick a group, preview the on-roster + submitted +
+  marked-scheduled recipients, send once each) could only announce that a schedule
+  exists, since the final schedule lives in W2W and Muster holds a recommendation the
+  scheduler may have edited away from. The generic `sendEmail` core and
+  `submissions.scheduled` stay; the dead `scheduleEmailSentAt` column is dropped in a
+  later release.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students); every name links straight to that student's page.
 - **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
@@ -537,15 +537,16 @@ columns from the roster.
     submitted row has one). `updatedAt` is **when the student last changed their own
     answers**, and only student-side writes move it: their availability save, finalize,
     their evidence uploads/removals, and their `/me` confirm. **Admin writes never touch
-    it** — scheduler notes, the scheduled mark, the schedule-email stamp, and anything
+    it** — scheduler notes, the scheduled mark, and anything
     saved on the student's behalf (§10a) all leave it where the student left it, so it
     can never imply a student came back to a form they haven't. The column is therefore
     **not** `ON UPDATE CURRENT_TIMESTAMP`; every student-side write sets it explicitly.
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
-  §10a), `scheduleEmailSentAt?` (idempotency marker for the batch schedule-ready email —
-  roadmap 2.4; **due for removal with that feature**, roadmap 6.1), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  §10a), `scheduleEmailSentAt?` (**dead** — the batch schedule-ready email was removed
+  in 0.99, roadmap 6.1; nothing reads or writes it, and the column drop is deferred to
+  a later release), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
@@ -583,8 +584,8 @@ columns from the roster.
   `default_group_auto_assign` (§13), the email master switch + change-digest
   enabled/recipients/last-run (§11), and `schedule_params` (the tunable generation
   knobs — §17). Rows are created on first write, so an unset key means "use the coded
-  default", never "broken". *(The `scheduleEmailSentAt` marker on Submission is due to
-  go with roadmap 6.1.)*
+  default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
+  awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
   `tokenHash`, `requestedAt`, `expiresAt` (**as built: 30 minutes from issue**, not the
   form-window close the original design proposed), `redeemedAt?`, `redeemedFrom?`,
@@ -959,9 +960,9 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
     dead id (`drive/relay.ts`). The same target machinery backs the second **`Muster SL
     Closes`** sheet (§18a).
   - **Retention:** purge images after schedules are written. **Not built** — no purge
-    job exists and every relayed `fileId` is still live in Drive. Now actionable, since
-    the schedule-ready email (roadmap 2.4) marks the point where a cycle's images stop
-    being needed.
+    job exists and every relayed `fileId` is still live in Drive. The scheduled mark
+    (§10a) gives a purge job its "schedules are written" signal (the batch
+    schedule-ready email that previously marked it was removed in 0.99, roadmap 6.1).
 - **Alternative (fallback):** if the Drive relay is unavailable, app-side storage with
   isolated, access-controlled, encrypted-at-rest blobs and a short retention window.
   Documented as a fallback, not the default.
@@ -1309,7 +1310,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ## Changelog
 - **0.99 (2026-07-30)** — **Admin UX pass: native schedule buttons, one Save per
   position, the position capacity warning, and the per-student schedule editor.**
-  Four owner-directed changes, verified end to end against the imported F26 roster
+  Five owner-directed changes, verified end to end against the imported F26 roster
   (353 on roster) plus 120 synthetic submissions. **(1)** The `/admin/schedule`
   action buttons (Update schedule, its confirm step, Save settings) drop their
   local chip styles for the default browser button look `/admin/positions` already
@@ -1332,8 +1333,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   explicit Save anyway, raising `revalidation_failed` through the generic
   revalidation seam (previously such saves landed silently). Carry-forward for
   frozen students preserves `source` (fixed in `generateSchedule`, which would
-  have reset every carried row to engine). Docs: §9, §10a, §17, §18,
-  `docs/architecture.md`, `docs/schedule-generation-plan.md`, `docs/roadmap.md`.
+  have reset every carried row to engine). **(5)** The **batch schedule-created
+  email is removed** (roadmap 2.4, per the 6.1 decision): the
+  `/admin/schedule-email` page, its send action, the recipient preview and
+  throttle path (`loadScheduleEmailPreview`, `schedule-email-actions.ts`,
+  `ScheduleEmailPanel`), the `sendScheduleCreatedEmail` template caller, and
+  the hub's nav card are deleted. The generic
+  `sendEmail` core (the magic-link mail and the change digest sit on it) and
+  `submissions.scheduled` (the generation freeze unit and To-review filter)
+  stay. `submissions.schedule_email_sent_at` remains in the schema but is dead —
+  nothing reads or writes it; the physical drop is deferred to a later release
+  once a schedule cycle has passed (no migration in this change). Docs: §9,
+  §10, §10a, §12, §17, §18, `CLAUDE.md`, `docs/architecture.md`,
+  `docs/schedule-generation-plan.md`, `docs/roadmap.md`.
 - **0.98 (2026-07-30)** — **Schedule generation is in scope; W2W tops out at an
   importable document; stale spec text reconciled (docs only, no code).** Two changes,
   both to what the documentation *claims*. **(1) Scope.** §17 stops listing schedule

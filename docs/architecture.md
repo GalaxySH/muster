@@ -24,10 +24,12 @@ island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, reva
 the travel list + the student page + the hub), and a resolved row green-tints on both
 the travel list and the per-student travel card. It is a review marker only, distinct
 from the cutoff-derived `excused` flag. The hub's imminent-travel alert reads it (see the
-admin-views section). (4) a **batch schedule-ready email**
-`/admin/schedule-email` (generic `sendEmail` core in `email/resend.ts` + template
-callers; recipients = on-roster + submitted + scheduled; idempotent via
-`submissions.scheduleEmailSentAt`); (5) **computed high-demand** — the red bar now
+admin-views section). (4) a **batch schedule-ready email** at
+`/admin/schedule-email` — **removed in 0.99 (roadmap 6.1)**; its lasting piece is the
+split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
+the magic-link mail and the change digest still sit on (the dead
+`submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
+high-demand** — the red bar now
 derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
 responses, then the busiest **~15%** of picked shifts **ranked within each day-type**
 via `DEMAND_TOP_SHARE`, a relative rank rather than an absolute cohort share so it
@@ -234,8 +236,8 @@ flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonica
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
 count from one grouped query over `change_requests.status = "open"`),
 `getResponseNeighbors(email, filters)` (prev/next + the
-filtered short list for the header jump menu), `loadUpcomingTravel` (2.3), and
-`loadScheduleEmailPreview` (2.4). `listResponses` is **roster-wide**: `FROM students LEFT
+filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
+`listResponses` is **roster-wide**: `FROM students LEFT
 JOIN submissions`, so a student with no response is a row with null submission fields.
 The three-way status is one exported rule, **`responseStatus(row)`** → `submitted |
 draft | missing`, shared by the list, `listNonResponses`, and the per-student header: a
@@ -266,10 +268,8 @@ that writes through the student evidence actions; see the evidence/Drive section
 `setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
 `ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
 notes and a scheduled mark on anyone on the roster (gated on the student existing, since
-`studentEmail` is an FK; `deleteResponse` still refuses when there is no row). The batch
-schedule-ready send is
-`schedule-email-actions.ts` (idempotent via `submissions.scheduleEmailSentAt`,
-`ScheduleEmailPanel` island). The per-student page is a server component that renders for
+`studentEmail` is an FK; `deleteResponse` still refuses when there is no row).
+The per-student page is a server component that renders for
 **any** roster student, submission or not: with no submission the selection is simply
 empty, so the KPI cards, the hours calculator over an empty grid, the scheduler-notes
 card, and the empty evidence cards (each with a quick link to add entries on the
@@ -341,8 +341,9 @@ It renders through the pure `formatCloseSlot` (`domain/close-claims.ts`) and is 
 compact (a title+pill row, ≤3 lines, a link) because the page's design constraint is that
 it fits 1920×1080 without scrolling. It also renders standalone when a lead has claims but
 no submission, since an admin can assign closes before the lead ever opens the form.
-New admin pages: `/admin/travel` (2.3), `/admin/schedule-email`
-(2.4). Wireframe design tokens (`--color-*`, `--border-radius-*`) live in `globals.css`.
+New admin pages: `/admin/travel` (2.3); `/admin/schedule-email` (2.4) was added here
+too and removed in 0.99 (roadmap 6.1). Wireframe design tokens (`--color-*`,
+`--border-radius-*`) live in `globals.css`.
 
 ## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
 
@@ -558,7 +559,7 @@ dropped the clause) — otherwise every admin write to the row silently moved it
 paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
 `finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
 Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
-(notes, scheduled mark), the schedule-email stamp, and `saveAvailabilityFor`. The one shared
+(notes, scheduled mark) and `saveAvailabilityFor`. The one shared
 seam that needs care is evidence, where the same action serves both callers: `editStamp(who)`
 spreads the column into a `.set()` that is already updating the submission, and
 `touchSubmission(id, who)` covers the actions that only wrote child rows (a travel entry, a
@@ -701,10 +702,9 @@ cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redee
 **no `RESEND_API_KEY` ⇒ the link is logged to the server console** for local dev). All
 outbound email flows through one choke point, `sendEmail`, which obeys a **master switch**
 (`app_settings.email_sending_enabled`, `getEmailSendingEnabled`; enabled by default):
-when off it suppresses+logs every message, so sign-in links and the batch schedule-ready
-send both stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
-`EmailSettingsPanel`); the batch send also refuses up front when off so no one is marked
-notified. The same page also holds the **schedule-change digest settings** (roadmap 3.1
+when off it suppresses+logs every message, so sign-in links and the change digest both
+stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
+`EmailSettingsPanel`). The same page also holds the **schedule-change digest settings** (roadmap 3.1
 prep, v0.47; `DigestSettingsPanel`): a digest on/off toggle + the admin-configured
 recipient list, stored in `app_settings` (`change_digest_enabled`,
 `change_digest_recipients`; accessors `getChangeDigestEnabled`/

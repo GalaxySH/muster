@@ -303,5 +303,5 @@ section.
   their availability keeps their carried rows even if a row falls outside the
   new selections ("no modifications" wins). Surfacing that mismatch is a
   Phase C diff-view concern.
-- `submissions.scheduled` / schedule-ready email stay manual; keying them
-  off assignment presence is a possible later refinement.
+- `submissions.scheduled` stays manual; keying it off assignment presence is
+  a possible later refinement.
