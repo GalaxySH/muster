@@ -34,6 +34,7 @@ import {
   type RunCell,
   type RunDiff,
 } from "@/lib/domain/scheduling/diff";
+import { problemGroups, type ProblemGroup } from "@/lib/domain/scheduling/problems";
 import type {
   AssignmentSource,
   Cohort,
@@ -171,6 +172,8 @@ export interface CurrentSchedule {
   assignedCells: Map<string, AssignedCellCounts>;
   students: ScheduleStudentRow[];
   totalAssignments: number;
+  /** The report's warning lines with the students behind each. */
+  problems: ProblemGroup[];
 }
 
 const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
@@ -281,10 +284,18 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     list.sort((a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || a.start - b.start);
   }
 
-  const emails = report.students.map((s) => s.email);
+  // Dropped and skipped students may have no report row; their names still
+  // show up in the problem lists, so look them up too.
+  const emails = [
+    ...new Set([
+      ...report.students.map((s) => s.email),
+      ...report.droppedStudents,
+      ...report.skippedNoPosition,
+    ]),
+  ];
   const infoByEmail = new Map<
     string,
-    { displayName: string; positionName: string | null; scheduled: boolean }
+    { displayName: string; positionName: string | null; minDays: number | null; scheduled: boolean }
   >();
   if (emails.length > 0) {
     const infoRows = await db
@@ -292,6 +303,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         email: students.email,
         displayName: students.displayName,
         positionName: positions.name,
+        minDays: positions.minDays,
         scheduled: submissions.scheduled,
       })
       .from(students)
@@ -302,6 +314,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       infoByEmail.set(r.email, {
         displayName: r.displayName,
         positionName: r.positionName,
+        minDays: r.minDays,
         scheduled: r.scheduled ?? false,
       });
     }
@@ -329,6 +342,10 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     assignedCells,
     students: studentRows,
     totalAssignments: rows.length,
+    problems: problemGroups(report, {
+      nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
+      minDaysOf: (email) => infoByEmail.get(email)?.minDays ?? null,
+    }),
   };
 }
 

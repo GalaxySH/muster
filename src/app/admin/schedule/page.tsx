@@ -43,6 +43,7 @@ import {
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
+import type { ProblemGroup } from "@/lib/domain/scheduling/problems";
 import type { Cohort } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
@@ -215,22 +216,9 @@ function SchedulePanel({
     );
   }
 
-  const { report } = schedule;
+  const { report, problems } = schedule;
   const placed = report.students.filter((s) => s.assignedMinutes > 0).length;
   const frozen = report.students.filter((s) => s.frozen).length;
-  const notes: string[] = [];
-  if (report.droppedStudents.length > 0) {
-    notes.push(`${report.droppedStudents.length} left the roster and were dropped`);
-  }
-  if (report.droppedBlockGone > 0) {
-    notes.push(`${report.droppedBlockGone} kept shifts pointed at removed blocks and were dropped`);
-  }
-  if (report.skippedNoPosition.length > 0) {
-    notes.push(`${report.skippedNoPosition.length} skipped with no position set`);
-  }
-  if (report.belowMinDays > 0) {
-    notes.push(`${report.belowMinDays} could not span their minimum days`);
-  }
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -247,14 +235,20 @@ function SchedulePanel({
         Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
-        {report.shortOfTarget > 0 && ` ${report.shortOfTarget} students are short of their hours.`}
         {report.params &&
           ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
       </p>
-      {notes.length > 0 && (
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
-          {notes.join("; ")}.
-        </p>
+      {(problems.length > 0 || report.droppedBlockGone > 0) && (
+        <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
+          {problems.map((group) => (
+            <ProblemWarning key={group.kind} group={group} />
+          ))}
+          {report.droppedBlockGone > 0 && (
+            <p style={{ margin: "0 0 4px" }}>
+              {report.droppedBlockGone} kept shifts pointed at removed blocks and were dropped.
+            </p>
+          )}
+        </div>
       )}
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
       <GenerateScheduleButton hasRun />
@@ -266,6 +260,23 @@ function SchedulePanel({
         />
       </div>
     </section>
+  );
+}
+
+/** One warning line that expands to the affected students. */
+function ProblemWarning({ group }: { group: ProblemGroup }) {
+  return (
+    <details style={{ margin: "0 0 4px" }}>
+      <summary style={{ cursor: "pointer" }}>{group.label}.</summary>
+      <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+        {group.students.map((s) => (
+          <li key={s.email}>
+            <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.name}</Link>{" "}
+            <span style={{ color: "var(--color-text-secondary)" }}>{s.email}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
