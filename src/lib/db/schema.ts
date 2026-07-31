@@ -132,8 +132,9 @@ export const submissions = mysqlTable("submissions", {
   // notes per student. Set by admins in the per-student view, never by students.
   scheduled: boolean("scheduled").notNull().default(false),
   schedulerNotes: text("scheduler_notes"),
-  // When the batch "your schedule is ready" email was sent (roadmap 2.4). Null =
-  // not yet notified; the batch send skips already-stamped rows (idempotent).
+  // DEPRECATED: the batch "your schedule is ready" email (roadmap 2.4) was removed
+  // in 0.99 (roadmap 6.1). Nothing reads or writes this column anymore; the physical
+  // drop is deferred to a later release, once a schedule cycle has passed.
   scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
   // When the student clicked "Yes, that's me" on /me. Null = they still owe the
   // confirmation, so /me shows the confirm card. The row itself is not proof: an
@@ -150,9 +151,9 @@ export const submissions = mysqlTable("submissions", {
   /**
    * When the STUDENT last changed their own answers. Deliberately NOT
    * `onUpdateNow()`: admins write to this row too (scheduler notes, the scheduled
-   * mark, the schedule-email stamp, and on-behalf-of edits), and an admin touching a
-   * response must not look like the student coming back to it. Every student-side
-   * write therefore sets this column explicitly; admin-side writes leave it alone.
+   * mark, and on-behalf-of edits), and an admin touching a response must not look
+   * like the student coming back to it. Every student-side write therefore sets
+   * this column explicitly; admin-side writes leave it alone.
    */
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

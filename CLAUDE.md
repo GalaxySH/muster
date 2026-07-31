@@ -177,13 +177,13 @@ whatever format W2W's importer takes; that is a possible future feature (roadmap
 **not built**. Anything that talks to W2W directly is out of scope.
 
 **Wish / known gap — the app doesn't hold the final schedule.** The batch
-"your schedule has been created" email (roadmap 2.4) can only *announce* that a
-schedule exists; it can't contain one, because the authoritative schedule lives in W2W
-and Muster's generated run is a recommendation the scheduler may have edited away from.
-The email students would actually want is their **final shifts plus the reminders that
-go with them**. That needs Muster to hold the final schedule — which today means either
-5.3's export round-tripping back, or the scheduler confirming a run as final. Until one
-of those exists, don't grow the email feature; see the removal item in the roadmap.
+"your schedule has been created" email (roadmap 2.4) was **removed in 0.99 (roadmap
+6.1)**: it could only *announce* that a schedule exists, never contain one, because the
+authoritative schedule lives in W2W and Muster's generated run is a recommendation the
+scheduler may have edited away from. The email students would actually want is their
+**final shifts plus the reminders that go with them**. That needs Muster to hold the
+final schedule — which today means either 5.3's export round-tripping back, or the
+scheduler confirming a run as final. The wish stands until one of those exists.
 
 ## Domain concepts that drive the design
 

@@ -5,12 +5,11 @@
  * of sent, so local/automated testing needs no real mailbox.
  *
  * `sendEmail` is the generic core; the `send*Email` helpers are template callers
- * (magic-link sign-in, schedule-created) so message copy lives in one place.
+ * (magic-link sign-in) so message copy lives in one place.
  */
 import "server-only";
 import { env } from "@/lib/env";
 import { getEmailSendingEnabled } from "@/lib/settings";
-import { CONTACT_EMAIL } from "@/components/evidence/shared";
 
 export interface EmailMessage {
   to: string;
@@ -80,24 +79,4 @@ export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Pro
     `<p style="color:#666">If you didn't request this, you can ignore this email.</p>`;
 
   await sendEmail({ to, subject: "Your GDEC Scheduling sign-in link", text, html });
-}
-
-export interface ScheduleCreatedEmail {
-  to: string;
-  name?: string;
-}
-
-/** Tell a student their W2W schedule is ready (roadmap 2.4). Throws on send failure. */
-export async function sendScheduleCreatedEmail({ to, name }: ScheduleCreatedEmail): Promise<void> {
-  const greeting = name ? `Hi ${name},` : "Hi,";
-  const text =
-    `${greeting}\n\nYour dining work schedule for this semester has been created. You will receive an email from WhenToWork (W2W) with when it has been published, which will also include the shifts you were given. ` +
-    `From now on you will be able to view your scheduled shifts on W2W. Schedules will be published 1-2 weeks in advance.\n\n` +
-    `If something looks off, do not reply to this email. Send an email to ${CONTACT_EMAIL}.\n\nThank you.`;
-  const html =
-    `<p>${escapeHtml(greeting)}</p>` +
-    `<p>Your dining work schedule for this semester has been created. You will receive an email from WhenToWork (W2W) when it has been published, which will also include the shifts you were given. From now on you will be able to view your scheduled shifts on W2W. Schedules will be published 1-2 weeks in advance.</p>` +
-    `<p style="color:#666">If something looks off, do not reply to this email. Send an email to ${CONTACT_EMAIL}.</p>`;
-
-  await sendEmail({ to, subject: "Work schedule created", text, html });
 }

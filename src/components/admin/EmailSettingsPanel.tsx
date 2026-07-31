@@ -7,8 +7,8 @@ import { setEmailSendingEnabled } from "@/lib/admin/actions";
 
 /**
  * The master email switch (dashboard settings). When off, the app sends no
- * outbound email at all: sign-in links and schedule-ready notifications both stop
- * until it is turned back on. The switch lives in `app_settings` and is enforced
+ * outbound email at all: sign-in links and the change digest both stop until
+ * it is turned back on. The switch lives in `app_settings` and is enforced
  * in `sendEmail`.
  */
 export function EmailSettingsPanel({
@@ -39,7 +39,10 @@ export function EmailSettingsPanel({
 
   return (
     <div>
-      <InfoCard tone={enabled ? "success" : "danger"} title={enabled ? "Email sending is on" : "Email sending is off"}>
+      <InfoCard
+        tone={enabled ? "success" : "danger"}
+        title={enabled ? "Email sending is on" : "Email sending is off"}
+      >
         <p style={{ marginTop: 0 }}>
           {enabled
             ? "The app is sending emails normally."
@@ -57,8 +60,8 @@ export function EmailSettingsPanel({
 
       {!resendConfigured && (
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          No Resend API key is set on this server, so even with sending on, emails are only
-          written to the server log (local testing).
+          No Resend API key is set on this server, so even with sending on, emails are only written
+          to the server log (local testing).
         </p>
       )}
     </div>

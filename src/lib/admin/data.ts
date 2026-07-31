@@ -10,11 +10,10 @@
  * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
-  groups,
   positions,
   shiftBlocks,
   students,
@@ -471,63 +470,4 @@ export async function loadUpcomingTravel(
   }));
 
   return upcomingTravel(entries, now);
-}
-
-export interface ScheduleEmailRecipient {
-  email: string;
-  displayName: string;
-}
-
-export interface ScheduleEmailPreview {
-  groupId: string;
-  groupName: string;
-  /** On-roster, submitted, scheduled members not yet emailed (the send targets). */
-  recipients: ScheduleEmailRecipient[];
-  /** Members already emailed (scheduleEmailSentAt set); skipped on re-run. */
-  alreadyNotified: number;
-}
-
-/**
- * Who the "your schedule is ready" batch (roadmap 2.4) would email for a group:
- * on-roster members whose submission is submitted AND scheduled, split into those
- * not yet notified (recipients) vs. already emailed (skipped, idempotent re-runs).
- */
-export async function loadScheduleEmailPreview(
-  groupId: string,
-): Promise<ScheduleEmailPreview | null> {
-  const db = getDb();
-  const [grp] = await db
-    .select({ name: groups.name })
-    .from(groups)
-    .where(eq(groups.id, groupId))
-    .limit(1);
-  if (!grp) return null;
-
-  const rows = await db
-    .select({
-      email: students.email,
-      displayName: students.displayName,
-      sentAt: submissions.scheduleEmailSentAt,
-    })
-    .from(students)
-    .innerJoin(submissions, eq(submissions.studentEmail, students.email))
-    .where(
-      and(
-        eq(students.groupId, groupId),
-        eq(students.onRoster, true),
-        eq(submissions.status, "submitted"),
-        eq(submissions.scheduled, true),
-      ),
-    )
-    .orderBy(asc(students.displayName), asc(students.email));
-
-  const recipients = rows
-    .filter((r) => r.sentAt === null)
-    .map((r) => ({ email: r.email, displayName: r.displayName }));
-  return {
-    groupId,
-    groupName: grp.name,
-    recipients,
-    alreadyNotified: rows.length - recipients.length,
-  };
 }
