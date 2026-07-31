@@ -180,15 +180,19 @@ Deterministic tie-breaks (day, block id). The knobs are admin-edited on
 `/admin/schedule` (one JSON `app_settings` row, `schedule_params`), applied at
 the next update, and snapshotted into each run's stored report.
 
-Hard constraints per assignment: cell below `desired_capacity`; no same-day
-assignment may **contain** another, inclusively — identical times, or nested
-times sharing an endpoint, both refuse (`eitherContains` in `domain/time.ts`),
-because the pair adds no time beyond the larger block. Any lesser overlap is
-allowed (1.01): most adjacent blocks in the real config overlap by 15 minutes
-for handoff coverage, and students want to work such a pair as one continuous
-"double". The interval merge in `domain/intervals.ts` counts the shared time
-once, and the day cap binds on the merged span, so doubles are credited and
-capped correctly.
+Hard constraints per assignment: cell below `desired_capacity`; every same-day
+assignment must add **unique coverage** — a candidate refuses when any member
+of the day's resulting set would be fully covered by the union of the others
+(`redundantRangeIndex` in `domain/intervals.ts`; 1.02, closing the merged-span
+gap 1.01 left open: identical times, both containment directions, and a shift
+covered only by the union of a staggered double all refuse alike, as does a
+candidate whose arrival would leave an existing shift redundant). The union is
+a covered set of minutes, not a hull, so a shift between two disjoint ones is
+legal. Staggered overlaps remain allowed (1.01): most adjacent blocks in the
+real config overlap by 15 minutes for handoff coverage, and students work such
+a pair as one continuous "double". The interval merge in `domain/intervals.ts`
+counts the shared time once, and the day cap binds on the merged span, so
+doubles are credited and capped correctly.
 
 ### 3.3 Weekend cohort assignment
 

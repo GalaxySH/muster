@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.01
+- **Version:** 1.02
 - **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -726,8 +726,9 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     shift, with engine and manual rows colored apart and a legend beneath. An **Edit
     mode** toggle picks the click target: **Edit preferences** is the trial/save above;
     **Edit schedule** (disabled until a run exists) toggles per-cell **manual
-    overrides** on the current run. A same-day shift refuses only when one shift's
-    times contain the other's (1.01); staggered overlaps are allowed and merge into
+    overrides** on the current run. A same-day shift refuses when it adds no time
+    the student's other shifts don't already cover, or when it would leave an
+    existing shift adding none (1.02); staggered overlaps are allowed and merge into
     one continuous double; a cell outside
     the student's picks is allowed (the scheduler owns the schedule) and renders as the
     visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
@@ -1315,6 +1316,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.02 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
+  add unique coverage.** 1.01's pairwise containment test left a merged-span
+  gap: a shift fully covered by the *union* of a legal staggered double (12p–3p
+  plus 2:45p–6p already cover all of 1p–5p) slipped through, as did a new shift
+  whose arrival made an existing one redundant. Now a candidate refuses when
+  any member of the day's resulting set would be fully covered by the union of
+  the others (the pure `redundantRangeIndex` in `domain/intervals.ts`), which
+  subsumes identical times and both containment directions. The union is a
+  covered set of minutes, not a hull: a shift between two disjoint ones adds
+  real time and stays legal, and staggered doubles remain schedulable. The
+  engine's candidate filter, the improvement pass (the day set checked with the
+  vacated cell excluded), and manual edits all share the predicate;
+  `findDayConflict` now reports which side is redundant and the manual refusal
+  copy names it ("already cover" vs "covering nothing new"). Frozen students'
+  rows still carry forward verbatim even where history predates the rule.
+  `eitherContains` and `conflictCovers` were deleted as subsumed.
 - **1.01 (2026-07-31)** — **Doubles: same-day assignments conflict only on
   containment, not overlap.** Students often work a "double": two adjacent blocks
   as one continuous shift, and most adjacent blocks in the real config overlap by

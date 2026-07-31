@@ -322,6 +322,68 @@ describe("generateAssignments", () => {
     }
   });
 
+  it("refuses a cell that would leave another shift covering nothing unique", () => {
+    const blocks = [
+      block("a-first", "barista", "weekday", "12p", "3p"),
+      block("b-late", "barista", "weekday", "2:45p", "6p"),
+      block("c-mid", "barista", "weekday", "1p", "5p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [
+            sel("a-first", "mon"),
+            sel("b-late", "mon"),
+            sel("c-mid", "mon"),
+            sel("bar-am", "tue"),
+          ],
+        }),
+      ],
+      blocks,
+    );
+    // b-late and c-mid form a legal double, but adding a-first would leave
+    // c-mid covered by the union of the other two, so a-first stays off
+    // Monday even though no single pair of these blocks nests.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId)
+      .sort();
+    expect(monIds).toEqual(["b-late", "c-mid"]);
+  });
+
+  it("allows a shift between two disjoint ones (coverage is a set, not a hull)", () => {
+    const blocks = [
+      block("early", "barista", "weekday", "8a", "10a"),
+      block("mid", "barista", "weekday", "12p", "2p"),
+      block("late", "barista", "weekday", "4p", "6p"),
+      ...barGrid,
+    ];
+    const r = run(
+      [
+        student("b@w", {
+          positionId: "barista",
+          desiredHours: 10,
+          selection: [
+            sel("early", "mon"),
+            sel("mid", "mon"),
+            sel("late", "mon"),
+            sel("bar-am", "tue"),
+          ],
+        }),
+      ],
+      blocks,
+    );
+    // mid sits inside the hull of the other two but adds real time.
+    const monIds = rowsOf(r, "b@w")
+      .filter((a) => a.day === "mon")
+      .map((a) => a.blockId)
+      .sort();
+    expect(monIds).toEqual(["early", "late", "mid"]);
+  });
+
   it("assigns only cells the student selected", () => {
     const r = run(
       [

@@ -6,9 +6,9 @@
  * place: no new run per edit, so Update still supersedes them for non-frozen
  * students by design (the freeze model in docs/architecture.md). Manual rows
  * carry source "manual"; removing an engine row is allowed, since the
- * scheduler owns the schedule. The only hard rule is the same-day containment
- * refusal (domain/scheduling/manual.ts); assigning a cell the student never
- * selected is deliberate scheduler prerogative.
+ * scheduler owns the schedule. The only hard rule is that every same-day
+ * shift must add unique time (domain/scheduling/manual.ts); assigning a cell
+ * the student never selected is deliberate scheduler prerogative.
  */
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -17,7 +17,6 @@ import { scheduleAssignments, shiftBlocks, submissions } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import {
-  conflictCovers,
   findDayConflict,
   manualWeekendCohort,
   type ExistingAssignment,
@@ -93,11 +92,10 @@ export async function setManualAssignment(
 
   const clash = findDayConflict(block, day, existing);
   if (clash) {
-    const shift = `${DAY_LABEL[day]} ${formatSpan(clash.start, clash.end)}`;
     return fail(
-      conflictCovers(clash, block)
-        ? `Their ${shift} shift already covers that time.`
-        : `That covers their ${shift} shift. Remove that one first.`,
+      clash.kind === "candidate-covered"
+        ? `Their ${DAY_LABEL[day]} shifts already cover ${formatSpan(block.start, block.end)}.`
+        : `That would leave their ${DAY_LABEL[day]} ${formatSpan(clash.row.start, clash.row.end)} shift covering nothing new. Remove that one first.`,
     );
   }
 

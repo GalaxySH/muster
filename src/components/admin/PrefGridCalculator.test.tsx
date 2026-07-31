@@ -483,7 +483,7 @@ describe("PrefGridCalculator", () => {
       const user = userEvent.setup();
       vi.mocked(setManualAssignment).mockResolvedValue({
         ok: false,
-        error: "Their Mon 8a to 12p shift already covers that time.",
+        error: "Their Mon shifts already cover 8a to 12p.",
       });
       renderCalc({ hasCurrentRun: true });
 
@@ -491,7 +491,7 @@ describe("PrefGridCalculator", () => {
       await user.click(screen.getByRole("button", { name: "1p–5p Mon" }));
 
       expect(
-        await screen.findByText("Their Mon 8a to 12p shift already covers that time."),
+        await screen.findByText("Their Mon shifts already cover 8a to 12p."),
       ).toBeInTheDocument();
       expect(refresh).not.toHaveBeenCalled();
     });

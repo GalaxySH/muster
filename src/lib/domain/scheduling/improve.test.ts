@@ -147,6 +147,57 @@ describe("improveAssignments", () => {
     expect(r.moved).toBe(0);
   });
 
+  it("refuses a relocation that would leave a sibling covered by the union", () => {
+    const blocks = [
+      block("a-spare", "weekday", "8a", "9a"),
+      block("first", "weekday", "12p", "3p"),
+      block("mid", "weekday", "1p", "5p"),
+      block("late", "weekday", "2:45p", "6p", 3),
+    ];
+    const students = [
+      student("s@w", {
+        selection: [
+          sel("a-spare", "mon"),
+          sel("first", "mon"),
+          sel("mid", "mon"),
+          sel("late", "mon"),
+        ],
+      }),
+    ];
+    const r = improveAssignments(
+      [row("s@w", "a-spare", "mon"), row("s@w", "first", "mon"), row("s@w", "mid", "mon")],
+      students,
+      blocks,
+    );
+    // a-spare may not take late: first and late together would cover all of
+    // mid. first may (mid and late form a legal double), so that move wins.
+    expect(r.moved).toBe(1);
+    expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["a-spare", "late", "mid"]);
+  });
+
+  it("relocates into a gap between disjoint siblings (coverage is a set, not a hull)", () => {
+    const blocks = [
+      block("a-spare", "weekday", "6:30p", "7p"),
+      block("am", "weekday", "7a", "8a"),
+      block("pm", "weekday", "4p", "6p"),
+      block("mid", "weekday", "12p", "2p", 3),
+    ];
+    const students = [
+      student("s@w", {
+        selection: [sel("a-spare", "mon"), sel("am", "mon"), sel("pm", "mon"), sel("mid", "mon")],
+      }),
+    ];
+    const r = improveAssignments(
+      [row("s@w", "a-spare", "mon"), row("s@w", "am", "mon"), row("s@w", "pm", "mon")],
+      students,
+      blocks,
+    );
+    // mid sits inside the hull of am and pm but adds real time, so the move
+    // out of a-spare lands there.
+    expect(r.moved).toBe(1);
+    expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["am", "mid", "pm"]);
+  });
+
   it("refuses a move that would push the day past the 8h cap", () => {
     const blocks = [
       block("early", "weekday", "8a", "12p"),

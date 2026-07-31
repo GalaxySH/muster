@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "../types";
-import {
-  conflictCovers,
-  findDayConflict,
-  manualWeekendCohort,
-  type ExistingAssignment,
-} from "./manual";
+import { findDayConflict, manualWeekendCohort, type ExistingAssignment } from "./manual";
 
 const block = (id: string, start: number, end: number): ShiftBlock => ({
   id,
@@ -30,19 +25,48 @@ describe("findDayConflict", () => {
     expect(findDayConflict(block("mid", 11 * 60, 15 * 60), "mon", existing)).toBeNull();
   });
 
-  it("refuses a block sitting inside an existing shift", () => {
-    const hit = findDayConflict(block("inner", 9 * 60, 11 * 60), "mon", existing);
-    expect(hit?.blockId).toBe("morning");
+  it("reports a block whose whole span the existing shift already covers", () => {
+    expect(findDayConflict(block("inner", 9 * 60, 11 * 60), "mon", existing)).toEqual({
+      kind: "candidate-covered",
+    });
   });
 
-  it("refuses a block that swallows an existing shift", () => {
+  it("reports the existing shift a swallowing block would leave redundant", () => {
     const hit = findDayConflict(block("big", 7 * 60, 13 * 60), "mon", existing);
-    expect(hit?.blockId).toBe("morning");
+    expect(hit).toMatchObject({ kind: "existing-covered", row: { blockId: "morning" } });
   });
 
-  it("refuses containment sharing an endpoint", () => {
-    const hit = findDayConflict(block("tail", 10 * 60, 12 * 60), "mon", existing);
-    expect(hit?.blockId).toBe("morning");
+  it("treats identical times as already covered", () => {
+    expect(findDayConflict(block("twin", 8 * 60, 12 * 60), "mon", existing)).toEqual({
+      kind: "candidate-covered",
+    });
+  });
+
+  it("refuses a block covered only by the union of a staggered double", () => {
+    const double = [
+      row("first", "mon", "weekday", 12 * 60, 15 * 60),
+      row("second", "mon", "weekday", 14 * 60 + 45, 18 * 60),
+    ];
+    expect(findDayConflict(block("mid", 13 * 60, 17 * 60), "mon", double)).toEqual({
+      kind: "candidate-covered",
+    });
+  });
+
+  it("refuses a block whose arrival leaves an existing shift covered by the union", () => {
+    const pair = [
+      row("first", "mon", "weekday", 12 * 60, 15 * 60),
+      row("mid", "mon", "weekday", 13 * 60, 17 * 60),
+    ];
+    const hit = findDayConflict(block("late", 14 * 60 + 45, 18 * 60), "mon", pair);
+    expect(hit).toMatchObject({ kind: "existing-covered", row: { blockId: "mid" } });
+  });
+
+  it("allows a block between two disjoint shifts (coverage is a set, not a hull)", () => {
+    const bookends = [
+      row("am", "mon", "weekday", 8 * 60, 10 * 60),
+      row("pm", "mon", "weekday", 16 * 60, 18 * 60),
+    ];
+    expect(findDayConflict(block("mid", 12 * 60, 14 * 60), "mon", bookends)).toBeNull();
   });
 
   it("allows touching shifts (end meets start)", () => {
@@ -56,22 +80,6 @@ describe("findDayConflict", () => {
   it("ignores the block's own row (idempotent re-set)", () => {
     const own = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
     expect(findDayConflict(block("morning", 8 * 60, 12 * 60), "mon", own)).toBeNull();
-  });
-});
-
-describe("conflictCovers", () => {
-  const morning = row("morning", "mon", "weekday", 8 * 60, 12 * 60);
-
-  it("is true when the existing shift covers the new block", () => {
-    expect(conflictCovers(morning, block("inner", 9 * 60, 11 * 60))).toBe(true);
-  });
-
-  it("is false when the new block swallows the existing shift", () => {
-    expect(conflictCovers(morning, block("big", 7 * 60, 13 * 60))).toBe(false);
-  });
-
-  it("treats identical times as covered", () => {
-    expect(conflictCovers(morning, block("twin", 8 * 60, 12 * 60))).toBe(true);
   });
 });
 

@@ -20,8 +20,8 @@
  */
 import { hourCap } from "../caps";
 import { demandCellKey } from "../demand";
-import { coveredMinutes } from "../intervals";
-import { eitherContains, type TimeRange } from "../time";
+import { coveredMinutes, redundantRangeIndex } from "../intervals";
+import type { TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
 import { improveAssignments } from "./improve";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
@@ -275,10 +275,11 @@ function bestCandidate(
 
     const range: TimeRange = { start: block.start, end: block.end };
     if (dayOpen) {
-      // Staggered overlaps are fine (they merge into a double); only a block
-      // contained by or containing an assigned one adds nothing and refuses.
-      if (dayRanges.some((r) => eitherContains(r, range))) continue;
-      if (coveredMinutes([...dayRanges, range]) > dayCapMinutes) continue;
+      // Staggered overlaps are fine (they merge into a double), but every
+      // shift on the day must keep at least one minute of unique coverage.
+      const daySet = [...dayRanges, range];
+      if (redundantRangeIndex(daySet) >= 0) continue;
+      if (coveredMinutes(daySet) > dayCapMinutes) continue;
     }
 
     const targeted = block.desiredCapacity != null;
