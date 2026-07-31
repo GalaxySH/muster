@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.00
-- **Last updated:** 2026-07-30
+- **Version:** 1.02
+- **Last updated:** 2026-07-31
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1313,6 +1313,35 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.02 (2026-07-31)** — **Positions config surface (`/admin/positions`).** Three
+  changes. The per-block pick count now excludes test accounts (a `realPickCount` from
+  a join to the owning student that drops the `dev-test` group, the same convention the
+  response surfaces use), so the number reflects real students; the FK delete guards
+  keep counting every selection. Each position shows the weekly seat hours its shift
+  targets provide (`seat = target x length x days`, extracted as the pure
+  `seatHoursPerWeek` and reused by the capacity check): a plain line when supply is fine
+  or there is no roster to compare against, folded into the existing shortfall warning
+  when demand outstrips it. Toggling weekend exemption and removing an alias now confirm
+  before they act, joining the block-remove and make-alias confirmations. Verified: 672
+  tests across 56 files, plus live checks against the F26-roster verify DB (a seeded
+  test-account pick excluded from the count, seat hours rendered, and each confirmation
+  dialog).
+- **1.01 (2026-07-31)** — **Per-student response viewer cosmetics.** Five fixes to
+  `/admin/students/[email]`. The POSITION quick-reference card now fills its blank
+  subtext line with the student's form-window group (`Group: <name>`, or `Group:
+  none` when ungrouped), resolved by `loadStudentDetail`. The availability grid only
+  splits a cell into
+  preference-vs-schedule halves when *this* student has a generated shift (or the
+  admin is in schedule-edit mode); with no schedule to compare against, the
+  preference fills the whole square, and the legend drops the split explainer and the
+  scheduled swatches (`PrefGridCalculator`, driven by a new `hasSchedule` prop). A
+  shift the student picked but that has been dropped from the trial now reads as a
+  clear mid-blue instead of a near-white tint. The student-name jump menu closes on
+  an outside click or Escape (extracted to a `JumpMenu` client component around the
+  native `<details>`). The identity/action header wraps within each group so the
+  buttons stay inside the card on a narrow screen (`response-identity` /
+  `response-actionbar` classes). Verified: 670 tests across 56 files, plus live
+  screenshots at desktop and phone widths.
 - **1.00 (2026-07-30)** — **Schedule generation Phase C: regeneration ergonomics
   (roadmap 5.2; `docs/schedule-generation-plan.md`).** The **run history** table on
   `/admin/schedule` with one-click **Restore**: a superseded run flips back to

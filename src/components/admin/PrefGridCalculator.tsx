@@ -49,6 +49,12 @@ const ENGINE_COLOR = "#2e9e5b";
 const MANUAL_COLOR = "#8a4fd3";
 /** The empty half of a cell; matches the untouched-preference fill. */
 const EMPTY_COLOR = "var(--color-background-secondary)";
+/**
+ * "Picked, but not in the trial schedule": a mid blue that reads clearly against
+ * the grid, where the old near-white tint was almost invisible. Still plainly
+ * lighter than the strong trial-blue fill, which also carries a check mark.
+ */
+const PREF_PICKED_COLOR = "#8cb2e5";
 
 const fmtNum = (h: number) => `${Math.round(h * 10) / 10}`;
 const fmtHours = (h: number) => `${fmtNum(h)}h`;
@@ -78,6 +84,12 @@ export interface PrefGridCalculatorProps {
   cap: number;
   /** False before any generation: schedule mode stays disabled. */
   hasCurrentRun: boolean;
+  /**
+   * Whether this student has any generated shift in the current run. Drives the
+   * cell split: with a schedule the cell shows preference against assignment; with
+   * none the preference fills the whole square (there is nothing to compare to).
+   */
+  hasSchedule: boolean;
 }
 
 /** How long "Saved" stays up before the button retires itself. */
@@ -287,6 +299,11 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     else togglePref(blockId, day);
   }
 
+  // Split the cell into preference + schedule halves only when there's a schedule
+  // to show against it: this student's generated shifts, or the schedule-edit mode
+  // where the admin is placing them. Otherwise the preference fills the whole cell.
+  const split = props.hasSchedule || mode === "schedule";
+
   // Untouched, the readout is just the student's own selection; it only becomes a
   // "trial schedule" once the admin edits a cell or the rotation.
   const statusText = overCap
@@ -387,6 +404,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             auto={auto}
             assigned={assigned}
             busyCell={busyCell}
+            split={split}
             onToggle={onToggle}
           />
         </div>
@@ -418,6 +436,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               auto={auto}
               assigned={assigned}
               busyCell={busyCell}
+              split={split}
               onToggle={onToggle}
             />
           </div>
@@ -425,7 +444,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       </div>
 
       <div style={footerRow}>
-        <Legend />
+        <Legend split={split} />
         {/* marginLeft keeps the controls in the bottom-right corner even when the
             legend is wide enough to push them onto their own line. */}
         {mode === "prefs" && (
@@ -519,6 +538,7 @@ function CalcTable({
   auto,
   assigned,
   busyCell,
+  split,
   onToggle,
 }: {
   sub: AdminSubGrid;
@@ -528,6 +548,7 @@ function CalcTable({
   auto: Set<string>;
   assigned: Map<string, AssignmentSource>;
   busyCell: string | null;
+  split: boolean;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   return (
@@ -564,11 +585,11 @@ function CalcTable({
                     aria-label={`${row.label} ${DAY_LABEL[day]}`}
                     title={cellTitle(mode, inMock, wasPreferred, wasAuto, source, isHot)}
                     onClick={() => onToggle(row.block.id, day)}
-                    style={cellStyle(inMock, wasPreferred, wasAuto, source, busyCell === key)}
+                    style={cellStyle(inMock, wasPreferred, wasAuto, source, busyCell === key, split)}
                   >
                     {isHot && <span aria-hidden style={hotTick} />}
                     {inMock && (
-                      <span aria-hidden style={prefTick}>
+                      <span aria-hidden style={split ? prefTick : prefTickFull}>
                         ✓
                       </span>
                     )}
@@ -631,26 +652,32 @@ function SubHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Legend() {
+function Legend({ split }: { split: boolean }) {
   return (
     <div style={legendCol}>
-      <div>Lower left: their preference. Upper right: scheduled shift.</div>
+      {/* The split only exists once there's a schedule run to compare against;
+          without one the cells are whole preference squares. */}
+      {split && <div>Lower left: their preference. Upper right: scheduled shift.</div>}
       <div style={legendRow}>
         <span>
-          <span style={prefSwatch("var(--color-text-info)")} /> in trial schedule
+          <span style={prefSwatch("var(--color-text-info)", split)} /> in trial schedule
         </span>
         <span>
-          <span style={prefSwatch("var(--color-background-info)")} /> picked, not in trial
+          <span style={prefSwatch(PREF_PICKED_COLOR, split)} /> picked, not in trial
         </span>
         <span>
-          <span style={prefSwatch("var(--color-background-warning)")} /> auto-assigned
+          <span style={prefSwatch("var(--color-background-warning)", split)} /> auto-assigned
         </span>
-        <span>
-          <span style={schedSwatch(ENGINE_COLOR)} /> scheduled
-        </span>
-        <span>
-          <span style={schedSwatch(MANUAL_COLOR)} /> scheduled by hand
-        </span>
+        {split && (
+          <>
+            <span>
+              <span style={schedSwatch(ENGINE_COLOR)} /> scheduled
+            </span>
+            <span>
+              <span style={schedSwatch(MANUAL_COLOR)} /> scheduled by hand
+            </span>
+          </>
+        )}
         <span>
           <span
             style={{
@@ -792,6 +819,17 @@ const prefTick: React.CSSProperties = {
   color: "#fff",
   pointerEvents: "none",
 };
+/** With no schedule to split against, the cell is whole, so the check centers. */
+const prefTickFull: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 11,
+  color: "#fff",
+  pointerEvents: "none",
+};
 /** Legend on the left, the trial controls on the right, sharing the card's last row. */
 const footerRow: React.CSSProperties = {
   display: "flex",
@@ -821,10 +859,13 @@ const swatch: React.CSSProperties = {
   verticalAlign: -1,
   border: "1px solid var(--color-border-tertiary)",
 };
-/** A legend swatch showing a color in the preference (lower-left) half. */
-const prefSwatch = (color: string): React.CSSProperties => ({
+/**
+ * A legend swatch for a preference color: the lower-left half when the cell is
+ * split against a schedule, the whole swatch when there's no run to split against.
+ */
+const prefSwatch = (color: string, split: boolean): React.CSSProperties => ({
   ...swatch,
-  background: `linear-gradient(45deg, ${color} 0 50%, ${EMPTY_COLOR} 50% 100%)`,
+  background: split ? `linear-gradient(45deg, ${color} 0 50%, ${EMPTY_COLOR} 50% 100%)` : color,
 });
 /** A legend swatch showing a color in the schedule (upper-right) half. */
 const schedSwatch = (color: string): React.CSSProperties => ({
@@ -862,10 +903,10 @@ const weekendModeBadge = (every: boolean, deviates: boolean): React.CSSPropertie
   ...(deviates ? { border: "1.5px dashed var(--color-border-warning)" } : null),
 });
 
-/** The preference (lower-left) half's fill, mirroring the old whole-cell states. */
+/** The preference half's fill (the whole cell when there is no schedule to split). */
 function prefFill(inMock: boolean, wasPreferred: boolean, wasAuto: boolean): string {
   if (inMock) return "var(--color-text-info)";
-  if (wasPreferred) return "var(--color-background-info)";
+  if (wasPreferred) return PREF_PICKED_COLOR;
   if (wasAuto) return "var(--color-background-warning)";
   return EMPTY_COLOR;
 }
@@ -883,7 +924,9 @@ function cellStyle(
   wasAuto: boolean,
   source: AssignmentSource | null,
   busy: boolean,
+  split: boolean,
 ): React.CSSProperties {
+  const pref = prefFill(inMock, wasPreferred, wasAuto);
   return {
     position: "relative",
     width: CELL,
@@ -896,8 +939,12 @@ function cellStyle(
     lineHeight: 1,
     fontWeight: 700,
     cursor: "pointer",
-    // Lower-left half = preference, upper-right half = schedule (see Legend).
-    background: `linear-gradient(45deg, ${prefFill(inMock, wasPreferred, wasAuto)} 0 50%, ${schedFill(source)} 50% 100%)`,
+    // With a schedule run the cell splits: lower-left = preference, upper-right =
+    // schedule (see Legend). With no run there's nothing to compare against, so the
+    // preference fills the whole square.
+    background: split
+      ? `linear-gradient(45deg, ${pref} 0 50%, ${schedFill(source)} 50% 100%)`
+      : pref,
     // A cell the student never offered, now in the trial, gets an amber ring.
     border:
       inMock && !wasPreferred && !wasAuto

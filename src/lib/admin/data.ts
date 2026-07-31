@@ -14,6 +14,7 @@ import { asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
+  groups,
   positions,
   shiftBlocks,
   students,
@@ -38,6 +39,8 @@ export interface StudentDetail {
   international: boolean;
   onRoster: boolean;
   position: Position | null;
+  /** The student's form-window group name, or null when they're ungrouped. */
+  group: string | null;
   blocks: ShiftBlock[];
   submission: {
     id: string;
@@ -70,6 +73,16 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
 
   const [student] = await db.select().from(students).where(eq(students.email, email)).limit(1);
   if (!student) return null;
+
+  let group: string | null = null;
+  if (student.groupId) {
+    const [g] = await db
+      .select({ name: groups.name })
+      .from(groups)
+      .where(eq(groups.id, student.groupId))
+      .limit(1);
+    group = g?.name ?? null;
+  }
 
   let position: Position | null = null;
   let blocks: ShiftBlock[] = [];
@@ -143,6 +156,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     international: student.international,
     onRoster: student.onRoster,
     position,
+    group,
     blocks,
     submission,
     selection,

@@ -4,6 +4,7 @@ import {
   DESIRED_CAPACITY_MAX,
   blockSetWarnings,
   positionCapacityCheck,
+  seatHoursPerWeek,
   validateBlockTimes,
   validateDesiredCapacity,
 } from "./config-validation";
@@ -255,5 +256,22 @@ describe("positionCapacityCheck", () => {
     if (result.kind !== "short") return;
     expect(result.message).toContain("1 rostered student needs");
     expect(result.message).not.toContain("—");
+  });
+});
+
+describe("seatHoursPerWeek", () => {
+  it("sums each block's target x length x days, weekends on both days", () => {
+    // 2 seats x 10h x 5 weekdays = 100, plus 1 seat x 4h x 2 weekend days = 8.
+    expect(
+      seatHoursPerWeek([
+        block("wd", "weekday", "8a", "6p", 2),
+        block("we", "weekend", "9a", "1p", 1),
+      ]),
+    ).toBe(108);
+  });
+
+  it("counts a block with no target as zero, so no targets means zero", () => {
+    expect(seatHoursPerWeek([block("wd", "weekday", "8a", "6p")])).toBe(0);
+    expect(seatHoursPerWeek([])).toBe(0);
   });
 });
