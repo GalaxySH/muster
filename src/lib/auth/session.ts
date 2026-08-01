@@ -9,6 +9,7 @@ import { normalizeEmail } from "./policy";
 import { auth } from "./index";
 import { adminEmails } from "@/lib/env";
 import { isAdminInDb } from "@/lib/roster/lookup";
+import { recordSeen } from "./last-seen";
 
 export interface AppSession {
   /** normalized wisc.edu email: the stable identity key (PLAN §9, §11). */
@@ -31,6 +32,10 @@ export async function getAppSession(): Promise<AppSession | null> {
   // trusting the stamped claim would let a removed/compromised admin keep access
   // until their token expired; recomputing here makes revocation immediate.
   const isAdmin = adminEmails.has(normalized) || (await isAdminInDb(normalized));
+
+  // Stamp last-seen for the analytics surface. Throttled and best-effort, so it
+  // adds no real cost to most requests and never fails a session resolve.
+  await recordSeen(normalized);
 
   return {
     email: normalized,

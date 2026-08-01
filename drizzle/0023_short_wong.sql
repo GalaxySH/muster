@@ -1,0 +1,1 @@
+ALTER TABLE `students` ADD `last_seen_at` datetime;

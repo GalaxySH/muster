@@ -109,6 +109,11 @@ export const students = mysqlTable("students", {
   // Raw PCPL position title stored at import; used to surface ghost positions
   // (titles with no mapping) on /admin/positions and /admin/roster.
   rosterTitle: varchar("roster_title", { length: 128 }),
+  // Most recent authenticated activity for this person (any signed-in page load,
+  // throttled write via lib/auth/last-seen.ts). Null = never signed in, which is
+  // what the analytics surface reads to tell who has yet to log in. Set from the
+  // session seam, never at roster ingest.
+  lastSeenAt: datetime("last_seen_at", { mode: "date" }),
 });
 
 /** One student's availability submission (PLAN.md §9). No image bytes, Drive fileIds only. */

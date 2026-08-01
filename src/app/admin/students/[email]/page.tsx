@@ -99,6 +99,18 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
+/** "just now" / "2 hr ago" / "3 days ago" for last-seen; "Never signed in" for null. */
+function lastSeenText(at: Date | null, now: Date): string {
+  if (!at) return "Never signed in";
+  const mins = Math.round((now.getTime() - at.getTime()) / 60000);
+  if (mins < 1) return "Last seen just now";
+  if (mins < 60) return `Last seen ${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `Last seen ${hrs} hr ago`;
+  const days = Math.round(hrs / 24);
+  return days === 1 ? "Last seen yesterday" : `Last seen ${days} days ago`;
+}
+
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
@@ -219,7 +231,11 @@ export default async function StudentDetailPage({
                   {" "}
                   &nbsp;·&nbsp; <span style={chipStyle}>{position.name}</span>
                 </>
-              )}
+              )}{" "}
+              &nbsp;·&nbsp;{" "}
+              <span style={detail.lastSeenAt ? undefined : { color: "var(--color-text-danger)" }}>
+                {lastSeenText(detail.lastSeenAt, new Date())}
+              </span>
             </div>
           </div>
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
@@ -279,7 +295,11 @@ export default async function StudentDetailPage({
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={position!.name} sub={`Group: ${detail.group ?? "none"}`} />
+          <StatTile
+            label="POSITION"
+            value={position!.name}
+            sub={`Group: ${detail.group ?? "none"}`}
+          />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}

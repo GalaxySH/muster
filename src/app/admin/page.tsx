@@ -19,6 +19,7 @@ import {
   faTableList,
   faTriangleExclamation,
   faUniversalAccess,
+  faUserClock,
   faUserGear,
 } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
@@ -122,6 +123,7 @@ export default async function AdminPage() {
               countLabel="shift leads short of their close claims"
             />
             <NavCard icon={faChartColumn} title="Schedule" href="/admin/schedule" />
+            <NavCard icon={faUserClock} title="Sign-in analytics" href="/admin/analytics" />
           </NavGroup>
 
           <NavGroup title="Configuration">

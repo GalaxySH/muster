@@ -30,7 +30,11 @@ redirects to `/course-schedule` (Phase 2), and the **admin views** (Phase 4): th
 response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
-Sheet** in the Drive folder. The roster import reads **one sheet of the PC & Training
+Sheet** in the Drive folder. **Sign-in tracking + analytics** (v1.06): a throttled
+`students.last_seen_at` stamped from the `getAppSession` seam records who has logged in
+(distinct from who submitted); the per-student header shows "Last seen …" / "Never signed
+in", and `/admin/analytics` reports the signed-in funnel + recency (see
+`docs/architecture.md`). The roster import reads **one sheet of the PC & Training
 Tracker** (v0.86; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
 export of a single sheet). **Being listed on the sheet is what puts someone on the
 roster**, and dropping out of it is what takes them off; the sheet's **Status** column

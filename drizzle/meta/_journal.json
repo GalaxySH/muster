@@ -162,6 +162,13 @@
       "when": 1785465221516,
       "tag": "0022_tough_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1785604299201,
+      "tag": "0023_short_wong",
+      "breakpoints": true
     }
   ]
 }
