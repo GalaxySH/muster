@@ -99,18 +99,6 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
-/** "just now" / "2 hr ago" / "3 days ago" for last-seen; "Never signed in" for null. */
-function lastSeenText(at: Date | null, now: Date): string {
-  if (!at) return "Never signed in";
-  const mins = Math.round((now.getTime() - at.getTime()) / 60000);
-  if (mins < 1) return "Last seen just now";
-  if (mins < 60) return `Last seen ${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `Last seen ${hrs} hr ago`;
-  const days = Math.round(hrs / 24);
-  return days === 1 ? "Last seen yesterday" : `Last seen ${days} days ago`;
-}
-
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
@@ -231,11 +219,7 @@ export default async function StudentDetailPage({
                   {" "}
                   &nbsp;·&nbsp; <span style={chipStyle}>{position.name}</span>
                 </>
-              )}{" "}
-              &nbsp;·&nbsp;{" "}
-              <span style={detail.lastSeenAt ? undefined : { color: "var(--color-text-danger)" }}>
-                {lastSeenText(detail.lastSeenAt, new Date())}
-              </span>
+              )}
             </div>
           </div>
           <NavArrow href={nav.nextEmail ? studentHref(nav.nextEmail) : null} dir="next" />
@@ -541,8 +525,9 @@ export default async function StudentDetailPage({
         )}
 
         {/* Schedule change requests (roadmap 3.1): independent of the submission,
-            so they render even for students without one. Kept last in DOM order so
-            they always pack into the final column slot. */}
+            so they render even for students without one. Kept near the end of DOM
+            order so a long history packs into a late column slot (only the small
+            Last-seen card follows). */}
         {changeRequests.length > 0 && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
@@ -615,6 +600,21 @@ export default async function StudentDetailPage({
             </div>
           </section>
         )}
+
+        {/* Last seen: most recent authenticated activity, or never logged in.
+            Kept last in the card order. */}
+        <section style={panelStyle}>
+          <SectionLabel>Last seen</SectionLabel>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              color: detail.lastSeenAt ? "var(--color-text-primary)" : "var(--color-text-danger)",
+            }}
+          >
+            {detail.lastSeenAt ? fmtStamp(detail.lastSeenAt) : "Never logged in"}
+          </p>
+        </section>
       </div>
     </Page>
   );

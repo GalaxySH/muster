@@ -503,8 +503,9 @@ roster row (e.g. an env-allowlist admin) simply updates 0 rows, and any failure 
 swallowed — telemetry must never break auth. A single container fronts prod, so the
 in-memory throttle is enough; a restart just means the next request writes.
 
-Two read surfaces. The **per-student header** shows "Last seen …" or a red "Never signed
-in" (`loadStudentDetail` now selects `lastSeenAt`; formatting is local to the page). The
+Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
+order) showing the timestamp or a red "Never logged in" (`loadStudentDetail` now selects
+`lastSeenAt`; formatting is local to the page). The
 **`/admin/analytics`** page (linked from the hub nav rail) is the same loader + pure-view
 split the hub uses: `admin/analytics.ts` reads one thin on-roster row per student joined
 to submission status, and `admin/analytics-view.ts` (pure, TDD) buckets it into the

@@ -698,8 +698,7 @@ cards), so the scheduler can record details for someone who has yet to answer. N
 scheduled mark, and any evidence entered on the student's behalf **create the draft row on
 demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
 with no position gets a notice instead of the calculator. Layout (see wireframe):
-- **Identity header:** name, email, position, and **last-seen** ("Last seen 2 hr ago",
-  or a red **"Never signed in"** when they have never logged in — §11); **prev/next** nav
+- **Identity header:** name, email, position; **prev/next** nav
   + full-list jump; a **draft** / **missing** badge with the header ringed
   red until the response is submitted; **both timestamps** (§9) side by side in one
   panel — **Submitted** (the first submit, or "not yet") and **Last updated** (the
@@ -775,6 +774,10 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     schedule is one file, not a list, so once one is on file the control reads **Replace**
     and the upload swaps it (the old Drive file is deleted, §12).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
+- **Last seen:** a small card kept **last** in the card order, showing when the student
+  was last authenticated (the `students.last_seen_at` stamp, §11) as a plain timestamp,
+  or a red **"Never logged in"**. It is distinct from the response timestamps: it tracks
+  whether they have signed in at all, not what they did in the form.
 
 ---
 
@@ -1340,7 +1343,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   the pure `last-seen-throttle.ts`: at most one write per person per 10 min, best-effort,
   a single PK UPDATE that no-ops for a signed-in email with no roster row) so it stays off
   the hot path and can never fail a session resolve. Two surfaces read it: the per-student
-  header shows **"Last seen …"** / red **"Never signed in"**, and a new **`/admin/analytics`**
+  view shows a **Last seen** card (kept last in the card order) with the timestamp or a red
+  **"Never logged in"**, and a new **`/admin/analytics`**
   (linked from the hub nav rail) reports the signed-in count and share, a
   never→signed-in→submitted funnel, last-active recency buckets, and a copy-emails list of
   the never-signed-in. All derivation is pure (`admin/analytics-view.ts`, tested); the
