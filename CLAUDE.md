@@ -53,7 +53,8 @@ The Drive relay + the running sheet are **confirmed live**. The **magic-link fal
 (auth for users Google rejects) is built (PLAN §11). Ops hardening is largely done:
 security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
 CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, verified
-against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
+against the `/api/health` DB-probe endpoint on the box's loopback bind (Cloudflare Bot
+Fight Mode blocks the runner from the public URL); setup in `docs/deploy.md`), prod
 DB switched to the host's central MariaDB + scripted nightly backups (v0.29). The
 production deploy is live and the **nightly backup cron is installed** on the box
 (`/usr/local/sbin/backup-mariadb`, root crontab, 03:17 daily).
