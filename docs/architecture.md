@@ -485,6 +485,35 @@ The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the T
 tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is
 nobody's to review, so it matches neither side.
 
+## Sign-in tracking & analytics (PLAN §10, §11, v1.06)
+
+"Has this person logged in?" is separate from "did they submit the form?", and the app
+tracks it in one nullable column, **`students.last_seen_at`**. The write happens at the
+**single session seam** every authenticated request passes through, `getAppSession`
+(`lib/auth/session.ts`) — method-agnostic across Google, magic-link, and dev-login — so
+adding it there covers every path without touching the NextAuth callbacks. A null stamp
+therefore means the person has genuinely never signed in.
+
+The write is deliberately cheap. `lib/auth/last-seen.ts` (server-only) holds an
+in-process `Map<email, lastWriteMs>` throttle and does a single primary-key UPDATE at
+most once per person per 10 minutes; the pure decision (`shouldRecord`) is split into
+`last-seen-throttle.ts` so it is testable without dragging in `getDb` (which is
+server-only). The UPDATE is guarded on the email PK, so a signed-in address with no
+roster row (e.g. an env-allowlist admin) simply updates 0 rows, and any failure is
+swallowed — telemetry must never break auth. A single container fronts prod, so the
+in-memory throttle is enough; a restart just means the next request writes.
+
+Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
+order) showing the timestamp or a red "Never logged in" (`loadStudentDetail` now selects
+`lastSeenAt`; formatting is local to the page). The
+**`/admin/analytics`** page (linked from the hub nav rail) is the same loader + pure-view
+split the hub uses: `admin/analytics.ts` reads one thin on-roster row per student joined
+to submission status, and `admin/analytics-view.ts` (pure, TDD) buckets it into the
+signed-in count/share, the never→signed-in→submitted funnel, last-active recency windows,
+and the never-signed-in follow-up list. The funnel's "submitted" bucket keys on
+submission status, not last-seen, so a response an admin submitted on someone's behalf
+still counts as submitted even with a null stamp.
+
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
 
 The admin grants

@@ -279,7 +279,11 @@ export default async function StudentDetailPage({
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={position!.name} sub={`Group: ${detail.group ?? "none"}`} />
+          <StatTile
+            label="POSITION"
+            value={position!.name}
+            sub={`Group: ${detail.group ?? "none"}`}
+          />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}
@@ -521,8 +525,9 @@ export default async function StudentDetailPage({
         )}
 
         {/* Schedule change requests (roadmap 3.1): independent of the submission,
-            so they render even for students without one. Kept last in DOM order so
-            they always pack into the final column slot. */}
+            so they render even for students without one. Kept near the end of DOM
+            order so a long history packs into a late column slot (only the small
+            Last-seen card follows). */}
         {changeRequests.length > 0 && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
@@ -595,6 +600,21 @@ export default async function StudentDetailPage({
             </div>
           </section>
         )}
+
+        {/* Last seen: most recent authenticated activity, or never logged in.
+            Kept last in the card order. */}
+        <section style={panelStyle}>
+          <SectionLabel>Last seen</SectionLabel>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              color: detail.lastSeenAt ? "var(--color-text-primary)" : "var(--color-text-danger)",
+            }}
+          >
+            {detail.lastSeenAt ? fmtStamp(detail.lastSeenAt) : "Never logged in"}
+          </p>
+        </section>
       </div>
     </Page>
   );

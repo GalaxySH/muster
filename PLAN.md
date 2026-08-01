@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.05
-- **Last updated:** 2026-07-31
+- **Version:** 1.06
+- **Last updated:** 2026-08-01
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -682,6 +682,13 @@ columns from the roster.
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
   file is best-effort deleted from Drive (no orphaned bytes), and the running sheet is
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
+- **Sign-in analytics:** ✅ `/admin/analytics` (linked from the hub) reports who on the
+  roster has logged in, who has not, and how recently, from a **`students.last_seen_at`**
+  stamp written on any authenticated activity (see §11). Login is distinct from a form
+  submission: a null stamp means the person has never signed in at all. The surface shows
+  the signed-in count and share, a three-stage funnel (never signed in → signed in, no
+  submission → submitted), last-active recency buckets, and a copy-emails list of the
+  never-signed-in for follow-up. Derivation is pure (`admin/analytics-view.ts`).
 
 ### 10a. Per-student view (the primary admin surface)
 The view the scheduler works from. It opens for **every student on the roster**, not just
@@ -691,8 +698,8 @@ cards), so the scheduler can record details for someone who has yet to answer. N
 scheduled mark, and any evidence entered on the student's behalf **create the draft row on
 demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
 with no position gets a notice instead of the calculator. Layout (see wireframe):
-- **Identity header:** name, email, position; **prev/next** nav + full-list jump;
-  a **draft** / **missing** badge with the header ringed
+- **Identity header:** name, email, position; **prev/next** nav
+  + full-list jump; a **draft** / **missing** badge with the header ringed
   red until the response is submitted; **both timestamps** (§9) side by side in one
   panel — **Submitted** (the first submit, or "not yet") and **Last updated** (the
   student's own last edit) — legible rather than fine print, and kept to two tight lines
@@ -767,6 +774,10 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     schedule is one file, not a list, so once one is on file the control reads **Replace**
     and the upload swaps it (the old Drive file is deleted, §12).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
+- **Last seen:** a small card kept **last** in the card order, showing when the student
+  was last authenticated (the `students.last_seen_at` stamp, §11) as a plain timestamp,
+  or a red **"Never logged in"**. It is distinct from the response timestamps: it tracks
+  whether they have signed in at all, not what they did in the form.
 
 ---
 
@@ -1323,6 +1334,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.06 (2026-08-01)** — **Sign-in tracking + analytics (§10, §10a, §11).** The app now
+  records **when each person was last authenticated**, distinct from whether they
+  submitted the form. A nullable **`students.last_seen_at`** column (migration 0023) is
+  stamped from `getAppSession` — the one method-agnostic session seam (Google /
+  magic-link / dev-login) — on any signed-in request, so a null value means the person
+  has **never logged in**. The write is throttled in-process (`lib/auth/last-seen.ts` +
+  the pure `last-seen-throttle.ts`: at most one write per person per 10 min, best-effort,
+  a single PK UPDATE that no-ops for a signed-in email with no roster row) so it stays off
+  the hot path and can never fail a session resolve. Two surfaces read it: the per-student
+  view shows a **Last seen** card (kept last in the card order) with the timestamp or a red
+  **"Never logged in"**, and a new **`/admin/analytics`**
+  (linked from the hub nav rail) reports the signed-in count and share, a
+  never→signed-in→submitted funnel, last-active recency buckets, and a copy-emails list of
+  the never-signed-in. All derivation is pure (`admin/analytics-view.ts`, tested); the
+  loader is `admin/analytics.ts`. No behavior change to auth, response status, or
+  non-response tracking (all still key on `confirmedAt`, §13.1).
 - **1.05 (2026-07-31)** — **High-demand mark: per-cell target gating + contention
   ranking, and a bolder bar (§7, roadmap 2.5).** The student availability picker's red
   high-demand mark is recomputed. (1) The cohort-wide **≥ 20 submitted-responder floor
