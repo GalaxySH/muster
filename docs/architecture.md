@@ -1126,3 +1126,53 @@ protection concept. Frozen students' rows carry forward verbatim through every
 run and consume capacity first; marking scheduled still never changes response
 status or the non-response list (both key on `confirmedAt`). With Phase C
 above, `docs/schedule-generation-plan.md` is fully built.
+
+## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.08)
+
+The scheduler's W2W week export is the budgeted seat plan; Muster fills it and
+hands it back. File-based and human-carried in both directions (PLAN §17's
+boundary is untouched).
+
+**Layering.** Pure domain in `src/lib/domain/w2w-plan/`: `parse` (the W2W
+export dialect: day derived from Date with a numeric fallback, refusal on
+anything unplaceable and on multi-week files), `match` (position map + exact
+(position, day-type, start, end) block matching; description is not part of
+the key), `fill` (project run assignments onto plan seats per week file:
+weekday + cohort a/every vs b/every, fillOrder-then-seq seat order, byEmail
+student order, overflow accounting), `serialize` (same column set back, Date
+blanked, full day names), `identity` (Employee Details parse + the
+`Last, First` to `First Last` derivation). The shared cp1252 codec lives in
+`src/lib/text/cp1252.ts` (extracted from the roster reader; encode added,
+`isCp1252Lossy` drives an export warning). Server layer in `src/lib/w2w/`:
+`plan-data` (current plan + live match report), `export-data` (fill both week
+files + warnings), `actions` (plan import with the capacity checkbox, employee
+mapping refresh), `repair` (repair-mode seeds), `upload-validation`. UI:
+`/admin/schedule/plan` (import panels, export card with warnings, report
+sections) and the export route `/admin/schedule/plan/export?week=a|b`
+(windows-1252 bytes).
+
+**Invariants.** Row count in equals row count out per week file; Muster writes
+only the employee identity columns; everything else passes through verbatim
+(whitespace-trimmed). Only raw rows are stored (`shift_plans`,
+`shift_plan_rows`); block matching and name resolution are recomputed live on
+every read so `/admin/positions` edits and mapping refreshes reflect
+immediately and nothing stale persists. `w2w_position_map` seeds itself on
+first import when `db:seed` never ran (prod runs only migrations); `db:seed`
+backfills missing entries without touching existing rows.
+
+**Identity.** `w2w_employees` (email PK, name, number; refreshed by uploading
+the Employee Details export; address/phone never ingested). Export writes the
+mapped W2W name, or falls back to the roster-derived name and lists every such
+student in the export warnings, because a name W2W does not recognize silently
+imports the shift as unassigned. Non-representable (non-cp1252) names get
+their own warning.
+
+**Repair mode.** `generateSchedule({ repairFromPlan: true })` resolves the
+names riding on the imported plan (mapping first, derived fallback; ambiguous
+derivations resolve to nobody), validates each placement (eligible submitted
+student, matched block, block still in their effective selection, weekend
+cohort known: opt-in or their current-run cohort), and feeds the survivors
+through the engine's frozen carry seam as virtually-scheduled students.
+Admin-frozen students always keep their current-run rows instead. Broken
+placements and gaps are re-solved normally; the confirm reports kept/skipped
+counts.

@@ -1,8 +1,13 @@
 # W2W shift-plan round-trip — implementation plan
 
-Status: PLANNED (nothing built). Scope agreed 2026-08-03. This supersedes the earlier
+Status: **BUILT** (all three phases, PLAN 1.08, 2026-08-03; layering notes in
+`docs/architecture.md`). Scope agreed 2026-08-03. This supersedes the earlier
 "export a schedule layout for W2W" sketch: the W2W **shift plan is the budget
 authority**, and Muster fills it rather than generating its own layout.
+Deviations from the text below, decided during the build: `shift_plan_rows`
+stores only raw passthrough values (no `matched_block_id` / `imported_email`
+columns; matching and identity resolution are recomputed live on every read),
+and the position map self-seeds on first import so prod needs no manual seed.
 
 ## 1. The workflow
 
@@ -195,9 +200,10 @@ stocker 7:00–10:30 1 → 2 (dock), cashier midday 2 → 1.
   `row_count`, `status` (`current` | `superseded`) — same append-only shape as
   `schedule_runs`; importing marks the previous plan superseded.
 - `shift_plan_rows`: `plan_id` (FK cascade), `seq` (source order, the passthrough
-  and determinism backbone), the passthrough columns verbatim, plus resolved
-  `matched_block_id` (nullable FK), `day` (day enum), `imported_email` (nullable —
-  resolved identity of a pre-assigned row).
+  and determinism backbone), the passthrough columns verbatim, `day` (day enum),
+  and the parsed minutes. *(As built: no stored `matched_block_id` or
+  `imported_email` — resolution is always computed live so config and mapping
+  edits reflect immediately.)*
 - No student PII beyond what Muster already holds; `w2w_employees` adds name +
   email + number only.
 
