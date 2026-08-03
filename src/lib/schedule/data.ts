@@ -6,7 +6,9 @@
  * counts every selection cell of a submitted on-roster student, including the
  * machine-assigned weekend cell (unlike the demand ranking, which reads
  * preferences and excludes it). Off-roster students drop out here the same way
- * they do everywhere else.
+ * they do everywhere else. Selections are read through the effective seam
+ * (internal copy when one exists, the student's rows otherwise), matching what
+ * the generator schedules.
  */
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -16,10 +18,10 @@ import {
   scheduleAssignments,
   scheduleRuns,
   shiftBlocks,
-  shiftSelections,
   students,
   submissions,
 } from "@/lib/db/schema";
+import { effectiveSelections } from "@/lib/availability/internal";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
@@ -69,6 +71,7 @@ export interface PositionCoverage {
 export async function loadCoverage(): Promise<PositionCoverage[]> {
   const db = getDb();
   const onRosterSubmitted = eligibleSubmittedFilter();
+  const eff = effectiveSelections();
   const [posRows, blockRows, rosterRows, responderRows, cellRows] = await Promise.all([
     db
       .select()
@@ -89,15 +92,15 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
       .groupBy(students.positionId),
     db
       .select({
-        blockId: shiftSelections.shiftBlockId,
-        day: shiftSelections.day,
-        count: sql<number>`count(distinct ${shiftSelections.submissionId})`,
+        blockId: eff.shiftBlockId,
+        day: eff.day,
+        count: sql<number>`count(distinct ${eff.submissionId})`,
       })
-      .from(shiftSelections)
-      .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+      .from(eff)
+      .innerJoin(submissions, eq(eff.submissionId, submissions.id))
       .innerJoin(students, eq(submissions.studentEmail, students.email))
       .where(onRosterSubmitted)
-      .groupBy(shiftSelections.shiftBlockId, shiftSelections.day),
+      .groupBy(eff.shiftBlockId, eff.day),
   ]);
 
   const rosterCount = new Map(rosterRows.map((r) => [r.positionId, Number(r.n)]));
@@ -474,7 +477,8 @@ export interface FrozenMismatchView {
  * Frozen rows vs edited selections, always against the current run: students
  * marked scheduled keep their rows through regeneration, so a later
  * availability edit can leave a kept row outside their current selections
- * (auto-assigned weekend cells count as selections). Empty before any run.
+ * (auto-assigned weekend cells count as selections; the effective seam makes
+ * an internal copy count as the current selections). Empty before any run.
  */
 export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
   const db = getDb();
@@ -482,6 +486,7 @@ export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
   if (!run) return [];
 
   const frozenEligible = and(eligibleSubmittedFilter(), eq(submissions.scheduled, true));
+  const eff = effectiveSelections();
   const [assignments, frozenRows, selectionRows] = await Promise.all([
     loadRunAssignments(run.id),
     db
@@ -492,11 +497,11 @@ export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
     db
       .select({
         email: submissions.studentEmail,
-        blockId: shiftSelections.shiftBlockId,
-        day: shiftSelections.day,
+        blockId: eff.shiftBlockId,
+        day: eff.day,
       })
-      .from(shiftSelections)
-      .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+      .from(eff)
+      .innerJoin(submissions, eq(eff.submissionId, submissions.id))
       .innerJoin(students, eq(submissions.studentEmail, students.email))
       .where(frozenEligible),
   ]);

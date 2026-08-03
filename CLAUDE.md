@@ -230,7 +230,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   writes an **internal copy** (`internal_availability` + `internal_selections`);
   `shift_selections` stays the student's own record. Scheduling surfaces read the
   internal copy when one exists and the student's rows otherwise
-  (`availability/effective.ts`); student-facing surfaces never read it. The internal
+  (`availability/effective.ts`; aggregate readers use the SQL seam
+  `effectiveSelections()` in `availability/internal.ts`); student-facing surfaces
+  never read it. The internal
   copy is **literal**: no weekend auto-assign runs on it (an empty weekend means no
   weekend shift). A student edit while a copy exists raises the
   `student_changed_after_internal_edit` flag instead of merging.

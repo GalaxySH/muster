@@ -24,11 +24,11 @@ import {
   groups,
   positions,
   shiftBlocks,
-  shiftSelections,
   students,
   submissions,
   type DbFlagType,
 } from "@/lib/db/schema";
+import { effectiveSelections } from "@/lib/availability/internal";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { WEEKDAY_DAYS, WEEKEND_DAYS, type ShiftBlock } from "@/lib/domain/types";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
@@ -358,7 +358,9 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
  *
  * Machine-assigned weekend cells are excluded: they are bodies the scheduler
  * gets anyway, not people who offered, and counting them would hide exactly the
- * thin weekend coverage this panel exists to show.
+ * thin weekend coverage this panel exists to show. Selections come through the
+ * effective seam, so an internal copy replaces the student's own picks here
+ * (internal cells are never machine-assigned, so they all count).
  *
  * Cells nobody picked are the whole point, and a GROUP BY cannot return them,
  * so the block × day grid is expanded here and the counts are laid over it.
@@ -367,6 +369,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
  */
 async function loadCoverage(): Promise<CoverageCell[]> {
   const db = getDb();
+  const eff = effectiveSelections();
   const [blocks, takerRows, staffedPositions] = await Promise.all([
     db
       .select({
@@ -382,21 +385,21 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       .where(eq(positions.active, true)),
     db
       .select({
-        blockId: shiftSelections.shiftBlockId,
-        day: shiftSelections.day,
+        blockId: eff.shiftBlockId,
+        day: eff.day,
         n: sql<number>`count(distinct ${submissions.studentEmail})`,
       })
-      .from(shiftSelections)
-      .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+      .from(eff)
+      .innerJoin(submissions, eq(eff.submissionId, submissions.id))
       .innerJoin(students, eq(submissions.studentEmail, students.email))
       .where(
         and(
           eq(submissions.status, "submitted"),
           eq(students.onRoster, true),
-          eq(shiftSelections.autoAssigned, false),
+          eq(eff.autoAssigned, false),
         ),
       )
-      .groupBy(shiftSelections.shiftBlockId, shiftSelections.day),
+      .groupBy(eff.shiftBlockId, eff.day),
     db
       .select({ positionId: students.positionId })
       .from(students)

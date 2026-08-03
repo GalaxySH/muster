@@ -5,11 +5,56 @@
  * lib/availability/actions.ts; the pure override rule in effective.ts.
  */
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, notExists, sql } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { internalAvailability, internalSelections, submissions } from "@/lib/db/schema";
+import {
+  internalAvailability,
+  internalSelections,
+  shiftSelections,
+  submissions,
+} from "@/lib/db/schema";
 import type { InternalCopy } from "./effective";
 import type { SelectedShift } from "@/lib/domain/types";
+
+/**
+ * The effective selections as a SQL subquery: the internal copy's cells for
+ * submissions that have one, the student's own cells otherwise. Aggregate
+ * readers (coverage counts, demand cells, frozen mismatches) select from this
+ * instead of shift_selections so what they show matches what the generator
+ * schedules. Resolution stays in SQL rather than fanning out per student in JS
+ * (the v0.96 lesson); the NOT EXISTS probe is a PK lookup on
+ * internal_availability.
+ */
+export function effectiveSelections() {
+  const db = getDb();
+  return unionAll(
+    db
+      .select({
+        submissionId: shiftSelections.submissionId,
+        shiftBlockId: shiftSelections.shiftBlockId,
+        day: shiftSelections.day,
+        autoAssigned: shiftSelections.autoAssigned,
+      })
+      .from(shiftSelections)
+      .where(
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(internalAvailability)
+            .where(eq(internalAvailability.submissionId, shiftSelections.submissionId)),
+        ),
+      ),
+    db
+      .select({
+        submissionId: internalSelections.submissionId,
+        shiftBlockId: internalSelections.shiftBlockId,
+        day: internalSelections.day,
+        autoAssigned: internalSelections.autoAssigned,
+      })
+      .from(internalSelections),
+  ).as("effective_selections");
+}
 
 /** The admin per-student view of one internal copy. */
 export interface InternalDetail {

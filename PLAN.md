@@ -1369,8 +1369,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   own rows are never modified by an admin again. Scheduling surfaces read the
   **effective** availability — internal when present, student otherwise
   (`availability/effective.ts` + `availability/internal.ts`): the generator's problem
-  builder and the manual weekend-cohort pick are converted in this release; coverage,
-  demand, and the dashboard follow in a later one. The copy is saved **literally** (no
+  builder and the manual weekend-cohort pick resolve in JS, while the aggregate
+  readers — schedule coverage counts, the dashboard's least-staffed cells, and the
+  frozen-mismatch check — group over a SQL `UNION ALL` seam
+  (`effectiveSelections()` in `availability/internal.ts`), so what the admin sees
+  staffed always matches what the generator would schedule. The copy is saved **literally** (no
   weekend auto-assign; an empty weekend means none), an override-save no longer raises
   `revalidation_failed` (that flag keeps describing the student's stored answers), and
   the per-student page names who adjusted the copy and when, with a "Use student

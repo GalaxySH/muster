@@ -1,7 +1,13 @@
 # Internal availability separation — implementation plan
 
-Status: **Phase 1 implemented** (PLAN 1.07; this branch). An independent review
-green-lit the design with four must-fix adjustments, all folded in. Where this doc and
+Status: **Phases 1 and 2 implemented** (PLAN 1.07; this branch). An independent review
+green-lit the design with four must-fix adjustments, all folded in. Phase 2 converted
+the aggregate readers per §8: schedule coverage counts, the frozen-mismatch check
+(`schedule/data.ts`), and the dashboard's least-staffed cells (`admin/dashboard.ts`)
+now group over the SQL `UNION ALL` seam (`effectiveSelections()` in
+`availability/internal.ts`); the export keeps the student copy + marker, and the
+student-facing demand nudges stay on the student copy, both as §8 chose. Phase 3
+(per-cell diff overlay) remains open. Where this doc and
 the code disagree, the code and PLAN.md 1.07 win. As-built deviations from the text
 below:
 
@@ -20,9 +26,11 @@ below:
   internal rotation.
 - **`internal_selections` FKs `internal_availability`**, not `submissions`, so the
   revert delete cascades the cells and a copy can't exist without its header.
-- **Effective resolution is a JS merge for Phase 1** (`applyInternalOverrides`), not
-  the SQL UNION seam: the two converted readers already load full rows per run. The
-  SQL seam remains the plan for Phase 2's aggregate readers.
+- **Effective resolution is split by consumer shape**: the generator and manual
+  cohort pick use the Phase 1 JS merge (`applyInternalOverrides`) since they already
+  load full rows per run; Phase 2's aggregate readers group over the SQL seam
+  (`effectiveSelections()`, in `availability/internal.ts` rather than a separate
+  server-only `effective.ts`, which stayed pure).
 
 Original design follows.
 

@@ -640,10 +640,15 @@ student shift_selections → internal_availability/internal_selections → gener
   (`applyInternalOverrides`: internal copy replaces selection + rotation where present,
   pass-through otherwise); `availability/internal.ts` (server-only) loads copies —
   `loadInternalDetail` for the per-student page, `loadInternalCopiesByEmail` for the
-  generator. Converted consumers: the generation problem builder
+  generator — and exposes `effectiveSelections()`, a Drizzle `UNION ALL` subquery
+  (student rows filtered by a `NOT EXISTS` probe against `internal_availability`,
+  plus all internal rows) so aggregate readers resolve in SQL, not by fanning out
+  per student in JS (the v0.96 lesson). Consumers: the generation problem builder
   (`schedule/actions.ts`) and the manual weekend-cohort pick (`schedule/manual.ts`,
-  a `COALESCE` join). Coverage, demand, the dashboard, and frozen-mismatch still read
-  the student rows; they move to effective in a later release.
+  a `COALESCE` join) resolve in JS; schedule coverage counts and frozen-mismatch
+  (`schedule/data.ts`) and the dashboard's least-staffed cells (`admin/dashboard.ts`)
+  group over the subquery. Student-facing reads (own grid, demand nudges) and the
+  responses export stay on the student rows by design.
 - **Reconcile flag:** `writeSelectionAndFlags` (student saves + finalize only) re-raises
   `student_changed_after_internal_edit` after its blanket flag delete whenever an
   internal header exists, drafts included. Cleared by an admin re-save or by
