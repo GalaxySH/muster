@@ -1122,8 +1122,9 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 - **CI/CD:** ✅ built (see `docs/deploy.md`). GitHub Actions: quality gate (lint/
   typecheck/tests/build + Docker build check) on every push; deploy on `v*` tag via
   SSH — the server checks out the tagged commit and rebuilds the compose stack, then
-  the workflow verifies the public `/api/health` endpoint (DB round-trip probe, also
-  used as the compose `app` healthcheck and for external uptime monitoring).
+  the workflow verifies `/api/health` (DB round-trip probe, also used as the compose
+  `app` healthcheck and for external uptime monitoring) over SSH on the box's loopback
+  bind, since Cloudflare Bot Fight Mode 403s the runner on the public URL.
   Separate prod vs test OAuth clients (register both redirect URIs on the prod
   client — see docs/deploy.md).
 - **Monitoring:** ✅ `GET /api/health` (unauthenticated DB round-trip probe) is both the

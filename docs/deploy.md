@@ -13,9 +13,12 @@ version tag deploys to the production box over SSH — automating the same
 - **`.github/workflows/deploy.yml`** — on a `v*` tag push (or manual
   `workflow_dispatch`): SSH to the server, `git checkout` the exact tagged
   commit in the deploy clone, `docker compose up -d --build`, prune dangling
-  images, then poll `https://muster.hauge.rocks/api/health` until healthy
-  (fails the run after 5 minutes). Deploys are serialized (`concurrency`),
-  never cancelled mid-run.
+  images, then over SSH poll `http://127.0.0.1:3000/api/health` on the box until
+  healthy (fails the run after 5 minutes). The check runs on the box, not against
+  the public URL, because Cloudflare Bot Fight Mode 403s the GitHub runner and
+  can't be scoped per-path on the free plan; the host Apache proxies the same
+  loopback port, so a healthy loopback means the edge serves too. Deploys are
+  serialized (`concurrency`), never cancelled mid-run.
 
 ## GitHub repository secrets (one-time)
 
@@ -120,7 +123,8 @@ git checkout main && git pull
 git tag v1.0.0 && git push origin v1.0.0   # → Deploy workflow runs
 ```
 
-Watch the Actions run; it ends by verifying `/api/health`. Rollback = deploy
+Watch the Actions run; it ends by verifying `/api/health` on the box's loopback
+bind over SSH (not the public URL; see the deploy.yml note above). Rollback = deploy
 the previous tag's commit again (on the server: `git checkout <prev-tag> &&
 docker compose up -d --build`, or push a new tag pointing at it).
 

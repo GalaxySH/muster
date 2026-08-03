@@ -1,7 +1,9 @@
 # Production deploy (PLAN §15): on a version tag (or manual dispatch), SSH to
 # the server, check out the exact tagged commit in the existing deploy clone,
 # and rebuild the compose stack — the same `docker compose up -d --build` used
-# for manual deploys. Afterwards the public health endpoint must come back up.
+# for manual deploys. Afterwards the app's health endpoint must come back up,
+# checked on the box at its loopback bind (Cloudflare Bot Fight Mode 403s the
+# runner, so the public URL can't be polled from CI).
 #
 # Required repository secrets:
 #   DEPLOY_HOST         — server hostname or IP
@@ -67,10 +69,21 @@ jobs:
           REMOTE
 
       - name: Verify health endpoint
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        # Probe the app on the box at its loopback bind (127.0.0.1:3000), not the
+        # public URL: Cloudflare Bot Fight Mode 403s the GitHub runner, and it
+        # can't be scoped per-path on the free plan. The loopback check tests the
+        # thing that matters here anyway (did the new container come up); the host
+        # Apache proxies the same 127.0.0.1:3000, so a healthy loopback means the
+        # edge serves too. Same quoted heredoc pattern as the deploy step.
         run: |
-          echo "Waiting for https://muster.hauge.rocks/api/health ..."
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "Waiting for http://127.0.0.1:3000/api/health ..."
           for i in $(seq 1 30); do
-            if curl -fsS --max-time 10 https://muster.hauge.rocks/api/health; then
+            if curl -fsS --max-time 10 http://127.0.0.1:3000/api/health; then
               echo; echo "Healthy."
               exit 0
             fi
@@ -78,3 +91,4 @@ jobs:
           done
           echo "App did not become healthy within 5 minutes." >&2
           exit 1
+          REMOTE
