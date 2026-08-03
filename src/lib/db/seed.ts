@@ -6,8 +6,9 @@
  */
 import { count, eq, sql } from "drizzle-orm";
 import { createDb } from "./client";
-import { positions, shiftBlocks, groups, rosterTitleMappings } from "./schema";
+import { positions, shiftBlocks, groups, rosterTitleMappings, w2wPositionMap } from "./schema";
 import { POSITION_CONFIGS } from "../config/positions";
+import { W2W_POSITION_MAP_SEED } from "../config/w2w-position-map";
 import { TITLE_TO_POSITION } from "../roster/position-mapping";
 import { DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME } from "../groups/constants";
 
@@ -60,6 +61,23 @@ async function main() {
       seededMappings = true;
     }
 
+    // W2W position mapping: insert-when-empty. Rows whose Muster position is
+    // absent from this DB are skipped (the initial fixture predates the
+    // retail-and-cafe merge), so a fresh dev DB seeds what it can.
+    const [w2wMapRow] = await db.select({ n: count() }).from(w2wPositionMap);
+    let seededW2wMap = 0;
+    if ((w2wMapRow?.n ?? 0) > 0) {
+      console.log("w2w position map already present, skipped.");
+    } else {
+      const known = new Set((await db.select({ id: positions.id }).from(positions)).map((p) => p.id));
+      const rows = W2W_POSITION_MAP_SEED.filter((m) => known.has(m.musterPositionId));
+      if (rows.length > 0) await db.insert(w2wPositionMap).values([...rows]);
+      for (const m of W2W_POSITION_MAP_SEED.filter((m) => !known.has(m.musterPositionId))) {
+        console.log(`w2w map: skipped ${m.w2wPositionName} (no position ${m.musterPositionId}).`);
+      }
+      seededW2wMap = rows.length;
+    }
+
     // The seeded "New Student" group (PLAN §13). Window left unconfigured (null)
     // so the form stays locked until an admin schedules it. It becomes the
     // default only when no group holds the flag yet; re-seeding never steals
@@ -82,6 +100,9 @@ async function main() {
     }
     if (seededMappings) {
       seeded.push(`${Object.keys(TITLE_TO_POSITION).length} title mappings`);
+    }
+    if (seededW2wMap > 0) {
+      seeded.push(`${seededW2wMap} w2w position mappings`);
     }
     seeded.push(`the "${DEFAULT_GROUP_NAME}" default group`);
     console.log(`Seeded ${seeded.join(", ")}.`);

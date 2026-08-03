@@ -176,6 +176,13 @@
       "when": 1785728151685,
       "tag": "0024_classy_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1785778741035,
+      "tag": "0025_lowly_mandarin",
+      "breakpoints": true
     }
   ]
 }

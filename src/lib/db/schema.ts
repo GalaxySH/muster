@@ -458,6 +458,86 @@ export const scheduleAssignments = mysqlTable(
   (t) => [primaryKey({ columns: [t.runId, t.studentEmail, t.shiftBlockId, t.day] })],
 );
 
+export const shiftPlanStatusEnum = ["current", "superseded"] as const;
+
+/**
+ * One imported W2W shift plan: a week of budgeted seats exported from W2W and
+ * uploaded on the admin plan screen (docs/w2w-shift-plan-roundtrip.md §9).
+ * Append-only like schedule_runs: importing marks the previous plan
+ * superseded, never deletes it.
+ */
+export const shiftPlans = mysqlTable("shift_plans", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+  importedBy: varchar("imported_by", { length: 255 }).notNull(),
+  sourceFilename: varchar("source_filename", { length: 255 }).notNull(),
+  rowCount: int("row_count").notNull(),
+  status: mysqlEnum("status", shiftPlanStatusEnum).notNull().default("current"),
+});
+
+/**
+ * One budgeted seat of a plan, in source-file order (`seq`). Passthrough
+ * columns keep their verbatim source strings so the re-export reproduces them
+ * byte for byte; the row count per plan is the budget contract (Muster never
+ * adds or removes rows). Only raw values are stored: block matching and
+ * employee-name resolution are recomputed live against the current blocks and
+ * mapping, so config edits reflect immediately instead of going stale here.
+ */
+export const shiftPlanRows = mysqlTable(
+  "shift_plan_rows",
+  {
+    planId: varchar("plan_id", { length: 36 })
+      .notNull()
+      .references(() => shiftPlans.id, { onDelete: "cascade" }),
+    seq: int("seq").notNull(),
+    w2wPositionId: varchar("w2w_position_id", { length: 32 }).notNull(),
+    w2wPositionName: varchar("w2w_position_name", { length: 128 }).notNull(),
+    category: varchar("category", { length: 128 }).notNull().default(""),
+    description: varchar("description", { length: 255 }).notNull().default(""),
+    day: mysqlEnum("day", dayEnum).notNull(),
+    startTime: varchar("start_time", { length: 16 }).notNull(),
+    endTime: varchar("end_time", { length: 16 }).notNull(),
+    duration: varchar("duration", { length: 16 }).notNull().default(""),
+    startMinutes: int("start_minutes").notNull(),
+    endMinutes: int("end_minutes").notNull(),
+    // The prior assignment carried by the uploaded file, verbatim.
+    importedEmployeeName: varchar("imported_employee_name", { length: 255 }).notNull().default(""),
+    importedEmployeeNumber: varchar("imported_employee_number", { length: 64 })
+      .notNull()
+      .default(""),
+  },
+  (t) => [primaryKey({ columns: [t.planId, t.seq] })],
+);
+
+/**
+ * W2W employee identity per student email (docs/w2w-shift-plan-roundtrip.md
+ * §6), refreshed by uploading the W2W Employee Details export. Deliberately
+ * minimal: name, number, and freshness only; the export's address and phone
+ * columns are never ingested.
+ */
+export const w2wEmployees = mysqlTable("w2w_employees", {
+  email: varchar("email", { length: 255 }).primaryKey(),
+  w2wName: varchar("w2w_name", { length: 255 }).notNull(),
+  employeeNumber: varchar("employee_number", { length: 64 }).notNull().default(""),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+});
+
+/**
+ * Which Muster position each W2W position lands on. Seeded once (insert when
+ * empty, like the position config); several W2W positions may map to one
+ * Muster position (Dock Stocker rides the Stocker 7:00-10:30 block).
+ * `fillOrder` breaks ties inside a shared block cell so filling stays
+ * deterministic (lower first; dock last).
+ */
+export const w2wPositionMap = mysqlTable("w2w_position_map", {
+  w2wPositionId: varchar("w2w_position_id", { length: 32 }).primaryKey(),
+  w2wPositionName: varchar("w2w_position_name", { length: 128 }).notNull(),
+  musterPositionId: varchar("muster_position_id", { length: 64 })
+    .notNull()
+    .references(() => positions.id),
+  fillOrder: int("fill_order").notNull().default(0),
+});
+
 // --- Relations (for typed relational queries) ---
 
 export const positionsRelations = relations(positions, ({ many }) => ({
