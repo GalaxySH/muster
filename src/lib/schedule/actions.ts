@@ -49,7 +49,14 @@ export interface GenerateResult {
   /** Assignment rows the new run holds (on success). */
   placed?: number;
   /** Repair mode: how much of the imported plan was kept in place. */
-  repaired?: { students: number; cells: number; skippedNames: string[]; skippedCells: number };
+  repaired?: {
+    students: number;
+    cells: number;
+    /** Students fully re-solved because one of their placements broke. */
+    brokenStudents: string[];
+    skippedNames: string[];
+    skippedCells: number;
+  };
 }
 
 export interface GenerateOptions {
@@ -147,10 +154,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     const eligibleForRepair = new Map<string, RepairEligibleStudent>(
       engineStudents
         .filter((s) => !s.scheduled)
-        .map((s) => [
-          s.email,
-          { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection },
-        ]),
+        .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
     );
     const weekendCohortByEmail = new Map<string, Cohort>();
     for (const row of previous) {
@@ -158,20 +162,36 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         weekendCohortByEmail.set(row.studentEmail, row.cohort);
       }
     }
-    const seeds = await loadRepairSeeds(eligibleForRepair, weekendCohortByEmail);
+    const seeds = await loadRepairSeeds(
+      eligibleForRepair,
+      weekendCohortByEmail,
+      params.dayCapHours * 60,
+    );
     if (!seeds) {
-      return { ok: false, error: "No shift plan has been imported, so there is nothing to repair from." };
+      return {
+        ok: false,
+        error: "No shift plan has been imported, so there is nothing to repair from.",
+      };
     }
     engineStudentsFinal = engineStudents.map((s) =>
       seeds.byEmail.has(s.email) ? { ...s, scheduled: true } : s,
     );
+    // A seed identical to the student's current cell keeps its manual
+    // provenance, so diff views do not show untouched cells flipping source.
+    const currentSource = new Map(
+      previous.map((r) => [`${r.studentEmail}|${r.blockId}|${r.day}`, r.source]),
+    );
     previousFinal = [
       ...previous.filter((r) => !seeds.byEmail.has(r.studentEmail)),
-      ...[...seeds.byEmail.values()].flat(),
+      ...[...seeds.byEmail.values()].flat().map((r) => ({
+        ...r,
+        source: currentSource.get(`${r.studentEmail}|${r.blockId}|${r.day}`),
+      })),
     ];
     repaired = {
       students: seeds.byEmail.size,
       cells: [...seeds.byEmail.values()].reduce((n, list) => n + list.length, 0),
+      brokenStudents: seeds.brokenStudents,
       skippedNames: seeds.skippedNames,
       skippedCells: seeds.skippedCells,
     };
@@ -195,7 +215,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       id: runId,
       generatedBy: gate.email,
       status: "current",
-      summaryJson: JSON.stringify(result.report),
+      // Repair runs stamp their kept-from-plan counts into the stored report
+      // so the run panel can tell virtually-frozen from admin-frozen.
+      summaryJson: JSON.stringify(
+        repaired ? { ...result.report, repaired: { students: repaired.students } } : result.report,
+      ),
     });
     // Chunked inserts: a full fall cycle is a few thousand rows.
     const rows = result.assignments.map((a) => ({

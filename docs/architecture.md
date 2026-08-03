@@ -1168,11 +1168,19 @@ imports the shift as unassigned. Non-representable (non-cp1252) names get
 their own warning.
 
 **Repair mode.** `generateSchedule({ repairFromPlan: true })` resolves the
-names riding on the imported plan (mapping first, derived fallback; ambiguous
-derivations resolve to nobody), validates each placement (eligible submitted
-student, matched block, block still in their effective selection, weekend
-cohort known: opt-in or their current-run cohort), and feeds the survivors
-through the engine's frozen carry seam as virtually-scheduled students.
-Admin-frozen students always keep their current-run rows instead. Broken
-placements and gaps are re-solved normally; the confirm reports kept/skipped
-counts.
+names riding on the imported plan (mapping first, roster-derived fallback; a
+name claimed twice on either side is ambiguous and resolves to nobody) and
+validates placements in the pure `domain/w2w-plan/repair-seeds.ts`: eligible
+submitted student, matched block, cell inside their effective selection,
+weekend rotation known (opt-in, or their current-run a/b cohort; a stale
+"every" is rejected), plus the engine's own same-day rules (unique coverage,
+day cap). Keeping is **all or nothing per student**: one broken placement
+drops the whole student back to a full re-solve, because freezing someone on
+a surviving subset would strand them under their hour floor with the
+shortfall warnings suppressed (frozen students are excluded from the problems
+panel). Survivors ride the frozen carry seam as virtually-scheduled for that
+run only; admin-frozen students always keep their current-run rows instead,
+and seeds matching a current manual cell keep their manual provenance. The
+run's stored report carries a `repaired.students` stamp so the panel
+distinguishes plan-kept from admin-frozen; hour caps (30/20) are not
+re-checked on kept placements.

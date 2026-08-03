@@ -43,6 +43,14 @@ import type {
   EngineReport,
   StudentScheduleReport,
 } from "@/lib/domain/scheduling/types";
+
+/**
+ * The report shape stored in schedule_runs.summary_json: the engine's report,
+ * plus the repair stamp a repair-only run adds (how many students were kept
+ * in place from the imported W2W plan; those show as frozen in the report but
+ * are not admin-frozen).
+ */
+export type StoredRunReport = EngineReport & { repaired?: { students: number } };
 import {
   ALL_DAYS,
   type Day,
@@ -170,7 +178,7 @@ export interface CurrentSchedule {
   runId: string;
   generatedAt: Date;
   generatedBy: string;
-  report: EngineReport;
+  report: StoredRunReport;
   /** Keyed by demandCellKey(blockId, day). */
   assignedCells: Map<string, AssignedCellCounts>;
   students: ScheduleStudentRow[];
@@ -241,7 +249,7 @@ export async function loadCurrentSchedule(): Promise<CurrentSchedule | null> {
 /** One run (current or historical) with its per-student rows. */
 export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSchedule> {
   const db = getDb();
-  const report = JSON.parse(run.summaryJson) as EngineReport;
+  const report = JSON.parse(run.summaryJson) as StoredRunReport;
 
   const rows = await db
     .select({

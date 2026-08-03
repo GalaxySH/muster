@@ -25,17 +25,7 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
         setMsg(res.error ?? "Failed.");
         return;
       }
-      const repairNote = res.repaired
-        ? ` Kept ${res.repaired.students} students where the plan places them (${res.repaired.cells} shifts).` +
-          (res.repaired.skippedNames.length > 0
-            ? ` Names nobody matches: ${res.repaired.skippedNames.slice(0, 5).join(", ")}.`
-            : "") +
-          (res.repaired.skippedCells > 0
-            ? res.repaired.skippedCells === 1
-              ? " 1 placement no longer fit and was re-solved."
-              : ` ${res.repaired.skippedCells} placements no longer fit and were re-solved.`
-            : "")
-        : "";
+      const repairNote = res.repaired ? repairSummary(res.repaired) : "";
       setMsg(`Schedule updated: ${res.placed} assignments.${repairNote}`);
     });
   };
@@ -43,7 +33,14 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       {!confirming ? (
-        <button type="button" onClick={() => setConfirming(true)} disabled={pending}>
+        <button
+          type="button"
+          onClick={() => {
+            setRepairOnly(false);
+            setConfirming(true);
+          }}
+          disabled={pending}
+        >
           {pending ? "Working…" : label}
         </button>
       ) : (
@@ -78,4 +75,24 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
       )}
     </div>
   );
+}
+
+/** One line on what repair mode kept and what fell back to the engine. */
+function repairSummary(r: NonNullable<Awaited<ReturnType<typeof generateSchedule>>["repaired"]>) {
+  let note = ` Kept ${r.students} students where the plan places them (${r.cells} shifts).`;
+  if (r.brokenStudents.length > 0) {
+    note +=
+      r.brokenStudents.length === 1
+        ? " 1 student had a placement that no longer fits and was fully re-solved."
+        : ` ${r.brokenStudents.length} students had a placement that no longer fits and were fully re-solved.`;
+  }
+  if (r.skippedNames.length > 0) {
+    const shown = r.skippedNames.slice(0, 5).join(", ");
+    const more = r.skippedNames.length - 5;
+    note += ` Names nobody matches: ${shown}${more > 0 ? ` and ${more} more` : ""}.`;
+  }
+  if (r.skippedCells > 0) {
+    note += ` ${r.skippedCells} shifts name people who are off the roster, not submitted, or marked scheduled.`;
+  }
+  return note;
 }

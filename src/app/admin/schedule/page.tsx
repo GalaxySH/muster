@@ -228,7 +228,11 @@ function SchedulePanel({
 
   const { report, problems } = schedule;
   const placed = report.students.filter((s) => s.assignedMinutes > 0).length;
-  const frozen = report.students.filter((s) => s.frozen).length;
+  // A repair run reports plan-kept students as frozen; only the rest were
+  // actually marked scheduled by an admin.
+  const reportFrozen = report.students.filter((s) => s.frozen).length;
+  const planKept = report.repaired?.students ?? 0;
+  const frozen = reportFrozen - planKept;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -245,6 +249,8 @@ function SchedulePanel({
         Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
+        {planKept > 0 &&
+          ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.params &&
           ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
       </p>

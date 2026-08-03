@@ -172,11 +172,14 @@ Design (most insensitive to mapping upkeep, per scope decision):
 
 **Repair mode (run-panel option, additive-only).** For mid-cycle fixes without
 churning the whole W2W schedule: imported assignments that are still valid (student
-on roster, block still in their selections, within caps, seat still exists) are
-pre-seeded and kept; the engine only fills empty seats and relocates people whose
-imported assignment broke. Implementation seam: the engine already supports
-pre-placed rows via the `submissions.scheduled` carry-forward path; repair mode
-generalizes that seeding to plan-imported placements for one run.
+on roster and submitted, block matched and still in their effective selection,
+weekend rotation known, same-day unique-coverage and day-cap rules met) are
+pre-seeded and kept; the engine only fills empty seats. *(As built: keeping is
+all-or-nothing per student. One broken placement re-solves the whole student,
+never a partial freeze, so shortfall warnings stay honest. The 30/20 hour caps
+are not re-checked on kept placements.)* Implementation seam: the engine already
+supports pre-placed rows via the `submissions.scheduled` carry-forward path;
+repair mode generalizes that seeding to plan-imported placements for one run.
 
 ## 8. Capacity stays with the generator
 
