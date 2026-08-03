@@ -61,22 +61,23 @@ async function main() {
       seededMappings = true;
     }
 
-    // W2W position mapping: insert-when-empty. Rows whose Muster position is
-    // absent from this DB are skipped (the initial fixture predates the
-    // retail-and-cafe merge), so a fresh dev DB seeds what it can.
-    const [w2wMapRow] = await db.select({ n: count() }).from(w2wPositionMap);
-    let seededW2wMap = 0;
-    if ((w2wMapRow?.n ?? 0) > 0) {
-      console.log("w2w position map already present, skipped.");
-    } else {
-      const known = new Set((await db.select({ id: positions.id }).from(positions)).map((p) => p.id));
-      const rows = W2W_POSITION_MAP_SEED.filter((m) => known.has(m.musterPositionId));
-      if (rows.length > 0) await db.insert(w2wPositionMap).values([...rows]);
-      for (const m of W2W_POSITION_MAP_SEED.filter((m) => !known.has(m.musterPositionId))) {
-        console.log(`w2w map: skipped ${m.w2wPositionName} (no position ${m.musterPositionId}).`);
-      }
-      seededW2wMap = rows.length;
+    // W2W position mapping: insert missing entries only, so a mapping skipped
+    // earlier (its Muster position did not exist yet) lands on a later run
+    // without ever clobbering an existing row.
+    const have = new Set(
+      (await db.select({ id: w2wPositionMap.w2wPositionId }).from(w2wPositionMap)).map((r) => r.id),
+    );
+    const known = new Set((await db.select({ id: positions.id }).from(positions)).map((p) => p.id));
+    const rows = W2W_POSITION_MAP_SEED.filter(
+      (m) => !have.has(m.w2wPositionId) && known.has(m.musterPositionId),
+    );
+    if (rows.length > 0) await db.insert(w2wPositionMap).values([...rows]);
+    for (const m of W2W_POSITION_MAP_SEED.filter(
+      (m) => !have.has(m.w2wPositionId) && !known.has(m.musterPositionId),
+    )) {
+      console.log(`w2w map: skipped ${m.w2wPositionName} (no position ${m.musterPositionId}).`);
     }
+    const seededW2wMap = rows.length;
 
     // The seeded "New Student" group (PLAN §13). Window left unconfigured (null)
     // so the form stays locked until an admin schedules it. It becomes the

@@ -21,6 +21,7 @@ import {
   type WeekFile,
 } from "@/lib/domain/w2w-plan/fill";
 import { serializeW2wUpload } from "@/lib/domain/w2w-plan/serialize";
+import { isCp1252Lossy } from "@/lib/text/cp1252";
 import { getCurrentPlan, loadPlanMatchInputs, type PlanMeta } from "./plan-data";
 
 export interface ExportWarnings {
@@ -28,6 +29,8 @@ export interface ExportWarnings {
   overflow: { email: string; displayName: string; blockLabel: string }[];
   /** Students exported under a roster-derived name W2W may not recognize. */
   fallback: { email: string; name: string }[];
+  /** Names the Windows-1252 file cannot hold exactly; W2W will not match them. */
+  lossyNames: { email: string; name: string }[];
   /** Plan rows Muster cannot fill (no matching block); they export open. */
   unmatchedRowCount: number;
   /** Set when the plan changed after the run was generated; regenerate first. */
@@ -129,11 +132,17 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
     planMeta: plan.meta,
     runGeneratedAt: run.generatedAt,
     warnings: {
-      overflow: [...overflowSeen.values()].sort((x, y) => (x.email < y.email ? -1 : 1)),
+      overflow: [...overflowSeen.values()].sort(
+        (x, y) => x.email.localeCompare(y.email) || x.blockLabel.localeCompare(y.blockLabel),
+      ),
       fallback: fallbackEmails.map((email) => ({
         email,
         name: identities.get(email)?.name ?? email,
       })),
+      lossyNames: [...identities.entries()]
+        .filter(([, id]) => isCp1252Lossy(id.name))
+        .map(([email, id]) => ({ email, name: id.name }))
+        .sort((x, y) => x.email.localeCompare(y.email)),
       unmatchedRowCount: report.unmatched.reduce((n, u) => n + u.rowCount, 0),
       planNewerThanRun: plan.meta.importedAt > run.generatedAt,
     },

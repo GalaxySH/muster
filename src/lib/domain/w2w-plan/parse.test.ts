@@ -255,4 +255,19 @@ describe("parseW2wPlan", () => {
     expect(result.rows[0]).toMatchObject({ employeeName: "", category: "" });
     expect(result.rows[1]!.seq).toBe(1);
   });
+
+  it("refuses a file spanning more than one week", () => {
+    // Same weekday under two dates: 12/21 and 12/28 are both Mondays.
+    const result = parseW2wPlan(
+      csvOf(dataRow({ date: "12/21/2026" }), dataRow({ date: "12/28/2026" })),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("more than one week");
+  });
+
+  it("accepts duplicate rows on the same date (multiple seats)", () => {
+    const result = parseW2wPlan(csvOf(dataRow(), dataRow()));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rows).toHaveLength(2);
+  });
 });

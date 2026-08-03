@@ -12,11 +12,19 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { getAppSession } from "@/lib/auth/session";
-import { shiftBlocks, shiftPlans, shiftPlanRows, w2wEmployees } from "@/lib/db/schema";
+import {
+  shiftBlocks,
+  shiftPlans,
+  shiftPlanRows,
+  students,
+  w2wEmployees,
+  w2wPositionMap,
+} from "@/lib/db/schema";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { parseW2wPlan } from "@/lib/domain/w2w-plan/parse";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
-import { parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
+import { deriveW2wName, parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
+import { W2W_POSITION_MAP_SEED } from "@/lib/config/w2w-position-map";
 import { validateW2wCsvUpload } from "./upload-validation";
 import { loadPlanMatchInputs } from "./plan-data";
 
@@ -32,6 +40,8 @@ export interface PlanImportResult {
     capacityUpdated: number;
     /** Rows that arrived already carrying an employee name. */
     assignedRowCount: number;
+    /** Imported names no mapping entry or roster derivation accounts for. */
+    unknownImportedNames: string[];
     /** Per-row parse oddities worth showing (first few). */
     issues: string[];
   };
@@ -56,10 +66,33 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   const parsed = parseW2wPlan(text);
   if (!parsed.ok) return { ok: false, error: parsed.reason };
 
-  const inputs = await loadPlanMatchInputs();
+  const db = getDb();
+  let inputs = await loadPlanMatchInputs();
+  // First use on a database that never ran db:seed (prod deploys run only
+  // migrations): seed the known W2W position mapping so the import is not
+  // inert, skipping rows whose Muster position this DB does not have.
+  if (inputs.map.length === 0) {
+    const seedRows = W2W_POSITION_MAP_SEED.filter((m) => inputs.positionNames.has(m.musterPositionId));
+    if (seedRows.length > 0) {
+      await db.insert(w2wPositionMap).values([...seedRows]);
+      inputs = await loadPlanMatchInputs();
+    }
+  }
   const report = matchPlan(parsed.rows, inputs.map, inputs.blocks);
 
-  const db = getDb();
+  // Names riding in on the file that nothing can place: not in the W2W name
+  // mapping and not the derived name of anyone on the roster.
+  const importedNames = [...new Set(parsed.rows.map((r) => r.employeeName).filter((n) => n !== ""))];
+  let unknownImportedNames: string[] = [];
+  if (importedNames.length > 0) {
+    const [mappedNames, rosterNames] = await Promise.all([
+      db.select({ name: w2wEmployees.w2wName }).from(w2wEmployees),
+      db.select({ displayName: students.displayName }).from(students),
+    ]);
+    const known = new Set(mappedNames.map((m) => m.name));
+    for (const s of rosterNames) known.add(deriveW2wName(s.displayName));
+    unknownImportedNames = importedNames.filter((n) => !known.has(n)).sort();
+  }
   const planId = randomUUID();
   let capacityUpdated = 0;
   try {
@@ -124,6 +157,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
       unknownPositionCount: report.unknownPositions.length,
       capacityUpdated,
       assignedRowCount: parsed.rows.filter((r) => r.employeeName !== "").length,
+      unknownImportedNames: unknownImportedNames.slice(0, 10),
       issues: parsed.issues.slice(0, 5).map((i) => `Row ${i.row}: ${i.message}`),
     },
   };

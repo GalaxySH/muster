@@ -75,8 +75,16 @@ export function fillPlan(
   if (matchedBlockIds.length !== rows.length) {
     throw new Error("matchedBlockIds must align with rows");
   }
+  // Keyed by id and by name: matching falls back to the position name when
+  // W2W recreates a position under a new id, and fill order must follow.
   const fillOrder = new Map<string, number>();
-  for (const entry of map) fillOrder.set(entry.w2wPositionId, entry.fillOrder);
+  const fillOrderByName = new Map<string, number>();
+  for (const entry of map) {
+    fillOrder.set(entry.w2wPositionId, entry.fillOrder);
+    fillOrderByName.set(entry.w2wPositionName, entry.fillOrder);
+  }
+  const orderOf = (i: number): number =>
+    fillOrder.get(rows[i]!.w2wPositionId) ?? fillOrderByName.get(rows[i]!.w2wPositionName) ?? 0;
 
   // Seats per cell, in deterministic fill order.
   const seats = new Map<string, number[]>();
@@ -89,11 +97,7 @@ export function fillPlan(
     else seats.set(key, [i]);
   });
   for (const list of seats.values()) {
-    list.sort((a, b) => {
-      const oa = fillOrder.get(rows[a]!.w2wPositionId) ?? 0;
-      const ob = fillOrder.get(rows[b]!.w2wPositionId) ?? 0;
-      return oa - ob || a - b;
-    });
+    list.sort((a, b) => orderOf(a) - orderOf(b) || a - b);
   }
 
   // Students per cell for this week's cohorts, ordered by email.
@@ -122,7 +126,12 @@ export function fillPlan(
       }
     });
   }
-  overflow.sort((a, b) => (a.studentEmail < b.studentEmail ? -1 : 1));
+  overflow.sort(
+    (a, b) =>
+      a.studentEmail.localeCompare(b.studentEmail) ||
+      a.blockId.localeCompare(b.blockId) ||
+      a.day.localeCompare(b.day),
+  );
 
   const fallback = new Set<string>();
   const filled = rows.map((row, i): FilledRow => {

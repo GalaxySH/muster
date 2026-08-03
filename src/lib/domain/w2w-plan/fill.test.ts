@@ -129,6 +129,24 @@ describe("fillPlan", () => {
     expect(res.fallbackEmails).toEqual(["amy@x.edu"]);
   });
 
+  it("keeps dock fill order when the dock position id changed in W2W", () => {
+    // New id 999 is unmapped, but the name still resolves; fill order must too.
+    const rows = [
+      row({ seq: 0, day: "mon", w2wPositionId: "999", w2wPositionName: "GDEC - Dock Stocker" }),
+      row({ seq: 1, day: "mon", w2wPositionId: "200", w2wPositionName: "GDEC - Stocker" }),
+    ];
+    const res = fillPlan(
+      rows,
+      ["blk", "blk"],
+      [assign("amy@x.edu", "blk", "mon", "weekday")],
+      ids(["amy@x.edu"]),
+      MAP,
+      "a",
+    );
+    expect(res.rows[1]!.filledEmail).toBe("amy@x.edu");
+    expect(res.rows[0]!.filledEmail).toBeNull();
+  });
+
   it("throws when an assigned student has no export identity", () => {
     const rows = [row({ seq: 0, day: "mon" })];
     expect(() =>

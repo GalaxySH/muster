@@ -57,3 +57,18 @@ export function encodeCp1252(text: string): Uint8Array {
   }
   return Uint8Array.from(out);
 }
+
+/**
+ * True when encoding would lose characters (they would become "?"). Callers
+ * warn on lossy names before they end up in a file W2W matches verbatim.
+ */
+export function isCp1252Lossy(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    if (cp === 0x3f) continue;
+    if (C1_BYTE.has(cp)) continue;
+    if (cp <= 0xff && (cp < 0x80 || cp > 0x9f)) continue;
+    return true;
+  }
+  return false;
+}

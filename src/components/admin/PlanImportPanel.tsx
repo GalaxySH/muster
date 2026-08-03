@@ -100,6 +100,11 @@ export function PlanImportPanel() {
             {summary.capacityUpdated > 0 && (
               <li>Staffing targets updated on {summary.capacityUpdated} blocks</li>
             )}
+            {summary.unknownImportedNames.length > 0 && (
+              <li>
+                Names on the file nobody matches: {summary.unknownImportedNames.join(", ")}
+              </li>
+            )}
             {summary.issues.map((line) => (
               <li key={line}>{line}</li>
             ))}

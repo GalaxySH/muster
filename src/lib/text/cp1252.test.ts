@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decodeCp1252, encodeCp1252 } from "./cp1252";
+import { decodeCp1252, encodeCp1252, isCp1252Lossy } from "./cp1252";
 
 describe("decodeCp1252", () => {
   it("reads valid UTF-8 as UTF-8", () => {
@@ -54,5 +54,12 @@ describe("encodeCp1252", () => {
   it("round-trips through decode for CP1252-representable text", () => {
     const text = "O’Brien’s Café – €5 — ok";
     expect(decodeCp1252(encodeCp1252(text))).toBe(text);
+  });
+
+  it("flags lossy text and clears representable text", () => {
+    expect(isCp1252Lossy("Nguyễn Văn A")).toBe(true);
+    expect(isCp1252Lossy("Ngā Puhi")).toBe(true);
+    expect(isCp1252Lossy("O’Brien’s Café – €5")).toBe(false);
+    expect(isCp1252Lossy("Plain Name?")).toBe(false);
   });
 });

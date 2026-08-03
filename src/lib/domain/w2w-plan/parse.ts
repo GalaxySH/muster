@@ -101,6 +101,9 @@ export function parseW2wPlan(csvText: string): W2wParseResult {
 
   const rows: W2wPlanRow[] = [];
   const issues: W2wParseIssue[] = [];
+  // A plan is one week: seeing the same weekday under two dates means the
+  // export spans multiple weeks, which would silently multiply every seat.
+  const datesByDay = new Map<Day, string>();
 
   for (let r = headerIndex + 1; r < grid.length; r++) {
     const cells = grid[r]!;
@@ -122,6 +125,15 @@ export function parseW2wPlan(csvText: string): W2wParseResult {
         return { ok: false, reason: `Row ${rowNumber}: could not read the date "${dateText}".` };
       }
       day = parsed;
+      const seenDate = datesByDay.get(day);
+      if (seenDate === undefined) {
+        datesByDay.set(day, dateText);
+      } else if (seenDate !== dateText) {
+        return {
+          ok: false,
+          reason: `The file covers more than one week (${seenDate} and ${dateText} fall on the same weekday). Export a single week from W2W.`,
+        };
+      }
     } else {
       const dowText = cell("day of week");
       if (dowText === "") {

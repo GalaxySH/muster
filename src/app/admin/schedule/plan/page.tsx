@@ -144,6 +144,22 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
           </ul>
         </InfoCard>
       )}
+      {warnings.lossyNames.length > 0 && (
+        <InfoCard tone="danger" title="Names this file format cannot hold" style={{ margin: "0 0 8px", fontSize: 14 }}>
+          <p style={{ margin: "0 0 4px" }}>
+            These names use characters the CSV encoding cannot store, so W2W will not match them
+            and their shifts will import unassigned. Fix the name in the W2W employee list, then
+            re-upload the Employee Details export here:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {warnings.lossyNames.map((n) => (
+              <li key={n.email}>
+                {n.name} ({n.email})
+              </li>
+            ))}
+          </ul>
+        </InfoCard>
+      )}
       {warnings.fallback.length > 0 && (
         <div style={{ fontSize: 14, color: "#6b5900", marginBottom: 8 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
