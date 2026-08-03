@@ -32,15 +32,32 @@ import {
   trySyncSheet,
   type SheetSyncResult,
 } from "@/lib/admin/sheet-sync";
+import { deriveOpenClose } from "@/lib/domain/blocks";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { fullAvailability } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import type { Cohort, ScheduleAssignment, ScheduleStudent } from "@/lib/domain/scheduling/types";
-import type { Day } from "@/lib/domain/types";
+import type { Day, ShiftBlock } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
 
 /** Superseded runs kept for restore before pruning. */
 const RUN_RETENTION = 10;
+
+/**
+ * The Shift Lead weekend closing block, which the engine fills only as a last
+ * resort. Shift Leads claim their weekend closes by hand (PLAN §18a) and those
+ * claims never reach the generator, so a generated close would double-book the
+ * slot the manual flow is about to fill.
+ */
+function shiftLeadWeekendCloseIds(blocks: readonly ShiftBlock[]): string[] {
+  const weekend = blocks.filter(
+    (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
+  );
+  const { closeId } = deriveOpenClose(weekend);
+  return closeId ? [closeId] : [];
+}
 
 export interface GenerateResult {
   ok: boolean;
@@ -49,7 +66,16 @@ export interface GenerateResult {
   placed?: number;
 }
 
-export async function generateSchedule(): Promise<GenerateResult> {
+export interface GenerateOptions {
+  /**
+   * Also schedule on-roster students who never submitted, treating them as
+   * available for every cell their position runs. Off by default: the admin
+   * opts in per run on /admin/schedule.
+   */
+  includeNonResponders?: boolean;
+}
+
+export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
@@ -109,6 +135,41 @@ export async function generateSchedule(): Promise<GenerateResult> {
     internalByEmail,
   );
 
+  const domainBlocks = blockRows.map(toDomainBlock);
+
+  // Opt-in: fill what the responders left with roster members who never
+  // submitted, treated as available for every cell their position runs. The
+  // fillIn flag holds them back until the engine has settled everyone else, and
+  // a null desiredHours aims them at their position's hour floor, so they only
+  // take capacity nobody claimed. Someone with no position has nothing to
+  // schedule into, so they drop out rather than land in the run's skipped list.
+  // An internal copy still wins where an admin wrote one (§10a).
+  if (options.includeNonResponders) {
+    const responded = new Set(engineStudents.map((s) => s.email));
+    const rosterRows = await db
+      .select({
+        email: students.email,
+        positionId: students.positionId,
+        international: students.international,
+      })
+      .from(students)
+      .where(eq(students.onRoster, true));
+    const nonResponders: ScheduleStudent[] = rosterRows
+      .filter((r) => !responded.has(r.email) && r.positionId)
+      .map((r) => ({
+        email: r.email,
+        positionId: r.positionId,
+        international: r.international,
+        everyWeekendOptIn: false,
+        desiredHours: null,
+        submittedAt: null,
+        scheduled: false,
+        fillIn: true,
+        selection: fullAvailability(r.positionId!, domainBlocks),
+      }));
+    engineStudents.push(...applyInternalOverrides(nonResponders, internalByEmail));
+  }
+
   const previous: ScheduleAssignment[] = currentRun
     ? (
         await db
@@ -127,9 +188,10 @@ export async function generateSchedule(): Promise<GenerateResult> {
   const result = generateAssignments({
     students: engineStudents,
     positions: positionRows.map(toDomainPosition),
-    blocks: blockRows.map(toDomainBlock),
+    blocks: domainBlocks,
     previous,
     params,
+    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
   });
 
   const runId = randomUUID();

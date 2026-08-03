@@ -217,8 +217,13 @@ function SchedulePanel({
   }
 
   const { report, problems } = schedule;
-  const placed = report.students.filter((s) => s.assignedMinutes > 0).length;
-  const frozen = report.students.filter((s) => s.frozen).length;
+  // Counted off the enriched rows so responders and non-responders can be told
+  // apart; they map one to one from the run's report.
+  const placed = schedule.students.filter((s) => s.assignedMinutes > 0 && s.submitted).length;
+  const withoutResponse = schedule.students.filter(
+    (s) => s.assignedMinutes > 0 && !s.submitted,
+  ).length;
+  const frozen = schedule.students.filter((s) => s.frozen).length;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -234,6 +239,7 @@ function SchedulePanel({
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
+        {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
         {report.params &&
           ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}

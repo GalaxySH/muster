@@ -93,6 +93,7 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
     <tr>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
+        {!s.submitted && <span style={noResponseTag}>no response</span>}
       </td>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {s.positionName ?? "-"}
@@ -169,4 +170,10 @@ const keptTag: React.CSSProperties = {
   whiteSpace: "nowrap",
   background: "#e6f4ea",
   color: "#196127",
+};
+
+const noResponseTag: React.CSSProperties = {
+  ...keptTag,
+  background: "#fdf0d5",
+  color: "#8a5a00",
 };

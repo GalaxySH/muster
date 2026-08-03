@@ -17,6 +17,11 @@
  * forward verbatim (still consuming capacity) and no pass touches them. The
  * admin's "mark scheduled" toggle is the whole protection model; there is no
  * separate pin concept.
+ *
+ * Fill-in students (roster members with no response, scheduled only when an
+ * admin asks for it) come last of all: they are placed after the improvement
+ * pass has settled everyone else, against the seats those final rows left, so
+ * adding them never changes another student's schedule.
  */
 import { hourCap } from "../caps";
 import { demandCellKey } from "../demand";
@@ -66,6 +71,7 @@ interface ActiveState {
 
 export function generateAssignments(input: EngineInput): EngineResult {
   const params = input.params ?? DEFAULT_SCHEDULING_PARAMS;
+  const deferred = new Set(input.deferredBlockIds ?? []);
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const positionById = new Map(input.positions.map((p) => [p.id, p]));
   const ledger = new SeatLedger();
@@ -131,11 +137,12 @@ export function generateAssignments(input: EngineInput): EngineResult {
   }
 
   const states: ActiveState[] = [];
-  for (const student of fcfs.filter((s) => !s.scheduled)) {
+  /** Place one student and record their state; skipped when they hold no position. */
+  const place = (student: ScheduleStudent, seats: SeatLedger): ScheduleAssignment[] => {
     const position = student.positionId ? positionById.get(student.positionId) : undefined;
     if (!position) {
       skippedNoPosition.push(student.email);
-      continue;
+      return [];
     }
     const state: ActiveState = {
       student,
@@ -147,16 +154,32 @@ export function generateAssignments(input: EngineInput): EngineResult {
       assignments: [],
     };
     states.push(state);
-    placeStudent(state, blockById, ledger, weekendMinutes, params);
-    assignments.push(...state.assignments);
+    placeStudent(state, blockById, seats, weekendMinutes, params, deferred);
+    return state.assignments;
+  };
+
+  const active = fcfs.filter((s) => !s.scheduled);
+  for (const student of active.filter((s) => !s.fillIn)) {
+    assignments.push(...place(student, ledger));
   }
 
-  const improved = improveAssignments(assignments, input.students, input.blocks, params);
+  const improved = improveAssignments(assignments, input.students, input.blocks, params, deferred);
+
+  // Fill-ins go in only once the improvement pass has settled everyone else, so
+  // they can never take a seat a responder would have moved into. They run
+  // against the ledger those final rows left behind. The weekend load carried
+  // over from placement stays good enough to balance their rotations, since it
+  // only breaks ties between the A and B weeks.
+  const fillInRows: ScheduleAssignment[] = [];
+  for (const student of active.filter((s) => s.fillIn)) {
+    fillInRows.push(...place(student, improved.ledger));
+  }
+  const finalAssignments = [...improved.assignments, ...fillInRows];
 
   // Rebuild per-student coverage from the final rows so reports reflect any
   // relocations the improvement pass made.
   const finalRanges = new Map<string, Map<Day, TimeRange[]>>();
-  for (const row of improved.assignments) {
+  for (const row of finalAssignments) {
     const block = blockById.get(row.blockId)!;
     let byDay = finalRanges.get(row.studentEmail);
     if (!byDay) {
@@ -172,6 +195,9 @@ export function generateAssignments(input: EngineInput): EngineResult {
   let belowMinDays = 0;
   for (const state of states) {
     const ranges = finalRanges.get(state.student.email) ?? new Map<Day, TimeRange[]>();
+    // A fill-in the run found no room for is simply not in it: they stay a
+    // non-responder and never count as short of hours or days.
+    if (state.student.fillIn && ranges.size === 0) continue;
     const assigned = averagedAssignedMinutes(ranges, state.student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES < state.target) shortOfTarget += 1;
     if (ranges.size < state.position.minDays) belowMinDays += 1;
@@ -186,7 +212,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
   }
 
   return {
-    assignments: improved.assignments,
+    assignments: finalAssignments,
     report: {
       students: reports,
       droppedStudents,
@@ -211,20 +237,23 @@ function placeStudent(
   ledger: SeatLedger,
   weekendMinutes: { a: number; b: number },
   params: SchedulingParams,
+  deferred: ReadonlySet<string>,
 ): void {
   const { student, position } = state;
 
   // Non-exempt students belong on the weekend rotation (PLAN §5 #5), so one
   // seed is the best weekend cell they offered; the rest span new days.
+  // Deferred cells rank last everywhere, so a Shift Lead only anchors on a
+  // weekend close when they offered no other weekend cell.
   if (!position.weekendExempt) {
-    const weekend = bestCandidate(state, blockById, ledger, params, {
+    const weekend = bestCandidate(state, blockById, ledger, params, deferred, {
       daysOpen: false,
       weekendOnly: true,
     });
     if (weekend) assign(state, weekend, ledger, weekendMinutes);
   }
   while (state.ranges.size < position.minDays) {
-    const seed = bestCandidate(state, blockById, ledger, params, { daysOpen: false });
+    const seed = bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: false });
     if (!seed) break;
     assign(state, seed, ledger, weekendMinutes);
   }
@@ -234,32 +263,55 @@ function placeStudent(
     const assigned = averagedAssignedMinutes(state.ranges, student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES >= state.target) break;
     const next =
-      bestCandidate(state, blockById, ledger, params, { daysOpen: true }) ??
-      bestCandidate(state, blockById, ledger, params, { daysOpen: false });
+      bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: true }) ??
+      bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: false });
     if (!next) break;
     assign(state, next, ledger, weekendMinutes);
   }
 }
 
+/** How one candidate cell ranks; see `outranks` for the ordering. */
+interface CandidateRank {
+  deferred: boolean;
+  targeted: boolean;
+  pull: number;
+  day: Day;
+  blockId: string;
+}
+
+/**
+ * Candidate ordering, most preferred first: cells the caller deferred come
+ * after everything else, then cells with a target beat untargeted ones, then
+ * higher pull wins. Ties break on day order and block id, so the order is
+ * total and every run reproduces.
+ */
+function outranks(a: CandidateRank, b: CandidateRank): boolean {
+  if (a.deferred !== b.deferred) return !a.deferred;
+  if (a.targeted !== b.targeted) return a.targeted;
+  if (a.pull !== b.pull) return a.pull > b.pull;
+  const dayDelta = DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)!;
+  if (dayDelta !== 0) return dayDelta < 0;
+  return a.blockId < b.blockId;
+}
+
 /**
  * The best feasible cell from the student's own selections, restricted to
- * already-open or still-unopened days. Cells with a target come first, ranked
- * by pull (unmet share of target plus the tunable tier bonus, so late cells
- * run ahead by about that share instead of soaking up every seat); untargeted
- * cells follow, ranked by tier bonus alone. Ties break on day order, then
- * block id (total, deterministic).
+ * already-open or still-unopened days. Pull is the unmet share of target plus
+ * the tunable tier bonus, so late cells run ahead by about that share instead
+ * of soaking up every seat; untargeted cells rank on tier bonus alone. See
+ * `outranks` for the full ordering.
  */
 function bestCandidate(
   state: ActiveState,
   blockById: Map<string, ShiftBlock>,
   ledger: SeatLedger,
   params: SchedulingParams,
+  deferred: ReadonlySet<string>,
   filter: { daysOpen: boolean; weekendOnly?: boolean },
 ): Candidate | null {
   const dayCapMinutes = params.dayCapHours * 60;
   let best: Candidate | null = null;
-  let bestTargeted = false;
-  let bestPull = 0;
+  let bestRank: CandidateRank | null = null;
 
   for (const cell of state.student.selection) {
     const block = blockById.get(cell.blockId);
@@ -284,19 +336,16 @@ function bestCandidate(
 
     const targeted = block.desiredCapacity != null;
     const bonus = tierBonus(block, params);
-    const pull = targeted ? ledger.need(block, cell.day, cohortContext) + bonus : bonus;
-    if (
-      best === null ||
-      (targeted && !bestTargeted) ||
-      (targeted === bestTargeted &&
-        (pull > bestPull ||
-          (pull === bestPull &&
-            (DAY_INDEX.get(cell.day)! < DAY_INDEX.get(best.day)! ||
-              (cell.day === best.day && cell.blockId < best.block.id)))))
-    ) {
+    const rank: CandidateRank = {
+      deferred: deferred.has(block.id),
+      targeted,
+      pull: targeted ? ledger.need(block, cell.day, cohortContext) + bonus : bonus,
+      day: cell.day,
+      blockId: block.id,
+    };
+    if (bestRank === null || outranks(rank, bestRank)) {
       best = { block, day: cell.day };
-      bestTargeted = targeted;
-      bestPull = pull;
+      bestRank = rank;
     }
   }
   return best;

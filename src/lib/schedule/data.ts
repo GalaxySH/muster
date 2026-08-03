@@ -163,6 +163,8 @@ export interface ScheduleStudentRow extends StudentScheduleReport {
   positionName: string | null;
   /** The live "mark scheduled" toggle (frozen shows the value at generation). */
   scheduled: boolean;
+  /** False for a student the run scheduled without a submitted response. */
+  submitted: boolean;
   cells: AssignedCell[];
 }
 
@@ -298,7 +300,13 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
   ];
   const infoByEmail = new Map<
     string,
-    { displayName: string; positionName: string | null; minDays: number | null; scheduled: boolean }
+    {
+      displayName: string;
+      positionName: string | null;
+      minDays: number | null;
+      scheduled: boolean;
+      submitted: boolean;
+    }
   >();
   if (emails.length > 0) {
     const infoRows = await db
@@ -308,6 +316,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionName: positions.name,
         minDays: positions.minDays,
         scheduled: submissions.scheduled,
+        status: submissions.status,
       })
       .from(students)
       .leftJoin(positions, eq(students.positionId, positions.id))
@@ -319,6 +328,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionName: r.positionName,
         minDays: r.minDays,
         scheduled: r.scheduled ?? false,
+        submitted: r.status === "submitted",
       });
     }
   }
@@ -330,6 +340,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       displayName: info?.displayName ?? s.email,
       positionName: info?.positionName ?? null,
       scheduled: info?.scheduled ?? false,
+      submitted: info?.submitted ?? false,
       cells: cellsByStudent.get(s.email) ?? [],
     };
   });

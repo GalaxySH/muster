@@ -48,6 +48,13 @@ export interface ScheduleStudent {
    * may add, remove, or move anything of theirs.
    */
   scheduled: boolean;
+  /**
+   * Fill-in students, scheduled only into what everyone else left over (roster
+   * members with no response, given a stand-in availability). They are placed
+   * after the improvement pass has settled everyone else, so a fill-in can
+   * never take a seat a responder would have moved into.
+   */
+  fillIn?: boolean;
   selection: SelectedShift[];
 }
 
@@ -59,6 +66,15 @@ export interface EngineInput {
   previous: ScheduleAssignment[];
   /** Admin-tunable knobs (./params); the defaults apply when absent. */
   params?: SchedulingParams;
+  /**
+   * Blocks the engine fills only as a last resort: it takes any other feasible
+   * cell first and reaches for one of these only when nothing else lets a
+   * student meet their minimums. The improvement pass never relocates into
+   * them. Shift Lead weekend closes go here, since Shift Leads claim those by
+   * hand (PLAN §18a) and the claims never reach the engine. The engine itself
+   * stays generic: it knows only that these cells come last.
+   */
+  deferredBlockIds?: readonly string[];
 }
 
 /** Per-student outcome for the run summary and the admin list. */

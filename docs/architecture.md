@@ -1046,6 +1046,25 @@ The generator itself, layered exactly like the rest of the app:
   destination's pull beats the vacated cell's, evaluated with the seat lifted
   out; never drops hours, never grows a day count, never touches frozen
   students). Everything is deterministically ordered; no randomness anywhere.
+- **Fill-in students and deferred cells** (v1.08). Two optional inputs steer the
+  engine without teaching it any roster or close-claim concepts:
+  - `ScheduleStudent.fillIn` marks someone the run schedules only into what
+    everyone else left (the non-responders, below). Fill-ins are placed in a
+    **second pass, after `improveAssignments` has settled everyone else**, against
+    the ledger those final rows leave behind (`ImproveResult.ledger`). That
+    ordering is the guarantee: adding fill-ins can never change another student's
+    schedule, which placing them merely last in FCFS order does **not** achieve,
+    because the improvement pass would otherwise find their seats already taken.
+    A fill-in the run finds no room for is left out of the report entirely, so
+    they never inflate "short of hours" or the per-student table.
+  - `EngineInput.deferredBlockIds` marks cells to fill **only as a last resort**:
+    they rank below every other candidate in `bestCandidate`, and `improve.ts`
+    never relocates into one (relocation is an optimization, never what lets a
+    student reach a minimum, so a last-resort seat stays put and none move in).
+    `schedule/actions.ts` passes the **Shift Lead weekend closing block**
+    (`deriveOpenClose` over the SL weekend blocks), because Shift Leads claim
+    weekend closes by hand (§18a) and those claims never reach the generator. The
+    engine stays generic: it knows only that these cells come last.
 - **Persistence** (migration 0017): append-only `schedule_runs`
   (current/superseded + `summaryJson` = the engine report, retention 10) and
   fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
@@ -1056,7 +1075,15 @@ The generator itself, layered exactly like the rest of the app:
   eligible students (`eligibleSubmittedFilter`, shared with the coverage
   loader) with their selections, the current run's rows as the freeze source,
   runs the pure engine, then transactionally supersedes the old run, inserts
-  the new one plus chunked assignment rows, and prunes beyond retention.
+  the new one plus chunked assignment rows, and prunes beyond retention. Its one
+  option, `includeNonResponders` (default off, chosen per run on the page), adds
+  on-roster students with no submitted response as **fill-ins**: their stand-in
+  availability is `fullAvailability()` (`domain/scheduling/availability.ts` — every
+  block their position runs, on every day of that block's day-type), their
+  `desiredHours` is null so they aim at the position floor, and an **internal copy
+  still wins** where an admin wrote one (the same `applyInternalOverrides` seam
+  §10a). Someone with no position drops out rather than landing in
+  `skippedNoPosition`, which is about responses.
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto
