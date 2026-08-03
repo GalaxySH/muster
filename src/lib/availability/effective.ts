@@ -12,7 +12,7 @@ import type { SelectedShift } from "@/lib/domain/types";
 /** One submission's internal copy, keyed by student email at the call site. */
 export interface InternalCopy {
   everyWeekendOptIn: boolean;
-  /** Every internal cell, machine-assigned weekend included. */
+  /** Every internal cell. Copies are literal: no machine-picked weekend. */
   selection: SelectedShift[];
 }
 
@@ -28,4 +28,35 @@ export function applyInternalOverrides<
     if (!internal) return s;
     return { ...s, everyWeekendOptIn: internal.everyWeekendOptIn, selection: internal.selection };
   });
+}
+
+/** How an internal copy differs from the student's own stored answers. */
+export interface InternalDiff {
+  /** Cells in the internal copy the student's rows never had. */
+  added: SelectedShift[];
+  /** Student cells (own picks and the machine-assigned weekend) the copy dropped. */
+  removed: SelectedShift[];
+  rotationChanged: boolean;
+}
+
+const cellKey = (c: SelectedShift) => `${c.blockId}|${c.day}`;
+
+/**
+ * Diff the internal copy against the student's stored availability, for the
+ * per-cell overlay and the banner summary on the per-student page. The
+ * student side is their whole stored record: own picks plus the
+ * machine-assigned weekend cell, since that is what the copy replaced.
+ */
+export function diffInternalFromStudent(
+  student: { selection: SelectedShift[]; autoAssigned: SelectedShift[]; everyWeekendOptIn: boolean },
+  internal: InternalCopy,
+): InternalDiff {
+  const studentCells = [...student.selection, ...student.autoAssigned];
+  const studentKeys = new Set(studentCells.map(cellKey));
+  const internalKeys = new Set(internal.selection.map(cellKey));
+  return {
+    added: internal.selection.filter((c) => !studentKeys.has(cellKey(c))),
+    removed: studentCells.filter((c) => !internalKeys.has(cellKey(c))),
+    rotationChanged: internal.everyWeekendOptIn !== student.everyWeekendOptIn,
+  };
 }

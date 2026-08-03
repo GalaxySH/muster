@@ -750,12 +750,16 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     never modified, so what they submitted is always preserved verbatim. Scheduling
     surfaces read the internal copy in the student's place (the generator, the manual
     weekend cohort); the grid loads it back for further editing, with a note naming who
-    adjusted it and when, plus a **"Use student availability"** revert that drops the
+    adjusted it and when plus a one-line diff summary, per-cell **diff rings** against
+    the student's own answers (amber dashed: not one the student picked; blue dotted:
+    a student cell missing from the trial, live so re-adding it clears the ring), and a
+    **"Use student availability"** revert that drops the
     copy entirely. The copy is saved **literally**: no weekend auto-assign runs on it —
     an empty weekend means no weekend shift. When the **student** later edits or
     re-submits, their own copy updates, the internal copy stands untouched, and the
     `student_changed_after_internal_edit` flag asks the scheduler to reconcile (an admin
-    re-save or revert clears it). The hard-rule gate stays **soft**
+    re-save or revert clears it, and a **"Keep this copy"** dismiss on the flag row
+    clears it while keeping the copy as is). The hard-rule gate stays **soft**
     (0.99): a save that fails the finalize checks warns with the failing rules and needs
     an explicit **Save anyway**; no flag is raised for the override (1.07 — the internal
     copy is the scheduler's own working state; `revalidation_failed` keeps describing
@@ -1377,9 +1381,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   weekend auto-assign; an empty weekend means none), an override-save no longer raises
   `revalidation_failed` (that flag keeps describing the student's stored answers), and
   the per-student page names who adjusted the copy and when, with a "Use student
-  availability" revert. A student edit or re-submit while a copy exists updates only
+  availability" revert, a one-line diff summary (cells added, removed, rotation
+  changed), and per-cell rings in the grid: amber dashed on cells the student never
+  picked, blue dotted on student cells missing from the trial. A student edit or
+  re-submit while a copy exists updates only
   their own rows and raises the new `student_changed_after_internal_edit` flag; an
-  admin re-save or revert clears it. The responses export and running sheet keep
+  admin re-save or revert clears it, as does an explicit "Keep this copy" dismiss on
+  the flag row (the dismiss action is shared with `position_change`). The responses export and running sheet keep
   showing the student's answers plus a new "Adjusted internally" marker column. The
   position-change carry-over remaps internal cells alongside the student's, and the
   position/block delete guards count them. Additive migration (two tables + one enum

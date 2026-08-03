@@ -11,6 +11,7 @@ import {
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
+import { diffInternalFromStudent, type InternalDiff } from "@/lib/availability/effective";
 import { validateAvailability } from "@/lib/domain/validation";
 import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
@@ -24,7 +25,7 @@ import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
-import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
+import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
@@ -119,6 +120,17 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
 }
 
+/** One sentence for the banner: how the saved copy differs from the student. */
+function describeDiff(diff: InternalDiff): string {
+  const parts: string[] = [];
+  if (diff.added.length > 0)
+    parts.push(`${diff.added.length} shift${diff.added.length === 1 ? "" : "s"} added`);
+  if (diff.removed.length > 0) parts.push(`${diff.removed.length} removed`);
+  if (diff.rotationChanged) parts.push("weekend rotation changed");
+  if (parts.length === 0) return "It matches their answers.";
+  return `Compared to their answers: ${parts.join(", ")}.`;
+}
+
 export default async function StudentDetailPage({
   params,
   searchParams,
@@ -208,6 +220,14 @@ export default async function StudentDetailPage({
   const gridSelection = internal ? internal.selection : selection;
   const gridAutoAssigned = internal ? [] : autoAssigned;
   const gridOptIn = internal ? internal.everyWeekendOptIn : (submission?.everyWeekendOptIn ?? false);
+  // How the saved copy differs from the student's own answers: the banner
+  // summary, and per-cell rings in the grid below.
+  const internalDiff = internal
+    ? diffInternalFromStudent(
+        { selection, autoAssigned, everyWeekendOptIn: submission?.everyWeekendOptIn ?? false },
+        internal,
+      )
+    : null;
   const grid = position
     ? buildAdminGrid(blocks, gridSelection, gridAutoAssigned, highDemand, schedule?.cells ?? [])
     : null;
@@ -346,6 +366,7 @@ export default async function StudentDetailPage({
                 <span>
                   Adjusted internally by {internal.editedBy} on {fmtStamp(internal.editedAt)}. The
                   student&apos;s own answers are kept.
+                  {internalDiff && ` ${describeDiff(internalDiff)}`}
                 </span>
                 <RevertInternalButton studentEmail={detail.email} />
               </div>
@@ -361,6 +382,7 @@ export default async function StudentDetailPage({
               hasCurrentRun={schedule !== null}
               hasSchedule={(schedule?.cells.length ?? 0) > 0}
               isInternal={internal !== null}
+              studentCells={internal ? [...selection, ...autoAssigned] : null}
             />
           </section>
         )}
@@ -799,8 +821,10 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
 
 /**
  * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
- * Only position_change gets a dismiss control; revalidation_failed clears
- * itself when a validation run passes.
+ * position_change gets a plain dismiss; student_changed_after_internal_edit
+ * gets "Keep this copy" (the other two ways to clear it are re-saving the grid
+ * or reverting to the student's answers). revalidation_failed clears itself
+ * when a validation run passes.
  */
 function StoredFlagAlerts({
   alerts,
@@ -816,7 +840,15 @@ function StoredFlagAlerts({
           <span style={dangerPillStyle}>{FLAG_LABELS[f.type]}</span>
           <span style={{ flex: 1 }}>{f.detail}</span>
           {f.type === "position_change" && (
-            <ClearPositionChangeButton submissionId={submissionId} />
+            <DismissFlagButton submissionId={submissionId} type="position_change" label="Clear" />
+          )}
+          {f.type === "student_changed_after_internal_edit" && (
+            <DismissFlagButton
+              submissionId={submissionId}
+              type="student_changed_after_internal_edit"
+              label="Keep this copy"
+              title="Clears this flag and keeps the internal copy as it is."
+            />
           )}
         </div>
       ))}

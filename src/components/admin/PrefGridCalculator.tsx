@@ -96,6 +96,14 @@ export interface PrefGridCalculatorProps {
    * own picks; the cell tooltips stop attributing the picks to the student.
    */
   isInternal: boolean;
+  /**
+   * The student's own stored cells (their picks plus the machine-assigned
+   * weekend), passed only when an internal copy is loaded. Drives the per-cell
+   * diff cues: an amber dashed ring on cells the student never picked, a blue
+   * dotted ring on student cells the copy dropped. Null hides the cues (the
+   * grid already IS the student's own answers).
+   */
+  studentCells: SelectedShift[] | null;
 }
 
 /** How long "Saved" stays up before the button retires itself. */
@@ -143,6 +151,14 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
+  // The student's own cells, for the diff cues against a loaded internal copy.
+  const studentKeys = useMemo(
+    () =>
+      props.studentCells
+        ? new Set(props.studentCells.map((c) => selectionKey(c.blockId, c.day)))
+        : null,
+    [props.studentCells],
+  );
   const selection = useMemo(
     () => keysToSelection(mock).filter((s) => validIds.has(s.blockId)),
     [mock, validIds],
@@ -412,6 +428,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             busyCell={busyCell}
             split={split}
             isInternal={props.isInternal}
+            studentKeys={studentKeys}
             onToggle={onToggle}
           />
         </div>
@@ -445,6 +462,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               busyCell={busyCell}
               split={split}
               isInternal={props.isInternal}
+              studentKeys={studentKeys}
               onToggle={onToggle}
             />
           </div>
@@ -452,7 +470,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       </div>
 
       <div style={footerRow}>
-        <Legend split={split} />
+        <Legend split={split} showDiff={studentKeys !== null} />
         {/* marginLeft keeps the controls in the bottom-right corner even when the
             legend is wide enough to push them onto their own line. */}
         {mode === "prefs" && (
@@ -548,6 +566,7 @@ function CalcTable({
   busyCell,
   split,
   isInternal,
+  studentKeys,
   onToggle,
 }: {
   sub: AdminSubGrid;
@@ -559,6 +578,7 @@ function CalcTable({
   busyCell: string | null;
   split: boolean;
   isInternal: boolean;
+  studentKeys: Set<string> | null;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   return (
@@ -584,6 +604,12 @@ function CalcTable({
               const inMock = mock.has(key);
               const wasPreferred = preferred.has(key);
               const wasAuto = auto.has(key);
+              // Diff cues against the student's own cells (internal copy only).
+              // Live against the trial, so re-adding a dropped cell clears its ring.
+              const inStudent = studentKeys ? studentKeys.has(key) : null;
+              const notOffered =
+                inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
+              const removedFromStudent = inStudent === true && !inMock;
               const source = assigned.get(key) ?? null;
               const isHot = row.highDemandDays[i] ?? false;
               const pressed = mode === "schedule" ? source !== null : inMock;
@@ -593,9 +619,28 @@ function CalcTable({
                     type="button"
                     aria-pressed={pressed}
                     aria-label={`${row.label} ${DAY_LABEL[day]}`}
-                    title={cellTitle(mode, inMock, wasPreferred, wasAuto, source, isHot, isInternal)}
+                    title={cellTitle(
+                      mode,
+                      inMock,
+                      wasPreferred,
+                      wasAuto,
+                      source,
+                      isHot,
+                      isInternal,
+                      notOffered,
+                      removedFromStudent,
+                    )}
                     onClick={() => onToggle(row.block.id, day)}
-                    style={cellStyle(inMock, wasPreferred, wasAuto, source, busyCell === key, split)}
+                    style={cellStyle(
+                      inMock,
+                      wasPreferred,
+                      wasAuto,
+                      source,
+                      busyCell === key,
+                      split,
+                      notOffered,
+                      removedFromStudent,
+                    )}
                   >
                     {isHot && <span aria-hidden style={hotTick} />}
                     {inMock && (
@@ -622,6 +667,8 @@ function cellTitle(
   source: AssignmentSource | null,
   isHot: boolean,
   isInternal: boolean,
+  notOffered: boolean,
+  removedFromStudent: boolean,
 ): string {
   // With an internal copy loaded the saved picks are the admin's, so the
   // tooltips stop attributing them to the student.
@@ -636,8 +683,12 @@ function cellTitle(
     else parts.push(notPickedLabel);
   } else {
     if (inMock)
+      parts.push(notOffered ? "In trial schedule (not one the student picked)" : "In trial schedule");
+    else if (removedFromStudent)
       parts.push(
-        wasPreferred || wasAuto ? "In trial schedule" : `In trial schedule (${notPickedLabel})`,
+        wasPreferred
+          ? "Student picked this; in the saved copy but not the trial schedule"
+          : "Student picked this; not in the saved copy. Click to add it back.",
       );
     else if (wasPreferred)
       parts.push(
@@ -669,7 +720,7 @@ function SubHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Legend({ split }: { split: boolean }) {
+function Legend({ split, showDiff }: { split: boolean; showDiff: boolean }) {
   return (
     <div style={legendCol}>
       {/* The split only exists once there's a schedule run to compare against;
@@ -685,6 +736,18 @@ function Legend({ split }: { split: boolean }) {
         <span>
           <span style={prefSwatch("var(--color-background-warning)", split)} /> auto-assigned
         </span>
+        {showDiff && (
+          <>
+            <span>
+              <span style={ringSwatch("1.5px dashed var(--color-border-warning)")} /> not picked by
+              the student
+            </span>
+            <span>
+              <span style={ringSwatch(`1.5px dotted ${PREF_PICKED_COLOR}`)} /> their pick, not in
+              this copy
+            </span>
+          </>
+        )}
         {split && (
           <>
             <span>
@@ -889,6 +952,12 @@ const schedSwatch = (color: string): React.CSSProperties => ({
   ...swatch,
   background: `linear-gradient(45deg, ${EMPTY_COLOR} 0 50%, ${color} 50% 100%)`,
 });
+/** A legend swatch for a diff ring: empty fill, the cue lives in the border. */
+const ringSwatch = (border: string): React.CSSProperties => ({
+  ...swatch,
+  background: EMPTY_COLOR,
+  border,
+});
 
 /**
  * The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet
@@ -942,8 +1011,18 @@ function cellStyle(
   source: AssignmentSource | null,
   busy: boolean,
   split: boolean,
+  notOffered: boolean,
+  removedFromStudent: boolean,
 ): React.CSSProperties {
   const pref = prefFill(inMock, wasPreferred, wasAuto);
+  // A cell the student never offered, now in the trial, gets an amber dashed
+  // ring; a student cell missing from the trial (dropped by the internal copy,
+  // or just unchecked) gets a blue dotted one.
+  const border = notOffered
+    ? "1.5px dashed var(--color-border-warning)"
+    : removedFromStudent
+      ? `1.5px dotted ${PREF_PICKED_COLOR}`
+      : "1px solid var(--color-border-tertiary)";
   return {
     position: "relative",
     width: CELL,
@@ -962,11 +1041,7 @@ function cellStyle(
     background: split
       ? `linear-gradient(45deg, ${pref} 0 50%, ${schedFill(source)} 50% 100%)`
       : pref,
-    // A cell the student never offered, now in the trial, gets an amber ring.
-    border:
-      inMock && !wasPreferred && !wasAuto
-        ? "1.5px dashed var(--color-border-warning)"
-        : "1px solid var(--color-border-tertiary)",
+    border,
     opacity: busy ? 0.5 : 1,
   };
 }

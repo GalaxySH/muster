@@ -651,19 +651,26 @@ student shift_selections → internal_availability/internal_selections → gener
   responses export stay on the student rows by design.
 - **Reconcile flag:** `writeSelectionAndFlags` (student saves + finalize only) re-raises
   `student_changed_after_internal_edit` after its blanket flag delete whenever an
-  internal header exists, drafts included. Cleared by an admin re-save or by
+  internal header exists, drafts included. Cleared by an admin re-save, by
   `revertInternalAvailability`, which deletes the header (cells cascade off it) and
-  falls back to the student's rows; the `RevertInternalButton` on the per-student page
-  drives it behind a confirm step.
+  falls back to the student's rows (the `RevertInternalButton` on the per-student page
+  drives it behind a confirm step), or by the "Keep this copy" dismiss on the flag row
+  (`DismissFlagButton` → `dismissFlag` in `admin/actions.ts`, the generalization of the
+  old position_change-only clear; both dismissable flag types go through it).
 - **Config integrity:** `applyPositionChange` runs the same carry-over remap over
   `internal_selections` as over `shift_selections` (otherwise the engine would silently
   drop out-of-position internal cells), and the position/block delete guards
   (`positions/actions.ts`) count internal cells too, since they FK `shift_blocks`.
 - **The grid shows effective:** the per-student page builds the grid from the internal
-  copy when one exists (with a banner naming `editedBy`/`editedAt` + the revert button;
-  cell tooltips stop attributing picks to the student), while the validation card, KPI
-  strip, and flags card keep reading the student's own data — they explain the
-  student's submission, not the working copy. The client form
+  copy when one exists (with a banner naming `editedBy`/`editedAt`, a one-line diff
+  summary from the pure `diffInternalFromStudent` in `availability/effective.ts`, and
+  the revert button; cell tooltips stop attributing picks to the student), while the
+  validation card, KPI strip, and flags card keep reading the student's own data — they
+  explain the student's submission, not the working copy. With a copy loaded the grid
+  also gets `studentCells` (the student's picks + machine-assigned weekend) and draws
+  per-cell diff rings against the **trial** state: amber dashed on a trial cell the
+  student never picked, blue dotted on a student cell missing from the trial, so the
+  cues update live as the admin clicks and a re-added cell sheds its ring. The client form
 (`components/AvailabilityForm.tsx`) runs the
 same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
 continue** (the latter routes to `/travel` on success), and for an already-submitted form

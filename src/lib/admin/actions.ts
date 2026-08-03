@@ -163,11 +163,19 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
 }
 
 /**
- * Admin: dismiss a submission's position_change flag(s) after reviewing the
- * change (roadmap 3.3). Deletes only that flag type; revalidation_failed has no
- * manual dismiss, it clears itself when a validation run passes.
+ * The two flag types with a manual dismiss on the per-student flags pane:
+ * position_change after the admin reviews the change (roadmap 3.3), and
+ * student_changed_after_internal_edit when the admin decides to keep the
+ * internal copy as it is (PLAN §10a). revalidation_failed has no manual
+ * dismiss, it clears itself when a validation run passes.
  */
-export async function clearPositionChangeFlag(submissionId: string): Promise<AdminActionResult> {
+export type DismissableFlag = "position_change" | "student_changed_after_internal_edit";
+
+/** Admin: dismiss a submission's flags of one dismissable type. */
+export async function dismissFlag(
+  submissionId: string,
+  type: DismissableFlag,
+): Promise<AdminActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
@@ -179,9 +187,7 @@ export async function clearPositionChangeFlag(submissionId: string): Promise<Adm
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
-  await db
-    .delete(flags)
-    .where(and(eq(flags.submissionId, submissionId), eq(flags.type, "position_change")));
+  await db.delete(flags).where(and(eq(flags.submissionId, submissionId), eq(flags.type, type)));
 
   revalidatePath(`/admin/students/${encodeURIComponent(sub.email)}`);
   revalidatePath("/admin/responses");
