@@ -14,9 +14,12 @@ and the position map self-seeds on first import so prod needs no manual seed.
 1. The scheduler maintains the weekly shift plan in W2W (positions, blocks, seat
    counts per block per day — the budget). They export it from the Schedule Grid
    view (the same shape as `EXPORT.CSV`: one dated week, one row per seat).
-2. They upload that export on the Muster admin plan screen. Muster parses it in
+2. They upload that export on the Muster admin plan screen, picking **which
+   weekend rotation the exported week is (A or B)**. Muster parses it in
    memory (roster-import idiom: never written to disk), matches rows to positions
-   and blocks, stores the plan, and shows a diff/report.
+   and blocks, stores the plan, and shows a diff/report. Seats are
+   rotation-neutral (both weeks share the budget); the specifier decides how
+   names riding on weekend rows are read.
 3. Muster projects the **current schedule run** onto the plan's seats and re-exports
    it as **two dateless day-of-week files (week A and week B)** with only the
    employee field filled in.
@@ -173,8 +176,9 @@ Design (most insensitive to mapping upkeep, per scope decision):
 **Repair mode (run-panel option, additive-only).** For mid-cycle fixes without
 churning the whole W2W schedule: imported assignments that are still valid (student
 on roster and submitted, block matched and still in their effective selection,
-weekend rotation known, same-day unique-coverage and day-cap rules met) are
-pre-seeded and kept; the engine only fills empty seats. *(As built: keeping is
+same-day unique-coverage and day-cap rules met) are
+pre-seeded and kept; the engine only fills empty seats. Weekend placements take
+their rotation from the plan's week specifier (opt-ins stay every-weekend). *(As built: keeping is
 all-or-nothing per student. One broken placement re-solves the whole student,
 never a partial freeze, so shortfall warnings stay honest. The 30/20 hour caps
 are not re-checked on kept placements.)* Implementation seam: the engine already
@@ -200,8 +204,9 @@ stocker 7:00–10:30 1 → 2 (dock), cashier midday 2 → 1.
 ## 9. Persistence
 
 - `shift_plans`: `id`, `imported_at`, `imported_by`, `source_filename`,
-  `row_count`, `status` (`current` | `superseded`) — same append-only shape as
-  `schedule_runs`; importing marks the previous plan superseded.
+  `row_count`, `rotation_week` (`a` | `b`, chosen at upload), `status`
+  (`current` | `superseded`) — same append-only shape as `schedule_runs`;
+  importing marks the previous plan superseded.
 - `shift_plan_rows`: `plan_id` (FK cascade), `seq` (source order, the passthrough
   and determinism backbone), the passthrough columns verbatim, `day` (day enum),
   and the parsed minutes. *(As built: no stored `matched_block_id` or

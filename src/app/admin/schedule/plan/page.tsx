@@ -197,8 +197,9 @@ function PlanReport({ model }: { model: PlanPageModel }) {
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Current plan</h2>
         <p style={{ margin: "0 0 6px", fontSize: 14 }}>
-          <strong>{meta.sourceFilename}</strong> · {meta.rowCount} shifts · imported{" "}
-          {meta.importedAt.toLocaleString()} by {meta.importedBy}
+          <strong>{meta.sourceFilename}</strong> · {meta.rowCount} shifts · weekend rotation{" "}
+          {meta.rotationWeek.toUpperCase()} · imported {meta.importedAt.toLocaleString()} by{" "}
+          {meta.importedBy}
         </p>
         <p style={{ margin: 0, fontSize: 14, color: "#555" }}>
           {perPosition.map((p) => `${p.name} ${p.rows}`).join(" · ")}

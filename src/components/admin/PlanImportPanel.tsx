@@ -19,6 +19,7 @@ export function PlanImportPanel() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<PlanImportResult["summary"] | null>(null);
   const [applyCapacity, setApplyCapacity] = useState(false);
+  const [rotationWeek, setRotationWeek] = useState<"a" | "b">("a");
 
   function runImport() {
     setSummary(null);
@@ -36,6 +37,7 @@ export function PlanImportPanel() {
     setError(null);
     const formData = new FormData();
     formData.set("file", file);
+    formData.set("rotationWeek", rotationWeek);
     if (applyCapacity) formData.set("applyCapacity", "1");
 
     startTransition(async () => {
@@ -65,6 +67,24 @@ export function PlanImportPanel() {
         <ActionButton onClick={runImport} pending={pending} pendingLabel="Importing…">
           Import plan
         </ActionButton>
+      </div>
+      <div
+        style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+      >
+        <span>The exported week is weekend rotation:</span>
+        {(["a", "b"] as const).map((week) => (
+          <label key={week} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <input
+              type="radio"
+              name="rotationWeek"
+              value={week}
+              checked={rotationWeek === week}
+              onChange={() => setRotationWeek(week)}
+              disabled={pending}
+            />
+            Week {week.toUpperCase()}
+          </label>
+        ))}
       </div>
       <label style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
         <input

@@ -156,17 +156,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         .filter((s) => !s.scheduled)
         .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
     );
-    const weekendCohortByEmail = new Map<string, Cohort>();
-    for (const row of previous) {
-      if (row.cohort !== "weekday" && !weekendCohortByEmail.has(row.studentEmail)) {
-        weekendCohortByEmail.set(row.studentEmail, row.cohort);
-      }
-    }
-    const seeds = await loadRepairSeeds(
-      eligibleForRepair,
-      weekendCohortByEmail,
-      params.dayCapHours * 60,
-    );
+    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60);
     if (!seeds) {
       return {
         ok: false,

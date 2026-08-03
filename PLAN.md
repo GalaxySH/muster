@@ -1371,7 +1371,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,
   refuses multi-week files; live matched report against the position map + blocks; an
   optional **"Set staffing targets from this plan"** checkbox writes per-block
-  `desired_capacity` from the plan's seat counts), refresh the **email-keyed W2W name
+  `desired_capacity` from the plan's seat counts; a required **weekend-rotation
+  specifier (week A or B)** records which rotation the exported week is, deciding how
+  names on weekend rows are read), refresh the **email-keyed W2W name
   mapping** from the Employee Details export (name/email/number only), and download the
   **filled week A/B files** — the current run projected onto the plan's exact rows
   (full refill; row count preserved; Date blanked, day names emitted; cohort a+every /

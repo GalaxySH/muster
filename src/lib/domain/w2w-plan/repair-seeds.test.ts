@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildNameIndex, buildRepairSeeds, type RepairStudent } from "./repair-seeds";
 import type { MatchedPlanRow } from "./types";
-import type { Cohort } from "../scheduling/types";
 import type { Day } from "../types";
 
 const DAY_CAP = 8 * 60;
@@ -34,7 +33,6 @@ const student = (over: Partial<RepairStudent> = {}): RepairStudent => ({
 });
 
 const names = (pairs: [string, string | null][]) => new Map(pairs);
-const noCohorts = new Map<string, Cohort>();
 
 describe("buildNameIndex", () => {
   it("lets mapping names win over derived names", () => {
@@ -74,7 +72,7 @@ describe("buildRepairSeeds", () => {
       [planRow({ day: "mon", employeeName: "Ada" })],
       names([["Ada", "ada@x.edu"]]),
       new Map([["ada@x.edu", student()]]),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.byEmail.get("ada@x.edu")).toEqual([
@@ -92,7 +90,7 @@ describe("buildRepairSeeds", () => {
       rows,
       names([["Ada", "ada@x.edu"]]),
       new Map([["ada@x.edu", student()]]),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.byEmail.size).toBe(0);
@@ -104,13 +102,13 @@ describe("buildRepairSeeds", () => {
       [planRow({ day: "tue", employeeName: "Ada" })],
       names([["Ada", "ada@x.edu"]]),
       new Map([["ada@x.edu", student()]]),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.brokenStudents).toEqual(["ada@x.edu"]);
   });
 
-  it("infers weekend cohorts: opt-in, current rotation, else broken", () => {
+  it("takes weekend rotation from the plan week, with opt-ins on every", () => {
     const satRow = (name: string) =>
       planRow({
         day: "sat",
@@ -118,35 +116,21 @@ describe("buildRepairSeeds", () => {
         matchedBlockId: "we-blk",
       });
     const sel = { selection: [{ blockId: "we-blk", day: "sat" as Day }] };
-    const res = buildRepairSeeds(
-      [satRow("Opt In"), satRow("Rotation B"), satRow("No Rotation")],
-      names([
-        ["Opt In", "opt@x.edu"],
-        ["Rotation B", "rb@x.edu"],
-        ["No Rotation", "none@x.edu"],
-      ]),
-      new Map([
-        ["opt@x.edu", student({ everyWeekendOptIn: true, ...sel })],
-        ["rb@x.edu", student(sel)],
-        ["none@x.edu", student(sel)],
-      ]),
-      new Map<string, Cohort>([["rb@x.edu", "b"]]),
-      DAY_CAP,
-    );
-    expect(res.byEmail.get("opt@x.edu")![0]!.cohort).toBe("every");
-    expect(res.byEmail.get("rb@x.edu")![0]!.cohort).toBe("b");
-    expect(res.brokenStudents).toEqual(["none@x.edu"]);
-  });
-
-  it("treats a stale every cohort as broken when the opt-in was dropped", () => {
-    const res = buildRepairSeeds(
-      [planRow({ day: "sat", employeeName: "Ada", matchedBlockId: "we-blk" })],
-      names([["Ada", "ada@x.edu"]]),
-      new Map([["ada@x.edu", student({ selection: [{ blockId: "we-blk", day: "sat" }] })]]),
-      new Map<string, Cohort>([["ada@x.edu", "every"]]),
-      DAY_CAP,
-    );
-    expect(res.brokenStudents).toEqual(["ada@x.edu"]);
+    const eligible = new Map([
+      ["opt@x.edu", student({ everyWeekendOptIn: true, ...sel })],
+      ["plain@x.edu", student(sel)],
+    ]);
+    const rows = [satRow("Opt In"), satRow("Plain")];
+    const nameMap = names([
+      ["Opt In", "opt@x.edu"],
+      ["Plain", "plain@x.edu"],
+    ]);
+    const weekA = buildRepairSeeds(rows, nameMap, eligible, "a", DAY_CAP);
+    const weekB = buildRepairSeeds(rows, nameMap, eligible, "b", DAY_CAP);
+    expect(weekA.byEmail.get("opt@x.edu")![0]!.cohort).toBe("every");
+    expect(weekA.byEmail.get("plain@x.edu")![0]!.cohort).toBe("a");
+    expect(weekB.byEmail.get("plain@x.edu")![0]!.cohort).toBe("b");
+    expect(weekA.brokenStudents).toEqual([]);
   });
 
   it("dedupes two seats of one cell carrying the same name", () => {
@@ -154,7 +138,7 @@ describe("buildRepairSeeds", () => {
       [planRow({ day: "mon", employeeName: "Ada" }), planRow({ day: "mon", employeeName: "Ada" })],
       names([["Ada", "ada@x.edu"]]),
       new Map([["ada@x.edu", student()]]),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.byEmail.get("ada@x.edu")).toHaveLength(1);
@@ -186,7 +170,7 @@ describe("buildRepairSeeds", () => {
           }),
         ],
       ]),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.brokenStudents).toEqual(["ada@x.edu"]);
@@ -217,7 +201,7 @@ describe("buildRepairSeeds", () => {
           }),
         ],
       ]),
-      noCohorts,
+      "a",
       9 * 60,
     );
     expect(res.brokenStudents).toEqual(["ada@x.edu"]);
@@ -231,7 +215,7 @@ describe("buildRepairSeeds", () => {
       ],
       names([["Off Roster", "gone@x.edu"]]),
       new Map(),
-      noCohorts,
+      "a",
       DAY_CAP,
     );
     expect(res.skippedNames).toEqual(["Unknown Person"]);

@@ -31,6 +31,8 @@ export interface PlanMeta {
   importedBy: string;
   sourceFilename: string;
   rowCount: number;
+  /** Which weekend rotation the exported week represents. */
+  rotationWeek: "a" | "b";
 }
 
 export interface CurrentPlan {
@@ -93,6 +95,7 @@ export async function getCurrentPlan(): Promise<CurrentPlan | null> {
       importedBy: meta.importedBy,
       sourceFilename: meta.sourceFilename,
       rowCount: meta.rowCount,
+      rotationWeek: meta.rotationWeek,
     },
     rows: rows.map(toDomainRow),
   };

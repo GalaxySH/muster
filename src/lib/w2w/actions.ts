@@ -61,6 +61,11 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   if (!check.ok) return { ok: false, error: check.error ?? "Invalid file." };
 
   const applyCapacity = formData.get("applyCapacity") === "1";
+  const rotationRaw = formData.get("rotationWeek");
+  if (rotationRaw !== "a" && rotationRaw !== "b") {
+    return { ok: false, error: "Pick which weekend rotation this export is (week A or B)." };
+  }
+  const rotationWeek = rotationRaw;
 
   const text = decodeCp1252(new Uint8Array(await file.arrayBuffer()));
   const parsed = parseW2wPlan(text);
@@ -110,6 +115,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
         importedBy: session.email,
         sourceFilename: file.name,
         rowCount: parsed.rows.length,
+        rotationWeek,
       });
       for (let at = 0; at < parsed.rows.length; at += ROW_CHUNK) {
         await tx.insert(shiftPlanRows).values(

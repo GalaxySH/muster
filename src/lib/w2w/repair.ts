@@ -17,7 +17,6 @@ import {
   type RepairSeedResult,
   type RepairStudent,
 } from "@/lib/domain/w2w-plan/repair-seeds";
-import type { Cohort } from "@/lib/domain/scheduling/types";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
 
 export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-plan/repair-seeds";
@@ -25,7 +24,6 @@ export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-pl
 /** Null when no plan is imported (repair mode cannot run). */
 export async function loadRepairSeeds(
   eligible: Map<string, RepairStudent>,
-  weekendCohortByEmail: Map<string, Cohort>,
   dayCapMinutes: number,
 ): Promise<RepairSeedResult | null> {
   const plan = await getCurrentPlan();
@@ -43,5 +41,11 @@ export async function loadRepairSeeds(
     mappedRows,
     rosterRows.map((r) => ({ name: deriveW2wName(r.displayName), email: r.email })),
   );
-  return buildRepairSeeds(report.rows, emailByName, eligible, weekendCohortByEmail, dayCapMinutes);
+  return buildRepairSeeds(
+    report.rows,
+    emailByName,
+    eligible,
+    plan.meta.rotationWeek,
+    dayCapMinutes,
+  );
 }

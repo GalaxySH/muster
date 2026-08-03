@@ -1171,10 +1171,11 @@ their own warning.
 names riding on the imported plan (mapping first, roster-derived fallback; a
 name claimed twice on either side is ambiguous and resolves to nobody) and
 validates placements in the pure `domain/w2w-plan/repair-seeds.ts`: eligible
-submitted student, matched block, cell inside their effective selection,
-weekend rotation known (opt-in, or their current-run a/b cohort; a stale
-"every" is rejected), plus the engine's own same-day rules (unique coverage,
-day cap). Keeping is **all or nothing per student**: one broken placement
+submitted student, matched block, cell inside their effective selection, plus
+the engine's own same-day rules (unique coverage, day cap). Weekend cells take
+their rotation from the plan's `rotation_week` (the A/B specifier chosen at
+upload, since the exported week is one specific rotation); every-weekend
+opt-ins stay "every". Keeping is **all or nothing per student**: one broken placement
 drops the whole student back to a full re-solve, because freezing someone on
 a surviving subset would strand them under their hour floor with the
 shortfall warnings suppressed (frozen students are excluded from the problems

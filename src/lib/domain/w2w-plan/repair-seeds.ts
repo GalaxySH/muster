@@ -3,11 +3,15 @@
  * (docs/w2w-shift-plan-roundtrip.md §7). The plan's imported names become
  * carry-forward rows, all or nothing per student: if ANY of a student's
  * placements is broken (unmatched block, cell not in their effective
- * selection, unknown weekend rotation, same-day shift adding no unique
- * coverage, day over the hour cap), the student is not seeded at all and the
- * engine re-solves them completely. Freezing someone on a surviving subset
- * would silently strand them under their hour floor with the shortfall
- * warnings suppressed, which is worse than redoing their week.
+ * selection, same-day shift adding no unique coverage, day over the hour
+ * cap), the student is not seeded at all and the engine re-solves them
+ * completely. Freezing someone on a surviving subset would silently strand
+ * them under their hour floor with the shortfall warnings suppressed, which
+ * is worse than redoing their week.
+ *
+ * Weekend cells take their rotation from the plan itself: the imported file
+ * is one specific week (A or B, chosen at upload), so a weekend name in it
+ * means that student works that rotation. Every-weekend opt-ins stay "every".
  */
 import { coveredMinutes, redundantRangeIndex } from "../intervals";
 import { dayTypeOf, type Day } from "../types";
@@ -68,7 +72,7 @@ export function buildRepairSeeds(
   rows: readonly MatchedPlanRow[],
   emailByName: ReadonlyMap<string, string | null>,
   eligible: ReadonlyMap<string, RepairStudent>,
-  weekendCohortByEmail: ReadonlyMap<string, Cohort>,
+  planWeek: "a" | "b",
   dayCapMinutes: number,
 ): RepairSeedResult {
   const drafts = new Map<string, SeedDraft[]>();
@@ -99,21 +103,8 @@ export function buildRepairSeeds(
       broken.add(email);
       continue;
     }
-    let cohort: Cohort;
-    if (dayTypeOf(row.day) === "weekday") {
-      cohort = "weekday";
-    } else if (student.everyWeekendOptIn) {
-      cohort = "every";
-    } else {
-      const current = weekendCohortByEmail.get(email);
-      // "every" from a run made before the student dropped the opt-in is
-      // stale; without a real rotation the placement cannot be kept.
-      if (current === undefined || current === "weekday" || current === "every") {
-        broken.add(email);
-        continue;
-      }
-      cohort = current;
-    }
+    const cohort: Cohort =
+      dayTypeOf(row.day) === "weekday" ? "weekday" : student.everyWeekendOptIn ? "every" : planWeek;
     // Two seats of one cell can carry the same name; one student holds one seat.
     const key = `${email}|${row.matchedBlockId}|${row.day}`;
     if (seen.has(key)) continue;

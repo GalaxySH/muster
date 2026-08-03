@@ -466,12 +466,18 @@ export const shiftPlanStatusEnum = ["current", "superseded"] as const;
  * Append-only like schedule_runs: importing marks the previous plan
  * superseded, never deletes it.
  */
+export const rotationWeekEnum = ["a", "b"] as const;
+
 export const shiftPlans = mysqlTable("shift_plans", {
   id: varchar("id", { length: 36 }).primaryKey(),
   importedAt: timestamp("imported_at").notNull().defaultNow(),
   importedBy: varchar("imported_by", { length: 255 }).notNull(),
   sourceFilename: varchar("source_filename", { length: 255 }).notNull(),
   rowCount: int("row_count").notNull(),
+  // Which weekend rotation the exported week represents, chosen at upload.
+  // Seats are rotation-neutral (both weeks share the budget); this decides
+  // how names riding on weekend rows are read (repair mode).
+  rotationWeek: mysqlEnum("rotation_week", rotationWeekEnum).notNull().default("a"),
   status: mysqlEnum("status", shiftPlanStatusEnum).notNull().default("current"),
 });
 
