@@ -41,18 +41,30 @@ export interface AnalyticsView {
   funnel: { neverSignedIn: number; signedInNotSubmitted: number; submitted: number };
   /** How recently the signed-in people were last active (sums to everSignedIn). */
   recency: RecencyBuckets;
-  /** Everyone who has never signed in, in roster order, for the follow-up list. */
-  neverSignedInPeople: { email: string; displayName: string }[];
+  /** How many students were last active on each of the last 14 days, oldest first. */
+  perDay: { date: string; count: number }[];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_DAYS = 14;
+
+/** UTC calendar day of `d` as ISO yyyy-mm-dd. */
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export function buildAnalyticsView(students: AnalyticsStudent[], now: Date): AnalyticsView {
   const nowMs = now.getTime();
   let everSignedIn = 0;
   const funnel = { neverSignedIn: 0, signedInNotSubmitted: 0, submitted: 0 };
   const recency: RecencyBuckets = { today: 0, week: 0, month: 0, dormant: 0 };
-  const neverSignedInPeople: { email: string; displayName: string }[] = [];
+
+  // Seed one bucket per day for the last window, oldest first, so a quiet day
+  // still shows as zero rather than dropping out of the series.
+  const perDay = new Map<string, number>();
+  for (let i = ACTIVITY_DAYS - 1; i >= 0; i--) {
+    perDay.set(isoDay(new Date(nowMs - i * DAY_MS)), 0);
+  }
 
   for (const s of students) {
     // Funnel: submitted wins, then any sign-in, then never.
@@ -67,8 +79,9 @@ export function buildAnalyticsView(students: AnalyticsStudent[], now: Date): Ana
       else if (ageMs < 7 * DAY_MS) recency.week += 1;
       else if (ageMs < 30 * DAY_MS) recency.month += 1;
       else recency.dormant += 1;
-    } else {
-      neverSignedInPeople.push({ email: s.email, displayName: s.displayName });
+
+      const day = isoDay(s.lastSeenAt);
+      if (perDay.has(day)) perDay.set(day, perDay.get(day)! + 1);
     }
   }
 
@@ -80,6 +93,6 @@ export function buildAnalyticsView(students: AnalyticsStudent[], now: Date): Ana
     signedInPercent: total === 0 ? 0 : Math.round((everSignedIn / total) * 100),
     funnel,
     recency,
-    neverSignedInPeople,
+    perDay: [...perDay].map(([date, count]) => ({ date, count })),
   };
 }

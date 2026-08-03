@@ -12,7 +12,8 @@ describe("buildAnalyticsView", () => {
     expect(view.total).toBe(0);
     expect(view.signedInPercent).toBe(0);
     expect(view.everSignedIn).toBe(0);
-    expect(view.neverSignedInPeople).toEqual([]);
+    expect(view.perDay).toHaveLength(14);
+    expect(view.perDay.every((d) => d.count === 0)).toBe(true);
   });
 
   it("counts ever-signed-in vs never and the percentage", () => {
@@ -27,7 +28,6 @@ describe("buildAnalyticsView", () => {
     expect(view.everSignedIn).toBe(2);
     expect(view.neverSignedIn).toBe(2);
     expect(view.signedInPercent).toBe(50);
-    expect(view.neverSignedInPeople.map((p) => p.email)).toEqual(["c@wisc.edu", "d@wisc.edu"]);
   });
 
   it("splits the funnel into never / signed-in-not-submitted / submitted", () => {
@@ -57,5 +57,32 @@ describe("buildAnalyticsView", () => {
     const summed =
       view.recency.today + view.recency.week + view.recency.month + view.recency.dormant;
     expect(summed).toBe(view.everSignedIn);
+  });
+
+  it("buckets last-active per day into 14 entries, oldest first", () => {
+    const students: AnalyticsStudent[] = [
+      // Today (NOW is 2026-08-01) → the last entry.
+      { email: "now@wisc.edu", displayName: "Now", lastSeenAt: ago(HOUR), status: null },
+      // Three days ago → 2026-07-29.
+      { email: "three@wisc.edu", displayName: "Three", lastSeenAt: ago(3 * DAY), status: null },
+      // Never signed in → contributes to no day.
+      { email: "never@wisc.edu", displayName: "Never", lastSeenAt: null, status: null },
+      // Outside the 14-day window → contributes to no day.
+      { email: "old@wisc.edu", displayName: "Old", lastSeenAt: ago(90 * DAY), status: null },
+    ];
+    const view = buildAnalyticsView(students, NOW);
+
+    expect(view.perDay).toHaveLength(14);
+    // Oldest first, most recent last.
+    expect(view.perDay[0]!.date).toBe("2026-07-19");
+    expect(view.perDay[13]!.date).toBe("2026-08-01");
+    // Today's bucket holds the student seen an hour ago.
+    expect(view.perDay[13]!.count).toBe(1);
+    // Three days ago lands on the right earlier day.
+    const threeAgo = view.perDay.find((d) => d.date === "2026-07-29");
+    expect(threeAgo?.count).toBe(1);
+    // The null and out-of-window students are counted nowhere.
+    const summed = view.perDay.reduce((n, d) => n + d.count, 0);
+    expect(summed).toBe(2);
   });
 });

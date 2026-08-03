@@ -99,6 +99,19 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
+/** Date only (no time), US Central, e.g. "26 Jul 2026", for the hire date. */
+const fmtDay = (d: Date | null): string | null => {
+  if (!d) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Chicago",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")}`;
+};
+
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
@@ -601,19 +614,36 @@ export default async function StudentDetailPage({
           </section>
         )}
 
-        {/* Last seen: most recent authenticated activity, or never logged in.
-            Kept last in the card order. */}
+        {/* Student details: last authenticated activity and hire date. Kept last
+            in the card order. */}
         <section style={panelStyle}>
-          <SectionLabel>Last seen</SectionLabel>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 14,
-              color: detail.lastSeenAt ? "var(--color-text-primary)" : "var(--color-text-danger)",
-            }}
-          >
-            {detail.lastSeenAt ? fmtStamp(detail.lastSeenAt) : "Never logged in"}
-          </p>
+          <SectionLabel>Student details</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Last seen</div>
+              <div
+                style={{
+                  color: detail.lastSeenAt
+                    ? "var(--color-text-primary)"
+                    : "var(--color-text-danger)",
+                }}
+              >
+                {detail.lastSeenAt ? fmtStamp(detail.lastSeenAt) : "Never logged in"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Hire date</div>
+              <div
+                style={{
+                  color: detail.hiredOn
+                    ? "var(--color-text-primary)"
+                    : "var(--color-text-secondary)",
+                }}
+              >
+                {fmtDay(detail.hiredOn) ?? "Unknown"}
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     </Page>
