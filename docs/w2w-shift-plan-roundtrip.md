@@ -100,19 +100,18 @@ A plan row matches a Muster block on (mapped position, day-type of the row's day
 start, end) exactly. Matched rows participate in filling; unmatched rows pass
 through and are reported.
 
-**Known drift as of 2026-08-03** (prod DB vs `EXPORT.CSV`) — the import report will
-recompute this live; this snapshot is for orientation. Muster config changes are an
-**admin data task on /admin/positions, decided by the user — never automated, and
-never applied to prod by an agent**:
+**Known drift as of 2026-08-03 (rechecked same day after config alignment)** — the
+import report will recompute this live; this snapshot is for orientation. Muster
+config changes are an **admin data task on /admin/positions, decided by the user —
+never automated, and never applied to prod by an agent**:
 
-- **Cashier weekday opener:** plan `6:45–10:00` vs Muster `6:45–10:30`.
-- **R&C TM weekday afternoon/evening restructured:** plan has `14:30–18:00` (×5/day),
-  `17:45–21:30` (×5/day), `20:30–23:00` (×2/day) and **no midday block** (gap
-  12:45–14:30); Muster still has `12:30–14:30`, `14:15–17:00`, `16:45–20:00`,
-  `19:45–23:00`.
-- **R&C TM weekend fully restructured:** plan `9:30–12:30`, `12:15–15:30`,
-  `15:15–18:30`, `18:15–21:30`, `20:30–23:00` vs Muster `10:00–12:30`,
-  `12:15–14:15`, `14:00–17:00`, `16:45–20:00`, `19:45–23:00`.
+- **R&C TM: now fully aligned.** The weekday and weekend blocks were rebuilt in prod
+  during planning and match the plan exactly (5+5 blocks), with `desired_capacity`
+  set to the plan's per-day seat counts (weekday 6/6/5/5/2, weekend 5/5/5/5/2).
+- **Cashier weekday opener (the one real remaining drift):** plan `6:45–10:00` vs
+  Muster `6:45–10:30`. Until aligned, that plan row exports unassigned. Cashier
+  weekday capacity is 2 per block vs 1 plan seat, the direction that can produce
+  more assigned students than seats (export-time warning, §8).
 - **Barista residue:** the merged-away `barista` position still holds 4 weekday
   blocks; they match nothing in the plan (expected; dormant).
 - **SL special rows:** Sunday `SHIFT LEAD MEETING 10:00–11:00` matches no block
