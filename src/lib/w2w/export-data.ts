@@ -92,10 +92,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         return [email, { name: hit.w2wName, employeeNumber: hit.employeeNumber, derived: false }];
       }
       const display = displayNames.get(email);
-      return [
-        email,
-        { name: deriveW2wName(display ?? email), employeeNumber: "", derived: true },
-      ];
+      return [email, { name: deriveW2wName(display ?? email), employeeNumber: "", derived: true }];
     }),
   );
 
@@ -113,7 +110,10 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
       `${inputs.positionNames.get(b.positionId) ?? b.positionId} ${b.dayType}`,
     ]),
   );
-  const overflowSeen = new Map<string, { email: string; displayName: string; blockLabel: string }>();
+  const overflowSeen = new Map<
+    string,
+    { email: string; displayName: string; blockLabel: string }
+  >();
   for (const week of ["a", "b"] as const) {
     for (const o of files[week].overflow) {
       const key = `${o.studentEmail}|${o.blockId}|${o.day}`;
@@ -126,7 +126,9 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
     }
   }
 
-  const fallbackEmails = [...new Set([...files.a.fallbackEmails, ...files.b.fallbackEmails])].sort();
+  const fallbackEmails = [
+    ...new Set([...files.a.fallbackEmails, ...files.b.fallbackEmails]),
+  ].sort();
 
   return {
     planMeta: plan.meta,

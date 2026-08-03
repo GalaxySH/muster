@@ -9,13 +9,7 @@ import { generateSchedule } from "@/lib/schedule/actions";
  * in the engine and every run is kept, so the worst case is one click away
  * from being restored.
  */
-export function GenerateScheduleButton({
-  hasRun,
-  hasPlan,
-}: {
-  hasRun: boolean;
-  hasPlan: boolean;
-}) {
+export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; hasPlan: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [repairOnly, setRepairOnly] = useState(false);

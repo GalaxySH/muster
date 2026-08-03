@@ -18,7 +18,11 @@ export function deriveW2wName(displayName: string): string {
   const at = displayName.indexOf(",");
   if (at < 0) return displayName.trim();
   const last = displayName.slice(0, at).trim();
-  const given = displayName.slice(at + 1).trim().split(/\s+/)[0] ?? "";
+  const given =
+    displayName
+      .slice(at + 1)
+      .trim()
+      .split(/\s+/)[0] ?? "";
   if (given === "") return last;
   return `${given} ${last}`;
 }
@@ -45,7 +49,8 @@ export interface W2wEmployeesParseResult {
  */
 export function parseW2wEmployees(csvText: string): W2wEmployeesParseResult {
   const grid = parseCsv(csvText).filter((row) => row.some((cell) => cell.trim() !== ""));
-  if (grid.length === 0) return { ok: false, reason: "The file is empty.", employees: [], skipped: 0 };
+  if (grid.length === 0)
+    return { ok: false, reason: "The file is empty.", employees: [], skipped: 0 };
 
   const header = grid[0]!.map((h) => h.trim().toLowerCase());
   const nameAt = header.indexOf("employee name");
@@ -54,7 +59,8 @@ export function parseW2wEmployees(csvText: string): W2wEmployeesParseResult {
   if (nameAt < 0 || emailAt < 0) {
     return {
       ok: false,
-      reason: "This doesn't look like the W2W Employee Details export (need the Employee Name and Email columns).",
+      reason:
+        "This doesn't look like the W2W Employee Details export (need the Employee Name and Email columns).",
       employees: [],
       skipped: 0,
     };

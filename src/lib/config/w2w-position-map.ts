@@ -15,11 +15,46 @@ export interface W2wPositionMapSeed {
 }
 
 export const W2W_POSITION_MAP_SEED: readonly W2wPositionMapSeed[] = [
-  { w2wPositionId: "762425946", w2wPositionName: "GDEC - SL", musterPositionId: "shift-lead", fillOrder: 0 },
-  { w2wPositionId: "762431352", w2wPositionName: "GDEC - CA", musterPositionId: "culinary-assistant", fillOrder: 0 },
-  { w2wPositionId: "762423778", w2wPositionName: "GDEC - Dishwasher", musterPositionId: "dishwasher", fillOrder: 0 },
-  { w2wPositionId: "762428649", w2wPositionName: "GDEC - Market Cash", musterPositionId: "cashier", fillOrder: 0 },
-  { w2wPositionId: "762428585", w2wPositionName: "GDEC - Stocker", musterPositionId: "stocker", fillOrder: 0 },
-  { w2wPositionId: "951921404", w2wPositionName: "GDEC - Dock Stocker", musterPositionId: "stocker", fillOrder: 1 },
-  { w2wPositionId: "762431386", w2wPositionName: "GDEC - R&C TM", musterPositionId: "retail-and-cafe-team-member", fillOrder: 0 },
+  {
+    w2wPositionId: "762425946",
+    w2wPositionName: "GDEC - SL",
+    musterPositionId: "shift-lead",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "762431352",
+    w2wPositionName: "GDEC - CA",
+    musterPositionId: "culinary-assistant",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "762423778",
+    w2wPositionName: "GDEC - Dishwasher",
+    musterPositionId: "dishwasher",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "762428649",
+    w2wPositionName: "GDEC - Market Cash",
+    musterPositionId: "cashier",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "762428585",
+    w2wPositionName: "GDEC - Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "951921404",
+    w2wPositionName: "GDEC - Dock Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 1,
+  },
+  {
+    w2wPositionId: "762431386",
+    w2wPositionName: "GDEC - R&C TM",
+    musterPositionId: "retail-and-cafe-team-member",
+    fillOrder: 0,
+  },
 ];

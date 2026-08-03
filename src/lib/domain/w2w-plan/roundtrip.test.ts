@@ -31,15 +31,46 @@ const SOURCE = [
 
 const MAP: W2wPositionMapEntry[] = [
   { w2wPositionId: "100", w2wPositionName: "GDEC - CA", musterPositionId: "ca", fillOrder: 0 },
-  { w2wPositionId: "200", w2wPositionName: "GDEC - Stocker", musterPositionId: "stocker", fillOrder: 0 },
-  { w2wPositionId: "201", w2wPositionName: "GDEC - Dock Stocker", musterPositionId: "stocker", fillOrder: 1 },
+  {
+    w2wPositionId: "200",
+    w2wPositionName: "GDEC - Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "201",
+    w2wPositionName: "GDEC - Dock Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 1,
+  },
   { w2wPositionId: "300", w2wPositionName: "GDEC - SL", musterPositionId: "sl", fillOrder: 0 },
 ];
 
 const BLOCKS: MatchBlock[] = [
-  { id: "ca-we", positionId: "ca", dayType: "weekend", startMinutes: 480, endMinutes: 660, desiredCapacity: 2 },
-  { id: "ca-wd", positionId: "ca", dayType: "weekday", startMinutes: 480, endMinutes: 660, desiredCapacity: 1 },
-  { id: "st-wd", positionId: "stocker", dayType: "weekday", startMinutes: 420, endMinutes: 630, desiredCapacity: 2 },
+  {
+    id: "ca-we",
+    positionId: "ca",
+    dayType: "weekend",
+    startMinutes: 480,
+    endMinutes: 660,
+    desiredCapacity: 2,
+  },
+  {
+    id: "ca-wd",
+    positionId: "ca",
+    dayType: "weekday",
+    startMinutes: 480,
+    endMinutes: 660,
+    desiredCapacity: 1,
+  },
+  {
+    id: "st-wd",
+    positionId: "stocker",
+    dayType: "weekday",
+    startMinutes: 420,
+    endMinutes: 630,
+    desiredCapacity: 2,
+  },
 ];
 
 const IDENTITIES = new Map<string, ExportIdentity>([

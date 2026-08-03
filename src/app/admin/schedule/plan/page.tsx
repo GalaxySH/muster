@@ -6,11 +6,7 @@ import { InfoCard, Page } from "@/components/ui";
 import { panelStyle } from "@/components/admin/ui";
 import { PlanImportPanel } from "@/components/admin/PlanImportPanel";
 import { W2wEmployeesPanel } from "@/components/admin/W2wEmployeesPanel";
-import {
-  getPlanPageModel,
-  getW2wEmployeesStatus,
-  type PlanPageModel,
-} from "@/lib/w2w/plan-data";
+import { getPlanPageModel, getW2wEmployeesStatus, type PlanPageModel } from "@/lib/w2w/plan-data";
 import { buildExportModel, type ExportModel } from "@/lib/w2w/export-data";
 import { formatSpan } from "@/lib/domain/time";
 import type { DayType } from "@/lib/domain/types";
@@ -43,9 +39,9 @@ export default async function AdminSchedulePlanPage() {
       </AppHeader>
       <h1>W2W shift plan</h1>
       <p style={{ color: "#555", maxWidth: 720 }}>
-        Export the shift schedule for one week from W2W as a CSV and upload it here. The plan is
-        the shift budget: Muster fills names into these exact shifts and never adds or removes
-        any. Importing a new file replaces the current plan.
+        Export the shift schedule for one week from W2W as a CSV and upload it here. The plan is the
+        shift budget: Muster fills names into these exact shifts and never adds or removes any.
+        Importing a new file replaces the current plan.
       </p>
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -57,7 +53,8 @@ export default async function AdminSchedulePlanPage() {
         <h2 style={{ fontSize: 16, marginTop: 0 }}>W2W employee names</h2>
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#555" }}>
           Upload the Employee Details export from W2W so schedule exports use the exact names W2W
-          knows. {employees.total > 0 ? (
+          knows.{" "}
+          {employees.total > 0 ? (
             <>
               {employees.total} names on file
               {employees.importedAt && <>, last updated {employees.importedAt.toLocaleString()}</>}.
@@ -75,9 +72,7 @@ export default async function AdminSchedulePlanPage() {
         <PlanReport model={model} />
       ) : (
         <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-          <p style={{ margin: 0, fontSize: 14, color: "#777" }}>
-            No plan has been imported yet.
-          </p>
+          <p style={{ margin: 0, fontSize: 14, color: "#777" }}>No plan has been imported yet.</p>
         </section>
       )}
     </Page>
@@ -111,7 +106,7 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Export for W2W</h2>
       <p style={{ margin: "0 0 8px", fontSize: 14, color: "#555" }}>
         Two files, one per weekend rotation. Upload each into an empty unpublished W2W week, then
-        use W2W's Import to copy the weeks forward, alternating A and B. Every file holds all{" "}
+        use W2W&apos;s Import to copy the weeks forward, alternating A and B. Every file holds all{" "}
         {total} planned shifts.
       </p>
       <p style={{ margin: "0 0 10px", display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -125,12 +120,16 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
 
       {warnings.planNewerThanRun && (
         <InfoCard tone="danger" style={{ margin: "0 0 8px", fontSize: 14 }}>
-          The plan was imported after the current schedule was generated. Generate a new schedule
-          so it reflects this plan, then export.
+          The plan was imported after the current schedule was generated. Generate a new schedule so
+          it reflects this plan, then export.
         </InfoCard>
       )}
       {warnings.overflow.length > 0 && (
-        <InfoCard tone="danger" title="Scheduled but not in the export" style={{ margin: "0 0 8px", fontSize: 14 }}>
+        <InfoCard
+          tone="danger"
+          title="Scheduled but not in the export"
+          style={{ margin: "0 0 8px", fontSize: 14 }}
+        >
           <p style={{ margin: "0 0 4px" }}>
             The schedule places these students on shifts the plan has no seat for, so they are not
             in the file:
@@ -145,10 +144,14 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
         </InfoCard>
       )}
       {warnings.lossyNames.length > 0 && (
-        <InfoCard tone="danger" title="Names this file format cannot hold" style={{ margin: "0 0 8px", fontSize: 14 }}>
+        <InfoCard
+          tone="danger"
+          title="Names this file format cannot hold"
+          style={{ margin: "0 0 8px", fontSize: 14 }}
+        >
           <p style={{ margin: "0 0 4px" }}>
-            These names use characters the CSV encoding cannot store, so W2W will not match them
-            and their shifts will import unassigned. Fix the name in the W2W employee list, then
+            These names use characters the CSV encoding cannot store, so W2W will not match them and
+            their shifts will import unassigned. Fix the name in the W2W employee list, then
             re-upload the Employee Details export here:
           </p>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -163,8 +166,8 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
       {warnings.fallback.length > 0 && (
         <div style={{ fontSize: 14, color: "#6b5900", marginBottom: 8 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            Names guessed from the roster (not in the W2W name list). Check them against W2W
-            before uploading; a name W2W doesn't recognize leaves the shift unassigned:
+            Names guessed from the roster (not in the W2W name list). Check them against W2W before
+            uploading; a name W2W doesn&apos;t recognize leaves the shift unassigned:
           </p>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {warnings.fallback.map((f) => (
@@ -231,9 +234,9 @@ function PlanReport({ model }: { model: PlanPageModel }) {
             Shifts with no matching block ({unmatchedRows})
           </h2>
           <p style={{ margin: "0 0 8px", fontSize: 14, color: "#555" }}>
-            These shifts stay in the plan and export unassigned. To let Muster fill them, adjust
-            the blocks on <Link href="/admin/positions">Positions</Link> or the shifts in W2W
-            until the times agree.
+            These shifts stay in the plan and export unassigned. To let Muster fill them, adjust the
+            blocks on <Link href="/admin/positions">Positions</Link> or the shifts in W2W until the
+            times agree.
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14 }}>
             {report.unmatched.map((u, i) => (
@@ -251,8 +254,8 @@ function PlanReport({ model }: { model: PlanPageModel }) {
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Plan seats vs staffing targets</h2>
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "#555" }}>
-          Seats is the most shifts the plan holds on one day for that block. The import option
-          “Set staffing targets from this plan” writes that number as the block target.
+          Seats is the most shifts the plan holds on one day for that block. The import option “Set
+          staffing targets from this plan” writes that number as the block target.
         </p>
         <table style={{ borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
@@ -274,7 +277,12 @@ function PlanReport({ model }: { model: PlanPageModel }) {
                   )}
                 </td>
                 <td style={tdNum}>{line.planSeats}</td>
-                <td style={{ ...tdNum, color: line.desiredCapacity === line.planSeats ? "#196127" : "#8a6d00" }}>
+                <td
+                  style={{
+                    ...tdNum,
+                    color: line.desiredCapacity === line.planSeats ? "#196127" : "#8a6d00",
+                  }}
+                >
                   {line.desiredCapacity ?? "none"}
                 </td>
               </tr>

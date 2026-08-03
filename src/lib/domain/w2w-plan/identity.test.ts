@@ -42,9 +42,11 @@ describe("parseW2wEmployees", () => {
   });
 
   it("lowercases emails and skips rows without one", () => {
-    const csv = [HEADER, '"Ada Lovelace","","","","ADA@wisc.edu","","",""', '"No Email","","","","","","",""'].join(
-      "\n",
-    );
+    const csv = [
+      HEADER,
+      '"Ada Lovelace","","","","ADA@wisc.edu","","",""',
+      '"No Email","","","","","","",""',
+    ].join("\n");
     const res = parseW2wEmployees(csv);
     expect(res.ok).toBe(true);
     expect(res.employees.map((e) => e.email)).toEqual(["ada@wisc.edu"]);

@@ -32,7 +32,7 @@ describe("serializeW2wUpload", () => {
     expect(header).toBe(
       '"Shift ID","Schedule ID","Employee Number","Position ID","Position Name","Category","Shift Description","Date","Start Time","End Time","Duration","Day Of Week","Employee Name"',
     );
-    expect(line).toBe(',,,100,GDEC - CA,,,,08:00 AM,11:00 AM,   3.0,Monday,Ada Lovelace');
+    expect(line).toBe(",,,100,GDEC - CA,,,,08:00 AM,11:00 AM,   3.0,Monday,Ada Lovelace");
     expect(trailer).toBe("");
   });
 

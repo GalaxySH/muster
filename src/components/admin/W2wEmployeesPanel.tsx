@@ -71,7 +71,8 @@ export function W2wEmployeesPanel() {
       {summary && (
         <p role="status" style={{ margin: 0, fontSize: 14, color: "#196127" }}>
           ✓ {summary.total} W2W names on file ({summary.added} new, {summary.updated} changed,{" "}
-          {summary.removed} removed{summary.skipped > 0 && <>, {summary.skipped} rows without an email skipped</>}
+          {summary.removed} removed
+          {summary.skipped > 0 && <>, {summary.skipped} rows without an email skipped</>}
           ).
         </p>
       )}

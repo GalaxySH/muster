@@ -22,14 +22,29 @@ function row(over: Partial<W2wPlanRow> & { seq: number; day: Day }): W2wPlanRow 
 
 const MAP: W2wPositionMapEntry[] = [
   { w2wPositionId: "100", w2wPositionName: "GDEC - CA", musterPositionId: "ca", fillOrder: 0 },
-  { w2wPositionId: "200", w2wPositionName: "GDEC - Stocker", musterPositionId: "stocker", fillOrder: 0 },
-  { w2wPositionId: "201", w2wPositionName: "GDEC - Dock Stocker", musterPositionId: "stocker", fillOrder: 1 },
+  {
+    w2wPositionId: "200",
+    w2wPositionName: "GDEC - Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 0,
+  },
+  {
+    w2wPositionId: "201",
+    w2wPositionName: "GDEC - Dock Stocker",
+    musterPositionId: "stocker",
+    fillOrder: 1,
+  },
 ];
 
 const ids = (emails: string[], derived = false): Map<string, ExportIdentity> =>
   new Map(emails.map((e) => [e, { name: `Name ${e}`, employeeNumber: "", derived }]));
 
-const assign = (studentEmail: string, blockId: string, day: Day, cohort: FillAssignment["cohort"]): FillAssignment => ({
+const assign = (
+  studentEmail: string,
+  blockId: string,
+  day: Day,
+  cohort: FillAssignment["cohort"],
+): FillAssignment => ({
   studentEmail,
   blockId,
   day,

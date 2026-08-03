@@ -72,7 +72,9 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   // migrations): seed the known W2W position mapping so the import is not
   // inert, skipping rows whose Muster position this DB does not have.
   if (inputs.map.length === 0) {
-    const seedRows = W2W_POSITION_MAP_SEED.filter((m) => inputs.positionNames.has(m.musterPositionId));
+    const seedRows = W2W_POSITION_MAP_SEED.filter((m) =>
+      inputs.positionNames.has(m.musterPositionId),
+    );
     if (seedRows.length > 0) {
       await db.insert(w2wPositionMap).values([...seedRows]);
       inputs = await loadPlanMatchInputs();
@@ -82,7 +84,9 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
 
   // Names riding in on the file that nothing can place: not in the W2W name
   // mapping and not the derived name of anyone on the roster.
-  const importedNames = [...new Set(parsed.rows.map((r) => r.employeeName).filter((n) => n !== ""))];
+  const importedNames = [
+    ...new Set(parsed.rows.map((r) => r.employeeName).filter((n) => n !== "")),
+  ];
   let unknownImportedNames: string[] = [];
   if (importedNames.length > 0) {
     const [mappedNames, rosterNames] = await Promise.all([
@@ -203,8 +207,7 @@ export async function importW2wEmployeesFromUpload(
     for (const e of parsed.employees) {
       const prev = before.get(e.email);
       if (!prev) added += 1;
-      else if (prev.w2wName !== e.w2wName || prev.employeeNumber !== e.employeeNumber)
-        updated += 1;
+      else if (prev.w2wName !== e.w2wName || prev.employeeNumber !== e.employeeNumber) updated += 1;
     }
     const removed = [...before.keys()].filter(
       (email) => !parsed.employees.some((e) => e.email === email),
