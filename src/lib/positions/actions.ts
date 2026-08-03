@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
   positions,
+  internalSelections,
   rosterTitleMappings,
   shiftBlocks,
   shiftSelections,
@@ -219,12 +220,19 @@ export async function deletePosition(id: string): Promise<ActionResult> {
     };
   }
 
+  // Both cell tables hold FKs to this position's blocks: the student's own
+  // picks and the admin's internal copies (PLAN §10a).
   const [selectionRef] = await db
     .select({ n: sql<number>`count(*)` })
     .from(shiftSelections)
     .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(eq(shiftBlocks.positionId, id));
-  if (Number(selectionRef?.n ?? 0) > 0) {
+  const [internalRef] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(internalSelections)
+    .innerJoin(shiftBlocks, eq(internalSelections.shiftBlockId, shiftBlocks.id))
+    .where(eq(shiftBlocks.positionId, id));
+  if (Number(selectionRef?.n ?? 0) + Number(internalRef?.n ?? 0) > 0) {
     return {
       ok: false,
       error: "Students still have shift picks on this position's blocks. Deactivate it instead.",
@@ -397,11 +405,17 @@ export async function deleteBlock(blockId: string): Promise<ActionResult> {
     .limit(1);
   if (!row) return { ok: false, error: "Block not found." };
 
+  // Count both the students' own picks and internal-copy cells (PLAN §10a);
+  // either would break the FK on delete.
   const [ref] = await db
     .select({ n: sql<number>`count(*)` })
     .from(shiftSelections)
     .where(eq(shiftSelections.shiftBlockId, blockId));
-  const refCount = Number(ref?.n ?? 0);
+  const [internalRef] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(internalSelections)
+    .where(eq(internalSelections.shiftBlockId, blockId));
+  const refCount = Number(ref?.n ?? 0) + Number(internalRef?.n ?? 0);
   if (refCount > 0) {
     return {
       ok: false,

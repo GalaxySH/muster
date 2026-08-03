@@ -23,6 +23,8 @@ import {
 } from "@/lib/db/schema";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { applyInternalOverrides } from "@/lib/availability/effective";
+import { loadInternalCopiesByEmail } from "@/lib/availability/internal";
 import {
   SCHEDULE_SHEET,
   SHEET_MANUAL_COOLDOWN_MS,
@@ -52,7 +54,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const [positionRows, blockRows, studentRows, selectionRows, currentRun, params] =
+  const [positionRows, blockRows, studentRows, selectionRows, internalByEmail, currentRun, params] =
     await Promise.all([
       db.select().from(positions),
       db.select().from(shiftBlocks),
@@ -79,6 +81,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
         .innerJoin(students, eq(submissions.studentEmail, students.email))
         .where(eligibleSubmittedFilter()),
+      loadInternalCopiesByEmail(),
       loadCurrentRunRow(),
       getSchedulingParams(),
     ]);
@@ -90,16 +93,21 @@ export async function generateSchedule(): Promise<GenerateResult> {
     selectionByEmail.set(row.email, list);
   }
 
-  const engineStudents: ScheduleStudent[] = studentRows.map((r) => ({
-    email: r.email,
-    positionId: r.positionId,
-    international: r.international,
-    everyWeekendOptIn: r.everyWeekendOptIn,
-    desiredHours: r.desiredHours,
-    submittedAt: r.submittedAt,
-    scheduled: r.scheduled,
-    selection: selectionByEmail.get(r.email) ?? [],
-  }));
+  // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
+  // saved an internal copy, its cells and rotation replace the student's here.
+  const engineStudents: ScheduleStudent[] = applyInternalOverrides(
+    studentRows.map((r) => ({
+      email: r.email,
+      positionId: r.positionId,
+      international: r.international,
+      everyWeekendOptIn: r.everyWeekendOptIn,
+      desiredHours: r.desiredHours,
+      submittedAt: r.submittedAt,
+      scheduled: r.scheduled,
+      selection: selectionByEmail.get(r.email) ?? [],
+    })),
+    internalByEmail,
+  );
 
   const previous: ScheduleAssignment[] = currentRun
     ? (

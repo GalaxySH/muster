@@ -2,20 +2,32 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { clearPositionChangeFlag } from "@/lib/admin/actions";
+import { dismissFlag, type DismissableFlag } from "@/lib/admin/actions";
 
 /**
- * Dismisses a position_change flag from the per-student flags pane (roadmap
- * 3.3). Only this flag type gets a manual dismiss; revalidation_failed clears
- * itself when a validation run passes.
+ * Dismisses one dismissable flag type from the per-student flags pane:
+ * position_change after the admin reviews the change (roadmap 3.3), or
+ * student_changed_after_internal_edit when the admin keeps the internal copy
+ * as it is. revalidation_failed has no manual dismiss, it clears itself when
+ * a validation run passes.
  */
-export function ClearPositionChangeButton({ submissionId }: { submissionId: string }) {
+export function DismissFlagButton({
+  submissionId,
+  type,
+  label,
+  title,
+}: {
+  submissionId: string;
+  type: DismissableFlag;
+  label: string;
+  title?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function clear() {
     startTransition(async () => {
-      const res = await clearPositionChangeFlag(submissionId);
+      const res = await dismissFlag(submissionId, type);
       if (res.ok) router.refresh();
       else alert(res.error ?? "Could not clear the flag.");
     });
@@ -26,6 +38,7 @@ export function ClearPositionChangeButton({ submissionId }: { submissionId: stri
       type="button"
       onClick={clear}
       disabled={pending}
+      title={title}
       style={{
         fontSize: 12,
         padding: "2px 10px",
@@ -37,7 +50,7 @@ export function ClearPositionChangeButton({ submissionId }: { submissionId: stri
         whiteSpace: "nowrap",
       }}
     >
-      {pending ? "clearing…" : "Clear"}
+      {pending ? "clearing…" : label}
     </button>
   );
 }

@@ -10,6 +10,7 @@ import {
   boolean,
   date,
   datetime,
+  foreignKey,
   int,
   mysqlEnum,
   mysqlTable,
@@ -27,12 +28,15 @@ export const flagTypeEnum = [
   "travel_late",
   "position_change",
   "revalidation_failed",
+  "student_changed_after_internal_edit",
 ] as const;
 
 /**
  * Any flag type a stored row can carry. A superset of the validation-produced
  * union in domain/validation.ts: position_change and revalidation_failed are
- * written by admin-side lifecycle code, never by validateAvailability.
+ * written by admin-side lifecycle code, and
+ * student_changed_after_internal_edit by the student save path when an
+ * internal copy exists; none of these come from validateAvailability.
  */
 export type DbFlagType = (typeof flagTypeEnum)[number];
 
@@ -178,6 +182,54 @@ export const shiftSelections = mysqlTable(
     autoAssigned: boolean("auto_assigned").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.submissionId, t.shiftBlockId, t.day] })],
+);
+
+/**
+ * The admin's internal working copy of one submission's availability (PLAN.md
+ * §10a). Present only after an admin adjusts a response: the row is the "an
+ * internal copy exists" switch, carries the internal weekend rotation, and
+ * records who last adjusted it. The student's own submission row and
+ * shift_selections are never modified by internal edits; scheduling surfaces
+ * read the internal copy when this row exists and the student's rows otherwise.
+ */
+export const internalAvailability = mysqlTable("internal_availability", {
+  submissionId: varchar("submission_id", { length: 36 })
+    .primaryKey()
+    .references(() => submissions.id, { onDelete: "cascade" }),
+  everyWeekendOptIn: boolean("every_weekend_opt_in").notNull().default(false),
+  editedBy: varchar("edited_by", { length: 255 }).notNull(),
+  editedAt: timestamp("edited_at").notNull().defaultNow().onUpdateNow(),
+});
+
+/**
+ * One availability-grid cell of the internal copy; same shape as
+ * shift_selections. FKs to internal_availability, so dropping the header
+ * (revert, or the submission cascade) removes the cells with it and a copy can
+ * never exist without its header row. Internal copies are saved literally
+ * (no weekend auto-assign), so auto_assigned stays false; the column exists
+ * to keep the two cell tables shape-identical for the shared writer and the
+ * position-change carry-over.
+ */
+export const internalSelections = mysqlTable(
+  "internal_selections",
+  {
+    submissionId: varchar("submission_id", { length: 36 }).notNull(),
+    shiftBlockId: varchar("shift_block_id", { length: 96 })
+      .notNull()
+      .references(() => shiftBlocks.id),
+    day: mysqlEnum("day", dayEnum).notNull(),
+    autoAssigned: boolean("auto_assigned").notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.submissionId, t.shiftBlockId, t.day] }),
+    // Named by hand: the auto-generated name runs past MariaDB's 64-char
+    // identifier limit and the migration would refuse to apply.
+    foreignKey({
+      columns: [t.submissionId],
+      foreignColumns: [internalAvailability.submissionId],
+      name: "internal_selections_header_fk",
+    }).onDelete("cascade"),
+  ],
 );
 
 /** Extracurricular evidence images (Drive fileIds), 0..n per submission (PLAN.md §7b). */

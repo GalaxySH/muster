@@ -43,6 +43,7 @@ function aggregate(over: Partial<ExportAggregate> = {}): ExportAggregate {
     schedulerNotes: "",
     selection: [{ blockId: "wd-open", day: "mon" }],
     autoAssigned: [{ blockId: "we", day: "sun" }],
+    internalAdjusted: false,
     flags: [{ type: "auto_assigned_weekend", detail: "Auto-assigned Sun 5p–8p." }],
     courseScheduleFileId: "FILE123",
     extracurricularNotes: "Marching band",
@@ -79,6 +80,7 @@ describe("buildExportMatrix", () => {
     expect(cell("Student notes")).toBe("Prefer mornings");
     expect(cell("Selections")).toBe("Mon 6:30a–10:15a");
     expect(cell("Auto-assigned weekend")).toBe("Sun 5p–8p");
+    expect(cell("Adjusted internally")).toBe("no");
     // Capacity is selection-only (the weekend cell here is auto-assigned, not a
     // student pick): weekday 6:30a–10:15a = 3.75h → "3.8".
     expect(cell("Pref. capacity (h)")).toBe("3.8");
@@ -111,6 +113,12 @@ describe("buildExportMatrix", () => {
     expect(cell("Desired hours")).toBe("");
     expect(cell("Course schedule")).toBe("");
     expect(cell("Travel")).toBe("");
+  });
+
+  it("marks internally adjusted responses", () => {
+    const [, row] = buildExportMatrix([aggregate({ internalAdjusted: true })]);
+    const cell = (h: (typeof EXPORT_HEADERS)[number]) => row![EXPORT_HEADERS.indexOf(h)];
+    expect(cell("Adjusted internally")).toBe("yes");
   });
 });
 

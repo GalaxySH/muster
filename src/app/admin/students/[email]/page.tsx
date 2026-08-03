@@ -11,6 +11,7 @@ import {
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
 import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
+import { diffInternalFromStudent, type InternalDiff } from "@/lib/availability/effective";
 import { validateAvailability } from "@/lib/domain/validation";
 import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
@@ -24,8 +25,9 @@ import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
-import { ClearPositionChangeButton } from "@/components/admin/ClearPositionChangeButton";
+import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
+import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
@@ -118,6 +120,17 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
 }
 
+/** One sentence for the banner: how the saved copy differs from the student. */
+function describeDiff(diff: InternalDiff): string {
+  const parts: string[] = [];
+  if (diff.added.length > 0)
+    parts.push(`${diff.added.length} shift${diff.added.length === 1 ? "" : "s"} added`);
+  if (diff.removed.length > 0) parts.push(`${diff.removed.length} removed`);
+  if (diff.rotationChanged) parts.push("weekend rotation changed");
+  if (parts.length === 0) return "It matches their answers.";
+  return `Compared to their answers: ${parts.join(", ")}.`;
+}
+
 export default async function StudentDetailPage({
   params,
   searchParams,
@@ -170,7 +183,8 @@ export default async function StudentDetailPage({
       .slice(0, CHANGE_PREVIEW_ROWS)
       .map((r) => r.id),
   );
-  const { submission, position, blocks, selection, autoAssigned, evidence, closes } = detail;
+  const { submission, position, blocks, selection, autoAssigned, internal, evidence, closes } =
+    detail;
   // "missing" covers both a student with no row at all and one whose only row an
   // admin created for them, so the status never overstates what the student did.
   const status = responseStatus(submission);
@@ -178,7 +192,10 @@ export default async function StudentDetailPage({
   // Lifecycle flags written by position changes (roadmap 3.3), rendered with
   // their stored detail; the live validation checks below cover the rest.
   const storedAlerts = detail.flags.filter(
-    (f) => f.type === "position_change" || f.type === "revalidation_failed",
+    (f) =>
+      f.type === "position_change" ||
+      f.type === "revalidation_failed" ||
+      f.type === "student_changed_after_internal_edit",
   );
 
   // The dashboard renders for everyone on the roster, not just responders: with
@@ -195,8 +212,24 @@ export default async function StudentDetailPage({
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
   const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
+  // The grid shows and edits the EFFECTIVE availability (PLAN §10a): the
+  // internal copy when an admin saved one, the student's own answers
+  // otherwise. The validation card above keeps reading the student's data.
+  // Internal copies are literal (no machine-picked weekend), so the auto
+  // layer empties out when one is loaded.
+  const gridSelection = internal ? internal.selection : selection;
+  const gridAutoAssigned = internal ? [] : autoAssigned;
+  const gridOptIn = internal ? internal.everyWeekendOptIn : (submission?.everyWeekendOptIn ?? false);
+  // How the saved copy differs from the student's own answers: the banner
+  // summary, and per-cell rings in the grid below.
+  const internalDiff = internal
+    ? diffInternalFromStudent(
+        { selection, autoAssigned, everyWeekendOptIn: submission?.everyWeekendOptIn ?? false },
+        internal,
+      )
+    : null;
   const grid = position
-    ? buildAdminGrid(blocks, selection, autoAssigned, highDemand, schedule?.cells ?? [])
+    ? buildAdminGrid(blocks, gridSelection, gridAutoAssigned, highDemand, schedule?.cells ?? [])
     : null;
   const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
   const cap = hourCap(detail.international);
@@ -328,16 +361,28 @@ export default async function StudentDetailPage({
             scheduler can still try shifts against the position's floor and cap. */}
         {grid && validation && (
           <section style={panelStyle}>
+            {internal && (
+              <div style={internalNote}>
+                <span>
+                  Adjusted internally by {internal.editedBy} on {fmtStamp(internal.editedAt)}. The
+                  student&apos;s own answers are kept.
+                  {internalDiff && ` ${describeDiff(internalDiff)}`}
+                </span>
+                <RevertInternalButton studentEmail={detail.email} />
+              </div>
+            )}
             <PrefGridCalculator
               grid={grid}
               studentEmail={detail.email}
               blocks={blocks}
               position={position!}
               desiredHours={submission?.desiredHours ?? null}
-              everyWeekendOptIn={submission?.everyWeekendOptIn ?? false}
+              everyWeekendOptIn={gridOptIn}
               cap={cap}
               hasCurrentRun={schedule !== null}
               hasSchedule={(schedule?.cells.length ?? 0) > 0}
+              isInternal={internal !== null}
+              studentCells={internal ? [...selection, ...autoAssigned] : null}
             />
           </section>
         )}
@@ -776,8 +821,10 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
 
 /**
  * Stored lifecycle flags (roadmap 3.3): red pill + the stored detail text.
- * Only position_change gets a dismiss control; revalidation_failed clears
- * itself when a validation run passes.
+ * position_change gets a plain dismiss; student_changed_after_internal_edit
+ * gets "Keep this copy" (the other two ways to clear it are re-saving the grid
+ * or reverting to the student's answers). revalidation_failed clears itself
+ * when a validation run passes.
  */
 function StoredFlagAlerts({
   alerts,
@@ -793,7 +840,15 @@ function StoredFlagAlerts({
           <span style={dangerPillStyle}>{FLAG_LABELS[f.type]}</span>
           <span style={{ flex: 1 }}>{f.detail}</span>
           {f.type === "position_change" && (
-            <ClearPositionChangeButton submissionId={submissionId} />
+            <DismissFlagButton submissionId={submissionId} type="position_change" label="Clear" />
+          )}
+          {f.type === "student_changed_after_internal_edit" && (
+            <DismissFlagButton
+              submissionId={submissionId}
+              type="student_changed_after_internal_edit"
+              label="Keep this copy"
+              title="Clears this flag and keeps the internal copy as it is."
+            />
           )}
         </div>
       ))}
@@ -905,6 +960,21 @@ const stampValue: React.CSSProperties = {
 const stampEmpty: React.CSSProperties = {
   ...stampValue,
   color: "var(--color-text-tertiary)",
+};
+
+/** The "adjusted internally" note above the grid, with the revert control. */
+const internalNote: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  margin: "0 0 10px",
+  padding: "6px 10px",
+  fontSize: 12,
+  background: "var(--color-background-info)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
 };
 
 /** Anything short of a submitted response rings the header red. */

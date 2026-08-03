@@ -29,12 +29,13 @@ import {
  *
  * Two edit modes. **Edit preferences** is the existing what-if calculator: the
  * admin clicks cells to try a schedule, the corner readout shows the trial's
- * cycle-averaged hours (`computeCapacity`), and Save writes the selection and
- * rotation on the student's behalf. Hard-rule failures warn instead of
- * blocking here: Save lists the failing checks and offers "Save anyway", which
- * persists and raises the revalidation_failed flag through the same seam a
- * position change uses (a later clean save clears it). Only this admin surface
- * gets the override; the student form keeps refusing.
+ * cycle-averaged hours (`computeCapacity`), and Save writes the INTERNAL copy
+ * (PLAN §10a): the student's own submission is never modified, and scheduling
+ * surfaces read the internal copy in its place. Hard-rule failures warn
+ * instead of blocking here: Save lists the failing checks and offers "Save
+ * anyway", which persists without raising any flag (the internal copy is the
+ * admin's own working state). Only this admin surface gets the override; the
+ * student form keeps refusing.
  *
  * **Edit schedule** toggles the current run's rows per cell through the manual
  * assignment actions (source "manual"; removing an engine row is allowed).
@@ -90,6 +91,19 @@ export interface PrefGridCalculatorProps {
    * none the preference fills the whole square (there is nothing to compare to).
    */
   hasSchedule: boolean;
+  /**
+   * True when the grid shows a saved internal copy rather than the student's
+   * own picks; the cell tooltips stop attributing the picks to the student.
+   */
+  isInternal: boolean;
+  /**
+   * The student's own stored cells (their picks plus the machine-assigned
+   * weekend), passed only when an internal copy is loaded. Drives the per-cell
+   * diff cues: an amber dashed ring on cells the student never picked, a blue
+   * dotted ring on student cells the copy dropped. Null hides the cues (the
+   * grid already IS the student's own answers).
+   */
+  studentCells: SelectedShift[] | null;
 }
 
 /** How long "Saved" stays up before the button retires itself. */
@@ -137,6 +151,14 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
+  // The student's own cells, for the diff cues against a loaded internal copy.
+  const studentKeys = useMemo(
+    () =>
+      props.studentCells
+        ? new Set(props.studentCells.map((c) => selectionKey(c.blockId, c.day)))
+        : null,
+    [props.studentCells],
+  );
   const selection = useMemo(
     () => keysToSelection(mock).filter((s) => validIds.has(s.blockId)),
     [mock, validIds],
@@ -405,6 +427,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             assigned={assigned}
             busyCell={busyCell}
             split={split}
+            isInternal={props.isInternal}
+            studentKeys={studentKeys}
             onToggle={onToggle}
           />
         </div>
@@ -419,7 +443,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 style={weekendModeBadge(optIn, rotationDeviates)}
                 title={
                   rotationDeviates
-                    ? `Trial only. ${props.everyWeekendOptIn ? "The student chose every weekend." : "The student chose alternating (A/B)."} Click to switch back.`
+                    ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
                     : optIn
                       ? "Every weekend. Click to try alternating (A/B)."
                       : "Alternating (A/B). Click to try every weekend."
@@ -437,6 +461,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               assigned={assigned}
               busyCell={busyCell}
               split={split}
+              isInternal={props.isInternal}
+              studentKeys={studentKeys}
               onToggle={onToggle}
             />
           </div>
@@ -444,7 +470,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       </div>
 
       <div style={footerRow}>
-        <Legend split={split} />
+        <Legend split={split} showDiff={studentKeys !== null} />
         {/* marginLeft keeps the controls in the bottom-right corner even when the
             legend is wide enough to push them onto their own line. */}
         {mode === "prefs" && (
@@ -454,7 +480,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 type="button"
                 onClick={reset}
                 style={miniBtn}
-                title="Reset to the student's picks"
+                title="Reset to the saved picks"
               >
                 Reset
               </button>
@@ -470,8 +496,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 style={saveBtn(saved)}
                 title={
                   saved
-                    ? "Saved to the student's availability"
-                    : "Save this as the student's availability"
+                    ? "Saved as the internal copy used for scheduling"
+                    : "Save as the internal copy used for scheduling. The student's own answers are kept."
                 }
               >
                 {saving ? "Saving…" : saved ? "Saved" : "Save"}
@@ -491,7 +517,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               <li key={c}>{c}</li>
             ))}
           </ul>
-          <p style={{ margin: "6px 0 8px" }}>Saving anyway flags the response for review.</p>
+          <p style={{ margin: "6px 0 8px" }}>Saving anyway keeps shifts that fail these checks.</p>
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button type="button" onClick={() => setOverrideChecks(null)} style={miniBtn}>
               Keep editing
@@ -539,6 +565,8 @@ function CalcTable({
   assigned,
   busyCell,
   split,
+  isInternal,
+  studentKeys,
   onToggle,
 }: {
   sub: AdminSubGrid;
@@ -549,6 +577,8 @@ function CalcTable({
   assigned: Map<string, AssignmentSource>;
   busyCell: string | null;
   split: boolean;
+  isInternal: boolean;
+  studentKeys: Set<string> | null;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   return (
@@ -574,6 +604,12 @@ function CalcTable({
               const inMock = mock.has(key);
               const wasPreferred = preferred.has(key);
               const wasAuto = auto.has(key);
+              // Diff cues against the student's own cells (internal copy only).
+              // Live against the trial, so re-adding a dropped cell clears its ring.
+              const inStudent = studentKeys ? studentKeys.has(key) : null;
+              const notOffered =
+                inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
+              const removedFromStudent = inStudent === true && !inMock;
               const source = assigned.get(key) ?? null;
               const isHot = row.highDemandDays[i] ?? false;
               const pressed = mode === "schedule" ? source !== null : inMock;
@@ -583,9 +619,28 @@ function CalcTable({
                     type="button"
                     aria-pressed={pressed}
                     aria-label={`${row.label} ${DAY_LABEL[day]}`}
-                    title={cellTitle(mode, inMock, wasPreferred, wasAuto, source, isHot)}
+                    title={cellTitle(
+                      mode,
+                      inMock,
+                      wasPreferred,
+                      wasAuto,
+                      source,
+                      isHot,
+                      isInternal,
+                      notOffered,
+                      removedFromStudent,
+                    )}
                     onClick={() => onToggle(row.block.id, day)}
-                    style={cellStyle(inMock, wasPreferred, wasAuto, source, busyCell === key, split)}
+                    style={cellStyle(
+                      inMock,
+                      wasPreferred,
+                      wasAuto,
+                      source,
+                      busyCell === key,
+                      split,
+                      notOffered,
+                      removedFromStudent,
+                    )}
                   >
                     {isHot && <span aria-hidden style={hotTick} />}
                     {inMock && (
@@ -611,23 +666,36 @@ function cellTitle(
   wasAuto: boolean,
   source: AssignmentSource | null,
   isHot: boolean,
+  isInternal: boolean,
+  notOffered: boolean,
+  removedFromStudent: boolean,
 ): string {
+  // With an internal copy loaded the saved picks are the admin's, so the
+  // tooltips stop attributing them to the student.
+  const pickedLabel = isInternal ? "in the saved internal copy" : "the student picked this";
+  const notPickedLabel = isInternal ? "not in the saved internal copy" : "not one the student picked";
   const parts: string[] = [];
   if (mode === "schedule") {
     if (source === "manual") parts.push("Scheduled by hand. Click to remove.");
     else if (source === "engine") parts.push("Scheduled. Click to remove.");
     else parts.push("Click to schedule this shift.");
-    if (wasPreferred || wasAuto)
-      parts.push(wasAuto ? "auto-assigned weekend" : "the student picked this");
-    else parts.push("not one the student picked");
+    if (wasPreferred || wasAuto) parts.push(wasAuto ? "auto-assigned weekend" : pickedLabel);
+    else parts.push(notPickedLabel);
   } else {
     if (inMock)
+      parts.push(notOffered ? "In trial schedule (not one the student picked)" : "In trial schedule");
+    else if (removedFromStudent)
       parts.push(
-        wasPreferred || wasAuto
-          ? "In trial schedule"
-          : "In trial schedule (not one the student picked)",
+        wasPreferred
+          ? "Student picked this; in the saved copy but not the trial schedule"
+          : "Student picked this; not in the saved copy. Click to add it back.",
       );
-    else if (wasPreferred) parts.push("Student picked this; not in the trial schedule");
+    else if (wasPreferred)
+      parts.push(
+        isInternal
+          ? "In the saved internal copy; not in the trial schedule"
+          : "Student picked this; not in the trial schedule",
+      );
     else if (wasAuto) parts.push("Auto-assigned; not in the trial schedule");
     else parts.push("Click to add to the trial schedule");
     if (source === "manual") parts.push("scheduled by hand");
@@ -652,7 +720,7 @@ function SubHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Legend({ split }: { split: boolean }) {
+function Legend({ split, showDiff }: { split: boolean; showDiff: boolean }) {
   return (
     <div style={legendCol}>
       {/* The split only exists once there's a schedule run to compare against;
@@ -668,6 +736,18 @@ function Legend({ split }: { split: boolean }) {
         <span>
           <span style={prefSwatch("var(--color-background-warning)", split)} /> auto-assigned
         </span>
+        {showDiff && (
+          <>
+            <span>
+              <span style={ringSwatch("1.5px dashed var(--color-border-warning)")} /> not picked by
+              the student
+            </span>
+            <span>
+              <span style={ringSwatch(`1.5px dotted ${PREF_PICKED_COLOR}`)} /> their pick, not in
+              this copy
+            </span>
+          </>
+        )}
         {split && (
           <>
             <span>
@@ -872,6 +952,12 @@ const schedSwatch = (color: string): React.CSSProperties => ({
   ...swatch,
   background: `linear-gradient(45deg, ${EMPTY_COLOR} 0 50%, ${color} 50% 100%)`,
 });
+/** A legend swatch for a diff ring: empty fill, the cue lives in the border. */
+const ringSwatch = (border: string): React.CSSProperties => ({
+  ...swatch,
+  background: EMPTY_COLOR,
+  border,
+});
 
 /**
  * The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet
@@ -925,8 +1011,18 @@ function cellStyle(
   source: AssignmentSource | null,
   busy: boolean,
   split: boolean,
+  notOffered: boolean,
+  removedFromStudent: boolean,
 ): React.CSSProperties {
   const pref = prefFill(inMock, wasPreferred, wasAuto);
+  // A cell the student never offered, now in the trial, gets an amber dashed
+  // ring; a student cell missing from the trial (dropped by the internal copy,
+  // or just unchecked) gets a blue dotted one.
+  const border = notOffered
+    ? "1.5px dashed var(--color-border-warning)"
+    : removedFromStudent
+      ? `1.5px dotted ${PREF_PICKED_COLOR}`
+      : "1px solid var(--color-border-tertiary)";
   return {
     position: "relative",
     width: CELL,
@@ -945,11 +1041,7 @@ function cellStyle(
     background: split
       ? `linear-gradient(45deg, ${pref} 0 50%, ${schedFill(source)} 50% 100%)`
       : pref,
-    // A cell the student never offered, now in the trial, gets an amber ring.
-    border:
-      inMock && !wasPreferred && !wasAuto
-        ? "1.5px dashed var(--color-border-warning)"
-        : "1px solid var(--color-border-tertiary)",
+    border,
     opacity: busy ? 0.5 : 1,
   };
 }

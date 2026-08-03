@@ -594,7 +594,8 @@ null**, so it records the first submit and a student finishing the wizard again 
 **Who moves `updated_at` (v0.82).** It means "when the student last changed their own
 answers", so it is deliberately **not** `ON UPDATE CURRENT_TIMESTAMP` (migration `0016`
 dropped the clause) — otherwise every admin write to the row silently moved it. Student
-paths set it explicitly: `saveAvailability` (via `persistAvailability({ studentEdit: true })`),
+paths set it explicitly: `saveAvailability` (via `persistAvailability`, which since 1.07
+serves only the student path and always stamps it),
 `finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
 Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
 (notes, scheduled mark) and `saveAvailabilityFor`. The one shared
@@ -606,24 +607,70 @@ flag the gate already returns. Downstream, this makes the hub's stalled-draft cu
 "recent submissions" honest: an admin note no longer refreshes a stalled draft, and a
 re-submit no longer jumps someone to the top of recent.
 
-**`saveAvailabilityFor(student, …)` (v0.81)** is the admin's on-behalf save, called by
-`PrefGridCalculator` on the per-student page (§10a). It gates through
-`requireEditableStudent(student)` like the evidence actions, then shares the same
-persistence core as `saveAvailability`: a private `persistAvailability` owns the
-upsert + `writeSelectionAndFlags` + sheet resync, so an admin edit lands **exactly** how
-the student's own save would — including re-running the weekend auto-assign and flags on
-an already-submitted form. Two things differ, both because the admin is the authority
-rather than the window. The hard-rule gate is **soft** (0.99): a save that fails the
-finalize checks returns the failing rules and only goes through when re-invoked with
-`overrideInvalid`, and every admin save runs `syncRevalidationFlag` in the same
-transaction — an override raises `revalidation_failed`, a later clean save clears it
-(before 0.99 such saves landed silently; a scheduler can still deliberately record a
-below-floor selection, as they can add travel past the cutoff). And it writes a
-narrower `SubmissionPatch` — **selection + rotation only**, never `desiredHours` or
-`studentNotes`, since the grid doesn't edit the student's own stated ask and must not
-blank it. Status behaviour matches every other on-behalf action: it starts a draft when
-there is none and never promotes, leaving `confirmed_at` NULL, so an admin-filled row
-still reads **missing** until the student confirms. The client form
+**`saveAvailabilityFor(student, …)` (v0.81; rewritten 1.07)** is the admin's save,
+called by `PrefGridCalculator` on the per-student page (§10a). It gates through
+`requireEditableStudent(student)` like the evidence actions, but since 1.07 it writes
+the **internal copy only** — `internal_availability` (rotation + `editedBy`/`editedAt`)
+upserted and `internal_selections` replaced, via the same `replaceSelectionCells`
+writer the student path uses (the two cell tables are shape-identical on purpose).
+The student's own submission row, `shift_selections`, flags, and `updated_at` are
+never touched, so what the student submitted survives every admin edit verbatim.
+The copy is written **literally**: `applyAutoAssign: false`, so an empty weekend
+stays empty (no machine pick, ever). The hard-rule gate is **soft** (0.99): a save
+that fails the finalize checks returns the failing rules and only goes through when
+re-invoked with `overrideInvalid`; since 1.07 an override raises **no flag** —
+`revalidation_failed` describes the student's stored answers only, and the internal
+copy is the scheduler's own working state. Saving also clears
+`student_changed_after_internal_edit` (the admin has just re-curated), and resyncs
+the Drive sheet when the response is submitted, because the export carries the
+"Adjusted internally" marker. Status behaviour matches every other on-behalf action:
+`ensureSubmissionId` starts a stub draft when there is none (the internal tables hang
+off the submission row) and never promotes, leaving `confirmed_at` NULL, so an
+admin-filled row still reads **missing** until the student confirms.
+
+**Internal availability (1.07).** The middle layer between the student's raw
+submission and the generated schedule:
+
+```
+student shift_selections → internal_availability/internal_selections → generator → schedule_assignments
+     (student truth)              (admin working copy)                              (output)
+```
+
+- **Effective resolution:** `availability/effective.ts` holds the pure override rule
+  (`applyInternalOverrides`: internal copy replaces selection + rotation where present,
+  pass-through otherwise); `availability/internal.ts` (server-only) loads copies —
+  `loadInternalDetail` for the per-student page, `loadInternalCopiesByEmail` for the
+  generator — and exposes `effectiveSelections()`, a Drizzle `UNION ALL` subquery
+  (student rows filtered by a `NOT EXISTS` probe against `internal_availability`,
+  plus all internal rows) so aggregate readers resolve in SQL, not by fanning out
+  per student in JS (the v0.96 lesson). Consumers: the generation problem builder
+  (`schedule/actions.ts`) and the manual weekend-cohort pick (`schedule/manual.ts`,
+  a `COALESCE` join) resolve in JS; schedule coverage counts and frozen-mismatch
+  (`schedule/data.ts`) and the dashboard's least-staffed cells (`admin/dashboard.ts`)
+  group over the subquery. Student-facing reads (own grid, demand nudges) and the
+  responses export stay on the student rows by design.
+- **Reconcile flag:** `writeSelectionAndFlags` (student saves + finalize only) re-raises
+  `student_changed_after_internal_edit` after its blanket flag delete whenever an
+  internal header exists, drafts included. Cleared by an admin re-save, by
+  `revertInternalAvailability`, which deletes the header (cells cascade off it) and
+  falls back to the student's rows (the `RevertInternalButton` on the per-student page
+  drives it behind a confirm step), or by the "Keep this copy" dismiss on the flag row
+  (`DismissFlagButton` → `dismissFlag` in `admin/actions.ts`, the generalization of the
+  old position_change-only clear; both dismissable flag types go through it).
+- **Config integrity:** `applyPositionChange` runs the same carry-over remap over
+  `internal_selections` as over `shift_selections` (otherwise the engine would silently
+  drop out-of-position internal cells), and the position/block delete guards
+  (`positions/actions.ts`) count internal cells too, since they FK `shift_blocks`.
+- **The grid shows effective:** the per-student page builds the grid from the internal
+  copy when one exists (with a banner naming `editedBy`/`editedAt`, a one-line diff
+  summary from the pure `diffInternalFromStudent` in `availability/effective.ts`, and
+  the revert button; cell tooltips stop attributing picks to the student), while the
+  validation card, KPI strip, and flags card keep reading the student's own data — they
+  explain the student's submission, not the working copy. With a copy loaded the grid
+  also gets `studentCells` (the student's picks + machine-assigned weekend) and draws
+  per-cell diff rings against the **trial** state: amber dashed on a trial cell the
+  student never picked, blue dotted on a student cell missing from the trial, so the
+  cues update live as the admin clicks and a re-added cell sheds its ring. The client form
 (`components/AvailabilityForm.tsx`) runs the
 same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
 continue** (the latter routes to `/travel` on success), and for an already-submitted form

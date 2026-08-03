@@ -464,6 +464,16 @@ and the status header, and the changelog-only facts now stated in the body
 self-healing recreate, the UptimeRobot status page).
 
 ### Still open (validation-sourced; none block the tiers above)
+- **Admin-entered availability cannot make a non-responder schedulable** (noted
+  at 1.07) — saving an internal copy for a student who never submitted creates
+  the stub draft but leaves it in `draft` status, so the generator, coverage,
+  and every scheduling surface still skip them (`eligibleSubmittedFilter`
+  requires `submitted`). When a student reports availability out of band (in
+  person, by email), the scheduler has no way to get them into a generated run
+  without the student touching the form. Future: an explicit admin affordance
+  to mark such a response schedulable (say, an "include in scheduling" toggle
+  on the internal copy), kept distinct from the student's own submitted state
+  so response tracking stays honest.
 - **Image retention purge** (§12 "purge images after schedules are written") —
   never built; no purge job exists and every relayed `fileId` is still live in
   Drive. The per-student scheduled mark gives the "cycle is done" signal (2.4's

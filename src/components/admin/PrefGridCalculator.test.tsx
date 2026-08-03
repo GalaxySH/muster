@@ -62,6 +62,8 @@ function renderCalc(
     cap?: number;
     hasCurrentRun?: boolean;
     hasSchedule?: boolean;
+    isInternal?: boolean;
+    studentCells?: SelectedShift[] | null;
   } = {},
 ) {
   return render(
@@ -81,6 +83,8 @@ function renderCalc(
       cap={opts.cap ?? 30}
       hasCurrentRun={opts.hasCurrentRun ?? false}
       hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
+      isInternal={opts.isInternal ?? false}
+      studentCells={opts.studentCells ?? null}
     />,
   );
 }
@@ -374,6 +378,8 @@ describe("PrefGridCalculator", () => {
           cap={30}
           hasCurrentRun={false}
           hasSchedule={false}
+          isInternal={false}
+          studentCells={null}
         />,
       );
       expect(screen.getByText("preferred")).toBeInTheDocument();
@@ -523,6 +529,56 @@ describe("PrefGridCalculator", () => {
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
       expect(setManualAssignment).not.toHaveBeenCalled();
       expect(removeManualAssignment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("internal diff cues", () => {
+    // The grid shows the saved internal copy: Mon kept from the student, Wed
+    // added by the admin. The student's own cells were Mon and Tue.
+    const internalSel: SelectedShift[] = [
+      { blockId: "wd-a", day: "mon" },
+      { blockId: "wd-b", day: "wed" },
+    ];
+    const studentCells: SelectedShift[] = [
+      { blockId: "wd-a", day: "mon" },
+      { blockId: "wd-a", day: "tue" },
+    ];
+
+    it("marks admin-added cells and dropped student cells", () => {
+      renderCalc({ selection: internalSel, isInternal: true, studentCells });
+      // Added by the admin: called out as not the student's pick.
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "title",
+        expect.stringContaining("not one the student picked"),
+      );
+      // Dropped from the copy: still the student's, offered back.
+      expect(screen.getByRole("button", { name: "8a–12p Tue" })).toHaveAttribute(
+        "title",
+        expect.stringContaining("not in the saved copy"),
+      );
+      // A cell the copy kept carries no diff cue.
+      expect(
+        screen.getByRole("button", { name: "8a–12p Mon" }).getAttribute("title"),
+      ).toBe("In trial schedule");
+      // The legend explains both rings.
+      expect(screen.getByText(/not picked by the student/)).toBeInTheDocument();
+      expect(screen.getByText(/their pick, not in this copy/)).toBeInTheDocument();
+    });
+
+    it("clears the dropped cue once the cell is added back to the trial", async () => {
+      const user = userEvent.setup();
+      renderCalc({ selection: internalSel, isInternal: true, studentCells });
+
+      await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
+      expect(
+        screen.getByRole("button", { name: "8a–12p Tue" }).getAttribute("title"),
+      ).toBe("In trial schedule");
+    });
+
+    it("shows no diff cues without an internal copy", () => {
+      renderCalc();
+      expect(screen.queryByText(/not picked by the student/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/their pick, not in this copy/)).not.toBeInTheDocument();
     });
   });
 });
