@@ -3,7 +3,6 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import { StatTile, SectionLabel, panelStyle, cardsGridStyle } from "@/components/admin/ui";
-import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
 import { loadAnalyticsStudents } from "@/lib/admin/analytics";
 import { buildAnalyticsView } from "@/lib/admin/analytics-view";
 
@@ -94,32 +93,11 @@ export default async function AnalyticsPage() {
       </div>
 
       <section style={{ ...panelStyle, marginTop: 14 }}>
-        <SectionLabel
-          action={
-            view.neverSignedInPeople.length > 0 ? (
-              <CopyEmailsButton
-                emails={view.neverSignedInPeople.map((p) => p.email)}
-                label={`Copy all ${view.neverSignedInPeople.length}`}
-              />
-            ) : null
-          }
-        >
-          Never signed in
-        </SectionLabel>
-        {view.neverSignedInPeople.length === 0 ? (
-          <p style={{ ...footnote, marginTop: 0 }}>Everyone on the roster has signed in.</p>
+        <SectionLabel>Recent activity</SectionLabel>
+        {view.perDay.every((d) => d.count === 0) ? (
+          <p style={{ ...footnote, marginTop: 0 }}>No sign-in activity yet.</p>
         ) : (
-          <div style={nameGrid}>
-            {view.neverSignedInPeople.map((p) => (
-              <a
-                key={p.email}
-                href={`/admin/students/${encodeURIComponent(p.email)}`}
-                style={nameCell}
-              >
-                {p.displayName}
-              </a>
-            ))}
-          </div>
+          <Sparkline days={view.perDay} />
         )}
       </section>
     </Page>
@@ -167,6 +145,34 @@ function RecencyRow({ label, count, total }: { label: string; count: number; tot
   );
 }
 
+/** Last active per day. Mirrors the dashboard sparkline format. */
+function Sparkline({ days }: { days: { date: string; count: number }[] }) {
+  const max = days.reduce((n, d) => Math.max(n, d.count), 0);
+  if (max === 0) return null;
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 28, marginTop: 10 }}>
+        {days.map((d, i) => (
+          <div
+            key={d.date}
+            title={`${d.date}: ${d.count}`}
+            style={{
+              flex: 1,
+              height: `${Math.max(4, (d.count / max) * 100)}%`,
+              borderRadius: 2,
+              background:
+                i === days.length - 1 ? "var(--color-text-info)" : "var(--color-border-tertiary)",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 3 }}>
+        last active per day, last {days.length} days
+      </div>
+    </>
+  );
+}
+
 const clock = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
 // --- styles ---
@@ -203,22 +209,6 @@ const listRow: React.CSSProperties = {
   padding: "6px 0",
   fontSize: 13,
   borderTop: "0.5px solid var(--color-border-tertiary)",
-};
-
-const nameGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-  gap: "2px 12px",
-};
-
-const nameCell: React.CSSProperties = {
-  fontSize: 13,
-  padding: "3px 0",
-  color: "var(--color-text-primary)",
-  textDecoration: "none",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
 };
 
 const footnote: React.CSSProperties = {

@@ -13,7 +13,7 @@ import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation
 import { hourCap } from "@/lib/domain/caps";
 import { DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, InfoCard } from "@/components/ui";
 import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
 
 /** The user-editable fields, snapshotted at load/save to detect unsaved edits. */
@@ -213,31 +213,25 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       </p>
 
       {anyHighDemand && (
-        <p
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: "#555",
-            marginTop: 4,
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              display: "inline-block",
-              width: 4,
-              height: 18,
-              borderRadius: 1,
-              background: "#d33",
-              flex: "none",
-            }}
-          />
-          <span>
-            This mark means a lot of students already picked that shift. Choosing less busy
-            shifts can help you get the hours you want.
-          </span>
-        </p>
+        <InfoCard tone="info">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              aria-hidden
+              style={{
+                display: "inline-block",
+                width: 4,
+                height: 18,
+                borderRadius: 1,
+                background: "#d33",
+                flex: "none",
+              }}
+            />
+            <span>
+              This mark means a lot of students already picked that shift. Choosing less busy
+              shifts can help you get the hours you want.
+            </span>
+          </div>
+        </InfoCard>
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>

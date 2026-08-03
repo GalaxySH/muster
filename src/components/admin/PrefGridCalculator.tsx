@@ -802,12 +802,12 @@ const saveErrorStyle: React.CSSProperties = {
 };
 const hotTick: React.CSSProperties = {
   position: "absolute",
-  top: 1,
-  left: 1,
+  top: 0,
+  bottom: 0,
+  right: 0,
   width: 3,
-  height: 7,
   background: "var(--color-text-danger)",
-  borderRadius: 1,
+  borderRadius: "0 4px 4px 0",
   pointerEvents: "none",
 };
 /** The trial check sits in the preference (lower-left) half of the split. */
