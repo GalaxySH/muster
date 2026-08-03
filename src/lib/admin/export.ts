@@ -39,6 +39,8 @@ export interface ExportAggregate {
   schedulerNotes: string;
   selection: SelectedShift[];
   autoAssigned: SelectedShift[];
+  /** True when an admin saved an internal copy over this response (PLAN §10a). */
+  internalAdjusted: boolean;
   flags: { type: string; detail: string }[];
   courseScheduleFileId: string | null;
   extracurricularNotes: string;
@@ -63,6 +65,7 @@ export const EXPORT_HEADERS = [
   "Hour cap",
   "Selections",
   "Auto-assigned weekend",
+  "Adjusted internally",
   "Flags",
   "Student notes",
   "Scheduler notes",
@@ -128,6 +131,7 @@ export function buildExportMatrix(rows: readonly ExportAggregate[]): string[][] 
       r.position ? String(hourCap(r.international)) : "",
       describeCells(r.selection, r.blocks),
       describeCells(r.autoAssigned, r.blocks),
+      yesNo(r.internalAdjusted),
       r.flags.map((f) => f.detail || f.type).join(" | "),
       r.studentNotes,
       r.schedulerNotes,

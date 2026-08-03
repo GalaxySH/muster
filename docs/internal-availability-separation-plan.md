@@ -1,8 +1,30 @@
 # Internal availability separation — implementation plan
 
-Status: **proposed** (design only; no code changed yet). Touches the DB schema and
-the availability write path, both flagged high-stakes in CLAUDE.md, so this is written
-for review before implementation.
+Status: **Phase 1 implemented** (PLAN 1.05; this branch). An independent review
+green-lit the design with four must-fix adjustments, all folded in. Where this doc and
+the code disagree, the code and PLAN.md 1.05 win. As-built deviations from the text
+below:
+
+- **No weekend auto-assign on the internal copy** (user revision during
+  implementation): §5's "auto-assign against the internal rows" is dropped. The copy
+  is saved literally; an empty weekend means no weekend shift.
+- **`revalidation_failed` stays student-only** (review must-fix): an admin
+  override-save raises no flag at all; the warn + "Save anyway" gate remains.
+- **Admin edit of a student with no submission** (review must-fix): the rewritten
+  `saveAvailabilityFor` still creates the stub draft via `ensureSubmissionId`; the
+  internal tables FK the submission row.
+- **Export marker shipped in Phase 1** (review must-fix): the CSV + running sheet
+  carry an "Adjusted internally" column now, not in Phase 2.
+- **Rotation coalesce named and done** (review must-fix): the generator's
+  `everyWeekendOptIn` read and `schedule/manual.ts`'s cohort pick both honor the
+  internal rotation.
+- **`internal_selections` FKs `internal_availability`**, not `submissions`, so the
+  revert delete cascades the cells and a copy can't exist without its header.
+- **Effective resolution is a JS merge for Phase 1** (`applyInternalOverrides`), not
+  the SQL UNION seam: the two converted readers already load full rows per run. The
+  SQL seam remains the plan for Phase 2's aggregate readers.
+
+Original design follows.
 
 ## 1. The problem
 

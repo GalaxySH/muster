@@ -23,6 +23,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
   flags,
+  internalSelections,
   positions,
   shiftBlocks,
   shiftSelections,
@@ -89,29 +90,23 @@ export async function applyPositionChange(
   let carriedOver = 0;
   let dropped = 0;
   if (!deferred) {
-    const selectionRows = await tx
-      .select()
-      .from(shiftSelections)
-      .where(eq(shiftSelections.submissionId, sub.id));
-    if (selectionRows.length > 0) {
-      const rows = selectionRows.map((r) => ({
-        blockId: r.shiftBlockId,
-        day: r.day,
-        autoAssigned: r.autoAssigned,
-      }));
+    const remap = async (table: typeof shiftSelections | typeof internalSelections) => {
+      const rows = await tx
+        .select({ blockId: table.shiftBlockId, day: table.day, autoAssigned: table.autoAssigned })
+        .from(table)
+        .where(eq(table.submissionId, sub.id));
+      if (rows.length === 0) return { kept: 0, dropped: 0 };
       // Source blocks are the blocks the rows actually reference (see header).
       const referencedIds = [...new Set(rows.map((r) => r.blockId))];
       const sourceBlocks = (
         await tx.select().from(shiftBlocks).where(inArray(shiftBlocks.id, referencedIds))
       ).map(toDomainBlock);
       const result = carryOverSelections(rows, sourceBlocks, targetBlocks);
-      carriedOver = result.kept.length;
-      dropped = result.dropped.length;
       // Delete + insert; kept rows are already deduped against the composite
       // PK (submissionId, shiftBlockId, day) by carryOverSelections.
-      await tx.delete(shiftSelections).where(eq(shiftSelections.submissionId, sub.id));
+      await tx.delete(table).where(eq(table.submissionId, sub.id));
       if (result.kept.length > 0) {
-        await tx.insert(shiftSelections).values(
+        await tx.insert(table).values(
           result.kept.map((r) => ({
             submissionId: sub.id,
             shiftBlockId: r.blockId,
@@ -120,7 +115,16 @@ export async function applyPositionChange(
           })),
         );
       }
-    }
+      return { kept: result.kept.length, dropped: result.dropped.length };
+    };
+    const studentRows = await remap(shiftSelections);
+    carriedOver = studentRows.kept;
+    dropped = studentRows.dropped;
+    // The admin's internal copy (PLAN §10a) follows the same carry-over, so
+    // its cells never point at another position's blocks (the engine silently
+    // drops out-of-position cells). The flag detail reports the student's own
+    // rows; the internal copy is scheduler working state.
+    await remap(internalSelections);
   }
 
   const detail = await changeDetail(tx, input, { deferred, carriedOver, dropped });

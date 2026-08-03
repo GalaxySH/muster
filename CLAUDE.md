@@ -221,6 +221,14 @@ These are non-obvious and pervade the data model — internalize them before edi
   `domain/travel.ts`. Shift Leads must additionally hold **exactly 3 weekend-close
   claims** before they can finalize (§18a; dormant until an admin generates the
   close inventory).
+- **Admins never overwrite student availability (1.05).** The admin grid's save
+  writes an **internal copy** (`internal_availability` + `internal_selections`);
+  `shift_selections` stays the student's own record. Scheduling surfaces read the
+  internal copy when one exists and the student's rows otherwise
+  (`availability/effective.ts`); student-facing surfaces never read it. The internal
+  copy is **literal**: no weekend auto-assign runs on it (an empty weekend means no
+  weekend shift). A student edit while a copy exists raises the
+  `student_changed_after_internal_edit` flag instead of merging.
 - **Evidence is advisory, never auto-parsed.** Course schedule (required),
   extracurriculars (optional), and travel proofs are all uploaded images/PDFs shown
   to the scheduler as clickable thumbnails → lightbox for manual review. Conflict

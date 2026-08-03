@@ -23,17 +23,28 @@
  * flag (§8) are written by `writeSelectionAndFlags` whenever the effective status
  * is "submitted".
  *
- * `saveAvailabilityFor` is the admin's on-behalf-of save from the response page's
- * grid (§10a). It shares this file's persistence core, so an admin edit lands the
- * same way a student's own save would.
+ * `saveAvailabilityFor` is the admin's save from the response page's grid
+ * (§10a). It writes the INTERNAL copy only (internal_availability +
+ * internal_selections): the student's own submission row, selections, and
+ * flags are never modified by an admin edit, and scheduling surfaces read the
+ * internal copy in its place (lib/availability/effective.ts). The student
+ * save path below stays exactly as it was.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { getAppSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
-import { submissions, shiftSelections, flags, travelRequests } from "@/lib/db/schema";
+import {
+  submissions,
+  shiftSelections,
+  internalAvailability,
+  internalSelections,
+  flags,
+  travelRequests,
+} from "@/lib/db/schema";
+import { ensureSubmissionId } from "@/lib/evidence/data";
 import { requireEditableStudent } from "@/lib/groups/gate";
-import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
@@ -82,6 +93,67 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
 }
 
+/** The two availability-cell tables share one shape; the writer serves both. */
+type SelectionTable = typeof shiftSelections | typeof internalSelections;
+
+/**
+ * Replace one table's selection cells for a submission inside a tx, with the
+ * weekend auto-assign applied (reusing any prior machine pick so a re-save
+ * keeps the same weekend cell). Shared by the student's own save
+ * (shift_selections) and the admin's internal save (internal_selections).
+ * Returns the auto-assigned cell, if any.
+ */
+async function replaceSelectionCells(
+  tx: DbTransaction,
+  table: SelectionTable,
+  args: {
+    submissionId: string;
+    /**
+     * Weekend auto-assign (PLAN §5 #5) is a student-path behavior for a
+     * submitted response. The internal copy is always written literally, so
+     * the admin save passes false.
+     */
+    applyAutoAssign: boolean;
+    selection: SelectedShift[];
+    position: Position;
+    blocks: ShiftBlock[];
+  },
+): Promise<AutoAssignedShift | null> {
+  const { submissionId, applyAutoAssign, selection, position, blocks } = args;
+
+  let chosen: SelectedShift | null = null;
+  if (applyAutoAssign && needsWeekendAutoAssign(selection, position)) {
+    const priorRows = await tx
+      .select({
+        blockId: table.shiftBlockId,
+        day: table.day,
+        autoAssigned: table.autoAssigned,
+      })
+      .from(table)
+      .where(eq(table.submissionId, submissionId));
+    const preferred = priorRows.find((r) => r.autoAssigned) ?? null;
+    chosen = chooseWeekendAutoAssign(blocks, {
+      preferred: preferred ? { blockId: preferred.blockId, day: preferred.day } : null,
+    });
+  }
+
+  // Replace-all selection strategy keeps the write simple and correct.
+  await tx.delete(table).where(eq(table.submissionId, submissionId));
+  const rows = selection.map((s) => ({
+    submissionId,
+    shiftBlockId: s.blockId,
+    day: s.day,
+    autoAssigned: false,
+  }));
+  let autoAssigned: AutoAssignedShift | null = null;
+  if (chosen) {
+    rows.push({ submissionId, shiftBlockId: chosen.blockId, day: chosen.day, autoAssigned: true });
+    autoAssigned = { ...chosen, label: describeCell(chosen, blocks) };
+  }
+  if (rows.length > 0) await tx.insert(table).values(rows);
+  return autoAssigned;
+}
+
 /**
  * Replace a submission's selection rows and recompute its flags inside a tx.
  * When the effective status is "submitted" it also performs the weekend
@@ -101,37 +173,13 @@ async function writeSelectionAndFlags(
   const { submissionId, status, selection, position, blocks } = args;
   const isSubmitted = status === "submitted";
 
-  // Reuse a prior machine-pick so a re-save keeps the same weekend cell.
-  let chosen: SelectedShift | null = null;
-  if (isSubmitted && needsWeekendAutoAssign(selection, position)) {
-    const priorRows = await tx
-      .select({
-        blockId: shiftSelections.shiftBlockId,
-        day: shiftSelections.day,
-        autoAssigned: shiftSelections.autoAssigned,
-      })
-      .from(shiftSelections)
-      .where(eq(shiftSelections.submissionId, submissionId));
-    const preferred = priorRows.find((r) => r.autoAssigned) ?? null;
-    chosen = chooseWeekendAutoAssign(blocks, {
-      preferred: preferred ? { blockId: preferred.blockId, day: preferred.day } : null,
-    });
-  }
-
-  // Replace-all selection strategy keeps the write simple and correct.
-  await tx.delete(shiftSelections).where(eq(shiftSelections.submissionId, submissionId));
-  const rows = selection.map((s) => ({
+  const autoAssigned = await replaceSelectionCells(tx, shiftSelections, {
     submissionId,
-    shiftBlockId: s.blockId,
-    day: s.day,
-    autoAssigned: false,
-  }));
-  let autoAssigned: AutoAssignedShift | null = null;
-  if (chosen) {
-    rows.push({ submissionId, shiftBlockId: chosen.blockId, day: chosen.day, autoAssigned: true });
-    autoAssigned = { ...chosen, label: describeCell(chosen, blocks) };
-  }
-  if (rows.length > 0) await tx.insert(shiftSelections).values(rows);
+    applyAutoAssign: isSubmitted,
+    selection,
+    position,
+    blocks,
+  });
 
   // Flags are recomputed from scratch on every save; only a submitted form
   // raises them. The blanket delete is intentional: it also clears any
@@ -163,36 +211,42 @@ async function writeSelectionAndFlags(
       });
     }
   }
+
+  // Only student saves reach this function, so cells just changed underneath
+  // any admin-curated internal copy. Surface that to the scheduler; the
+  // blanket delete above wiped any earlier copy of the flag, and an admin
+  // re-saving or reverting the internal copy clears it. Raised on drafts too:
+  // the mismatch exists regardless of status.
+  const [internal] = await tx
+    .select({ submissionId: internalAvailability.submissionId })
+    .from(internalAvailability)
+    .where(eq(internalAvailability.submissionId, submissionId))
+    .limit(1);
+  if (internal) {
+    await tx.insert(flags).values({
+      id: randomUUID(),
+      submissionId,
+      type: "student_changed_after_internal_edit",
+      detail: "The student changed their availability after it was adjusted internally.",
+    });
+  }
   return autoAssigned;
 }
 
-/**
- * The submission-row fields a save writes. The student's own form owns all of
- * them; an admin saving from the response grid writes only the rotation, so the
- * student's desired hours and their note stay exactly as the student left them.
- */
+/** The submission-row fields the student's own save writes. */
 interface SubmissionPatch {
   everyWeekendOptIn: boolean;
-  desiredHours?: number | null;
-  studentNotes?: string | null;
+  desiredHours: number | null;
+  studentNotes: string | null;
 }
 
 /**
  * Upsert the submission, replace its selection, and recompute its flags in one
  * transaction, then refresh the Drive sheet if this is a real (submitted)
- * response. Shared by the student's own save and the admin's on-behalf save.
- * Neither ever promotes a draft: the status is whatever the row already had, so
- * a row an admin starts stays a draft the student has yet to confirm.
- *
- * `studentEdit` decides whether this counts as the student changing their own
- * answers, which is exactly what `updated_at` records (PLAN §9): true for their
- * own save, false for an admin's on-behalf one.
- *
- * `revalidate` runs the generic revalidation seam (`syncRevalidationFlag`)
- * after the write, so the admin's override-save raises `revalidation_failed`
- * and a clean save clears it, exactly like a position change. The student's own
- * save skips it: their path is gated up front and self-heals via the blanket
- * flag rewrite in `writeSelectionAndFlags`.
+ * response. The student's own save path only: an admin's edit goes to the
+ * internal copy (`saveAvailabilityFor`) and never touches these rows. Never
+ * promotes a draft: the status is whatever the row already had. Every save
+ * here stamps `updated_at`, which records the student's own edits (PLAN §9).
  */
 async function persistAvailability(args: {
   email: string;
@@ -200,11 +254,9 @@ async function persistAvailability(args: {
   patch: SubmissionPatch;
   position: Position;
   blocks: ShiftBlock[];
-  studentEdit: boolean;
-  revalidate?: boolean;
 }): Promise<AutoAssignedShift | null> {
   const { email, selection, position, blocks } = args;
-  const patch = args.studentEdit ? { ...args.patch, updatedAt: new Date() } : args.patch;
+  const patch = { ...args.patch, updatedAt: new Date() };
   const db = getDb();
   const { effectiveStatus, autoAssigned } = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -237,7 +289,6 @@ async function persistAvailability(args: {
       position,
       blocks,
     });
-    if (args.revalidate) await syncRevalidationFlag(tx, submissionId);
     return { effectiveStatus: status, autoAssigned: auto };
   });
 
@@ -288,7 +339,6 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
     patch: { everyWeekendOptIn: input.everyWeekendOptIn, desiredHours, studentNotes },
     position,
     blocks,
-    studentEdit: true,
   });
 
   revalidatePath("/availability");
@@ -296,20 +346,27 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 }
 
 /**
- * Save a student's availability on behalf of them, from the grid on the admin
- * response page (PLAN §10a). Writes only what that grid edits: the selected
- * cells and the weekend rotation.
+ * Save the admin's INTERNAL copy of a student's availability, from the grid on
+ * the response page (PLAN §10a). Writes internal_availability +
+ * internal_selections only: the student's own submission row, shift_selections,
+ * and flags stay exactly as the student left them, and scheduling surfaces
+ * read the internal copy in their place. Saving also clears the
+ * student_changed_after_internal_edit flag: the admin has just seen and
+ * re-curated the response.
  *
  * The admin is the authority here, not the form window, so hard rules warn
  * instead of blocking: a save that fails them is refused with the failing
  * checks until the caller re-sends with `overrideInvalid` (the grid's "Save
- * anyway" step). An override-save persists and raises `revalidation_failed`
- * through the generic revalidation seam, which a later clean save clears; the
- * student-facing form keeps refusing exactly as before. Status behaviour
- * matches the other on-behalf-of actions: this starts a draft when there is no
- * submission and never promotes one, so a row an admin created still reads
- * "missing" until the student confirms it themselves (`responseStatus`). It
- * also leaves `updated_at` alone, which tracks the student's own edits only.
+ * anyway" step). No flag is raised for an override: the internal copy is the
+ * admin's own working state, and `revalidation_failed` keeps meaning the
+ * STUDENT's stored answers fail the current rules. This still starts a stub
+ * draft when there is no submission (the internal copy hangs off the
+ * submission row), which never promotes and still reads "missing" until the
+ * student confirms it themselves (`responseStatus`).
+ *
+ * The copy is saved LITERALLY: no weekend auto-assign ever runs here (PLAN §5
+ * #5 is a student-form behavior). An admin leaving the weekend empty means
+ * exactly that, and the generator schedules no weekend shift for the student.
  */
 export async function saveAvailabilityFor(
   student: string,
@@ -320,6 +377,8 @@ export async function saveAvailabilityFor(
   const gate = await requireEditableStudent(student);
   if (!gate.ok) return { ok: false, errors: [gate.error] };
   if (!gate.positionId) return { ok: false, errors: ["No position is set for this student."] };
+  const session = await getAppSession();
+  if (!session) return { ok: false, errors: ["You are not signed in."] };
 
   const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
   if (!posWithBlocks) {
@@ -330,8 +389,14 @@ export async function saveAvailabilityFor(
   const validIds = new Set(blocks.map((b) => b.id));
   const selection = input.selection.filter((s) => validIds.has(s.blockId));
 
-  // Same failure set the revalidation seam flags, so the warn list, the refusal,
-  // and the stored flag always agree.
+  const db = getDb();
+  const [sub] = await db
+    .select({ desiredHours: submissions.desiredHours, status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, gate.email))
+    .limit(1);
+
+  // Same checks the grid previews, so the warn list and the refusal agree.
   if (!input.overrideInvalid) {
     const result = validateAvailability(selection, position, blocks, {
       everyWeekendOptIn: input.everyWeekendOptIn,
@@ -339,30 +404,91 @@ export async function saveAvailabilityFor(
     const failures = result.checks
       .filter((c) => c.severity === "hard" && !c.passed)
       .map((c) => c.detail);
-    const db = getDb();
-    const [sub] = await db
-      .select({ desiredHours: submissions.desiredHours })
-      .from(submissions)
-      .where(eq(submissions.studentEmail, gate.email))
-      .limit(1);
     const desiredCheck = checkDesiredHours(sub?.desiredHours ?? null, position);
     if (!desiredCheck.passed) failures.push(desiredCheck.detail);
     if (failures.length > 0) return { ok: false, errors: failures };
   }
 
-  const autoAssigned = await persistAvailability({
-    email: gate.email,
-    selection,
-    patch: { everyWeekendOptIn: input.everyWeekendOptIn },
-    position,
-    blocks,
-    studentEdit: false,
-    revalidate: true,
+  const submissionId = await ensureSubmissionId(gate.email);
+  const status = sub?.status ?? "draft";
+
+  const autoAssigned = await db.transaction(async (tx) => {
+    await tx
+      .insert(internalAvailability)
+      .values({
+        submissionId,
+        everyWeekendOptIn: input.everyWeekendOptIn,
+        editedBy: session.email,
+      })
+      .onDuplicateKeyUpdate({
+        set: {
+          everyWeekendOptIn: input.everyWeekendOptIn,
+          editedBy: session.email,
+          editedAt: new Date(),
+        },
+      });
+    const auto = await replaceSelectionCells(tx, internalSelections, {
+      submissionId,
+      applyAutoAssign: false,
+      selection,
+      position,
+      blocks,
+    });
+    await tx
+      .delete(flags)
+      .where(
+        and(
+          eq(flags.submissionId, submissionId),
+          eq(flags.type, "student_changed_after_internal_edit"),
+        ),
+      );
+    return auto;
   });
 
-  revalidatePath("/availability");
+  // The export and running sheet carry the "adjusted internally" marker, so a
+  // real (submitted) response keeps the sheet fresh here too.
+  if (status === "submitted") await trySyncSheet(RESPONSES_SHEET);
   revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
   return { ok: true, autoAssigned, errors: [] };
+}
+
+export interface RevertInternalResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Drop the internal copy so scheduling surfaces fall back to the student's own
+ * availability (PLAN §10a). Also clears the reconcile flag; the student's rows
+ * are untouched, since internal edits never modified them. No-op when there is
+ * nothing to revert.
+ */
+export async function revertInternalAvailability(student: string): Promise<RevertInternalResult> {
+  if (!student.trim()) return { ok: false, error: "No student was named." };
+  const gate = await requireEditableStudent(student);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [sub] = await db
+    .select({ id: submissions.id, status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, gate.email))
+    .limit(1);
+  if (!sub) return { ok: true };
+
+  await db.transaction(async (tx) => {
+    // internal_selections cascades off the header row.
+    await tx.delete(internalAvailability).where(eq(internalAvailability.submissionId, sub.id));
+    await tx
+      .delete(flags)
+      .where(
+        and(eq(flags.submissionId, sub.id), eq(flags.type, "student_changed_after_internal_edit")),
+      );
+  });
+
+  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
+  return { ok: true };
 }
 
 /**

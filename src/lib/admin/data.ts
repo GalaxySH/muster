@@ -26,6 +26,7 @@ import {
 } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { loadInternalDetail, type InternalDetail } from "@/lib/availability/internal";
 import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
@@ -60,6 +61,12 @@ export interface StudentDetail {
   selection: SelectedShift[];
   /** Weekend cell(s) auto-assigned on submit (PLAN §5 #5). */
   autoAssigned: SelectedShift[];
+  /**
+   * The admin's internal working copy (PLAN §10a), or null when none exists.
+   * Scheduling surfaces read this in place of the student's rows; the grid
+   * edits it, and the student's own answers above stay untouched.
+   */
+  internal: InternalDetail | null;
   flags: { type: DbFlagType; detail: string }[];
   evidence: EvidenceView;
   /** SL weekend closes (PLAN §18a); null when the step doesn't apply. */
@@ -110,6 +117,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
 
   let selection: SelectedShift[] = [];
   let autoAssigned: SelectedShift[] = [];
+  let internal: InternalDetail | null = null;
   let flagRows: { type: DbFlagType; detail: string }[] = [];
   let submission: StudentDetail["submission"] = null;
 
@@ -143,6 +151,8 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       .from(flags)
       .where(eq(flags.submissionId, subRow.id));
     flagRows = fRows.map((f) => ({ type: f.type, detail: f.detail ?? "" }));
+
+    internal = await loadInternalDetail(subRow.id);
   }
 
   const [evidence, closes] = await Promise.all([
@@ -161,6 +171,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     submission,
     selection,
     autoAssigned,
+    internal,
     flags: flagRows,
     evidence,
     closes,

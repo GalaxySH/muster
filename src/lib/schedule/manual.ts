@@ -13,7 +13,12 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { scheduleAssignments, shiftBlocks, submissions } from "@/lib/db/schema";
+import {
+  internalAvailability,
+  scheduleAssignments,
+  shiftBlocks,
+  submissions,
+} from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import {
@@ -103,12 +108,18 @@ export async function setManualAssignment(
 
   let cohort: Cohort = "weekday";
   if (block.dayType === "weekend") {
+    // Effective rotation (PLAN §10a): the internal copy's rotation wins over
+    // the student's own answer when an admin saved one.
     const [sub] = await db
-      .select({ everyWeekendOptIn: submissions.everyWeekendOptIn })
+      .select({
+        everyWeekendOptIn: submissions.everyWeekendOptIn,
+        internalOptIn: internalAvailability.everyWeekendOptIn,
+      })
       .from(submissions)
+      .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
       .where(eq(submissions.studentEmail, email))
       .limit(1);
-    cohort = manualWeekendCohort(existing, sub?.everyWeekendOptIn ?? false);
+    cohort = manualWeekendCohort(existing, sub?.internalOptIn ?? sub?.everyWeekendOptIn ?? false);
   }
 
   await db.insert(scheduleAssignments).values({

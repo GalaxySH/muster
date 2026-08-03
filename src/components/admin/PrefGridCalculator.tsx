@@ -29,12 +29,13 @@ import {
  *
  * Two edit modes. **Edit preferences** is the existing what-if calculator: the
  * admin clicks cells to try a schedule, the corner readout shows the trial's
- * cycle-averaged hours (`computeCapacity`), and Save writes the selection and
- * rotation on the student's behalf. Hard-rule failures warn instead of
- * blocking here: Save lists the failing checks and offers "Save anyway", which
- * persists and raises the revalidation_failed flag through the same seam a
- * position change uses (a later clean save clears it). Only this admin surface
- * gets the override; the student form keeps refusing.
+ * cycle-averaged hours (`computeCapacity`), and Save writes the INTERNAL copy
+ * (PLAN §10a): the student's own submission is never modified, and scheduling
+ * surfaces read the internal copy in its place. Hard-rule failures warn
+ * instead of blocking here: Save lists the failing checks and offers "Save
+ * anyway", which persists without raising any flag (the internal copy is the
+ * admin's own working state). Only this admin surface gets the override; the
+ * student form keeps refusing.
  *
  * **Edit schedule** toggles the current run's rows per cell through the manual
  * assignment actions (source "manual"; removing an engine row is allowed).
@@ -90,6 +91,11 @@ export interface PrefGridCalculatorProps {
    * none the preference fills the whole square (there is nothing to compare to).
    */
   hasSchedule: boolean;
+  /**
+   * True when the grid shows a saved internal copy rather than the student's
+   * own picks; the cell tooltips stop attributing the picks to the student.
+   */
+  isInternal: boolean;
 }
 
 /** How long "Saved" stays up before the button retires itself. */
@@ -405,6 +411,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             assigned={assigned}
             busyCell={busyCell}
             split={split}
+            isInternal={props.isInternal}
             onToggle={onToggle}
           />
         </div>
@@ -419,7 +426,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 style={weekendModeBadge(optIn, rotationDeviates)}
                 title={
                   rotationDeviates
-                    ? `Trial only. ${props.everyWeekendOptIn ? "The student chose every weekend." : "The student chose alternating (A/B)."} Click to switch back.`
+                    ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
                     : optIn
                       ? "Every weekend. Click to try alternating (A/B)."
                       : "Alternating (A/B). Click to try every weekend."
@@ -437,6 +444,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               assigned={assigned}
               busyCell={busyCell}
               split={split}
+              isInternal={props.isInternal}
               onToggle={onToggle}
             />
           </div>
@@ -454,7 +462,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 type="button"
                 onClick={reset}
                 style={miniBtn}
-                title="Reset to the student's picks"
+                title="Reset to the saved picks"
               >
                 Reset
               </button>
@@ -470,8 +478,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 style={saveBtn(saved)}
                 title={
                   saved
-                    ? "Saved to the student's availability"
-                    : "Save this as the student's availability"
+                    ? "Saved as the internal copy used for scheduling"
+                    : "Save as the internal copy used for scheduling. The student's own answers are kept."
                 }
               >
                 {saving ? "Saving…" : saved ? "Saved" : "Save"}
@@ -491,7 +499,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               <li key={c}>{c}</li>
             ))}
           </ul>
-          <p style={{ margin: "6px 0 8px" }}>Saving anyway flags the response for review.</p>
+          <p style={{ margin: "6px 0 8px" }}>Saving anyway keeps shifts that fail these checks.</p>
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button type="button" onClick={() => setOverrideChecks(null)} style={miniBtn}>
               Keep editing
@@ -539,6 +547,7 @@ function CalcTable({
   assigned,
   busyCell,
   split,
+  isInternal,
   onToggle,
 }: {
   sub: AdminSubGrid;
@@ -549,6 +558,7 @@ function CalcTable({
   assigned: Map<string, AssignmentSource>;
   busyCell: string | null;
   split: boolean;
+  isInternal: boolean;
   onToggle: (blockId: string, day: Day) => void;
 }) {
   return (
@@ -583,7 +593,7 @@ function CalcTable({
                     type="button"
                     aria-pressed={pressed}
                     aria-label={`${row.label} ${DAY_LABEL[day]}`}
-                    title={cellTitle(mode, inMock, wasPreferred, wasAuto, source, isHot)}
+                    title={cellTitle(mode, inMock, wasPreferred, wasAuto, source, isHot, isInternal)}
                     onClick={() => onToggle(row.block.id, day)}
                     style={cellStyle(inMock, wasPreferred, wasAuto, source, busyCell === key, split)}
                   >
@@ -611,23 +621,30 @@ function cellTitle(
   wasAuto: boolean,
   source: AssignmentSource | null,
   isHot: boolean,
+  isInternal: boolean,
 ): string {
+  // With an internal copy loaded the saved picks are the admin's, so the
+  // tooltips stop attributing them to the student.
+  const pickedLabel = isInternal ? "in the saved internal copy" : "the student picked this";
+  const notPickedLabel = isInternal ? "not in the saved internal copy" : "not one the student picked";
   const parts: string[] = [];
   if (mode === "schedule") {
     if (source === "manual") parts.push("Scheduled by hand. Click to remove.");
     else if (source === "engine") parts.push("Scheduled. Click to remove.");
     else parts.push("Click to schedule this shift.");
-    if (wasPreferred || wasAuto)
-      parts.push(wasAuto ? "auto-assigned weekend" : "the student picked this");
-    else parts.push("not one the student picked");
+    if (wasPreferred || wasAuto) parts.push(wasAuto ? "auto-assigned weekend" : pickedLabel);
+    else parts.push(notPickedLabel);
   } else {
     if (inMock)
       parts.push(
-        wasPreferred || wasAuto
-          ? "In trial schedule"
-          : "In trial schedule (not one the student picked)",
+        wasPreferred || wasAuto ? "In trial schedule" : `In trial schedule (${notPickedLabel})`,
       );
-    else if (wasPreferred) parts.push("Student picked this; not in the trial schedule");
+    else if (wasPreferred)
+      parts.push(
+        isInternal
+          ? "In the saved internal copy; not in the trial schedule"
+          : "Student picked this; not in the trial schedule",
+      );
     else if (wasAuto) parts.push("Auto-assigned; not in the trial schedule");
     else parts.push("Click to add to the trial schedule");
     if (source === "manual") parts.push("scheduled by hand");

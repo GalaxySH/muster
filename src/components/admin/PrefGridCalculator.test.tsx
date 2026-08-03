@@ -62,6 +62,7 @@ function renderCalc(
     cap?: number;
     hasCurrentRun?: boolean;
     hasSchedule?: boolean;
+    isInternal?: boolean;
   } = {},
 ) {
   return render(
@@ -81,6 +82,7 @@ function renderCalc(
       cap={opts.cap ?? 30}
       hasCurrentRun={opts.hasCurrentRun ?? false}
       hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
+      isInternal={opts.isInternal ?? false}
     />,
   );
 }
@@ -374,6 +376,7 @@ describe("PrefGridCalculator", () => {
           cap={30}
           hasCurrentRun={false}
           hasSchedule={false}
+          isInternal={false}
         />,
       );
       expect(screen.getByText("preferred")).toBeInTheDocument();

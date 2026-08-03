@@ -14,6 +14,7 @@ import {
   students,
   submissions,
   shiftSelections,
+  internalAvailability,
   flags,
   travelRequests,
   extracurricularFiles,
@@ -64,15 +65,24 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
   const subIds = base.map((b) => b.submissionId);
   const positionIds = [...new Set(base.map((b) => b.positionId).filter((p): p is string => !!p))];
 
-  const [blockRows, selRows, flagRows, travelRows, ecRows] = await Promise.all([
+  const [blockRows, selRows, internalRows, flagRows, travelRows, ecRows] = await Promise.all([
     positionIds.length
       ? db.select().from(shiftBlocks).where(inArray(shiftBlocks.positionId, positionIds))
       : Promise.resolve([]),
     db.select().from(shiftSelections).where(inArray(shiftSelections.submissionId, subIds)),
+    db
+      .select({ submissionId: internalAvailability.submissionId })
+      .from(internalAvailability)
+      .where(inArray(internalAvailability.submissionId, subIds)),
     db.select().from(flags).where(inArray(flags.submissionId, subIds)),
     db.select().from(travelRequests).where(inArray(travelRequests.submissionId, subIds)),
     db.select().from(extracurricularFiles).where(inArray(extracurricularFiles.submissionId, subIds)),
   ]);
+
+  // The sheet keeps showing the student's own answers; this marker says an
+  // internal copy exists, so a row is never silently different from what the
+  // scheduler actually schedules against.
+  const internalSubIds = new Set(internalRows.map((r) => r.submissionId));
 
   const blocksByPosition = new Map<string, ShiftBlock[]>();
   for (const row of blockRows) {
@@ -147,6 +157,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       schedulerNotes: b.schedulerNotes ?? "",
       selection: selectionBySub.get(b.submissionId) ?? [],
       autoAssigned: autoBySub.get(b.submissionId) ?? [],
+      internalAdjusted: internalSubIds.has(b.submissionId),
       flags: flagsBySub.get(b.submissionId) ?? [],
       courseScheduleFileId: b.courseScheduleFileId ?? null,
       extracurricularNotes: b.extracurricularNotes ?? "",

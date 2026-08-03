@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.04
-- **Last updated:** 2026-07-31
+- **Version:** 1.05
+- **Last updated:** 2026-08-02
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -550,19 +550,38 @@ columns from the roster.
   in 0.99, roadmap 6.1; nothing reads or writes it, and the column drop is deferred to
   a later release), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
+  **The student's own record, and only theirs** (1.05): admin edits never write this
+  table, so what the student submitted is always preserved verbatim.
+- **InternalAvailability** (1.05 — the admin's working copy, §10a): `submissionId`
+  (PK, cascades with the submission), `everyWeekendOptIn` (internal rotation
+  override), `editedBy` (admin email), `editedAt`. The row's existence is the
+  "an internal copy exists" switch: scheduling surfaces (the generator first of
+  all) read the internal copy when present and the student's own rows otherwise;
+  student-facing surfaces never read it. Dropped whole by the revert action.
+- **InternalSelection** (1.05): `submissionId` (FK → InternalAvailability, cascade),
+  `shiftBlockId`, `day`, `autoAssigned` (always false — the copy is saved
+  **literally**, no weekend auto-assign ever runs on it; an admin leaving the
+  weekend empty means no weekend shift, weekend-exempt in effect). Same shape as
+  ShiftSelection so the position-change carry-over and the shared cell writer
+  serve both tables.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
   `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
   `note?`, `createdAt`, `excused: bool` (always true under the default "refuse" late
   policy; false = late, stored when the admin's accept-late toggle is on — §7b),
   `resolved: bool` (admin review marker — §10a).
 - **Flag**: `submissionId`, `type` (`auto_assigned_weekend`, `travel_late`,
-  `position_change`, `revalidation_failed`), `detail`. `position_change` is written on
+  `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`),
+  `detail`. `position_change` is written on
   any position modification of a student holding a submission (import, alias switch,
   ghost resolution; detail carries old/new position + picks kept/dropped) and clears on
   admin dismiss or the student's next save; `revalidation_failed` is owned by the
   generic revalidation seam (`positions/apply-change.ts`) — written whenever a re-run
-  of `validateAvailability` fails, deleted the moment a validation run passes, never
-  manually dismissed.
+  of `validateAvailability` fails **against the student's own rows** (it never
+  describes the internal copy), deleted the moment a validation run passes, never
+  manually dismissed. `student_changed_after_internal_edit` (1.05) is raised by every
+  student save/finalize while an internal copy exists (drafts included) and cleared
+  when the admin re-saves or reverts the internal copy — the reconcile signal that the
+  ground truth moved under the scheduler's adjustments.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
@@ -620,7 +639,8 @@ columns from the roster.
   rotation made concrete; every-weekend opt-ins count in both weeks), `source`
   (`engine`|`manual`, 0.99 — engine output vs the admin's per-cell override on
   §10a's grid; frozen students' carried rows keep it across runs). Engine rows are
-  always drawn from the student's own selections; a manual row may deliberately sit
+  always drawn from the student's **effective** selections (1.05: the internal copy
+  when one exists, their own otherwise); a manual row may deliberately sit
   outside them and the grid renders the mismatch. Deliberately separate from
   ShiftSelection because preferences (input) and recommendations (output) never
   share a table. Fully cascading — derived, regenerable data.
@@ -707,20 +727,26 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
   open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
   any **auto-assigned** weekend cell marked distinctly.
-  - **Editable + saveable on the student's behalf:** the grid doubles as the hours
-    calculator — the scheduler clicks cells (and the rotation pill) to try a schedule and
-    the readout recomputes live. A trial is local until they **Save** it (the button joins
-    Reset/Clear once anything differs, and runs Save → Saving → Saved). Saving writes the
-    **selection + rotation only**: the student's own **requested hours** and **note** are
-    never touched, since the grid doesn't edit them. The hard-rule gate is **soft**
+  - **Editable — saves an INTERNAL copy, never the student's answers (1.05):** the
+    grid doubles as the hours calculator — the scheduler clicks cells (and the rotation
+    pill) to try a schedule and the readout recomputes live. A trial is local until they
+    **Save** it (the button joins Reset/Clear once anything differs, and runs Save →
+    Saving → Saved). Saving writes the **internal copy** (InternalAvailability +
+    InternalSelection, §9): the student's own submission row, selections, and flags are
+    never modified, so what they submitted is always preserved verbatim. Scheduling
+    surfaces read the internal copy in the student's place (the generator, the manual
+    weekend cohort); the grid loads it back for further editing, with a note naming who
+    adjusted it and when, plus a **"Use student availability"** revert that drops the
+    copy entirely. The copy is saved **literally**: no weekend auto-assign runs on it —
+    an empty weekend means no weekend shift. When the **student** later edits or
+    re-submits, their own copy updates, the internal copy stands untouched, and the
+    `student_changed_after_internal_edit` flag asks the scheduler to reconcile (an admin
+    re-save or revert clears it). The hard-rule gate stays **soft**
     (0.99): a save that fails the finalize checks warns with the failing rules and needs
-    an explicit **Save anyway**, which raises `revalidation_failed` through the generic
-    revalidation seam (a later clean save clears it) — the scheduler can still
-    deliberately record a below-floor selection, it just can't happen silently (before
-    0.99 such saves landed with no warning at all). An already-submitted response stays
-    submitted and has its weekend auto-assign + flags re-applied, exactly as the
-    student's own save would (§5 #5); an unstarted one gets the draft row on demand and
-    stays "missing" (§13.1).
+    an explicit **Save anyway**; no flag is raised for the override (1.05 — the internal
+    copy is the scheduler's own working state; `revalidation_failed` keeps describing
+    the student's stored answers only). An unstarted response still gets the stub draft
+    row on demand and stays "missing" (§13.1).
   - **The schedule shares the grid (0.99):** once a run exists, each cell splits
     diagonally — lower left the student's pick, upper right the current run's assigned
     shift, with engine and manual rows colored apart and a legend beneath. An **Edit
@@ -1316,6 +1342,28 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.05 (2026-08-02)** — **Internal availability separated from the student's
+  submission.** The §10a grid's save used to overwrite `shift_selections` in place,
+  destroying the student's original picks and feeding the edited rows straight back
+  into the generator. Admin edits now land on a dedicated **internal copy**
+  (`internal_availability` header + `internal_selections` cells, §9) and the student's
+  own rows are never modified by an admin again. Scheduling surfaces read the
+  **effective** availability — internal when present, student otherwise
+  (`availability/effective.ts` + `availability/internal.ts`): the generator's problem
+  builder and the manual weekend-cohort pick are converted in this release; coverage,
+  demand, and the dashboard follow in a later one. The copy is saved **literally** (no
+  weekend auto-assign; an empty weekend means none), an override-save no longer raises
+  `revalidation_failed` (that flag keeps describing the student's stored answers), and
+  the per-student page names who adjusted the copy and when, with a "Use student
+  availability" revert. A student edit or re-submit while a copy exists updates only
+  their own rows and raises the new `student_changed_after_internal_edit` flag; an
+  admin re-save or revert clears it. The responses export and running sheet keep
+  showing the student's answers plus a new "Adjusted internally" marker column. The
+  position-change carry-over remaps internal cells alongside the student's, and the
+  position/block delete guards count them. Additive migration (two tables + one enum
+  value), no backfill: no internal row means exactly the pre-1.05 behavior. Selections
+  an admin overwrote before this release are not recoverable; separation protects
+  originals from here on.
 - **1.04 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
   add unique coverage.** 1.03's pairwise containment test left a merged-span
   gap: a shift fully covered by the *union* of a legal staggered double (12p–3p
