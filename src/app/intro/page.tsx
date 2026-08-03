@@ -29,8 +29,7 @@ export default async function IntroPage() {
       </AppHeader>
       <h1>Before you start</h1>
       <p style={{ color: "#555" }}>
-        This form collects your <strong>availability and preferences</strong>. A human
-        uses them to create your schedule. You are <strong>not</strong> scheduling yourself.
+        This form collects your <strong>availability and preferences</strong>. We use them to create your schedule. You are <strong>not</strong> scheduling yourself.
       </p>
 
       <section style={card}>
