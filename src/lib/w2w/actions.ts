@@ -1,0 +1,199 @@
+"use server";
+
+/**
+ * Admin actions for the W2W shift-plan round-trip
+ * (docs/w2w-shift-plan-roundtrip.md §10). The uploaded export is parsed in
+ * memory and never written to disk, matching the roster-import idiom. A
+ * refused parse persists nothing; a successful import supersedes the previous
+ * plan the way schedule runs supersede each other.
+ */
+import { randomUUID } from "node:crypto";
+import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { getAppSession } from "@/lib/auth/session";
+import { shiftBlocks, shiftPlans, shiftPlanRows, w2wEmployees } from "@/lib/db/schema";
+import { decodeCp1252 } from "@/lib/text/cp1252";
+import { parseW2wPlan } from "@/lib/domain/w2w-plan/parse";
+import { matchPlan } from "@/lib/domain/w2w-plan/match";
+import { parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
+import { validateW2wCsvUpload } from "./upload-validation";
+import { loadPlanMatchInputs } from "./plan-data";
+
+export interface PlanImportResult {
+  ok: boolean;
+  error?: string;
+  summary?: {
+    rowCount: number;
+    matchedCount: number;
+    unmatchedRowCount: number;
+    unknownPositionCount: number;
+    /** Blocks whose desired capacity the checkbox changed. */
+    capacityUpdated: number;
+    /** Rows that arrived already carrying an employee name. */
+    assignedRowCount: number;
+    /** Per-row parse oddities worth showing (first few). */
+    issues: string[];
+  };
+}
+
+/** Insert chunk size: one week is ~1000 rows; keep statements comfortably small. */
+const ROW_CHUNK = 200;
+
+export async function importShiftPlanFromUpload(formData: FormData): Promise<PlanImportResult> {
+  const session = await getAppSession();
+  if (!session) return { ok: false, error: "You are not signed in." };
+  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "No file was provided." };
+  const check = validateW2wCsvUpload({ name: file.name, size: file.size });
+  if (!check.ok) return { ok: false, error: check.error ?? "Invalid file." };
+
+  const applyCapacity = formData.get("applyCapacity") === "1";
+
+  const text = decodeCp1252(new Uint8Array(await file.arrayBuffer()));
+  const parsed = parseW2wPlan(text);
+  if (!parsed.ok) return { ok: false, error: parsed.reason };
+
+  const inputs = await loadPlanMatchInputs();
+  const report = matchPlan(parsed.rows, inputs.map, inputs.blocks);
+
+  const db = getDb();
+  const planId = randomUUID();
+  let capacityUpdated = 0;
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(shiftPlans)
+        .set({ status: "superseded" })
+        .where(eq(shiftPlans.status, "current"));
+      await tx.insert(shiftPlans).values({
+        id: planId,
+        importedBy: session.email,
+        sourceFilename: file.name,
+        rowCount: parsed.rows.length,
+      });
+      for (let at = 0; at < parsed.rows.length; at += ROW_CHUNK) {
+        await tx.insert(shiftPlanRows).values(
+          parsed.rows.slice(at, at + ROW_CHUNK).map((r) => ({
+            planId,
+            seq: r.seq,
+            w2wPositionId: r.w2wPositionId,
+            w2wPositionName: r.w2wPositionName,
+            category: r.category,
+            description: r.description,
+            day: r.day,
+            startTime: r.startTime,
+            endTime: r.endTime,
+            duration: r.duration,
+            startMinutes: r.startMinutes,
+            endMinutes: r.endMinutes,
+            importedEmployeeName: r.employeeName,
+            importedEmployeeNumber: r.employeeNumber,
+          })),
+        );
+      }
+      if (applyCapacity) {
+        for (const line of report.capacity) {
+          if (line.desiredCapacity === line.planSeats) continue;
+          await tx
+            .update(shiftBlocks)
+            .set({ desiredCapacity: line.planSeats })
+            .where(eq(shiftBlocks.id, line.blockId));
+          capacityUpdated += 1;
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Shift plan import failed:", e);
+    return { ok: false, error: "Could not save the plan. Please try again." };
+  }
+
+  revalidatePath("/admin/schedule/plan");
+  // Capacity targets feed the coverage view and the generator's seat math.
+  if (capacityUpdated > 0) revalidatePath("/admin/schedule");
+
+  const unmatchedRowCount = report.unmatched.reduce((n, u) => n + u.rowCount, 0);
+  return {
+    ok: true,
+    summary: {
+      rowCount: parsed.rows.length,
+      matchedCount: report.matchedCount,
+      unmatchedRowCount,
+      unknownPositionCount: report.unknownPositions.length,
+      capacityUpdated,
+      assignedRowCount: parsed.rows.filter((r) => r.employeeName !== "").length,
+      issues: parsed.issues.slice(0, 5).map((i) => `Row ${i.row}: ${i.message}`),
+    },
+  };
+}
+
+export interface EmployeesImportResult {
+  ok: boolean;
+  error?: string;
+  summary?: { total: number; added: number; updated: number; removed: number; skipped: number };
+}
+
+/**
+ * Refresh the email-keyed W2W name mapping from the Employee Details export.
+ * The table becomes an exact mirror of the file: names W2W no longer lists
+ * are removed so the export never writes a name W2W would not recognize.
+ */
+export async function importW2wEmployeesFromUpload(
+  formData: FormData,
+): Promise<EmployeesImportResult> {
+  const session = await getAppSession();
+  if (!session) return { ok: false, error: "You are not signed in." };
+  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "No file was provided." };
+  const check = validateW2wCsvUpload({ name: file.name, size: file.size });
+  if (!check.ok) return { ok: false, error: check.error ?? "Invalid file." };
+
+  const text = decodeCp1252(new Uint8Array(await file.arrayBuffer()));
+  const parsed = parseW2wEmployees(text);
+  if (!parsed.ok) return { ok: false, error: parsed.reason ?? "Could not read the file." };
+
+  const db = getDb();
+  try {
+    const before = new Map(
+      (await db.select().from(w2wEmployees)).map((e) => [
+        e.email,
+        { w2wName: e.w2wName, employeeNumber: e.employeeNumber },
+      ]),
+    );
+    let added = 0;
+    let updated = 0;
+    for (const e of parsed.employees) {
+      const prev = before.get(e.email);
+      if (!prev) added += 1;
+      else if (prev.w2wName !== e.w2wName || prev.employeeNumber !== e.employeeNumber)
+        updated += 1;
+    }
+    const removed = [...before.keys()].filter(
+      (email) => !parsed.employees.some((e) => e.email === email),
+    ).length;
+
+    await db.transaction(async (tx) => {
+      await tx.delete(w2wEmployees);
+      await tx.insert(w2wEmployees).values(
+        parsed.employees.map((e) => ({
+          email: e.email,
+          w2wName: e.w2wName,
+          employeeNumber: e.employeeNumber,
+        })),
+      );
+    });
+
+    revalidatePath("/admin/schedule/plan");
+    return {
+      ok: true,
+      summary: { total: parsed.employees.length, added, updated, removed, skipped: parsed.skipped },
+    };
+  } catch (e) {
+    console.error("W2W employee import failed:", e);
+    return { ok: false, error: "Could not save the employee list. Please try again." };
+  }
+}

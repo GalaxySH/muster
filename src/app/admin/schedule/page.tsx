@@ -117,6 +117,10 @@ export default async function AdminSchedulePage({
           ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Hover a cell to see how many students could work it. Weekend cells show both rotation weeks as A·B."
           : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Set targets per block on the Positions and shift blocks page."}
       </p>
+      <p style={{ fontSize: 14, marginTop: -6 }}>
+        <Link href="/admin/schedule/plan">W2W shift plan</Link>: import the shift budget from W2W
+        and export the filled schedule back.
+      </p>
 
       <SchedulePanel
         schedule={schedule}

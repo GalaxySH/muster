@@ -10,6 +10,7 @@ import {
   faChartColumn,
   faCircleCheck,
   faCircleExclamation,
+  faFileExport,
   faFileImport,
   faGear,
   faInbox,
@@ -123,6 +124,7 @@ export default async function AdminPage() {
               countLabel="shift leads short of their close claims"
             />
             <NavCard icon={faChartColumn} title="Schedule" href="/admin/schedule" />
+            <NavCard icon={faFileExport} title="W2W plan" href="/admin/schedule/plan" />
             <NavCard icon={faUserClock} title="Sign-in analytics" href="/admin/analytics" />
           </NavGroup>
 
