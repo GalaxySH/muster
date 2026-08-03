@@ -30,7 +30,11 @@ redirects to `/course-schedule` (Phase 2), and the **admin views** (Phase 4): th
 response dashboard (`/admin/responses`), the per-student view
 (`/admin/students/[email]`), **non-response tracking** (`/admin/non-responses`), and a
 **responses export** — an in-app CSV download plus a **running `Muster Responses` Google
-Sheet** in the Drive folder. The roster import reads **one sheet of the PC & Training
+Sheet** in the Drive folder. **Sign-in tracking + analytics** (v1.06): a throttled
+`students.last_seen_at` stamped from the `getAppSession` seam records who has logged in
+(distinct from who submitted); the per-student view has a Last seen card (timestamp or
+"Never logged in"), and `/admin/analytics` reports the signed-in funnel + recency (see
+`docs/architecture.md`). The roster import reads **one sheet of the PC & Training
 Tracker** (v0.86; one sheet per dining unit, default **Gordon**, `.xlsx` or a `.csv`
 export of a single sheet). **Being listed on the sheet is what puts someone on the
 roster**, and dropping out of it is what takes them off; the sheet's **Status** column
@@ -49,7 +53,8 @@ The Drive relay + the running sheet are **confirmed live**. The **magic-link fal
 (auth for users Google rejects) is built (PLAN §11). Ops hardening is largely done:
 security-audit remediation (v0.26), production env guard (`env-guard.ts`, v0.25), and
 CI/CD (v0.27 — GitHub Actions quality gate on push + SSH deploy on `v*` tag, verified
-against the public `/api/health` DB-probe endpoint; setup in `docs/deploy.md`), prod
+against the `/api/health` DB-probe endpoint on the box's loopback bind (Cloudflare Bot
+Fight Mode blocks the runner from the public URL); setup in `docs/deploy.md`), prod
 DB switched to the host's central MariaDB + scripted nightly backups (v0.29). The
 production deploy is live and the **nightly backup cron is installed** on the box
 (`/usr/local/sbin/backup-mariadb`, root crontab, 03:17 daily).
@@ -221,7 +226,7 @@ These are non-obvious and pervade the data model — internalize them before edi
   `domain/travel.ts`. Shift Leads must additionally hold **exactly 3 weekend-close
   claims** before they can finalize (§18a; dormant until an admin generates the
   close inventory).
-- **Admins never overwrite student availability (1.05).** The admin grid's save
+- **Admins never overwrite student availability (1.07).** The admin grid's save
   writes an **internal copy** (`internal_availability` + `internal_selections`);
   `shift_selections` stays the student's own record. Scheduling surfaces read the
   internal copy when one exists and the student's rows otherwise

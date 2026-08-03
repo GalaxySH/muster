@@ -13,7 +13,7 @@ import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation
 import { hourCap } from "@/lib/domain/caps";
 import { DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, InfoCard } from "@/components/ui";
 import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
 
 /** The user-editable fields, snapshotted at load/save to detect unsaved edits. */
@@ -205,35 +205,33 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       <h1>Choose your availability preferences</h1>
       <p style={{ color: "#555" }}>Position: {props.position.name}</p>
       <p style={{ color: "#555" }}>
-        Check every shift you&apos;d be willing to work. These are preferences, not your final schedule. <strong>You must meet the minimum policy requirements to submit.</strong> If you do not submit your availability, we will assign you a schedule based on your course schedule only.
+        Check every shift you&apos;d be willing to work. This is your{" "}
+        <strong>availability</strong>, not your final schedule.{" "}
+        <strong>You must meet the minimum policy requirements to submit.</strong> If you do
+        not submit your availability, we will assign you a schedule based on your course
+        schedule only.
       </p>
 
       {anyHighDemand && (
-        <p
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: "#555",
-            fontSize: 13,
-            marginTop: 4,
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              display: "inline-block",
-              width: 3,
-              height: 12,
-              background: "#d33",
-              flex: "none",
-            }}
-          />
-          <span>
-            This mark means a lot of students already picked that shift. Choosing less busy
-            shifts can help you get the hours you want.
-          </span>
-        </p>
+        <InfoCard tone="info">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              aria-hidden
+              style={{
+                display: "inline-block",
+                width: 4,
+                height: 18,
+                borderRadius: 1,
+                background: "#d33",
+                flex: "none",
+              }}
+            />
+            <span>
+              This mark means a lot of students already picked that shift. Choosing less busy
+              shifts can help you get the hours you want.
+            </span>
+          </div>
+        </InfoCard>
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>

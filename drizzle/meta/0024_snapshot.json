@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "c4a12313-38d0-49ab-a0b7-4506e208d19e",
-  "prevId": "a19b007b-2289-4560-9ffb-2b36af88d540",
+  "id": "2d1c8904-3255-4ba5-8c95-a49d87370ffa",
+  "prevId": "c4a12313-38d0-49ab-a0b7-4506e208d19e",
   "tables": {
     "admin_google_grants": {
       "name": "admin_google_grants",
@@ -452,7 +452,7 @@
         },
         "type": {
           "name": "type",
-          "type": "enum('auto_assigned_weekend','travel_late','position_change','revalidation_failed')",
+          "type": "enum('auto_assigned_weekend','travel_late','position_change','revalidation_failed','student_changed_after_internal_edit')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -566,6 +566,143 @@
           ]
         }
       },
+      "checkConstraint": {}
+    },
+    "internal_availability": {
+      "name": "internal_availability",
+      "columns": {
+        "submission_id": {
+          "name": "submission_id",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "every_weekend_opt_in": {
+          "name": "every_weekend_opt_in",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "edited_by": {
+          "name": "edited_by",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "edited_at": {
+          "name": "edited_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "internal_availability_submission_id_submissions_id_fk": {
+          "name": "internal_availability_submission_id_submissions_id_fk",
+          "tableFrom": "internal_availability",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "internal_availability_submission_id": {
+          "name": "internal_availability_submission_id",
+          "columns": [
+            "submission_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "internal_selections": {
+      "name": "internal_selections",
+      "columns": {
+        "submission_id": {
+          "name": "submission_id",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shift_block_id": {
+          "name": "shift_block_id",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "enum('mon','tue','wed','thu','fri','sat','sun')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "auto_assigned": {
+          "name": "auto_assigned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "internal_selections_shift_block_id_shift_blocks_id_fk": {
+          "name": "internal_selections_shift_block_id_shift_blocks_id_fk",
+          "tableFrom": "internal_selections",
+          "tableTo": "shift_blocks",
+          "columnsFrom": [
+            "shift_block_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "internal_selections_header_fk": {
+          "name": "internal_selections_header_fk",
+          "tableFrom": "internal_selections",
+          "tableTo": "internal_availability",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "submission_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "internal_selections_submission_id_shift_block_id_day_pk": {
+          "name": "internal_selections_submission_id_shift_block_id_day_pk",
+          "columns": [
+            "submission_id",
+            "shift_block_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "magic_links": {

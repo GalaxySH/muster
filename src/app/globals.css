@@ -316,14 +316,15 @@ body {
 .avail-grid--weekend td:nth-last-child(2) {
   padding-right: 10px;
 }
-/* High-demand mark (roadmap 2.5): advisory, never blocks a pick. */
+/* High-demand mark (roadmap 2.5): advisory, never blocks a pick. A full-height bar
+   down the right edge of the cell, so it reads at a glance without hiding the glyph. */
 .avail-hot {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 3px;
-  height: 8px;
-  border-radius: 1px;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
   background: #d33;
   pointer-events: none;
 }
@@ -348,9 +349,7 @@ body {
     content: none;
   }
   .avail-hot {
-    top: 3px;
-    right: 3px;
-    height: 12px;
+    width: 6px;
   }
 }
 

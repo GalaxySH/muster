@@ -100,6 +100,19 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
+/** Date only (no time), US Central, e.g. "26 Jul 2026", for the hire date. */
+const fmtDay = (d: Date | null): string | null => {
+  if (!d) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Chicago",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")}`;
+};
+
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
@@ -292,7 +305,11 @@ export default async function StudentDetailPage({
       {/* Hour summary cards: a full-width glanceable KPI strip */}
       {validation && (
         <div style={cardsGridStyle}>
-          <StatTile label="POSITION" value={position!.name} sub={`Group: ${detail.group ?? "none"}`} />
+          <StatTile
+            label="POSITION"
+            value={position!.name}
+            sub={`Group: ${detail.group ?? "none"}`}
+          />
           <StatTile
             label="BOUNDS"
             value={`floor ${position!.minHours} · cap ${cap}`}
@@ -544,8 +561,9 @@ export default async function StudentDetailPage({
         )}
 
         {/* Schedule change requests (roadmap 3.1): independent of the submission,
-            so they render even for students without one. Kept last in DOM order so
-            they always pack into the final column slot. */}
+            so they render even for students without one. Kept near the end of DOM
+            order so a long history packs into a late column slot (only the small
+            Last-seen card follows). */}
         {changeRequests.length > 0 && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
@@ -618,6 +636,38 @@ export default async function StudentDetailPage({
             </div>
           </section>
         )}
+
+        {/* Student details: last authenticated activity and hire date. Kept last
+            in the card order. */}
+        <section style={panelStyle}>
+          <SectionLabel>Student details</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Last seen</div>
+              <div
+                style={{
+                  color: detail.lastSeenAt
+                    ? "var(--color-text-primary)"
+                    : "var(--color-text-danger)",
+                }}
+              >
+                {detail.lastSeenAt ? fmtStamp(detail.lastSeenAt) : "Never logged in"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Hire date</div>
+              <div
+                style={{
+                  color: detail.hiredOn
+                    ? "var(--color-text-primary)"
+                    : "var(--color-text-secondary)",
+                }}
+              >
+                {fmtDay(detail.hiredOn) ?? "Unknown"}
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </Page>
   );

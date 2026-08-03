@@ -39,6 +39,10 @@ export interface StudentDetail {
   displayName: string;
   international: boolean;
   onRoster: boolean;
+  /** Most recent authenticated activity; null when they have never signed in. */
+  lastSeenAt: Date | null;
+  /** When the student was hired (from the roster), or null if unknown. */
+  hiredOn: Date | null;
   position: Position | null;
   /** The student's form-window group name, or null when they're ungrouped. */
   group: string | null;
@@ -165,6 +169,8 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     displayName: student.displayName,
     international: student.international,
     onRoster: student.onRoster,
+    lastSeenAt: student.lastSeenAt,
+    hiredOn: student.hiredOn,
     position,
     group,
     blocks,

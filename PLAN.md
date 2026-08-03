@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.05
+- **Version:** 1.07
 - **Last updated:** 2026-08-02
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -416,16 +416,23 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   with a short **steering hint** ("a lot of students picked that shift; choosing less
   busy ones can help you get the hours you want"). The underlying counts and ranking stay
   hidden (avoid gaming). Purely **advisory** — the student can still select them;
-  selection isn't blocked. **Computed** (roadmap 2.5): once a position has **≥ 20
-  submitted responses**, shifts are ranked by responder pick count **within each
-  day-type** (weekday vs weekend, so weekend shifts aren't buried), and the **busiest
-  ~15%** of (block × day) cells are flagged (cells tied at the cutoff count are all
-  included). A **relative** rank, not an absolute share of the cohort — students
-  over-select, so what matters is which shifts stand out above the pack, and a fixed
-  cohort-percentage almost never fires. The signal is self-maintaining and supersedes the old admin-set flag (the
+  selection isn't blocked. **Computed** (roadmap 2.5): a (block × day) cell is flagged
+  when it clears two floors and ranks near the top of its day-type. Floors: it has at
+  least its block's **target staffing** (`desiredCapacity`) in takers, and at least an
+  **absolute minimum** (`DEMAND_MIN_CELL_COUNT`, 3) so a thin cohort or a tiny target
+  can't flag a shift off one or two picks. Ranking: among the cells that clear both
+  floors, the **busiest ~25%** (`DEMAND_TOP_SHARE`) of each **day-type** (weekday vs
+  weekend, so weekend shifts aren't buried) by **contention** (takers ÷ target, not raw
+  popularity: a shift that needs 2 people when 6 want it is harder to get than one that
+  needs 6 and 6 want it); cells tied at the cutoff are all included. There is **no
+  cohort-size floor**, so a small position (e.g. ~34 Shift Leads) shows a signal instead
+  of waiting for a large number of submissions, and the mark never steers students off
+  an **under-staffed** cell (below its target), only off ones that already have enough
+  people. Supersedes the old admin-set flag (the
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
-  (`DEMAND_TOP_SHARE`); computed at grid load in `availability/data.ts`. A
-  graded-intensity view, if ever wanted, stays admin-side.
+  (`DEMAND_TOP_SHARE`, `DEMAND_MIN_CELL_COUNT`); computed at grid load in
+  `availability/data.ts` (`loadHighDemandCells`, which also loads each block's target).
+  A graded-intensity view, if ever wanted, stays admin-side.
 - **Weekend Sun/Sat separation:** the weekend grids render **Sun then Sat**, because
   the scheduling week **starts on Sunday**: Sunday opens the week and Saturday closes
   it, so the two days sit at **opposite ends of the week** (a Sun + Sat pick is two
@@ -550,15 +557,15 @@ columns from the roster.
   in 0.99, roadmap 6.1; nothing reads or writes it, and the column drop is deferred to
   a later release), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
-  **The student's own record, and only theirs** (1.05): admin edits never write this
+  **The student's own record, and only theirs** (1.07): admin edits never write this
   table, so what the student submitted is always preserved verbatim.
-- **InternalAvailability** (1.05 — the admin's working copy, §10a): `submissionId`
+- **InternalAvailability** (1.07 — the admin's working copy, §10a): `submissionId`
   (PK, cascades with the submission), `everyWeekendOptIn` (internal rotation
   override), `editedBy` (admin email), `editedAt`. The row's existence is the
   "an internal copy exists" switch: scheduling surfaces (the generator first of
   all) read the internal copy when present and the student's own rows otherwise;
   student-facing surfaces never read it. Dropped whole by the revert action.
-- **InternalSelection** (1.05): `submissionId` (FK → InternalAvailability, cascade),
+- **InternalSelection** (1.07): `submissionId` (FK → InternalAvailability, cascade),
   `shiftBlockId`, `day`, `autoAssigned` (always false — the copy is saved
   **literally**, no weekend auto-assign ever runs on it; an admin leaving the
   weekend empty means no weekend shift, weekend-exempt in effect). Same shape as
@@ -578,7 +585,7 @@ columns from the roster.
   generic revalidation seam (`positions/apply-change.ts`) — written whenever a re-run
   of `validateAvailability` fails **against the student's own rows** (it never
   describes the internal copy), deleted the moment a validation run passes, never
-  manually dismissed. `student_changed_after_internal_edit` (1.05) is raised by every
+  manually dismissed. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
   when the admin re-saves or reverts the internal copy — the reconcile signal that the
   ground truth moved under the scheduler's adjustments.
@@ -639,7 +646,7 @@ columns from the roster.
   rotation made concrete; every-weekend opt-ins count in both weeks), `source`
   (`engine`|`manual`, 0.99 — engine output vs the admin's per-cell override on
   §10a's grid; frozen students' carried rows keep it across runs). Engine rows are
-  always drawn from the student's **effective** selections (1.05: the internal copy
+  always drawn from the student's **effective** selections (1.07: the internal copy
   when one exists, their own otherwise); a manual row may deliberately sit
   outside them and the grid renders the mismatch. Deliberately separate from
   ShiftSelection because preferences (input) and recommendations (output) never
@@ -695,6 +702,13 @@ columns from the roster.
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
   file is best-effort deleted from Drive (no orphaned bytes), and the running sheet is
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
+- **Sign-in analytics:** ✅ `/admin/analytics` (linked from the hub) reports who on the
+  roster has logged in, who has not, and how recently, from a **`students.last_seen_at`**
+  stamp written on any authenticated activity (see §11). Login is distinct from a form
+  submission: a null stamp means the person has never signed in at all. The surface shows
+  the signed-in count and share, a three-stage funnel (never signed in → signed in, no
+  submission → submitted), last-active recency buckets, and a copy-emails list of the
+  never-signed-in for follow-up. Derivation is pure (`admin/analytics-view.ts`).
 
 ### 10a. Per-student view (the primary admin surface)
 The view the scheduler works from. It opens for **every student on the roster**, not just
@@ -704,8 +718,8 @@ cards), so the scheduler can record details for someone who has yet to answer. N
 scheduled mark, and any evidence entered on the student's behalf **create the draft row on
 demand**; it stays "missing" everywhere until the student confirms (§13.1). A student
 with no position gets a notice instead of the calculator. Layout (see wireframe):
-- **Identity header:** name, email, position; **prev/next** nav + full-list jump;
-  a **draft** / **missing** badge with the header ringed
+- **Identity header:** name, email, position; **prev/next** nav
+  + full-list jump; a **draft** / **missing** badge with the header ringed
   red until the response is submitted; **both timestamps** (§9) side by side in one
   panel — **Submitted** (the first submit, or "not yet") and **Last updated** (the
   student's own last edit) — legible rather than fine print, and kept to two tight lines
@@ -727,7 +741,7 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   sub-grids** (different block rows per day-type, §6.2), selected cells filled,
   open/close rows tagged, a **high-demand** red mark on each flagged (block × day) cell,
   any **auto-assigned** weekend cell marked distinctly.
-  - **Editable — saves an INTERNAL copy, never the student's answers (1.05):** the
+  - **Editable — saves an INTERNAL copy, never the student's answers (1.07):** the
     grid doubles as the hours calculator — the scheduler clicks cells (and the rotation
     pill) to try a schedule and the readout recomputes live. A trial is local until they
     **Save** it (the button joins Reset/Clear once anything differs, and runs Save →
@@ -743,7 +757,7 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     `student_changed_after_internal_edit` flag asks the scheduler to reconcile (an admin
     re-save or revert clears it). The hard-rule gate stays **soft**
     (0.99): a save that fails the finalize checks warns with the failing rules and needs
-    an explicit **Save anyway**; no flag is raised for the override (1.05 — the internal
+    an explicit **Save anyway**; no flag is raised for the override (1.07 — the internal
     copy is the scheduler's own working state; `revalidation_failed` keeps describing
     the student's stored answers only). An unstarted response still gets the stub draft
     row on demand and stays "missing" (§13.1).
@@ -786,6 +800,10 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     schedule is one file, not a list, so once one is on file the control reads **Replace**
     and the upload swaps it (the old Drive file is deleted, §12).
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
+- **Last seen:** a small card kept **last** in the card order, showing when the student
+  was last authenticated (the `students.last_seen_at` stamp, §11) as a plain timestamp,
+  or a red **"Never logged in"**. It is distinct from the response timestamps: it tracks
+  whether they have signed in at all, not what they did in the form.
 
 ---
 
@@ -1130,8 +1148,9 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 - **CI/CD:** ✅ built (see `docs/deploy.md`). GitHub Actions: quality gate (lint/
   typecheck/tests/build + Docker build check) on every push; deploy on `v*` tag via
   SSH — the server checks out the tagged commit and rebuilds the compose stack, then
-  the workflow verifies the public `/api/health` endpoint (DB round-trip probe, also
-  used as the compose `app` healthcheck and for external uptime monitoring).
+  the workflow verifies `/api/health` (DB round-trip probe, also used as the compose
+  `app` healthcheck and for external uptime monitoring) over SSH on the box's loopback
+  bind, since Cloudflare Bot Fight Mode 403s the runner on the public URL.
   Separate prod vs test OAuth clients (register both redirect URIs on the prod
   client — see docs/deploy.md).
 - **Monitoring:** ✅ `GET /api/health` (unauthenticated DB round-trip probe) is both the
@@ -1342,7 +1361,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.05 (2026-08-02)** — **Internal availability separated from the student's
+- **1.07 (2026-08-02)** — **Internal availability separated from the student's
   submission.** The §10a grid's save used to overwrite `shift_selections` in place,
   destroying the student's original picks and feeding the edited rows straight back
   into the generator. Admin edits now land on a dedicated **internal copy**
@@ -1361,9 +1380,44 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   showing the student's answers plus a new "Adjusted internally" marker column. The
   position-change carry-over remaps internal cells alongside the student's, and the
   position/block delete guards count them. Additive migration (two tables + one enum
-  value), no backfill: no internal row means exactly the pre-1.05 behavior. Selections
+  value), no backfill: no internal row means exactly the pre-1.07 behavior. Selections
   an admin overwrote before this release are not recoverable; separation protects
   originals from here on.
+- **1.06 (2026-08-01)** — **Sign-in tracking + analytics (§10, §10a, §11).** The app now
+  records **when each person was last authenticated**, distinct from whether they
+  submitted the form. A nullable **`students.last_seen_at`** column (migration 0023) is
+  stamped from `getAppSession` — the one method-agnostic session seam (Google /
+  magic-link / dev-login) — on any signed-in request, so a null value means the person
+  has **never logged in**. The write is throttled in-process (`lib/auth/last-seen.ts` +
+  the pure `last-seen-throttle.ts`: at most one write per person per 10 min, best-effort,
+  a single PK UPDATE that no-ops for a signed-in email with no roster row) so it stays off
+  the hot path and can never fail a session resolve. Two surfaces read it: the per-student
+  view shows a **Last seen** card (kept last in the card order) with the timestamp or a red
+  **"Never logged in"**, and a new **`/admin/analytics`**
+  (linked from the hub nav rail) reports the signed-in count and share, a
+  never→signed-in→submitted funnel, last-active recency buckets, and a copy-emails list of
+  the never-signed-in. All derivation is pure (`admin/analytics-view.ts`, tested); the
+  loader is `admin/analytics.ts`. No behavior change to auth, response status, or
+  non-response tracking (all still key on `confirmedAt`, §13.1).
+- **1.05 (2026-07-31)** — **High-demand mark: per-cell target gating + contention
+  ranking, and a bolder bar (§7, roadmap 2.5).** The student availability picker's red
+  high-demand mark is recomputed. (1) The cohort-wide **≥ 20 submitted-responder floor
+  is removed** — it locked small positions out entirely (only ~34 Shift Leads, so the
+  signal never showed). (2) Each cell is gated on **its own block target**: it flags
+  only once it has at least its `desiredCapacity` in takers, plus an absolute floor
+  `DEMAND_MIN_CELL_COUNT` (3) so a thin cohort or a tiny target can't fire on one or two
+  picks. (3) Eligible cells rank by **contention** (takers ÷ target) within their
+  day-type, not raw pick count, so a shift with fewer takers but tighter capacity
+  outranks a well-supplied popular one; the mark never falls on an under-staffed cell.
+  (4) `DEMAND_TOP_SHARE` **0.15 → 0.25**. Pure-model signature is now
+  `highDemandCells(counts, { targets, topShare, minCellCount })` (dropped the
+  `responderCount` arg); `loadHighDemandCells` loads per-block targets and no longer
+  counts responders, so both the student grid and the admin per-student grid pick up the
+  change. UI (availability picker only): intro copy "These are preferences" → "This is
+  your **availability**", the red-bar legend enlarged to match the intro paragraph, and
+  the mark is now a **full-height bar down the cell's right edge** (`.avail-hot`) instead
+  of a small corner tick. No schema change (`desiredCapacity` already existed). Rewrote
+  `demand.test.ts` (8 tests); retired `DEMAND_MIN_RESPONDERS`.
 - **1.04 (2026-07-31)** — **Conflict rule generalized: every same-day shift must
   add unique coverage.** 1.03's pairwise containment test left a merged-span
   gap: a shift fully covered by the *union* of a legal staggered double (12p–3p

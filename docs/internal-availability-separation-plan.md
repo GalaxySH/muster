@@ -1,8 +1,8 @@
 # Internal availability separation — implementation plan
 
-Status: **Phase 1 implemented** (PLAN 1.05; this branch). An independent review
+Status: **Phase 1 implemented** (PLAN 1.07; this branch). An independent review
 green-lit the design with four must-fix adjustments, all folded in. Where this doc and
-the code disagree, the code and PLAN.md 1.05 win. As-built deviations from the text
+the code disagree, the code and PLAN.md 1.07 win. As-built deviations from the text
 below:
 
 - **No weekend auto-assign on the internal copy** (user revision during

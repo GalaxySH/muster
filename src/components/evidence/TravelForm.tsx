@@ -61,8 +61,8 @@ export function TravelForm({
       <h1>Travel excusals</h1>
       <p style={{ color: "#555" }}>
         Add any planned travel during the semester. Upload proof and a date range for each trip,
-        these will be manually reviewed for eligibility. Travel is only excused if added before{" "}
-        {cutoffLabel}.{" "}
+        these will be manually reviewed for eligibility.{" "}
+        <strong>Travel is only excused if submitted here before {cutoffLabel}.</strong>{" "}
         {lateAccepted
           ? "Travel added after that date is marked late and is not excused."
           : "After that date, the form no longer accepts travel entries."}{" "}

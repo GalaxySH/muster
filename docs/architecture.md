@@ -29,15 +29,19 @@ admin-views section). (4) a **batch schedule-ready email** at
 split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
 the magic-link mail and the change digest still sit on (the dead
 `submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
-high-demand** — the red bar now
-derives from live selection counts (pure `domain/demand.ts`: ≥ 20 submitted
-responses, then the busiest **~15%** of picked shifts **ranked within each day-type**
-via `DEMAND_TOP_SHARE`, a relative rank rather than an absolute cohort share so it
-actually fires; computed in `availability/data.ts` `loadHighDemandCells` as a set of
-`demandCellKey(blockId, day)` cells), retiring the manual `shift_blocks.high_demand`
-column + the `ShiftBlock.highDemand` field. The red mark renders **per (block × day)
-cell** (`grid.ts` `BlockRow.highDemandDays[]`, one flag per day), on both the student
-grid (with a short steering hint, `AvailabilityForm`) and the admin per-student grid.
+high-demand** — the red bar
+derives from live selection counts (pure `domain/demand.ts`): each (block × day) cell
+is gated on its own block target (at least `desiredCapacity` takers) plus an absolute
+floor (`DEMAND_MIN_CELL_COUNT`), with **no cohort-size floor**, then the busiest
+**~25%** (`DEMAND_TOP_SHARE`) of each day-type by **contention** (takers ÷ target) are
+flagged; computed in `availability/data.ts` `loadHighDemandCells` (loads per-block
+targets + per-cell distinct-submission counts) as a set of `demandCellKey(blockId, day)`
+cells. Retired the manual `shift_blocks.high_demand` column + the `ShiftBlock.highDemand`
+field. The mark renders **per (block × day) cell** (`grid.ts` `BlockRow.highDemandDays[]`,
+one flag per day) on both the student grid (`AvailabilityForm`, with a steering hint;
+the bar is a full-height rule down the cell's right edge, `.avail-hot`) and the admin
+per-student grid (`PrefGridCalculator`, its own inline `hotTick`). The two share the
+loader and cell set but not the bar styling.
 
 ## SL weekend-close picking (roadmap 3.2, PLAN §18a, v0.46)
 
@@ -481,6 +485,35 @@ The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the T
 tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is
 nobody's to review, so it matches neither side.
 
+## Sign-in tracking & analytics (PLAN §10, §11, v1.06)
+
+"Has this person logged in?" is separate from "did they submit the form?", and the app
+tracks it in one nullable column, **`students.last_seen_at`**. The write happens at the
+**single session seam** every authenticated request passes through, `getAppSession`
+(`lib/auth/session.ts`) — method-agnostic across Google, magic-link, and dev-login — so
+adding it there covers every path without touching the NextAuth callbacks. A null stamp
+therefore means the person has genuinely never signed in.
+
+The write is deliberately cheap. `lib/auth/last-seen.ts` (server-only) holds an
+in-process `Map<email, lastWriteMs>` throttle and does a single primary-key UPDATE at
+most once per person per 10 minutes; the pure decision (`shouldRecord`) is split into
+`last-seen-throttle.ts` so it is testable without dragging in `getDb` (which is
+server-only). The UPDATE is guarded on the email PK, so a signed-in address with no
+roster row (e.g. an env-allowlist admin) simply updates 0 rows, and any failure is
+swallowed — telemetry must never break auth. A single container fronts prod, so the
+in-memory throttle is enough; a restart just means the next request writes.
+
+Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
+order) showing the timestamp or a red "Never logged in" (`loadStudentDetail` now selects
+`lastSeenAt`; formatting is local to the page). The
+**`/admin/analytics`** page (linked from the hub nav rail) is the same loader + pure-view
+split the hub uses: `admin/analytics.ts` reads one thin on-roster row per student joined
+to submission status, and `admin/analytics-view.ts` (pure, TDD) buckets it into the
+signed-in count/share, the never→signed-in→submitted funnel, last-active recency windows,
+and the never-signed-in follow-up list. The funnel's "submitted" bucket keys on
+submission status, not last-seen, so a response an admin submitted on someone's behalf
+still counts as submitted even with a null stamp.
+
 ## Evidence/Drive layering (`src/lib/drive/` + `src/lib/evidence/`)
 
 The admin grants
@@ -561,7 +594,7 @@ null**, so it records the first submit and a student finishing the wizard again 
 **Who moves `updated_at` (v0.82).** It means "when the student last changed their own
 answers", so it is deliberately **not** `ON UPDATE CURRENT_TIMESTAMP` (migration `0016`
 dropped the clause) — otherwise every admin write to the row silently moved it. Student
-paths set it explicitly: `saveAvailability` (via `persistAvailability`, which since 1.05
+paths set it explicitly: `saveAvailability` (via `persistAvailability`, which since 1.07
 serves only the student path and always stamps it),
 `finalizeSubmission`, `confirmRosterInfo`, and the evidence actions when not on behalf.
 Admin paths set nothing and therefore leave it alone: `admin/actions.ts` `updateSubmission`
@@ -574,9 +607,9 @@ flag the gate already returns. Downstream, this makes the hub's stalled-draft cu
 "recent submissions" honest: an admin note no longer refreshes a stalled draft, and a
 re-submit no longer jumps someone to the top of recent.
 
-**`saveAvailabilityFor(student, …)` (v0.81; rewritten 1.05)** is the admin's save,
+**`saveAvailabilityFor(student, …)` (v0.81; rewritten 1.07)** is the admin's save,
 called by `PrefGridCalculator` on the per-student page (§10a). It gates through
-`requireEditableStudent(student)` like the evidence actions, but since 1.05 it writes
+`requireEditableStudent(student)` like the evidence actions, but since 1.07 it writes
 the **internal copy only** — `internal_availability` (rotation + `editedBy`/`editedAt`)
 upserted and `internal_selections` replaced, via the same `replaceSelectionCells`
 writer the student path uses (the two cell tables are shape-identical on purpose).
@@ -585,7 +618,7 @@ never touched, so what the student submitted survives every admin edit verbatim.
 The copy is written **literally**: `applyAutoAssign: false`, so an empty weekend
 stays empty (no machine pick, ever). The hard-rule gate is **soft** (0.99): a save
 that fails the finalize checks returns the failing rules and only goes through when
-re-invoked with `overrideInvalid`; since 1.05 an override raises **no flag** —
+re-invoked with `overrideInvalid`; since 1.07 an override raises **no flag** —
 `revalidation_failed` describes the student's stored answers only, and the internal
 copy is the scheduler's own working state. Saving also clears
 `student_changed_after_internal_edit` (the admin has just re-curated), and resyncs
@@ -595,7 +628,7 @@ the Drive sheet when the response is submitted, because the export carries the
 off the submission row) and never promotes, leaving `confirmed_at` NULL, so an
 admin-filled row still reads **missing** until the student confirms.
 
-**Internal availability (1.05).** The middle layer between the student's raw
+**Internal availability (1.07).** The middle layer between the student's raw
 submission and the generated schedule:
 
 ```

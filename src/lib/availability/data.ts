@@ -8,7 +8,7 @@ import { getDb } from "@/lib/db";
 import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
-import { highDemandCells, DEMAND_MIN_RESPONDERS, type CellCount } from "@/lib/domain/demand";
+import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
 export interface PositionWithBlocks {
@@ -33,25 +33,21 @@ export async function loadPositionWithBlocks(
 /**
  * (block × day) cells to flag as high-demand in a position's grid (roadmap 2.5):
  * computed from submitted responders' own picks (auto-assigned cells excluded),
- * off-roster and test accounts excluded. Empty until the position clears the responder
- * floor, so the signal never shows on a thin cohort. Runs at grid load (~cheap, two
- * queries). Keys are `demandCellKey(blockId, day)`.
+ * off-roster and test accounts excluded.
+ *
+ * PROTOTYPE (branch high-demand-review): no cohort-size floor. Each cell is gated
+ * against its own block target (desiredCapacity); a cell shows only once it has at
+ * least its target number of takers. See domain/demand.ts. Runs at grid load
+ * (~cheap, two queries). Keys are `demandCellKey(blockId, day)`.
  */
 export async function loadHighDemandCells(positionId: string): Promise<Set<string>> {
   const db = getDb();
-  const [rc] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
-    .where(
-      and(
-        eq(students.positionId, positionId),
-        eq(students.onRoster, true),
-        eq(submissions.status, "submitted"),
-      ),
-    );
-  const responderCount = Number(rc?.n ?? 0);
-  if (responderCount < DEMAND_MIN_RESPONDERS) return new Set();
+  // Per-block target staffing, to floor each cell individually.
+  const blockRows = await db
+    .select({ id: shiftBlocks.id, target: shiftBlocks.desiredCapacity })
+    .from(shiftBlocks)
+    .where(eq(shiftBlocks.positionId, positionId));
+  const targets = new Map<string, number | null>(blockRows.map((b) => [b.id, b.target ?? null]));
 
   const rows = await db
     .select({
@@ -78,7 +74,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     day: r.day as Day,
     count: Number(r.count),
   }));
-  return highDemandCells(counts, responderCount);
+  return highDemandCells(counts, { targets });
 }
 
 export interface ExistingSubmission {
