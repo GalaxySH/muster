@@ -37,6 +37,7 @@ import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/sc
 import type { Cohort, ScheduleAssignment, ScheduleStudent } from "@/lib/domain/scheduling/types";
 import type { Day } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
+import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
 
 /** Superseded runs kept for restore before pruning. */
@@ -47,9 +48,20 @@ export interface GenerateResult {
   error?: string;
   /** Assignment rows the new run holds (on success). */
   placed?: number;
+  /** Repair mode: how much of the imported plan was kept in place. */
+  repaired?: { students: number; cells: number; skippedNames: string[]; skippedCells: number };
 }
 
-export async function generateSchedule(): Promise<GenerateResult> {
+export interface GenerateOptions {
+  /**
+   * Repair-only mode (docs/w2w-shift-plan-roundtrip.md §7): keep every valid
+   * placement the imported W2W plan carries (those students are frozen for
+   * this run) and re-solve only the rest. Default is the full refill.
+   */
+  repairFromPlan?: boolean;
+}
+
+export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
@@ -124,11 +136,52 @@ export async function generateSchedule(): Promise<GenerateResult> {
       ).map((r) => ({ ...r, cohort: r.cohort as Cohort }))
     : [];
 
+  // Repair mode: the imported plan's still-valid placements become carried
+  // rows and their students are frozen for this run, so the engine keeps them
+  // in place and only fills gaps or re-solves broken placements. Students the
+  // admin marked scheduled stay on their current-run rows, which always win.
+  let engineStudentsFinal = engineStudents;
+  let previousFinal = previous;
+  let repaired: GenerateResult["repaired"];
+  if (options.repairFromPlan) {
+    const eligibleForRepair = new Map<string, RepairEligibleStudent>(
+      engineStudents
+        .filter((s) => !s.scheduled)
+        .map((s) => [
+          s.email,
+          { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection },
+        ]),
+    );
+    const weekendCohortByEmail = new Map<string, Cohort>();
+    for (const row of previous) {
+      if (row.cohort !== "weekday" && !weekendCohortByEmail.has(row.studentEmail)) {
+        weekendCohortByEmail.set(row.studentEmail, row.cohort);
+      }
+    }
+    const seeds = await loadRepairSeeds(eligibleForRepair, weekendCohortByEmail);
+    if (!seeds) {
+      return { ok: false, error: "No shift plan has been imported, so there is nothing to repair from." };
+    }
+    engineStudentsFinal = engineStudents.map((s) =>
+      seeds.byEmail.has(s.email) ? { ...s, scheduled: true } : s,
+    );
+    previousFinal = [
+      ...previous.filter((r) => !seeds.byEmail.has(r.studentEmail)),
+      ...[...seeds.byEmail.values()].flat(),
+    ];
+    repaired = {
+      students: seeds.byEmail.size,
+      cells: [...seeds.byEmail.values()].reduce((n, list) => n + list.length, 0),
+      skippedNames: seeds.skippedNames,
+      skippedCells: seeds.skippedCells,
+    };
+  }
+
   const result = generateAssignments({
-    students: engineStudents,
+    students: engineStudentsFinal,
     positions: positionRows.map(toDomainPosition),
     blocks: blockRows.map(toDomainBlock),
-    previous,
+    previous: previousFinal,
     params,
   });
 
@@ -180,7 +233,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
   await trySyncSheet(SCHEDULE_SHEET, 0);
-  return { ok: true, placed: result.assignments.length };
+  return { ok: true, placed: result.assignments.length, repaired };
 }
 
 export interface RestoreResult {

@@ -32,6 +32,7 @@ import {
   type ScheduleRunListItem,
 } from "@/lib/schedule/data";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
+import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import {
   assignedCellCount,
   coverageStatus,
@@ -68,7 +69,7 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches] =
+  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches, plan] =
     await Promise.all([
       searchParams,
       loadCoverage(),
@@ -78,7 +79,9 @@ export default async function AdminSchedulePage({
       getSheetUrl(SCHEDULE_SHEET),
       getLastSheetSync(SCHEDULE_SHEET),
       loadFrozenMismatches(),
+      getCurrentPlan(),
     ]);
+  const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
   const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
 
@@ -128,6 +131,7 @@ export default async function AdminSchedulePage({
         staleLine={staleLine}
         sheetUrl={sheetUrl}
         sheetSyncedAt={sheetSyncedAt}
+        hasPlan={hasPlan}
       />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -200,12 +204,14 @@ function SchedulePanel({
   staleLine,
   sheetUrl,
   sheetSyncedAt,
+  hasPlan,
 }: {
   schedule: CurrentSchedule | null;
   responders: number;
   staleLine: string | null;
   sheetUrl: string | null;
   sheetSyncedAt: Date | null;
+  hasPlan: boolean;
 }) {
   if (!schedule) {
     return (
@@ -215,7 +221,7 @@ function SchedulePanel({
           No schedule has been generated yet. Responses are placed in the order they came in, later
           shifts first.
         </p>
-        <GenerateScheduleButton hasRun={false} />
+        <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} />
       </section>
     );
   }
@@ -255,7 +261,7 @@ function SchedulePanel({
         </div>
       )}
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <GenerateScheduleButton hasRun />
+      <GenerateScheduleButton hasRun hasPlan={hasPlan} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}
