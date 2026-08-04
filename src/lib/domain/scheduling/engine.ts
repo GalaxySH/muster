@@ -137,6 +137,9 @@ export function generateAssignments(input: EngineInput): EngineResult {
       daysUsed: ranges.size,
       cohort,
       frozen: true,
+      // Kept in step with the active branch: `previousFillIns` is read off this
+      // field, so a fill-in that ever became freezable must still carry it.
+      fillIn: student.fillIn === true,
     });
   }
 
@@ -267,9 +270,21 @@ function placeStudent(
   for (let i = 0; i < maxSteps; i++) {
     const assigned = averagedAssignedMinutes(state.ranges, student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES >= state.target) break;
-    const next =
-      bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: true }) ??
-      bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: false });
+    // Ranking alone would not keep deferred cells last here: each call ranks
+    // only within its own day filter, so "fill an open day first" would beat
+    // the deferred tier and take a close while another day sat free. Both
+    // filters therefore run without deferred cells before either retries with
+    // them, which is what makes them a genuine last resort.
+    const pick = (excludeDeferred: boolean) =>
+      bestCandidate(state, blockById, ledger, params, deferred, {
+        daysOpen: true,
+        excludeDeferred,
+      }) ??
+      bestCandidate(state, blockById, ledger, params, deferred, {
+        daysOpen: false,
+        excludeDeferred,
+      });
+    const next = pick(true) ?? pick(false);
     if (!next) break;
     assign(state, next, ledger, weekendMinutes);
   }
@@ -312,7 +327,7 @@ function bestCandidate(
   ledger: SeatLedger,
   params: SchedulingParams,
   deferred: ReadonlySet<string>,
-  filter: { daysOpen: boolean; weekendOnly?: boolean },
+  filter: { daysOpen: boolean; weekendOnly?: boolean; excludeDeferred?: boolean },
 ): Candidate | null {
   const dayCapMinutes = params.dayCapHours * 60;
   let best: Candidate | null = null;
@@ -321,6 +336,7 @@ function bestCandidate(
   for (const cell of state.student.selection) {
     const block = blockById.get(cell.blockId);
     if (!block || block.positionId !== state.student.positionId) continue;
+    if (filter.excludeDeferred && deferred.has(block.id)) continue;
     if (filter.weekendOnly && block.dayType !== "weekend") continue;
     if (state.taken.has(demandCellKey(cell.blockId, cell.day))) continue;
     const dayRanges = state.ranges.get(cell.day);

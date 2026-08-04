@@ -114,8 +114,8 @@ export function improveAssignments(
  * The best same-day cell this row could move to for a strict gain over the
  * vacated cell's pull, or null. Untargeted destinations never gain (they claim
  * no need), and deferred cells are never a destination: relocation is an
- * optimization, never what lets a student reach their minimums, so a seat
- * placed in a deferred cell as a last resort stays put and no seat moves in.
+ * optimization, never what lets a student reach their minimums, so nothing may
+ * move into one. A seat already sitting in a deferred cell is free to move out.
  * Candidates rank by pull, then block id.
  */
 function bestRelocation(

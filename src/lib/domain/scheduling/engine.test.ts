@@ -700,6 +700,37 @@ describe("generateAssignments", () => {
       expect(weekendBlocksOf(biased)).not.toContain("sl-we-close");
     });
 
+    it("opens a new day rather than taking a deferred cell on an open one", () => {
+      // The close shares Saturday with a cell the lead already holds, so it is
+      // the only candidate on an already-open day, while wed and thu sit free.
+      // Preferring open days must not outrank the deferred tier.
+      const blocks = [
+        block("wd-late", "sl", "weekday", "5p", "10p"),
+        block("we-late", "sl", "weekend", "5p", "10p"),
+        block("we-close", "sl", "weekend", "6p", "11:30p"),
+      ];
+      const r = run(
+        [
+          student("lead@w", {
+            positionId: "sl",
+            desiredHours: 20,
+            selection: [
+              sel("wd-late", "mon"),
+              sel("wd-late", "tue"),
+              sel("wd-late", "wed"),
+              sel("wd-late", "thu"),
+              sel("we-late", "sat"),
+              sel("we-close", "sat"),
+            ],
+          }),
+        ],
+        blocks,
+        [],
+        ["we-close"],
+      );
+      expect(rowsOf(r, "lead@w").map((a) => a.blockId)).not.toContain("we-close");
+    });
+
     it("still uses the close when it is the only weekend cell offered", () => {
       const closeOnly = [
         sel("sl-wd", "mon"),
