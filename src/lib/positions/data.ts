@@ -17,6 +17,7 @@ import {
   shiftSelections,
   students,
   submissions,
+  w2wPositionMap,
 } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
@@ -95,6 +96,12 @@ export interface AdminPositionItem {
   studentCount: number;
   /** On-roster students holding this position (the capacity check's demand side). */
   onRosterCount: number;
+  /**
+   * W2W positions mapped onto this one (roadmap 5.3). Deleting the position
+   * takes them with it, and they are seeded config a plan import needs, so the
+   * delete confirm names them first.
+   */
+  w2wMappingCount: number;
   blocks: AdminBlockItem[];
 }
 
@@ -113,6 +120,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     selectionRows,
     internalSelectionRows,
     realPickRows,
+    w2wMapRows,
   ] = await Promise.all([
     db.select().from(positions).orderBy(asc(positions.name)),
     db
@@ -150,11 +158,17 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       .innerJoin(students, eq(submissions.studentEmail, students.email))
       .where(or(isNull(students.groupId), ne(students.groupId, TEST_GROUP_ID)))
       .groupBy(shiftSelections.shiftBlockId),
+    // W2W positions pointing here, for the delete confirm (roadmap 5.3).
+    db
+      .select({ positionId: w2wPositionMap.musterPositionId, n: sql<number>`count(*)` })
+      .from(w2wPositionMap)
+      .groupBy(w2wPositionMap.musterPositionId),
   ]);
 
   const nameById = new Map(posRows.map((p) => [p.id, p.name]));
   const studentCount = new Map(studentRows.map((r) => [r.positionId, Number(r.n)]));
   const onRosterCount = new Map(onRosterRows.map((r) => [r.positionId, Number(r.n)]));
+  const w2wMappingCount = new Map(w2wMapRows.map((r) => [r.positionId, Number(r.n)]));
   const selectionCount = new Map(selectionRows.map((r) => [r.blockId, Number(r.n)]));
   for (const r of internalSelectionRows) {
     selectionCount.set(r.blockId, (selectionCount.get(r.blockId) ?? 0) + Number(r.n));
@@ -188,6 +202,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     mergedIntoName: p.mergedIntoId ? (nameById.get(p.mergedIntoId) ?? p.mergedIntoId) : null,
     studentCount: studentCount.get(p.id) ?? 0,
     onRosterCount: onRosterCount.get(p.id) ?? 0,
+    w2wMappingCount: w2wMappingCount.get(p.id) ?? 0,
     blocks: blocksByPosition.get(p.id) ?? [],
   }));
 }

@@ -259,7 +259,16 @@ export function PositionCard({
             disabled={pending}
             style={{ color: "var(--color-text-danger)" }}
             onClick={() => {
-              if (confirm(`Delete ${position.name}? Its blocks and title mappings go with it.`)) {
+              // The W2W mappings are called out separately: unlike the title
+              // mappings, nothing recreates them, so the plan import loses
+              // those positions until an admin maps them again.
+              const w2w =
+                position.w2wMappingCount > 0
+                  ? ` ${plural(position.w2wMappingCount, "W2W position mapping")} also go, and you will need to map ${position.w2wMappingCount === 1 ? "it" : "them"} again.`
+                  : "";
+              if (
+                confirm(`Delete ${position.name}? Its blocks and title mappings go with it.${w2w}`)
+              ) {
                 act(() => deletePosition(position.id), "Deleted.");
               }
             }}

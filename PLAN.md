@@ -1427,6 +1427,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   saves. Adding the first block to a blockless position now runs the carry-over a ghost
   resolution deferred, and a block referenced only by a saved schedule run is retired
   rather than hard-deleted (its assignments would have cascaded away silently).
+  Position deletion got the same treatment: it now clears `w2w_position_map` (whose FK
+  has no `onDelete`, so deleting a mapped position raised an unhandled FK error instead
+  of a friendly refusal) and refuses outright while a saved schedule run still holds
+  shifts on the position's blocks. The delete confirm names the W2W mappings that go
+  with it, since nothing recreates them and a plan import needs them.
 - **1.09 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
   `docs/w2w-shift-plan-roundtrip.md`).** The scheduler's W2W week export becomes the
   budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,

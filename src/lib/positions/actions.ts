@@ -26,6 +26,7 @@ import {
   shiftBlocks,
   shiftSelections,
   students,
+  w2wPositionMap,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
@@ -267,10 +268,11 @@ export async function setPositionActive(id: string, active: boolean): Promise<Ac
 }
 
 export async function deletePosition(id: string): Promise<ActionResult> {
+  const fail = (error: string): ActionResult => ({ ok: false, error });
   const gate = await requireAdmin();
-  if (!gate.ok) return gate;
+  if (!gate.ok) return fail(gate.error);
   if (id === SHIFT_LEAD_POSITION_ID) {
-    return { ok: false, error: "Shift Lead is built in and can't be deleted." };
+    return fail("Shift Lead is built in and can't be deleted.");
   }
 
   const db = getDb();
@@ -279,7 +281,7 @@ export async function deletePosition(id: string): Promise<ActionResult> {
     .from(positions)
     .where(eq(positions.id, id))
     .limit(1);
-  if (!row) return { ok: false, error: "Position not found." };
+  if (!row) return fail("Position not found.");
 
   const [studentRef] = await db
     .select({ n: sql<number>`count(*)` })
@@ -287,10 +289,9 @@ export async function deletePosition(id: string): Promise<ActionResult> {
     .where(eq(students.positionId, id));
   const studentCount = Number(studentRef?.n ?? 0);
   if (studentCount > 0) {
-    return {
-      ok: false,
-      error: `${studentCount} student${studentCount === 1 ? " still holds" : "s still hold"} this position. Deactivate it instead.`,
-    };
+    return fail(
+      `${studentCount} student${studentCount === 1 ? " still holds" : "s still hold"} this position. Deactivate it instead.`,
+    );
   }
 
   // Both cell tables hold FKs to this position's blocks: the student's own
@@ -306,13 +307,35 @@ export async function deletePosition(id: string): Promise<ActionResult> {
     .innerJoin(shiftBlocks, eq(internalSelections.shiftBlockId, shiftBlocks.id))
     .where(eq(shiftBlocks.positionId, id));
   if (Number(selectionRef?.n ?? 0) + Number(internalRef?.n ?? 0) > 0) {
-    return {
-      ok: false,
-      error: "Students still have shift picks on this position's blocks. Deactivate it instead.",
-    };
+    return fail(
+      "Students still have shift picks on this position's blocks. Deactivate it instead.",
+    );
   }
 
+  // schedule_assignments cascades off shift_blocks, so deleting this position's
+  // blocks would strip shifts out of a saved run with no warning. A run can
+  // outlive the picks behind it (an alias move carries selections to the new
+  // position but leaves the old run's rows), so this is reachable even though
+  // the checks above passed.
+  const [assignedRef] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(scheduleAssignments)
+    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
+    .where(eq(shiftBlocks.positionId, id));
+  if (Number(assignedRef?.n ?? 0) > 0) {
+    return fail(
+      "A saved schedule run still has shifts on this position's blocks. Deactivate it instead.",
+    );
+  }
+
+  // w2w_position_map points here with no ON DELETE, so it has to be cleared in
+  // the same transaction or the delete fails on the FK. The mapping is dead
+  // either way once the position is gone. Unlike a roster title mapping (which
+  // the next import or a ghost resolution recreates), this is seeded config a
+  // plan import needs, so the count is shown in the confirm before the delete
+  // rather than reported after it (`listPositionsAdmin` carries it).
   await db.transaction(async (tx) => {
+    await tx.delete(w2wPositionMap).where(eq(w2wPositionMap.musterPositionId, id));
     await tx.delete(rosterTitleMappings).where(eq(rosterTitleMappings.positionId, id));
     await tx.delete(shiftBlocks).where(eq(shiftBlocks.positionId, id));
     await tx.delete(positions).where(eq(positions.id, id));

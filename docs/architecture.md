@@ -959,7 +959,8 @@ picks when resolved), always writes the `position_change` flag, and calls
 future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
 upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
 and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
-`ActionResult`): position create/deactivate/delete with reference guards,
+`ActionResult`): position create/deactivate/delete with reference guards (see
+**Position delete and its foreign keys** below),
 `setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
 `mergedIntoId` set; Shift Lead is delete- and alias-protected via
 `SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
@@ -995,6 +996,31 @@ rewrites the submission's flags wholesale (`orphaned_selection` excepted — see
 Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
+
+### Position delete and its foreign keys (v1.10)
+
+Four tables point at a position or its blocks, and each needs a different answer,
+because the FK behavior differs and so does what the row means:
+
+- `students.position_id` and the two selection tables (through `shift_blocks`) —
+  **refuse**. These are real student data; the admin is told to deactivate instead.
+- `schedule_assignments.shift_block_id` — **refuse**. This one is easy to miss: it
+  cascades off `shift_blocks`, so deleting the position's blocks would strip shifts out
+  of a saved run with no error and no warning. It is reachable even when the checks
+  above pass, because a run outlives the picks behind it (an alias move carries
+  selections to the new position but leaves the old run's rows). Same hazard as
+  `deleteBlock`'s, which counts assignments for the same reason.
+- `roster_title_mappings.position_id` — **delete alongside**. No `onDelete`, so the
+  delete would fail on the FK otherwise, and the next roster import or ghost resolution
+  recreates the mapping anyway.
+- `w2w_position_map.muster_position_id` — **delete alongside**, but say so first. Also
+  no `onDelete` (before v1.10 this raised an unhandled FK error out of the server
+  action rather than any of the friendly refusals above). Unlike a title mapping,
+  nothing recreates it: it is seeded-once config, and losing it means a plan import
+  stops matching those W2W positions. So `listPositionsAdmin` carries a
+  `w2wMappingCount` and the delete confirm names it before the fact. It is deliberately
+  **not** reported afterwards: a successful delete unmounts the card, taking any
+  message with it.
 
 ### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
 
