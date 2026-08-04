@@ -75,6 +75,13 @@ export interface EngineInput {
    * stays generic: it knows only that these cells come last.
    */
   deferredBlockIds?: readonly string[];
+  /**
+   * Emails the previous run scheduled as fill-ins (its report's `fillIn` rows).
+   * Their assignments exist only while the non-responder option is on, so
+   * losing them means the option was turned off, not that someone left the
+   * roster, and they are never reported as dropped.
+   */
+  previousFillIns?: readonly string[];
 }
 
 /** Per-student outcome for the run summary and the admin list. */
@@ -88,6 +95,8 @@ export interface StudentScheduleReport {
   /** Weekend rotation, or null when the student holds no weekend assignment. */
   cohort: Exclude<Cohort, "weekday"> | null;
   frozen: boolean;
+  /** Scheduled as a fill-in (no response of their own). Absent on older runs. */
+  fillIn?: boolean;
 }
 
 export interface EngineReport {

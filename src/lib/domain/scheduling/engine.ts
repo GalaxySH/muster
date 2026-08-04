@@ -88,8 +88,12 @@ export function generateAssignments(input: EngineInput): EngineResult {
     if (list) list.push(row);
     else previousByStudent.set(row.studentEmail, [row]);
   }
+  // A previous run's fill-in rows vanish as soon as the non-responder option is
+  // switched off. That is the option changing, not a departure, so those emails
+  // never join the dropped list (which reads as "left the roster").
+  const wasFillIn = new Set(input.previousFillIns ?? []);
   const droppedStudents = [...previousByStudent.keys()]
-    .filter((email) => !eligible.has(email))
+    .filter((email) => !eligible.has(email) && !wasFillIn.has(email))
     .sort(byEmail);
 
   const assignments: ScheduleAssignment[] = [];
@@ -208,6 +212,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       daysUsed: ranges.size,
       cohort: state.cohort,
       frozen: false,
+      fillIn: state.student.fillIn === true,
     });
   }
 

@@ -37,7 +37,12 @@ import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fullAvailability } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
-import type { Cohort, ScheduleAssignment, ScheduleStudent } from "@/lib/domain/scheduling/types";
+import type {
+  Cohort,
+  EngineReport,
+  ScheduleAssignment,
+  ScheduleStudent,
+} from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
@@ -185,6 +190,14 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       ).map((r) => ({ ...r, cohort: r.cohort as Cohort }))
     : [];
 
+  // Who the last run scheduled as a fill-in, so turning the option off reads as
+  // the option changing rather than as those people leaving the roster.
+  const previousFillIns = currentRun
+    ? (JSON.parse(currentRun.summaryJson) as EngineReport).students
+        .filter((s) => s.fillIn)
+        .map((s) => s.email)
+    : [];
+
   const result = generateAssignments({
     students: engineStudents,
     positions: positionRows.map(toDomainPosition),
@@ -192,6 +205,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     previous,
     params,
     deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
+    previousFillIns,
   });
 
   const runId = randomUUID();

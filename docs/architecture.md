@@ -1056,7 +1056,12 @@ The generator itself, layered exactly like the rest of the app:
     schedule, which placing them merely last in FCFS order does **not** achieve,
     because the improvement pass would otherwise find their seats already taken.
     A fill-in the run finds no room for is left out of the report entirely, so
-    they never inflate "short of hours" or the per-student table.
+    they never inflate "short of hours" or the per-student table. Report rows
+    carry `fillIn`, and the next run passes those emails back as
+    `EngineInput.previousFillIns`: their rows disappear the moment the option is
+    switched off, and that is the option changing, not a departure, so they are
+    never counted in `droppedStudents` (which the UI renders as "left the
+    roster").
   - `EngineInput.deferredBlockIds` marks cells to fill **only as a last resort**:
     they rank below every other candidate in `bestCandidate`, and `improve.ts`
     never relocates into one (relocation is an optimization, never what lets a

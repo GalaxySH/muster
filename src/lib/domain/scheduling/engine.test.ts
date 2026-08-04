@@ -63,8 +63,16 @@ function run(
   blocks: ShiftBlock[],
   previous: ScheduleAssignment[] = [],
   deferredBlockIds?: readonly string[],
+  previousFillIns?: readonly string[],
 ): ReturnType<typeof generateAssignments> {
-  const input: EngineInput = { students, positions: POSITIONS, blocks, previous, deferredBlockIds };
+  const input: EngineInput = {
+    students,
+    positions: POSITIONS,
+    blocks,
+    previous,
+    deferredBlockIds,
+    previousFillIns,
+  };
   return generateAssignments(input);
 }
 
@@ -570,7 +578,10 @@ describe("generateAssignments", () => {
       block("we-late", "ca", "weekend", "3p", "11p", 2),
     ];
     const everywhere = [
-      ...(["mon", "tue", "wed", "thu", "fri"] as const).flatMap((d) => [sel("am", d), sel("pm", d)]),
+      ...(["mon", "tue", "wed", "thu", "fri"] as const).flatMap((d) => [
+        sel("am", d),
+        sel("pm", d),
+      ]),
       ...(["sat", "sun"] as const).flatMap((d) => [sel("we", d), sel("we-late", d)]),
     ];
     const responders = () =>
@@ -619,6 +630,24 @@ describe("generateAssignments", () => {
       expect(report.frozen).toBe(false);
       // Null desired hours aims a fill-in at their position's floor.
       expect(report.targetMinutes).toBe(CA.minHours * 60);
+    });
+
+    it("marks fill-ins in the report so the next run can recognise them", () => {
+      const r = run([...responders(), ...fillIns()], blocks);
+      expect(reportOf(r, "f1@w").fillIn).toBe(true);
+      expect(reportOf(r, "r1@w").fillIn).toBe(false);
+    });
+
+    it("does not call a dropped fill-in a departure when the option is switched off", () => {
+      const previous: ScheduleAssignment[] = [
+        { studentEmail: "f1@w", blockId: "am", day: "mon", cohort: "weekday" },
+        { studentEmail: "gone@w", blockId: "am", day: "tue", cohort: "weekday" },
+      ];
+      // Second run: the option is off, so no fill-ins are supplied at all.
+      const r = run(responders(), blocks, previous, undefined, ["f1@w"]);
+      expect(rowsOf(r, "f1@w")).toHaveLength(0);
+      // Only the student who really went away is reported as dropped.
+      expect(r.report.droppedStudents).toEqual(["gone@w"]);
     });
 
     it("leaves a fill-in that found no room out of the run entirely", () => {

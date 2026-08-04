@@ -1383,6 +1383,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   found their seats taken and 11 responders lost hours.) A fill-in the run finds no
   room for is left out of the report, so the short-of-hours count stays about people
   the run actually scheduled; the per-student table tags the rest **"no response"**.
+  Report rows carry `fillIn` and the next run reads them back as `previousFillIns`,
+  so switching the option off retires those rows quietly instead of reporting the
+  people as having left the roster.
   An admin's internal copy (§10a) still wins over the stand-in grid. This only
   partially closes the non-responder gap: writing one specific non-responder's real
   availability by hand is still not possible for someone with no submission row at

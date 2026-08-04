@@ -52,7 +52,7 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
           <>
             <span style={{ fontSize: 13 }}>
               {includeNonResponders
-                ? "Rebuild recommendations, including people who did not respond?"
+                ? `${hasRun ? "Rebuild" : "Generate"} recommendations, including people who did not respond?`
                 : hasRun
                   ? "Rebuild recommendations for everyone not marked scheduled?"
                   : "Generate recommendations for every submitted response?"}
