@@ -1070,7 +1070,9 @@ The generator itself, layered exactly like the rest of the app:
     (`deriveOpenClose` over the SL weekend blocks), because Shift Leads claim
     weekend closes by hand (§18a) and those claims never reach the generator. The
     engine stays generic: it knows only that these cells come last.
-- **Persistence** (migration 0017): append-only `schedule_runs`
+- **Persistence** (migration 0017; `summary_json` widened to `mediumtext` in 0025,
+  since the report holds ~140 bytes per student and `text` capped out around 458):
+  append-only `schedule_runs`
   (current/superseded + `summaryJson` = the engine report, retention 10) and
   fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
   shiftBlockId, day)` with a `cohort` column. Recommendations are derived data;
@@ -1082,13 +1084,19 @@ The generator itself, layered exactly like the rest of the app:
   runs the pure engine, then transactionally supersedes the old run, inserts
   the new one plus chunked assignment rows, and prunes beyond retention. Its one
   option, `includeNonResponders` (default off, chosen per run on the page), adds
-  on-roster students with no submitted response as **fill-ins**: their stand-in
-  availability is `fullAvailability()` (`domain/scheduling/availability.ts` — every
-  block their position runs, on every day of that block's day-type), their
-  `desiredHours` is null so they aim at the position floor, and an **internal copy
-  still wins** where an admin wrote one (the same `applyInternalOverrides` seam
-  §10a). Someone with no position drops out rather than landing in
-  `skippedNoPosition`, which is about responses.
+  on-roster students with no submitted response as **fill-ins**. Their availability
+  is resolved from the best record held, in order: the admin's **internal copy**
+  (§10a, via the same `applyInternalOverrides` seam), then the student's own
+  **draft** answers where a draft submission exists (its cells, `desiredHours` and
+  weekend opt-in), and only for someone who left no record at all the stand-in
+  `fullAvailability()` (`domain/scheduling/availability.ts` — every block their
+  position runs, on every day of that block's day-type) with a null `desiredHours`
+  aiming at the position floor. Opting a run into non-responders therefore never
+  overwrites what somebody actually said. Someone with no position drops out rather
+  than landing in `skippedNoPosition`, which is about responses. The previous run's
+  fill-ins are read back out of its stored report by `readFillIns`, which swallows
+  an unreadable report rather than blocking the regeneration an admin uses to
+  recover from a bad run.
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto

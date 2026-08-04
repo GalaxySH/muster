@@ -9,7 +9,7 @@
  * generation can be restored later and nothing is ever lost.
  */
 import { randomUUID } from "node:crypto";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
@@ -56,6 +56,17 @@ const RUN_RETENTION = 10;
  * claims never reach the generator, so a generated close would double-book the
  * slot the manual flow is about to fill.
  */
+/** Emails a stored run scheduled as fill-ins; empty when the report is unreadable. */
+function readFillIns(summaryJson: string | undefined): string[] {
+  if (!summaryJson) return [];
+  try {
+    const report = JSON.parse(summaryJson) as EngineReport;
+    return (report.students ?? []).filter((s) => s.fillIn).map((s) => s.email);
+  } catch {
+    return [];
+  }
+}
+
 function shiftLeadWeekendCloseIds(blocks: readonly ShiftBlock[]): string[] {
   const weekend = blocks.filter(
     (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
@@ -142,36 +153,69 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
 
   const domainBlocks = blockRows.map(toDomainBlock);
 
-  // Opt-in: fill what the responders left with roster members who never
-  // submitted, treated as available for every cell their position runs. The
-  // fillIn flag holds them back until the engine has settled everyone else, and
-  // a null desiredHours aims them at their position's hour floor, so they only
-  // take capacity nobody claimed. Someone with no position has nothing to
-  // schedule into, so they drop out rather than land in the run's skipped list.
-  // An internal copy still wins where an admin wrote one (§10a).
+  // Opt-in: fill what the responders left with roster members who did not
+  // submit. The fillIn flag holds them back until the engine has settled
+  // everyone else, so they only take capacity nobody claimed. Someone with no
+  // position has nothing to schedule into, so they drop out rather than land in
+  // the run's skipped list, which is about responses.
+  //
+  // Availability comes from the best record we hold, never the other way round:
+  // an internal copy an admin wrote (§10a) wins, then the student's own draft
+  // answers, and only someone who told us nothing at all is treated as
+  // available for every cell their position runs. Their draft hours and weekend
+  // opt-in carry over the same way, so opting a run into non-responders can
+  // never overwrite what somebody actually said.
   if (options.includeNonResponders) {
     const responded = new Set(engineStudents.map((s) => s.email));
-    const rosterRows = await db
-      .select({
-        email: students.email,
-        positionId: students.positionId,
-        international: students.international,
-      })
-      .from(students)
-      .where(eq(students.onRoster, true));
+    const notSubmitted = and(eq(students.onRoster, true), ne(submissions.status, "submitted"));
+    const [rosterRows, draftCells] = await Promise.all([
+      db
+        .select({
+          email: students.email,
+          positionId: students.positionId,
+          international: students.international,
+          everyWeekendOptIn: submissions.everyWeekendOptIn,
+          desiredHours: submissions.desiredHours,
+          scheduled: submissions.scheduled,
+        })
+        .from(students)
+        .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+        .where(eq(students.onRoster, true)),
+      db
+        .select({
+          email: submissions.studentEmail,
+          blockId: shiftSelections.shiftBlockId,
+          day: shiftSelections.day,
+        })
+        .from(shiftSelections)
+        .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .where(notSubmitted),
+    ]);
+
+    const draftByEmail = new Map<string, { blockId: string; day: Day }[]>();
+    for (const row of draftCells) {
+      const list = draftByEmail.get(row.email) ?? [];
+      list.push({ blockId: row.blockId, day: row.day });
+      draftByEmail.set(row.email, list);
+    }
+
     const nonResponders: ScheduleStudent[] = rosterRows
       .filter((r) => !responded.has(r.email) && r.positionId)
-      .map((r) => ({
-        email: r.email,
-        positionId: r.positionId,
-        international: r.international,
-        everyWeekendOptIn: false,
-        desiredHours: null,
-        submittedAt: null,
-        scheduled: false,
-        fillIn: true,
-        selection: fullAvailability(r.positionId!, domainBlocks),
-      }));
+      .map((r) => {
+        const drafted = draftByEmail.get(r.email);
+        return {
+          email: r.email,
+          positionId: r.positionId,
+          international: r.international,
+          everyWeekendOptIn: r.everyWeekendOptIn ?? false,
+          desiredHours: r.desiredHours,
+          submittedAt: null,
+          scheduled: r.scheduled ?? false,
+          fillIn: true,
+          selection: drafted?.length ? drafted : fullAvailability(r.positionId!, domainBlocks),
+        };
+      });
     engineStudents.push(...applyInternalOverrides(nonResponders, internalByEmail));
   }
 
@@ -191,12 +235,10 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     : [];
 
   // Who the last run scheduled as a fill-in, so turning the option off reads as
-  // the option changing rather than as those people leaving the roster.
-  const previousFillIns = currentRun
-    ? (JSON.parse(currentRun.summaryJson) as EngineReport).students
-        .filter((s) => s.fillIn)
-        .map((s) => s.email)
-    : [];
+  // the option changing rather than as those people leaving the roster. A report
+  // we cannot read costs only that distinction, and regenerating is how an admin
+  // recovers from a bad run, so it must never be what blocks them.
+  const previousFillIns = readFillIns(currentRun?.summaryJson);
 
   const result = generateAssignments({
     students: engineStudents,

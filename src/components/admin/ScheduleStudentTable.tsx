@@ -93,7 +93,7 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
     <tr>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
-        {!s.submitted && <span style={noResponseTag}>no response</span>}
+        {s.fillIn && <span style={noResponseTag}>no response</span>}
       </td>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {s.positionName ?? "-"}

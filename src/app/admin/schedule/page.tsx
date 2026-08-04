@@ -217,13 +217,12 @@ function SchedulePanel({
   }
 
   const { report, problems } = schedule;
-  // Counted off the enriched rows so responders and non-responders can be told
-  // apart; they map one to one from the run's report.
-  const placed = schedule.students.filter((s) => s.assignedMinutes > 0 && s.submitted).length;
-  const withoutResponse = schedule.students.filter(
-    (s) => s.assignedMinutes > 0 && !s.submitted,
-  ).length;
-  const frozen = schedule.students.filter((s) => s.frozen).length;
+  // Split on what the run itself recorded, so a fill-in who submits later still
+  // reads as one here rather than being folded in with the responders.
+  const worked = report.students.filter((s) => s.assignedMinutes > 0);
+  const placed = worked.filter((s) => !s.fillIn).length;
+  const withoutResponse = worked.filter((s) => s.fillIn).length;
+  const frozen = report.students.filter((s) => s.frozen).length;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
