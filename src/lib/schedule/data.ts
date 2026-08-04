@@ -78,7 +78,7 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
       .from(positions)
       .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)))
       .orderBy(asc(positions.name)),
-    db.select().from(shiftBlocks),
+    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)

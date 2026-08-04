@@ -3,10 +3,16 @@
 /**
  * Admin-only mutations for the positions/blocks config (roadmap 3.3). All
  * admin-gated. Lifecycle guards live here: Shift Lead is protected (the §18a
- * close-claims gating string-compares its id), referenced positions/blocks
- * refuse deletion, and alias switches + ghost resolutions run the shared
+ * close-claims gating string-compares its id), a referenced position refuses
+ * deletion, and alias switches + ghost resolutions run the shared
  * position-change routine (selection carry-over, position_change flag,
  * revalidation) per moved student inside one transaction.
+ *
+ * Block lifecycle (PLAN §6.2a): a picked block can't be deleted, so removing
+ * one RETIRES it and orphans the picks; a time edit keeps the picks on the
+ * block (they follow it to the new hours) and re-runs their checks, since the
+ * shift just moved under them. Both keep the orphan and revalidation flags in
+ * step for every affected student.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
@@ -16,6 +22,7 @@ import {
   positions,
   internalSelections,
   rosterTitleMappings,
+  scheduleAssignments,
   shiftBlocks,
   shiftSelections,
   students,
@@ -26,7 +33,13 @@ import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config
 import { canAliasTo } from "@/lib/domain/position-alias";
 import type { DayType } from "@/lib/domain/types";
 import { normalizeTitle } from "@/lib/roster/position-mapping";
-import { applyPositionChange, type DbTx } from "./apply-change";
+import {
+  applyPositionChange,
+  resolveDeferredCarryOver,
+  syncRevalidationFlag,
+  type DbTx,
+} from "./apply-change";
+import { syncOrphanFlagsForBlocks } from "./orphans";
 import { POSITION_NAME_MAX, slugifyPositionId } from "./slug";
 
 export interface ActionResult {
@@ -46,6 +59,40 @@ function revalidateStudentSurfaces() {
   revalidatePath("/availability");
   revalidatePath("/admin/responses");
   revalidatePath("/admin/non-responses");
+}
+
+/**
+ * Paths a block change moves. Beyond the config page and the student grid,
+ * a block edit can raise or clear flags, so the surfaces that count them
+ * (the hub's Needs attention list, the response list) go stale too.
+ */
+function revalidateBlockSurfaces() {
+  revalidatePositions();
+  revalidateStudentSurfaces();
+  revalidatePath("/admin");
+}
+
+/** Every submission with a pick on any of these blocks, in either copy. */
+async function submissionsHoldingBlocks(tx: DbTx, blockIds: string[]): Promise<string[]> {
+  if (blockIds.length === 0) return [];
+  const [own, internal] = await Promise.all([
+    tx
+      .select({ submissionId: shiftSelections.submissionId })
+      .from(shiftSelections)
+      .where(inArray(shiftSelections.shiftBlockId, blockIds)),
+    tx
+      .select({ submissionId: internalSelections.submissionId })
+      .from(internalSelections)
+      .where(inArray(internalSelections.shiftBlockId, blockIds)),
+  ]);
+  return [...new Set([...own, ...internal].map((r) => r.submissionId))];
+}
+
+/** Re-run the stored-answer checks for everyone holding any of these blocks. */
+async function revalidateSubmissionsHolding(tx: DbTx, blockIds: string[]): Promise<number> {
+  const ids = await submissionsHoldingBlocks(tx, blockIds);
+  for (const id of ids) await syncRevalidationFlag(tx, id);
+  return ids.length;
 }
 
 function checkName(name: string): { ok: true; name: string } | { ok: false; error: string } {
@@ -139,12 +186,31 @@ export async function savePosition(
     if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
   }
   const blockIds = changes.blockEdits.map((e) => e.blockId);
+  // Which edits actually move a shift's hours, read before the update writes
+  // over them. Only these need the students' checks re-run below.
+  const retimed: string[] = [];
   if (blockIds.length > 0) {
     const found = await db
-      .select({ id: shiftBlocks.id })
+      .select({
+        id: shiftBlocks.id,
+        start: shiftBlocks.startMinutes,
+        end: shiftBlocks.endMinutes,
+      })
       .from(shiftBlocks)
-      .where(and(eq(shiftBlocks.positionId, id), inArray(shiftBlocks.id, blockIds)));
+      // Retired shifts are not editable: restore one before changing its hours.
+      .where(
+        and(
+          eq(shiftBlocks.positionId, id),
+          inArray(shiftBlocks.id, blockIds),
+          isNull(shiftBlocks.retiredAt),
+        ),
+      );
     if (found.length !== new Set(blockIds).size) return { ok: false, error: "Block not found." };
+    const before = new Map(found.map((b) => [b.id, b]));
+    for (const edit of changes.blockEdits) {
+      const was = before.get(edit.blockId);
+      if (was && (was.start !== edit.start || was.end !== edit.end)) retimed.push(edit.blockId);
+    }
   }
 
   await db.transaction(async (tx) => {
@@ -169,10 +235,17 @@ export async function savePosition(
         })
         .where(eq(shiftBlocks.id, edit.blockId));
     }
+    // A time edit moves the shift under everyone who picked it: their picks
+    // keep pointing at this block and now mean the new hours, which can drop
+    // them under the floor. Re-run their checks so that shows up as a flag
+    // instead of silently changing what they agreed to. Staffing-target edits
+    // change nothing a student answered, so they don't trigger this.
+    await revalidateSubmissionsHolding(tx, retimed);
+    // Any orphan flag naming this shift quotes the old hours in its detail.
+    await syncOrphanFlagsForBlocks(tx, retimed);
   });
 
-  revalidatePositions();
-  revalidatePath("/availability");
+  revalidateBlockSurfaces();
   return { ok: true };
 }
 
@@ -382,31 +455,68 @@ export async function createBlock(
     .limit(1);
   if (!pos) return { ok: false, error: "Position not found." };
 
+  // Was this position unusable until now? A ghost resolution creates a
+  // position before its shifts exist, which defers the carry-over for everyone
+  // moved into it; adding the first block is what finally resolves it.
+  const [live] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(shiftBlocks)
+    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
+  const wasBlockless = Number(live?.n ?? 0) === 0;
+
   // Block ids are opaque handles: the prefix keeps them readable, the random
   // suffix keeps them unique without encoding times that would go stale.
   const id = `${positionId}-${dayType}-${randomUUID().slice(0, 8)}`;
-  await db
-    .insert(shiftBlocks)
-    .values({ id, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
-  revalidatePositions();
-  revalidatePath("/availability");
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(shiftBlocks)
+      .values({ id, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
+    if (wasBlockless) await resolveDeferredCarryOver(tx, positionId);
+  });
+
+  revalidateBlockSurfaces();
   return { ok: true };
 }
 
-export async function deleteBlock(blockId: string): Promise<ActionResult> {
+export interface DeleteBlockResult extends ActionResult {
+  /** True when picks kept the row alive and the shift was retired instead. */
+  retired: boolean;
+  /** Students whose picks this removal orphaned. */
+  orphaned: number;
+}
+
+/**
+ * Remove a block. With nothing pointing at it the row is deleted outright.
+ * With picks on it (the students' own or an internal copy's, PLAN §10a) the
+ * row is RETIRED instead: it stays so those picks keep a time to show, but
+ * every live read filters it out, so the shift is gone from the student grid,
+ * the rules, coverage, the export, and the generator. Those picks become
+ * orphaned and each affected student is flagged for the admin to clear.
+ */
+export async function deleteBlock(blockId: string): Promise<DeleteBlockResult> {
+  const fail = (error: string): DeleteBlockResult => ({
+    ok: false,
+    error,
+    retired: false,
+    orphaned: 0,
+  });
   const gate = await requireAdmin();
-  if (!gate.ok) return gate;
+  if (!gate.ok) return fail(gate.error);
 
   const db = getDb();
   const [row] = await db
-    .select({ id: shiftBlocks.id })
+    .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
     .from(shiftBlocks)
     .where(eq(shiftBlocks.id, blockId))
     .limit(1);
-  if (!row) return { ok: false, error: "Block not found." };
+  if (!row) return fail("Block not found.");
+  if (row.retiredAt !== null) return fail("This shift is already removed.");
 
-  // Count both the students' own picks and internal-copy cells (PLAN §10a);
-  // either would break the FK on delete.
+  // Count the students' own picks, internal-copy cells (PLAN §10a), and rows
+  // in any saved schedule run. The first two would break the FK on delete; the
+  // third would NOT (schedule_assignments cascades), which is exactly why it
+  // has to be counted: a hard delete would quietly erase shifts out of a run
+  // the scheduler already worked from.
   const [ref] = await db
     .select({ n: sql<number>`count(*)` })
     .from(shiftSelections)
@@ -415,17 +525,55 @@ export async function deleteBlock(blockId: string): Promise<ActionResult> {
     .select({ n: sql<number>`count(*)` })
     .from(internalSelections)
     .where(eq(internalSelections.shiftBlockId, blockId));
-  const refCount = Number(ref?.n ?? 0) + Number(internalRef?.n ?? 0);
-  if (refCount > 0) {
-    return {
-      ok: false,
-      error: `${refCount} student pick${refCount === 1 ? "" : "s"} reference this block, so it can't be removed.`,
-    };
+  const [assignedRef] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(scheduleAssignments)
+    .where(eq(scheduleAssignments.shiftBlockId, blockId));
+  const refCount = Number(ref?.n ?? 0) + Number(internalRef?.n ?? 0) + Number(assignedRef?.n ?? 0);
+
+  if (refCount === 0) {
+    await db.delete(shiftBlocks).where(eq(shiftBlocks.id, blockId));
+    revalidateBlockSurfaces();
+    return { ok: true, retired: false, orphaned: 0 };
   }
 
-  await db.delete(shiftBlocks).where(eq(shiftBlocks.id, blockId));
-  revalidatePositions();
-  revalidatePath("/availability");
+  let orphaned = 0;
+  await db.transaction(async (tx) => {
+    await tx.update(shiftBlocks).set({ retiredAt: new Date() }).where(eq(shiftBlocks.id, blockId));
+    // Retiring shrinks the live set, so both flags can move: picks on this
+    // block are orphaned now, and what remains may no longer validate.
+    orphaned = await syncOrphanFlagsForBlocks(tx, [blockId]);
+    await revalidateSubmissionsHolding(tx, [blockId]);
+  });
+
+  revalidateBlockSurfaces();
+  return { ok: true, retired: true, orphaned };
+}
+
+/**
+ * Put a retired shift back. Picks the retirement orphaned resolve themselves:
+ * the block is live again, so it counts again and both flags clear.
+ */
+export async function restoreBlock(blockId: string): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+
+  const db = getDb();
+  const [row] = await db
+    .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
+    .from(shiftBlocks)
+    .where(eq(shiftBlocks.id, blockId))
+    .limit(1);
+  if (!row) return { ok: false, error: "Block not found." };
+  if (row.retiredAt === null) return { ok: false, error: "This shift is not removed." };
+
+  await db.transaction(async (tx) => {
+    await tx.update(shiftBlocks).set({ retiredAt: null }).where(eq(shiftBlocks.id, blockId));
+    await syncOrphanFlagsForBlocks(tx, [blockId]);
+    await revalidateSubmissionsHolding(tx, [blockId]);
+  });
+
+  revalidateBlockSurfaces();
   return { ok: true };
 }
 

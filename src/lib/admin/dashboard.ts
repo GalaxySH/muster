@@ -227,7 +227,7 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
       .select()
       .from(positions)
       .where(and(eq(positions.active, true), isNull(positions.mergedIntoId))),
-    db.select().from(shiftBlocks),
+    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)
@@ -382,7 +382,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       })
       .from(shiftBlocks)
       .innerJoin(positions, eq(shiftBlocks.positionId, positions.id))
-      .where(eq(positions.active, true)),
+      .where(and(eq(positions.active, true), isNull(shiftBlocks.retiredAt))),
     db
       .select({
         blockId: eff.shiftBlockId,

@@ -7,7 +7,7 @@ import { FLAG_LABELS } from "@/lib/admin/response-filters";
 import { DeleteResponseButton } from "./DeleteResponseButton";
 
 /** Flag types that keep their own red pill even in the compact count view. */
-const ALERT_FLAGS = ["position_change", "revalidation_failed"] as const;
+const ALERT_FLAGS = ["position_change", "revalidation_failed", "orphaned_selection"] as const;
 
 type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
 

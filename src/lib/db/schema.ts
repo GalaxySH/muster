@@ -29,12 +29,13 @@ export const flagTypeEnum = [
   "position_change",
   "revalidation_failed",
   "student_changed_after_internal_edit",
+  "orphaned_selection",
 ] as const;
 
 /**
  * Any flag type a stored row can carry. A superset of the validation-produced
- * union in domain/validation.ts: position_change and revalidation_failed are
- * written by admin-side lifecycle code, and
+ * union in domain/validation.ts: position_change, revalidation_failed and
+ * orphaned_selection are written by admin-side lifecycle code, and
  * student_changed_after_internal_edit by the student save path when an
  * internal copy exists; none of these come from validateAvailability.
  */
@@ -68,6 +69,13 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
   desiredCapacity: int("desired_capacity"),
   // (high_demand removed in roadmap 2.5: demand is now computed from live
   // selection counts at grid load, not an admin-set column. See domain/demand.ts.)
+  //
+  // Set when an admin removes a block students had already picked. The row
+  // survives so those picks keep a time to display (they become "orphaned",
+  // see lib/positions/orphans.ts), but every live read filters retired blocks
+  // out, so the block is gone from grids, capacity, coverage, the export, and
+  // the generator. Null = live. An unpicked block is still deleted outright.
+  retiredAt: timestamp("retired_at"),
 });
 
 /**

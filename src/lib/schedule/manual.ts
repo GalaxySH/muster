@@ -10,7 +10,7 @@
  * shift must add unique time (domain/scheduling/manual.ts); assigning a cell
  * the student never selected is deliberate scheduler prerogative.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
@@ -72,7 +72,7 @@ export async function setManualAssignment(
   const [blockRow] = await db
     .select()
     .from(shiftBlocks)
-    .where(eq(shiftBlocks.id, blockId))
+    .where(and(eq(shiftBlocks.id, blockId), isNull(shiftBlocks.retiredAt)))
     .limit(1);
   if (!blockRow) return fail("That shift no longer exists.");
   const block = toDomainBlock(blockRow);

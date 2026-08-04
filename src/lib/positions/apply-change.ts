@@ -19,7 +19,7 @@
  * calls it from the CLI as well as from the admin upload action.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
   flags,
@@ -32,7 +32,9 @@ import {
 } from "@/lib/db/schema";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { carryOverSelections } from "@/lib/domain/carry-over";
+import { partitionSelection } from "@/lib/domain/orphans";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
+import { syncOrphanedSelectionFlag } from "./orphans";
 
 /** A drizzle transaction handle; both seams run inside the caller's transaction. */
 export type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -80,9 +82,14 @@ export async function applyPositionChange(
     .limit(1);
   if (!sub) return NO_SUBMISSION;
 
+  // Retired blocks are never a carry-over target: a pick that landed on one
+  // would be orphaned the moment it arrived.
   const targetBlocks = input.toPositionId
     ? (
-        await tx.select().from(shiftBlocks).where(eq(shiftBlocks.positionId, input.toPositionId))
+        await tx
+          .select()
+          .from(shiftBlocks)
+          .where(and(eq(shiftBlocks.positionId, input.toPositionId), isNull(shiftBlocks.retiredAt)))
       ).map(toDomainBlock)
     : [];
   const deferred = targetBlocks.length === 0;
@@ -90,41 +97,9 @@ export async function applyPositionChange(
   let carriedOver = 0;
   let dropped = 0;
   if (!deferred) {
-    const remap = async (table: typeof shiftSelections | typeof internalSelections) => {
-      const rows = await tx
-        .select({ blockId: table.shiftBlockId, day: table.day, autoAssigned: table.autoAssigned })
-        .from(table)
-        .where(eq(table.submissionId, sub.id));
-      if (rows.length === 0) return { kept: 0, dropped: 0 };
-      // Source blocks are the blocks the rows actually reference (see header).
-      const referencedIds = [...new Set(rows.map((r) => r.blockId))];
-      const sourceBlocks = (
-        await tx.select().from(shiftBlocks).where(inArray(shiftBlocks.id, referencedIds))
-      ).map(toDomainBlock);
-      const result = carryOverSelections(rows, sourceBlocks, targetBlocks);
-      // Delete + insert; kept rows are already deduped against the composite
-      // PK (submissionId, shiftBlockId, day) by carryOverSelections.
-      await tx.delete(table).where(eq(table.submissionId, sub.id));
-      if (result.kept.length > 0) {
-        await tx.insert(table).values(
-          result.kept.map((r) => ({
-            submissionId: sub.id,
-            shiftBlockId: r.blockId,
-            day: r.day,
-            autoAssigned: r.autoAssigned,
-          })),
-        );
-      }
-      return { kept: result.kept.length, dropped: result.dropped.length };
-    };
-    const studentRows = await remap(shiftSelections);
-    carriedOver = studentRows.kept;
-    dropped = studentRows.dropped;
-    // The admin's internal copy (PLAN §10a) follows the same carry-over, so
-    // its cells never point at another position's blocks (the engine silently
-    // drops out-of-position cells). The flag detail reports the student's own
-    // rows; the internal copy is scheduler working state.
-    await remap(internalSelections);
+    const moved = await carryOverSubmission(tx, sub.id, targetBlocks);
+    carriedOver = moved.carriedOver;
+    dropped = moved.dropped;
   }
 
   const detail = await changeDetail(tx, input, { deferred, carriedOver, dropped });
@@ -137,10 +112,113 @@ export async function applyPositionChange(
     .values({ id: randomUUID(), submissionId: sub.id, type: "position_change", detail });
 
   // While deferred there is no block set to validate against; the flag from a
-  // previous run (if any) stays until the ghost resolves and this reruns.
+  // previous run (if any) stays until the ghost resolves and this reruns. The
+  // same goes for orphans: with no live blocks to compare against, every row
+  // would read as dead, and the admin's only affordance for a dead row is to
+  // delete it. `syncOrphanedSelectionFlag` refuses that case too, so this is
+  // belt and braces; the deferred rows are waiting for the carry-over, not
+  // rotten. `createBlock` runs the carry-over once blocks do exist.
   const revalidationFailed = deferred ? false : await syncRevalidationFlag(tx, sub.id);
+  if (!deferred) await syncOrphanedSelectionFlag(tx, sub.id);
 
   return { hadSubmission: true, carriedOver, dropped, deferred, revalidationFailed };
+}
+
+/**
+ * Re-point one submission's cells (the student's own and the internal copy
+ * alike) onto `targetBlocks`, in both selection tables. Only picks on LIVE
+ * source blocks move: carry-over matches on time, so an orphaned pick whose
+ * retired block happens to share hours with a target block would come back as
+ * a real pick the student never re-offered. Orphans stay orphans, rows
+ * untouched. Counts describe the student's own rows.
+ */
+async function carryOverSubmission(
+  tx: DbTx,
+  submissionId: string,
+  targetBlocks: ReturnType<typeof toDomainBlock>[],
+): Promise<{ carriedOver: number; dropped: number }> {
+  const remap = async (table: typeof shiftSelections | typeof internalSelections) => {
+    const rows = await tx
+      .select({ blockId: table.shiftBlockId, day: table.day, autoAssigned: table.autoAssigned })
+      .from(table)
+      .where(eq(table.submissionId, submissionId));
+    if (rows.length === 0) return { kept: 0, dropped: 0 };
+    // Source blocks are the blocks the rows actually reference (see header).
+    const referencedIds = [...new Set(rows.map((r) => r.blockId))];
+    const sourceRows = await tx
+      .select()
+      .from(shiftBlocks)
+      .where(inArray(shiftBlocks.id, referencedIds));
+    const liveSource = sourceRows.filter((b) => b.retiredAt === null);
+    const liveSourceIds = new Set(liveSource.map((b) => b.id));
+    const liveRows = rows.filter((r) => liveSourceIds.has(r.blockId));
+    const result = carryOverSelections(liveRows, liveSource.map(toDomainBlock), targetBlocks);
+    // Delete + insert, scoped to the rows the carry-over consumed; kept rows
+    // are already deduped against the composite PK (submissionId,
+    // shiftBlockId, day) by carryOverSelections.
+    if (liveSourceIds.size > 0) {
+      await tx
+        .delete(table)
+        .where(
+          and(
+            eq(table.submissionId, submissionId),
+            inArray(table.shiftBlockId, [...liveSourceIds]),
+          ),
+        );
+    }
+    if (result.kept.length > 0) {
+      await tx.insert(table).values(
+        result.kept.map((r) => ({
+          submissionId,
+          shiftBlockId: r.blockId,
+          day: r.day,
+          autoAssigned: r.autoAssigned,
+        })),
+      );
+    }
+    return { kept: result.kept.length, dropped: result.dropped.length };
+  };
+
+  const own = await remap(shiftSelections);
+  // The admin's internal copy (PLAN §10a) follows the same carry-over, so its
+  // cells never point at another position's blocks (the engine silently drops
+  // out-of-position cells). The counts report the student's own rows; the
+  // internal copy is scheduler working state.
+  await remap(internalSelections);
+  return { carriedOver: own.kept, dropped: own.dropped };
+}
+
+/**
+ * Finish the carry-over a deferred position change left pending, now that
+ * `positionId` finally has blocks. A ghost resolution creates the position
+ * before its shifts exist (PLAN §6.2a), so the students' cells sit on their
+ * old position's blocks until this runs. Without it every one of those rows
+ * would read as orphaned the moment the first block is added, inviting an
+ * admin to delete a whole real availability.
+ *
+ * Returns how many submissions it moved.
+ */
+export async function resolveDeferredCarryOver(tx: DbTx, positionId: string): Promise<number> {
+  const targetBlocks = (
+    await tx
+      .select()
+      .from(shiftBlocks)
+      .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)))
+  ).map(toDomainBlock);
+  if (targetBlocks.length === 0) return 0;
+
+  const rows = await tx
+    .select({ id: submissions.id })
+    .from(submissions)
+    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .where(eq(students.positionId, positionId));
+
+  for (const { id } of rows) {
+    await carryOverSubmission(tx, id, targetBlocks);
+    await syncRevalidationFlag(tx, id);
+    await syncOrphanedSelectionFlag(tx, id);
+  }
+  return rows.length;
 }
 
 /** Human copy for the position_change flag detail. */
@@ -213,17 +291,20 @@ export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Prom
   if (!posRow) return clear();
   const position = toDomainPosition(posRow);
   const blocks = (
-    await tx.select().from(shiftBlocks).where(eq(shiftBlocks.positionId, position.id))
+    await tx
+      .select()
+      .from(shiftBlocks)
+      .where(and(eq(shiftBlocks.positionId, position.id), isNull(shiftBlocks.retiredAt)))
   ).map(toDomainBlock);
 
-  const validIds = new Set(blocks.map((b) => b.id));
   const selRows = await tx
     .select({ blockId: shiftSelections.shiftBlockId, day: shiftSelections.day })
     .from(shiftSelections)
     .where(
       and(eq(shiftSelections.submissionId, submissionId), eq(shiftSelections.autoAssigned, false)),
     );
-  const selection = selRows.filter((s) => validIds.has(s.blockId));
+  // Orphaned picks are dead data and never count toward the rules.
+  const { known: selection } = partitionSelection(selRows, blocks);
 
   const result = validateAvailability(selection, position, blocks, {
     everyWeekendOptIn: row.everyWeekendOptIn,

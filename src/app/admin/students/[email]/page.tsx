@@ -195,7 +195,8 @@ export default async function StudentDetailPage({
     (f) =>
       f.type === "position_change" ||
       f.type === "revalidation_failed" ||
-      f.type === "student_changed_after_internal_edit",
+      f.type === "student_changed_after_internal_edit" ||
+      f.type === "orphaned_selection",
   );
 
   // The dashboard renders for everyone on the roster, not just responders: with
@@ -219,7 +220,9 @@ export default async function StudentDetailPage({
   // layer empties out when one is loaded.
   const gridSelection = internal ? internal.selection : selection;
   const gridAutoAssigned = internal ? [] : autoAssigned;
-  const gridOptIn = internal ? internal.everyWeekendOptIn : (submission?.everyWeekendOptIn ?? false);
+  const gridOptIn = internal
+    ? internal.everyWeekendOptIn
+    : (submission?.everyWeekendOptIn ?? false);
   // How the saved copy differs from the student's own answers: the banner
   // summary, and per-cell rings in the grid below.
   const internalDiff = internal
@@ -383,6 +386,7 @@ export default async function StudentDetailPage({
               hasSchedule={(schedule?.cells.length ?? 0) > 0}
               isInternal={internal !== null}
               studentCells={internal ? [...selection, ...autoAssigned] : null}
+              orphans={detail.orphaned}
             />
           </section>
         )}

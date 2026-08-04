@@ -10,7 +10,7 @@
  * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
@@ -28,6 +28,8 @@ import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { loadInternalDetail, type InternalDetail } from "@/lib/availability/internal";
 import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
+import { loadOrphanedCells, type OrphanedCell } from "@/lib/positions/orphans";
+import { partitionSelection } from "@/lib/domain/orphans";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import { applyResponseFilters, type ResponseFilters } from "./response-filters";
@@ -72,6 +74,12 @@ export interface StudentDetail {
    */
   internal: InternalDetail | null;
   flags: { type: DbFlagType; detail: string }[];
+  /**
+   * Picks on shifts that no longer exist (PLAN §6.2a), from the student's rows
+   * and the internal copy alike. Never part of `selection` or `blocks`, so no
+   * calculation can pick them up; the grid shows them as their own dead rows.
+   */
+  orphaned: OrphanedCell[];
   evidence: EvidenceView;
   /** SL weekend closes (PLAN §18a); null when the step doesn't apply. */
   closes: StudentCloseClaims | null;
@@ -108,7 +116,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       const blockRows = await db
         .select()
         .from(shiftBlocks)
-        .where(eq(shiftBlocks.positionId, student.positionId));
+        .where(and(eq(shiftBlocks.positionId, student.positionId), isNull(shiftBlocks.retiredAt)));
       blocks = blockRows.map(toDomainBlock);
     }
   }
@@ -124,6 +132,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   let internal: InternalDetail | null = null;
   let flagRows: { type: DbFlagType; detail: string }[] = [];
   let submission: StudentDetail["submission"] = null;
+  let orphaned: OrphanedCell[] = [];
 
   if (subRow) {
     submission = {
@@ -143,12 +152,19 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       .select()
       .from(shiftSelections)
       .where(eq(shiftSelections.submissionId, subRow.id));
-    selection = selRows
-      .filter((r) => !r.autoAssigned)
-      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
-    autoAssigned = selRows
-      .filter((r) => r.autoAssigned)
-      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
+    // Picks on shifts that are gone are split off here rather than passed on:
+    // they are not availability, and `blocks` can't resolve them, so anything
+    // downstream that tried to would throw (computeCapacity) or silently
+    // mis-count. They travel as `orphaned` instead.
+    selection = partitionSelection(
+      selRows.filter((r) => !r.autoAssigned).map((r) => ({ blockId: r.shiftBlockId, day: r.day })),
+      blocks,
+    ).known;
+    autoAssigned = partitionSelection(
+      selRows.filter((r) => r.autoAssigned).map((r) => ({ blockId: r.shiftBlockId, day: r.day })),
+      blocks,
+    ).known;
+    orphaned = await loadOrphanedCells(db, subRow.id);
 
     const fRows = await db
       .select({ type: flags.type, detail: flags.detail })
@@ -179,6 +195,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     autoAssigned,
     internal,
     flags: flagRows,
+    orphaned,
     evidence,
     closes,
   };

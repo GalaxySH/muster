@@ -452,6 +452,21 @@ function buildAlerts(
     });
   }
 
+  // Picks left on a shift the admin removed. They are already out of every
+  // calculation, but the response still says the student offered hours they
+  // can't be scheduled for, and only an admin can clear them (PLAN §6.2a).
+  const orphaned = s.flagCounts.find((f) => f.type === "orphaned_selection")?.count ?? 0;
+  if (orphaned > 0) {
+    danger.push({
+      id: "orphaned-selections",
+      severity: "danger",
+      title: `${orphaned} ${plural(orphaned, "response", "responses")} ${plural(orphaned, "has", "have")} picks on a shift that no longer exists.`,
+      detail: "The shift was removed after they picked it. Clear the picks on their response.",
+      href: "/admin/responses?flag=orphaned_selection",
+      linkLabel: "Review",
+    });
+  }
+
   // A position's shift setup can silently block every student assigned to it: no
   // blocks to pick, or a block set that can never reach the hour or day floor.
   // Only positions with on-roster students are checked (an unused position is

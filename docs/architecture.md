@@ -991,9 +991,65 @@ already carried blocks and `onRosterCount`; `positions/data.ts` grew its own
 the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 `ClearPositionChangeButton`), and the derived no-position pill on
 `/admin/non-responses`. Flags self-heal on save because `writeSelectionAndFlags`
-rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
+rewrites the submission's flags wholesale (`orphaned_selection` excepted — see below).
+Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
+
+### Block retirement & orphaned picks (PLAN §6.2a, v1.08)
+
+Selections point at a block **id**, so the two block edits diverge. A **time edit** is
+still an in-place `UPDATE`: picks follow the block to its new hours (the confirm spells
+that out), and `savePosition` now diffs the old times to find the genuinely `retimed`
+blocks and re-runs `syncRevalidationFlag` for everyone holding them. A **removal** of a
+picked block can't delete the row (the FK is `RESTRICT`, and the times are the only
+record of what the student chose), so `deleteBlock` stamps `shift_blocks.retired_at`
+instead; `restoreBlock` is the undo. An unreferenced block is still hard-deleted, where
+"referenced" counts `shift_selections`, `internal_selections`, **and**
+`schedule_assignments` (that last one cascades, so a hard delete would silently strip
+shifts out of a saved run).
+
+The invariant is **every live block read filters `isNull(retiredAt)`** —
+`loadPositionWithBlocks`, `loadHighDemandCells` (both the targets *and* the count query,
+which needs its own join to `shift_blocks`), `loadStudentDetail`, `loadCoverage`, the
+dashboard snapshot, `export-data`, `generateSchedule`, `loadScheduleBoard`, manual
+assignment, `syncRevalidationFlag`, and `applyPositionChange`'s target set. Deliberately
+**un**filtered: `listPositionsAdmin` (the config page is the one place a retired block
+shows, so it can be put back), `orphans.ts` (it needs the retired row to know the time),
+the `scheduleAssignments → shiftBlocks` joins (historical runs), and carry-over's
+source-block lookup by id.
+
+Picks on a non-live block are **orphaned**. The pure seam is `domain/orphans.ts`
+(`partitionSelection`/`knownSelection`): every calculation consumes `.known`, which is
+also what stops `computeCapacity`'s `throw new Error("Selection references unknown
+block")` from 500ing a page. Server side is `positions/orphans.ts` (plain module, CLI-safe
+like `apply-change.ts`): `loadOrphanedCells` merges the student's rows and the internal
+copy per `(block, day)` and resolves each back to its times; `syncOrphanedSelectionFlag`
+is the single idempotent owner of the `orphaned_selection` flag (delete-then-insert, so
+it can never stack); `syncOrphanFlagsForBlocks` fans that out over everyone holding a
+given block. Both `loadOrphanedCells` and `applyPositionChange` treat "no live blocks at
+all" as **not** orphaned — a ghost resolution creates a position before its shifts exist,
+and calling every row dead there would invite an admin to delete a whole real
+availability. `createBlock` closes that loop: adding the first live block to a blockless
+position runs `resolveDeferredCarryOver`, the pending carry-over a deferred move left.
+
+Two write-path subtleties keep orphans stable. `replaceSelectionCells` deletes only rows
+whose block is in the **live** set, so a student save (which can't see orphans) preserves
+them; and because `writeSelectionAndFlags` still wipes flags wholesale, it re-runs
+`syncOrphanedSelectionFlag` at the end. Carry-over only moves picks off **live** source
+blocks — it matches on time, so an orphan sharing hours with a target block would
+otherwise return as a real pick the student never re-offered.
+
+Read side: `admin/data.ts` returns `orphaned: OrphanedCell[]` alongside the partitioned
+selection; `PrefGridCalculator` renders one greyed, struck-through row per dead shift
+under the live rows (hatched fill, red ✓, `removed` tag), every cell `disabled` except a
+picked one, which clears via `removeOrphanedSelection` (`admin/actions.ts`, admin-gated,
+re-checks orphan status **inside** the transaction against a concurrent restore, deletes
+from both tables, re-syncs both flags). Flag surfacing follows the `revalidation_failed`
+precedent exactly: `FLAG_LABELS` ("Shift removed"), `ALERT_FLAGS` in `ResponseList`, the
+`storedAlerts` filter on the per-student page, and an `orphaned-selections` **danger**
+alert in `buildAlerts`. It is deliberately **not** in `DismissableFlag`: the only way it
+clears is clearing the data.
 
 ## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.79)
 

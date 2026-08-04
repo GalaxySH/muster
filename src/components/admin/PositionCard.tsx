@@ -89,9 +89,17 @@ export function PositionCard({
         );
       }
     }
+    // A time change keeps every pick on the block, so students who chose the old
+    // hours end up offering the new ones without being asked. Spell that out:
+    // it is the whole risk of the edit, and the save re-checks everyone after.
     if (
       repicked.length > 0 &&
-      !confirm(`Students have picked these shifts: ${repicked.join(", ")}. Change their times?`)
+      !confirm(
+        `Students have picked these shifts: ${repicked.join(", ")}.\n\n` +
+          "Their picks move to the new times. Anyone who no longer meets their hours will be flagged on the response list.\n\n" +
+          "To take a shift away instead of moving it, remove it and add a new one.\n\n" +
+          "Change the times?",
+      )
     ) {
       return;
     }
@@ -198,9 +206,7 @@ export function PositionCard({
             disabled={pending}
             onClick={() => {
               if (
-                confirm(
-                  `Remove the alias on ${position.name}? It becomes its own position again.`,
-                )
+                confirm(`Remove the alias on ${position.name}? It becomes its own position again.`)
               ) {
                 act(() => clearAlias(position.id), "Alias removed.");
               }

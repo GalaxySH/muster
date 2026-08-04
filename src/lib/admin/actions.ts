@@ -9,8 +9,17 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { flags, submissions, travelRequests } from "@/lib/db/schema";
+import {
+  flags,
+  internalSelections,
+  shiftSelections,
+  submissions,
+  travelRequests,
+} from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { syncRevalidationFlag } from "@/lib/positions/apply-change";
+import { loadOrphanedCells, syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
+import type { Day } from "@/lib/domain/types";
 import { issueMagicLink } from "@/lib/auth/magic-link-store";
 import { env } from "@/lib/env";
 import { collectSubmissionDriveFileIds, ensureSubmissionId } from "@/lib/evidence/data";
@@ -191,6 +200,58 @@ export async function dismissFlag(
 
   revalidatePath(`/admin/students/${encodeURIComponent(sub.email)}`);
   revalidatePath("/admin/responses");
+  return { ok: true };
+}
+
+/**
+ * Admin: clear one orphaned pick, a cell on a shift that no longer exists
+ * (PLAN §6.2a). Removed from the student's own rows and the internal copy
+ * alike, since a dead shift is dead in both, then the orphan and revalidation
+ * flags are re-synced: clearing the last one clears the flag.
+ *
+ * This is the only way an orphaned cell goes away. Students never see them, so
+ * they can never remove one themselves, and nothing recomputes them away.
+ */
+export async function removeOrphanedSelection(
+  studentEmail: string,
+  blockId: string,
+  day: Day,
+): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const email = normalizeEmail(studentEmail);
+
+  const db = getDb();
+  const [sub] = await db
+    .select({ id: submissions.id, status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, email))
+    .limit(1);
+  if (!sub) return { ok: false, error: "No such submission." };
+
+  let refused = false;
+  await db.transaction(async (tx) => {
+    // Refuse anything still live, so a bad id can never delete a real pick.
+    // Checked inside the transaction: a concurrent "put back" would otherwise
+    // make the shift live again between the check and the delete.
+    const orphaned = await loadOrphanedCells(tx, sub.id);
+    if (!orphaned.some((c) => c.blockId === blockId && c.day === day)) {
+      refused = true;
+      return;
+    }
+    const match = (table: typeof shiftSelections | typeof internalSelections) =>
+      and(eq(table.submissionId, sub.id), eq(table.shiftBlockId, blockId), eq(table.day, day));
+    await tx.delete(shiftSelections).where(match(shiftSelections));
+    await tx.delete(internalSelections).where(match(internalSelections));
+    await syncOrphanedSelectionFlag(tx, sub.id);
+    await syncRevalidationFlag(tx, sub.id);
+  });
+  if (refused) return { ok: false, error: "That pick is not on a removed shift." };
+
+  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
+  revalidatePath("/admin/responses");
+  revalidatePath("/admin");
   return { ok: true };
 }
 

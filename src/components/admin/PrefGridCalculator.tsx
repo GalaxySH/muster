@@ -7,6 +7,8 @@ import { computeCapacity } from "@/lib/domain/capacity";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { keysToSelection, selectionKey } from "@/lib/availability/selection";
 import { saveAvailabilityFor } from "@/lib/availability/actions";
+import { removeOrphanedSelection } from "@/lib/admin/actions";
+import type { OrphanedCell } from "@/lib/positions/orphans";
 import { removeManualAssignment, setManualAssignment } from "@/lib/schedule/manual";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
@@ -104,6 +106,13 @@ export interface PrefGridCalculatorProps {
    * grid already IS the student's own answers).
    */
   studentCells: SelectedShift[] | null;
+  /**
+   * Picks left on shifts that no longer exist (PLAN §6.2a). They render as
+   * their own greyed rows under the live ones, showing the hours the student
+   * originally picked. Nothing can be added on such a row; the only thing the
+   * admin can do is clear a pick, which removes it for good.
+   */
+  orphans: OrphanedCell[];
 }
 
 /** How long "Saved" stays up before the button retires itself. */
@@ -147,7 +156,25 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const [overrideChecks, setOverrideChecks] = useState<string[] | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
   const [busyCell, setBusyCell] = useState<string | null>(null);
+  const [orphanError, setOrphanError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  /**
+   * Clear one dead pick. It is gone from both copies once this returns, so the
+   * server is the only source of truth here: refresh rather than hide the row
+   * locally, and let the flag re-sync decide what the page shows next.
+   */
+  function removeOrphan(blockId: string, day: Day) {
+    const key = selectionKey(blockId, day);
+    setOrphanError(null);
+    setBusyCell(key);
+    startTransition(async () => {
+      const res = await removeOrphanedSelection(props.studentEmail, blockId, day);
+      setBusyCell(null);
+      if (!res.ok) setOrphanError(res.error ?? "Could not remove that pick.");
+      else router.refresh();
+    });
+  }
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
@@ -430,6 +457,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             isInternal={props.isInternal}
             studentKeys={studentKeys}
             onToggle={onToggle}
+            orphans={props.orphans}
+            onRemoveOrphan={removeOrphan}
           />
         </div>
         {props.grid.weekend && (
@@ -464,6 +493,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               isInternal={props.isInternal}
               studentKeys={studentKeys}
               onToggle={onToggle}
+              orphans={props.orphans}
+              onRemoveOrphan={removeOrphan}
             />
           </div>
         )}
@@ -539,6 +570,11 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           {assignError}
         </p>
       )}
+      {orphanError && (
+        <p role="status" style={saveErrorStyle}>
+          {orphanError}
+        </p>
+      )}
     </>
   );
 }
@@ -568,6 +604,8 @@ function CalcTable({
   isInternal,
   studentKeys,
   onToggle,
+  orphans,
+  onRemoveOrphan,
 }: {
   sub: AdminSubGrid;
   mode: Mode;
@@ -580,7 +618,29 @@ function CalcTable({
   isInternal: boolean;
   studentKeys: Set<string> | null;
   onToggle: (blockId: string, day: Day) => void;
+  orphans: OrphanedCell[];
+  onRemoveOrphan: (blockId: string, day: Day) => void;
 }) {
+  // One row per removed shift this day-type had, holding every day it was
+  // picked on. Grouped here so the table stays the only place that knows how a
+  // sub-grid is laid out.
+  const orphanRows = useMemo(() => {
+    const byBlock = new Map<string, { label: string; start: number; days: Set<Day> }>();
+    for (const c of orphans) {
+      if (c.dayType !== sub.dayType) continue;
+      const entry = byBlock.get(c.blockId) ?? {
+        label: `${formatTime(c.start)}–${formatTime(c.end)}`,
+        start: c.start,
+        days: new Set<Day>(),
+      };
+      entry.days.add(c.day);
+      byBlock.set(c.blockId, entry);
+    }
+    return [...byBlock.entries()]
+      .map(([blockId, v]) => ({ blockId, ...v }))
+      .sort((a, b) => a.start - b.start);
+  }, [orphans, sub.dayType]);
+
   return (
     <table style={{ width: "auto", borderCollapse: "separate", borderSpacing: 3, fontSize: 11 }}>
       <tbody>
@@ -654,10 +714,97 @@ function CalcTable({
             })}
           </tr>
         ))}
+        {/* Removed shifts. The row is dead: every cell is disabled, and only a
+            cell the student actually picked is clickable, to clear it. */}
+        {orphanRows.map((row) => (
+          <tr key={row.blockId}>
+            <td style={orphanLabel}>
+              <span style={{ textDecoration: "line-through" }}>{row.label}</span>{" "}
+              <span style={orphanTag}>removed</span>
+            </td>
+            {sub.days.map((day) => {
+              const picked = row.days.has(day);
+              const key = selectionKey(row.blockId, day);
+              return (
+                <td key={day} style={{ padding: 0, ...weekSplit(sub, day) }}>
+                  <button
+                    type="button"
+                    aria-label={`${row.label} ${DAY_LABEL[day]} on a removed shift`}
+                    disabled={!picked || busyCell === key}
+                    title={
+                      picked
+                        ? "This shift was removed. Click to clear this pick."
+                        : "This shift was removed and can't be picked."
+                    }
+                    onClick={() => onRemoveOrphan(row.blockId, day)}
+                    style={orphanCellStyle(picked, busyCell === key)}
+                  >
+                    {picked && (
+                      <span aria-hidden style={orphanTick}>
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                </td>
+              );
+            })}
+          </tr>
+        ))}
       </tbody>
     </table>
   );
 }
+
+/**
+ * A cell on a removed shift. A picked one keeps the check mark so it still
+ * reads as the student's answer, but greyed and hatched so it never looks
+ * like something the scheduler can use; an unpicked one is inert.
+ */
+function orphanCellStyle(picked: boolean, busy: boolean): React.CSSProperties {
+  return {
+    width: CELL,
+    height: CELL,
+    padding: 0,
+    borderRadius: 4,
+    position: "relative",
+    border: picked
+      ? "1px solid var(--color-text-danger)"
+      : "1px dashed var(--color-border-secondary)",
+    background: picked
+      ? "repeating-linear-gradient(45deg, #d9d9d9, #d9d9d9 3px, #ececec 3px, #ececec 6px)"
+      : "var(--color-background-secondary)",
+    opacity: busy ? 0.5 : picked ? 1 : 0.45,
+    cursor: picked ? "pointer" : "not-allowed",
+    boxSizing: "border-box",
+  };
+}
+
+/** The live cells' white tick would vanish on the grey hatch; this reads on it. */
+const orphanTick: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "var(--color-text-danger)",
+  pointerEvents: "none",
+};
+
+const orphanLabel: React.CSSProperties = {
+  whiteSpace: "nowrap",
+  color: "var(--color-text-tertiary)",
+};
+
+const orphanTag: React.CSSProperties = {
+  borderRadius: 8,
+  padding: "0 5px",
+  fontSize: 10,
+  background: "#fdecec",
+  color: "var(--color-text-danger)",
+  whiteSpace: "nowrap",
+};
 
 function cellTitle(
   mode: Mode,
@@ -673,7 +820,9 @@ function cellTitle(
   // With an internal copy loaded the saved picks are the admin's, so the
   // tooltips stop attributing them to the student.
   const pickedLabel = isInternal ? "in the saved internal copy" : "the student picked this";
-  const notPickedLabel = isInternal ? "not in the saved internal copy" : "not one the student picked";
+  const notPickedLabel = isInternal
+    ? "not in the saved internal copy"
+    : "not one the student picked";
   const parts: string[] = [];
   if (mode === "schedule") {
     if (source === "manual") parts.push("Scheduled by hand. Click to remove.");
@@ -683,7 +832,9 @@ function cellTitle(
     else parts.push(notPickedLabel);
   } else {
     if (inMock)
-      parts.push(notOffered ? "In trial schedule (not one the student picked)" : "In trial schedule");
+      parts.push(
+        notOffered ? "In trial schedule (not one the student picked)" : "In trial schedule",
+      );
     else if (removedFromStudent)
       parts.push(
         wasPreferred

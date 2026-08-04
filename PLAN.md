@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.07
+- **Version:** 1.08
 - **Last updated:** 2026-08-02
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -317,6 +317,36 @@ attaches to each). Editable config so they can be merged further later.
   (per day) with a red mark plus a short steering hint, advisory only. (The old
   `shift_blocks.high_demand` column was retired.)
 
+### 6.2a Block lifecycle & orphaned picks
+Selections reference a block **by id**, so what an admin does to a block decides what
+happens to every pick already on it. The two edits differ on purpose:
+
+- **Changing a block's times** keeps the picks. The row is updated in place, so the
+  students who chose it now offer the **new** hours. The editor confirms this before
+  saving, and the save re-runs every affected student's checks, so anyone the new hours
+  drop under their floor surfaces as `revalidation_failed` instead of changing silently.
+- **Removing a block** that has picks (the students' own or an internal copy's, §10a)
+  **retires** it rather than deleting it: `shift_blocks.retired_at` is stamped and the
+  row survives, purely so those picks keep a time to display. A block nothing references
+  is still deleted outright. Retiring is reversible ("Put back").
+
+Every live read filters retired blocks out, so a retired block is **gone** from the
+student grid, the rules engine, capacity, coverage, high-demand, the export, and the
+generator. The picks left behind are **orphaned**: dead data that counts toward nothing.
+
+Orphans are **admin-only**. Students never see one and so can never clear one; a student
+save preserves them untouched. The admin sees each orphaned shift as its own disabled,
+struck-through row on the per-student grid (§10a) showing the hours originally picked —
+cells that were never picked can't be selected, and a picked cell is clickable **only**
+to clear it, which removes it from the student's rows and the internal copy alike. The
+submission carries an `orphaned_selection` flag ("Shift removed") naming the dead shifts,
+which raises a **danger** alert on the hub and a red pill on the response list.
+
+A position with **no live blocks at all** (a ghost resolution creates one before its
+shifts exist) is *not* treated as orphaning everything: the carry-over is still pending,
+and calling every row dead would invite an admin to delete a whole real availability.
+Adding that position's first block runs the deferred carry-over instead.
+
 ### 6.3 Canonical block table
 **Initial** per-position blocks (provided 2026-06) — this is the seed fixture
 (`config/positions.ts`), inserted only into an empty database; once seeded, the DB is
@@ -577,7 +607,8 @@ columns from the roster.
   policy; false = late, stored when the admin's accept-late toggle is on — §7b),
   `resolved: bool` (admin review marker — §10a).
 - **Flag**: `submissionId`, `type` (`auto_assigned_weekend`, `travel_late`,
-  `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`),
+  `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`,
+  `orphaned_selection`),
   `detail`. `position_change` is written on
   any position modification of a student holding a submission (import, alias switch,
   ghost resolution; detail carries old/new position + picks kept/dropped) and clears on
@@ -588,7 +619,11 @@ columns from the roster.
   manually dismissed. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
   when the admin re-saves or reverts the internal copy — the reconcile signal that the
-  ground truth moved under the scheduler's adjustments.
+  ground truth moved under the scheduler's adjustments. `orphaned_selection` (1.08) is
+  owned by the orphan seam (`positions/orphans.ts`) — written whenever a submission holds
+  a pick on a shift that is no longer in the student's live block set (§6.2a), deleted
+  the moment the last one is cleared, never manually dismissed. It survives a student
+  save, because a student can neither see nor clear an orphaned pick.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
@@ -1365,6 +1400,30 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.08 (2026-08-04)** — **Removing a shift block no longer loses or hides the picks
+  on it (§6.2a).** A block with picks could not be removed at all (the action refused
+  and the button was disabled), and a block whose *times* were edited silently moved
+  every pick with it, with no revalidation. Now: a picked block is **retired**
+  (`shift_blocks.retired_at`, migration `0025`) instead of deleted, and every live read
+  filters retired blocks out, so the shift leaves the student grid, the rules, capacity,
+  coverage, high-demand, the export, and the generator together. The picks left behind
+  are **orphaned** and surface to the admin only: their own greyed, struck-through row
+  on the §10a grid showing the hours originally picked, un-pickable except to clear a
+  cell, plus an `orphaned_selection` flag ("Shift removed") with a hub danger alert, a
+  response-list pill, and a filter. Retiring is reversible ("Put back"). A time edit
+  keeps its old carry-the-picks behavior by design, but now warns concretely and re-runs
+  every affected student's checks so a new floor failure shows up as
+  `revalidation_failed`. Also fixed alongside: the per-student admin page **500'd**
+  whenever a selection referenced a block outside the student's position, since
+  `computeCapacity` throws on an unknown block — a new pure `domain/orphans.ts`
+  (`partitionSelection`) is now the single seam every calculation reads through, on the
+  admin page, the student form loader (which crashed **every** wizard page the same way),
+  and the export (which took the CSV route and the running Drive sheet down with it).
+  Orphaned picks no longer skew high-demand counts, no longer come back to life through
+  a position change's time-matched carry-over, and no longer vanish when the student
+  saves. Adding the first block to a blockless position now runs the carry-over a ghost
+  resolution deferred, and a block referenced only by a saved schedule run is retired
+  rather than hard-deleted (its assignments would have cascaded away silently).
 - **1.07 (2026-08-02)** — **Internal availability separated from the student's
   submission.** The §10a grid's save used to overwrite `shift_selections` in place,
   destroying the student's original picks and feeding the edited rows straight back
