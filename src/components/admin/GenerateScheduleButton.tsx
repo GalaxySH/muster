@@ -31,47 +31,66 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      {!confirming ? (
-        <button
-          type="button"
-          onClick={() => {
-            setRepairOnly(false);
-            setConfirming(true);
-          }}
-          disabled={pending}
-        >
-          {pending ? "Working…" : label}
-        </button>
-      ) : (
-        <>
-          <span style={{ fontSize: 13 }}>
-            {hasRun
-              ? "Rebuild recommendations for everyone not marked scheduled?"
-              : "Generate recommendations for every submitted response?"}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        {!confirming ? (
+          <button
+            type="button"
+            onClick={() => {
+              setRepairOnly(false);
+              setConfirming(true);
+            }}
+            disabled={pending}
+          >
+            {pending ? "Working…" : label}
+          </button>
+        ) : (
+          <>
+            <span style={{ fontSize: 13 }}>
+              {hasRun
+                ? "Rebuild recommendations for everyone not marked scheduled?"
+                : "Generate recommendations for every submitted response?"}
+            </span>
+            {hasPlan && (
+              <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={repairOnly}
+                  onChange={(e) => setRepairOnly(e.target.checked)}
+                />
+                Repair only: keep everyone the imported W2W plan already places, fill gaps
+              </label>
+            )}
+            <button type="button" onClick={submit}>
+              Yes, {hasRun ? "update" : "generate"}
+            </button>
+            <button type="button" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </>
+        )}
+        {msg && !confirming && (
+          <span role="status" style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+            {msg}
           </span>
-          {hasPlan && (
-            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={repairOnly}
-                onChange={(e) => setRepairOnly(e.target.checked)}
-              />
-              Repair only: keep everyone the imported W2W plan already places, fill gaps
-            </label>
-          )}
-          <button type="button" onClick={submit}>
-            Yes, {hasRun ? "update" : "generate"}
-          </button>
-          <button type="button" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
-        </>
-      )}
-      {msg && !confirming && (
-        <span role="status" style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          {msg}
-        </span>
+        )}
+      </div>
+      {hasPlan && (
+        <details style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+          <summary style={{ cursor: "pointer" }}>What normal and repair updates do</summary>
+          <p style={{ margin: "6px 0 4px", maxWidth: 640 }}>
+            <strong>Normal update</strong> rebuilds the recommendation from scratch for everyone not
+            marked scheduled, using the current responses and staffing targets. Any placement can
+            move.
+          </p>
+          <p style={{ margin: 0, maxWidth: 640 }}>
+            <strong>Repair only</strong> starts from the imported W2W plan instead. Every placement
+            named on the plan that still works is kept exactly where it is, and the engine only
+            fills open seats. If one of a student&apos;s kept placements no longer works, that
+            student is re-solved completely. The keep lasts for this run; the next normal update can
+            move them again.
+          </p>
+        </details>
       )}
     </div>
   );
