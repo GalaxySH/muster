@@ -1,6 +1,6 @@
 # W2W shift-plan round-trip — implementation plan
 
-Status: **BUILT** (all three phases, PLAN 1.08, 2026-08-03; layering notes in
+Status: **BUILT** (all three phases, PLAN 1.09, 2026-08-03; layering notes in
 `docs/architecture.md`). Scope agreed 2026-08-03. This supersedes the earlier
 "export a schedule layout for W2W" sketch: the W2W **shift plan is the budget
 authority**, and Muster fills it rather than generating its own layout.

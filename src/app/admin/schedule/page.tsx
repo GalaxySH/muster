@@ -227,12 +227,15 @@ function SchedulePanel({
   }
 
   const { report, problems } = schedule;
-  const placed = report.students.filter((s) => s.assignedMinutes > 0).length;
+  // Split on what the run itself recorded, so a fill-in who submits later still
+  // reads as one here rather than being folded in with the responders.
+  const worked = report.students.filter((s) => s.assignedMinutes > 0);
+  const placed = worked.filter((s) => !s.fillIn).length;
+  const withoutResponse = worked.filter((s) => s.fillIn).length;
   // A repair run reports plan-kept students as frozen; only the rest were
   // actually marked scheduled by an admin.
-  const reportFrozen = report.students.filter((s) => s.frozen).length;
   const planKept = report.repaired?.students ?? 0;
-  const frozen = reportFrozen - planKept;
+  const frozen = report.students.filter((s) => s.frozen).length - planKept;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -248,6 +251,7 @@ function SchedulePanel({
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
+        {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
         {planKept > 0 &&
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}

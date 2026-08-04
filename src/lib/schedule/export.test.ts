@@ -34,9 +34,21 @@ describe("buildScheduleMatrix", () => {
       "2p to 5p",
       "",
       "yes",
+      "yes",
     ]);
     expect(rows[2]?.[3]).toBe("Sat");
     expect(rows[2]?.[5]).toBe("B");
+  });
+
+  it("separates a fill-in from someone who chose their shifts", () => {
+    const cells = [{ day: "mon", start: 14 * 60, end: 17 * 60, cohort: "weekday" }] as const;
+    const respondedAt = SCHEDULE_EXPORT_HEADERS.indexOf("Responded");
+
+    const fillIn = buildScheduleMatrix([student({ fillIn: true, cells: [...cells] })]);
+    expect(fillIn[1]?.[respondedAt]).toBe("no");
+
+    const responder = buildScheduleMatrix([student({ cells: [...cells] })]);
+    expect(responder[1]?.[respondedAt]).toBe("yes");
   });
 
   it("labels every-weekend cells and blanks a missing position", () => {

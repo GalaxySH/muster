@@ -22,6 +22,7 @@ CREATE TABLE `shift_plans` (
 	`imported_by` varchar(255) NOT NULL,
 	`source_filename` varchar(255) NOT NULL,
 	`row_count` int NOT NULL,
+	`rotation_week` enum('a','b') NOT NULL DEFAULT 'a',
 	`status` enum('current','superseded') NOT NULL DEFAULT 'current',
 	CONSTRAINT `shift_plans_id` PRIMARY KEY(`id`)
 );

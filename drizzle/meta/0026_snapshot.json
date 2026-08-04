@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "f12469a1-219b-4532-9c3b-93e09a94f09e",
-  "prevId": "c3085892-d386-48ab-b5a4-f03938e2347c",
+  "id": "3cf3550d-55df-4af9-a21d-15217cdaf93b",
+  "prevId": "a0ea4e75-a4ad-4abd-9d35-020c8c2f6c42",
   "tables": {
     "admin_google_grants": {
       "name": "admin_google_grants",
@@ -1084,7 +1084,7 @@
         },
         "summary_json": {
           "name": "summary_json",
-          "type": "text",
+          "type": "mediumtext",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

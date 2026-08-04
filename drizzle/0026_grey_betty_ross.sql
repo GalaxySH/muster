@@ -1,1 +1,0 @@
-ALTER TABLE `shift_plans` ADD `rotation_week` enum('a','b') DEFAULT 'a' NOT NULL;

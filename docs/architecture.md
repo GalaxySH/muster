@@ -1046,7 +1046,33 @@ The generator itself, layered exactly like the rest of the app:
   destination's pull beats the vacated cell's, evaluated with the seat lifted
   out; never drops hours, never grows a day count, never touches frozen
   students). Everything is deterministically ordered; no randomness anywhere.
-- **Persistence** (migration 0017): append-only `schedule_runs`
+- **Fill-in students and deferred cells** (v1.08). Two optional inputs steer the
+  engine without teaching it any roster or close-claim concepts:
+  - `ScheduleStudent.fillIn` marks someone the run schedules only into what
+    everyone else left (the non-responders, below). Fill-ins are placed in a
+    **second pass, after `improveAssignments` has settled everyone else**, against
+    the ledger those final rows leave behind (`ImproveResult.ledger`). That
+    ordering is the guarantee: adding fill-ins can never change another student's
+    schedule, which placing them merely last in FCFS order does **not** achieve,
+    because the improvement pass would otherwise find their seats already taken.
+    A fill-in the run finds no room for is left out of the report entirely, so
+    they never inflate "short of hours" or the per-student table. Report rows
+    carry `fillIn`, and the next run passes those emails back as
+    `EngineInput.previousFillIns`: their rows disappear the moment the option is
+    switched off, and that is the option changing, not a departure, so they are
+    never counted in `droppedStudents` (which the UI renders as "left the
+    roster").
+  - `EngineInput.deferredBlockIds` marks cells to fill **only as a last resort**:
+    they rank below every other candidate in `bestCandidate`, and `improve.ts`
+    never relocates into one (relocation is an optimization, never what lets a
+    student reach a minimum, so a last-resort seat stays put and none move in).
+    `schedule/actions.ts` passes the **Shift Lead weekend closing block**
+    (`deriveOpenClose` over the SL weekend blocks), because Shift Leads claim
+    weekend closes by hand (§18a) and those claims never reach the generator. The
+    engine stays generic: it knows only that these cells come last.
+- **Persistence** (migration 0017; `summary_json` widened to `mediumtext` in 0025,
+  since the report holds ~140 bytes per student and `text` capped out around 458):
+  append-only `schedule_runs`
   (current/superseded + `summaryJson` = the engine report, retention 10) and
   fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
   shiftBlockId, day)` with a `cohort` column. Recommendations are derived data;
@@ -1056,7 +1082,21 @@ The generator itself, layered exactly like the rest of the app:
   eligible students (`eligibleSubmittedFilter`, shared with the coverage
   loader) with their selections, the current run's rows as the freeze source,
   runs the pure engine, then transactionally supersedes the old run, inserts
-  the new one plus chunked assignment rows, and prunes beyond retention.
+  the new one plus chunked assignment rows, and prunes beyond retention. Its one
+  option, `includeNonResponders` (default off, chosen per run on the page), adds
+  on-roster students with no submitted response as **fill-ins**. Their availability
+  is resolved from the best record held, in order: the admin's **internal copy**
+  (§10a, via the same `applyInternalOverrides` seam), then the student's own
+  **draft** answers where a draft submission exists (its cells, `desiredHours` and
+  weekend opt-in), and only for someone who left no record at all the stand-in
+  `fullAvailability()` (`domain/scheduling/availability.ts` — every block their
+  position runs, on every day of that block's day-type) with a null `desiredHours`
+  aiming at the position floor. Opting a run into non-responders therefore never
+  overwrites what somebody actually said. Someone with no position drops out rather
+  than landing in `skippedNoPosition`, which is about responses. The previous run's
+  fill-ins are read back out of its stored report by `readFillIns`, which swallows
+  an unreadable report rather than blocking the regeneration an admin uses to
+  recover from a bad run.
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto
@@ -1127,7 +1167,7 @@ run and consume capacity first; marking scheduled still never changes response
 status or the non-response list (both key on `confirmedAt`). With Phase C
 above, `docs/schedule-generation-plan.md` is fully built.
 
-## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.08)
+## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
 
 The scheduler's W2W week export is the budgeted seat plan; Muster fills it and
 hands it back. File-based and human-carried in both directions (PLAN §17's

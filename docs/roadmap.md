@@ -389,6 +389,30 @@ Also open, and only now possible: the engine's weights were tuned against
 since run, so `nightPriority` / `eveningPriority` / max-hours-per-day should be
 re-tuned against real responses.
 
+### 5.4 Scheduling non-responders on operational need — ✅ PARTLY DONE (2026-08-03, v1.08)
+
+The generator only ever saw students who submitted, so shifts could sit
+understaffed while people who never filled the form went unscheduled. An opt-in
+checkbox on `/admin/schedule` (off by default, chosen per run) now lets it staff
+those shifts: non-responders enter as **fill-ins** with a stand-in availability
+covering every cell their position runs, aim at their position's hour floor, and
+are placed only after everyone else is settled, so they take leftover capacity
+and never move a responder's shift. See PLAN §17 and
+`docs/architecture.md` (Schedule generation).
+
+**Still open — the single-student case.** Writing one specific non-responder's
+real availability by hand and scheduling from that is still not possible for
+someone with no submission row at all. The §10a internal copy is keyed to a
+submission, so it covers a student who started a draft but not one who never
+touched the form. Closing this means letting an admin open an internal copy
+against a student rather than a submission.
+
+Also shipped alongside (unrelated): the engine's **`deferredBlockIds`**, cells it
+fills only as a last resort, wired to the **Shift Lead weekend closing block**.
+Shift Leads claim weekend closes by hand (3.2, PLAN §18a) and those claims never
+reach the generator, so pre-committing Shift Leads to generated weekend closes
+was wasted allocation.
+
 ### 5.3 W2W-importable schedule document — **future, not scheduled**
 
 The ceiling on W2W interop (PLAN §17). Muster would emit a file in whatever

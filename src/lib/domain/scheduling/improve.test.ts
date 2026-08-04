@@ -56,6 +56,39 @@ describe("improveAssignments", () => {
     expect(r.assignments[0]!.blockId).toBe("night");
   });
 
+  it("never relocates into a deferred cell", () => {
+    const morning = block("morning", "weekday", "8a", "12p");
+    const night = block("night", "weekday", "5p", "10p", 3);
+    const students = [student("s@w", { selection: [sel("morning", "mon"), sel("night", "mon")] })];
+    const rows = () => [row("s@w", "morning", "mon")];
+
+    // Control: the night cell is strictly better, so the seat would move.
+    expect(improveAssignments(rows(), students, [morning, night]).moved).toBe(1);
+
+    const held = improveAssignments(
+      rows(),
+      students,
+      [morning, night],
+      undefined,
+      new Set(["night"]),
+    );
+    expect(held.moved).toBe(0);
+    expect(held.assignments[0]!.blockId).toBe("morning");
+  });
+
+  it("returns a ledger matching the rows it ended up with", () => {
+    // The seat moves, so a stale ledger would show the wrong cell occupied.
+    const morning = block("morning", "weekday", "8a", "12p", 1);
+    const night = block("night", "weekday", "5p", "9p", 1);
+    const students = [student("s@w", { selection: [sel("morning", "mon"), sel("night", "mon")] })];
+    const r = improveAssignments([row("s@w", "morning", "mon")], students, [morning, night]);
+
+    expect(r.moved).toBe(1);
+    expect(r.assignments[0]!.blockId).toBe("night");
+    expect(r.ledger.fits(night, "mon", "weekday")).toBe(false);
+    expect(r.ledger.fits(morning, "mon", "weekday")).toBe(true);
+  });
+
   it("never lowers the student's covered hours", () => {
     const blocks = [
       block("morning", "weekday", "8a", "12p"),

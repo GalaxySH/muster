@@ -14,6 +14,8 @@ export interface ScheduleExportRow {
   email: string;
   positionName: string | null;
   scheduled: boolean;
+  /** The run scheduled them without a response of their own. */
+  fillIn?: boolean;
   cells: readonly { day: Day; start: number; end: number; cohort: Cohort }[];
 }
 
@@ -24,6 +26,9 @@ export const SCHEDULE_EXPORT_HEADERS = [
   "Day",
   "Shift",
   "Rotation",
+  // Without this the sheet the scheduler works from cannot tell someone who
+  // picked these shifts from someone the run placed with no response at all.
+  "Responded",
   "Marked scheduled",
 ] as const;
 
@@ -46,6 +51,7 @@ export function buildScheduleMatrix(students: readonly ScheduleExportRow[]): str
         DAY_LABEL[cell.day],
         formatSpan(cell.start, cell.end),
         ROTATION_LABEL[cell.cohort],
+        s.fillIn ? "no" : "yes",
         s.scheduled ? "yes" : "no",
       ]);
     }

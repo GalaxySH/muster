@@ -62,8 +62,17 @@ function run(
   students: ScheduleStudent[],
   blocks: ShiftBlock[],
   previous: ScheduleAssignment[] = [],
+  deferredBlockIds?: readonly string[],
+  previousFillIns?: readonly string[],
 ): ReturnType<typeof generateAssignments> {
-  const input: EngineInput = { students, positions: POSITIONS, blocks, previous };
+  const input: EngineInput = {
+    students,
+    positions: POSITIONS,
+    blocks,
+    previous,
+    deferredBlockIds,
+    previousFillIns,
+  };
   return generateAssignments(input);
 }
 
@@ -557,6 +566,219 @@ describe("generateAssignments", () => {
     const r = run([student("lost@w", { positionId: null })], barGrid);
     expect(r.assignments).toHaveLength(0);
     expect(r.report.skippedNoPosition).toEqual(["lost@w"]);
+  });
+
+  describe("fill-in students", () => {
+    // Contended grid: every cell is targeted, so seats are scarce and the
+    // improvement pass has something to chase.
+    const blocks = [
+      block("am", "ca", "weekday", "8a", "12p", 2),
+      block("pm", "ca", "weekday", "12p", "5p", 2),
+      block("we", "ca", "weekend", "10a", "6p", 2),
+      block("we-late", "ca", "weekend", "3p", "11p", 2),
+    ];
+    const everywhere = [
+      ...(["mon", "tue", "wed", "thu", "fri"] as const).flatMap((d) => [
+        sel("am", d),
+        sel("pm", d),
+      ]),
+      ...(["sat", "sun"] as const).flatMap((d) => [sel("we", d), sel("we-late", d)]),
+    ];
+    const responders = () =>
+      [1, 2, 3, 4].map((n) =>
+        student(`r${n}@w`, { desiredHours: 16, selection: everywhere, submittedAt: at(n) }),
+      );
+    const fillIns = () =>
+      [1, 2, 3].map((n) =>
+        student(`f${n}@w`, {
+          desiredHours: null,
+          submittedAt: null,
+          fillIn: true,
+          selection: everywhere,
+        }),
+      );
+
+    const rowKeys = (r: ReturnType<typeof generateAssignments>, email: string) =>
+      rowsOf(r, email)
+        .map((a) => `${a.blockId}|${a.day}|${a.cohort}`)
+        .sort();
+
+    it("leaves every other student's schedule untouched", () => {
+      const without = run(responders(), blocks);
+      const with_ = run([...responders(), ...fillIns()], blocks);
+      for (const n of [1, 2, 3, 4]) {
+        expect(rowKeys(with_, `r${n}@w`)).toEqual(rowKeys(without, `r${n}@w`));
+      }
+    });
+
+    it("takes only the seats the others left over", () => {
+      const r = run([...responders(), ...fillIns()], blocks);
+      const seats = new Map<string, number>();
+      for (const a of r.assignments) {
+        const key = `${a.blockId}|${a.day}|${a.cohort}`;
+        seats.set(key, (seats.get(key) ?? 0) + 1);
+      }
+      // Nothing may exceed its target of 2 per rotation week.
+      for (const count of seats.values()) expect(count).toBeLessThanOrEqual(2);
+      // With capacity genuinely left over, fill-ins do get work.
+      expect(r.assignments.some((a) => a.studentEmail.startsWith("f"))).toBe(true);
+    });
+
+    it("reports a fill-in like any other student", () => {
+      const r = run([...responders(), ...fillIns()], blocks);
+      const report = reportOf(r, "f1@w");
+      expect(report.frozen).toBe(false);
+      // Null desired hours aims a fill-in at their position's floor.
+      expect(report.targetMinutes).toBe(CA.minHours * 60);
+    });
+
+    it("marks fill-ins in the report so the next run can recognise them", () => {
+      const r = run([...responders(), ...fillIns()], blocks);
+      expect(reportOf(r, "f1@w").fillIn).toBe(true);
+      expect(reportOf(r, "r1@w").fillIn).toBe(false);
+    });
+
+    it("does not call a dropped fill-in a departure when the option is switched off", () => {
+      const previous: ScheduleAssignment[] = [
+        { studentEmail: "f1@w", blockId: "am", day: "mon", cohort: "weekday" },
+        { studentEmail: "gone@w", blockId: "am", day: "tue", cohort: "weekday" },
+      ];
+      // Second run: the option is off, so no fill-ins are supplied at all.
+      const r = run(responders(), blocks, previous, undefined, ["f1@w"]);
+      expect(rowsOf(r, "f1@w")).toHaveLength(0);
+      // Only the student who really went away is reported as dropped.
+      expect(r.report.droppedStudents).toEqual(["gone@w"]);
+    });
+
+    it("leaves a fill-in that found no room out of the run entirely", () => {
+      // One seat, already taken by the responder, so the fill-in gets nothing.
+      const tight = [block("only", "ca", "weekday", "8a", "4p", 1)];
+      const selection = [sel("only", "mon")];
+      const r = run(
+        [
+          student("r@w", { positionId: "barista", selection, submittedAt: at(1) }),
+          student("f@w", { positionId: "barista", selection, fillIn: true, submittedAt: null }),
+        ],
+        tight,
+      );
+      expect(rowsOf(r, "f@w")).toHaveLength(0);
+      expect(r.report.students.some((s) => s.email === "f@w")).toBe(false);
+      // The empty fill-in must not inflate the run's problem counts.
+      expect(r.report.shortOfTarget).toBe(1);
+    });
+  });
+
+  describe("deferred cells (Shift Lead weekend closes)", () => {
+    // A Shift Lead week with two weekend options: a daytime block and the
+    // close. The close ends latest, so its night tier bonus normally wins.
+    const slBlocks = [
+      block("sl-wd", "sl", "weekday", "10a", "6p"),
+      block("sl-we-day", "sl", "weekend", "10a", "6p"),
+      block("sl-we-close", "sl", "weekend", "6p", "11:30p"),
+    ];
+    const slSelection = [
+      sel("sl-wd", "mon"),
+      sel("sl-wd", "tue"),
+      sel("sl-wd", "wed"),
+      sel("sl-we-day", "sat"),
+      sel("sl-we-close", "sat"),
+    ];
+    const lead = (over: Partial<ScheduleStudent> = {}) =>
+      student("sl@w", { positionId: "sl", desiredHours: 15, selection: slSelection, ...over });
+
+    const weekendBlocksOf = (r: ReturnType<typeof generateAssignments>) =>
+      rowsOf(r, "sl@w")
+        .filter((a) => a.day === "sat")
+        .map((a) => a.blockId);
+
+    it("anchors the weekend on a non-deferred cell instead of the close", () => {
+      // Control: without the bias the later-ending close wins the weekend seed.
+      expect(weekendBlocksOf(run([lead()], slBlocks))).toContain("sl-we-close");
+
+      const biased = run([lead()], slBlocks, [], ["sl-we-close"]);
+      expect(weekendBlocksOf(biased)).toContain("sl-we-day");
+      expect(weekendBlocksOf(biased)).not.toContain("sl-we-close");
+    });
+
+    it("opens a new day rather than taking a deferred cell on an open one", () => {
+      // The close shares Saturday with a cell the lead already holds, so it is
+      // the only candidate on an already-open day, while wed and thu sit free.
+      // Preferring open days must not outrank the deferred tier.
+      const blocks = [
+        block("wd-late", "sl", "weekday", "5p", "10p"),
+        block("we-late", "sl", "weekend", "5p", "10p"),
+        block("we-close", "sl", "weekend", "6p", "11:30p"),
+      ];
+      const r = run(
+        [
+          student("lead@w", {
+            positionId: "sl",
+            desiredHours: 20,
+            selection: [
+              sel("wd-late", "mon"),
+              sel("wd-late", "tue"),
+              sel("wd-late", "wed"),
+              sel("wd-late", "thu"),
+              sel("we-late", "sat"),
+              sel("we-close", "sat"),
+            ],
+          }),
+        ],
+        blocks,
+        [],
+        ["we-close"],
+      );
+      expect(rowsOf(r, "lead@w").map((a) => a.blockId)).not.toContain("we-close");
+    });
+
+    it("still uses the close when it is the only weekend cell offered", () => {
+      const closeOnly = [
+        sel("sl-wd", "mon"),
+        sel("sl-wd", "tue"),
+        sel("sl-wd", "wed"),
+        sel("sl-we-close", "sat"),
+      ];
+      const r = run([lead({ selection: closeOnly })], slBlocks, [], ["sl-we-close"]);
+      // Last resort: the weekend rule still has to be met (PLAN §5 #5).
+      expect(weekendBlocksOf(r)).toEqual(["sl-we-close"]);
+    });
+
+    it("keeps a deferred cell empty even when it is the neediest target", () => {
+      // Targeted and latest-ending, so it out-pulls everything in both the
+      // placement pass and the improvement pass unless it is deferred.
+      const targeted = [
+        block("sl-wd", "sl", "weekday", "10a", "6p"),
+        block("sl-we-day", "sl", "weekend", "10a", "6p", 5),
+        block("sl-we-close", "sl", "weekend", "6p", "11:30p", 5),
+      ];
+      const r = run([lead()], targeted, [], ["sl-we-close"]);
+      expect(rowsOf(r, "sl@w").some((a) => a.blockId === "sl-we-close")).toBe(false);
+    });
+
+    it("leaves other positions' closing blocks alone", () => {
+      const blocks = [
+        block("ca-wd", "ca", "weekday", "8a", "4p"),
+        block("ca-we-day", "ca", "weekend", "10a", "4p"),
+        block("ca-we-close", "ca", "weekend", "4p", "11:30p"),
+      ];
+      const r = run(
+        [
+          student("ca@w", {
+            selection: [
+              sel("ca-wd", "mon"),
+              sel("ca-wd", "tue"),
+              sel("ca-we-day", "sat"),
+              sel("ca-we-close", "sat"),
+            ],
+          }),
+        ],
+        blocks,
+        [],
+        ["sl-we-close"],
+      );
+      const sat = rowsOf(r, "ca@w").filter((a) => a.day === "sat");
+      expect(sat.map((a) => a.blockId)).toContain("ca-we-close");
+    });
   });
 
   it("balances night priority against morning need instead of filling nights first", () => {

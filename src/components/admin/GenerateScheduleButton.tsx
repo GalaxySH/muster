@@ -11,6 +11,7 @@ import { generateSchedule } from "@/lib/schedule/actions";
  */
 export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; hasPlan: boolean }) {
   const [confirming, setConfirming] = useState(false);
+  const [includeNonResponders, setIncludeNonResponders] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [repairOnly, setRepairOnly] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -20,7 +21,7 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
   const submit = () => {
     setConfirming(false);
     startTransition(async () => {
-      const res = await generateSchedule({ repairFromPlan: repairOnly });
+      const res = await generateSchedule({ repairFromPlan: repairOnly, includeNonResponders });
       if (!res.ok) {
         setMsg(res.error ?? "Failed.");
         return;
@@ -31,7 +32,23 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+        <input
+          type="checkbox"
+          checked={includeNonResponders}
+          onChange={(e) => setIncludeNonResponders(e.target.checked)}
+          disabled={pending}
+          style={{ marginTop: 2 }}
+        />
+        <span>
+          Also schedule people who did not respond
+          <span style={{ display: "block", color: "var(--color-text-secondary)" }}>
+            Fills leftover shifts with roster members who never submitted, as if they are available
+            anytime.
+          </span>
+        </span>
+      </label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {!confirming ? (
           <button
@@ -47,9 +64,11 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
         ) : (
           <>
             <span style={{ fontSize: 13 }}>
-              {hasRun
-                ? "Rebuild recommendations for everyone not marked scheduled?"
-                : "Generate recommendations for every submitted response?"}
+              {includeNonResponders
+                ? `${hasRun ? "Rebuild" : "Generate"} recommendations, including people who did not respond?`
+                : hasRun
+                  ? "Rebuild recommendations for everyone not marked scheduled?"
+                  : "Generate recommendations for every submitted response?"}
             </span>
             {hasPlan && (
               <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
@@ -89,6 +108,10 @@ export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; h
             fills open seats. If one of a student&apos;s kept placements no longer works, that
             student is re-solved completely. The keep lasts for this run; the next normal update can
             move them again.
+          </p>
+          <p style={{ margin: "4px 0 0", maxWidth: 640 }}>
+            The option above to include people who did not respond applies to either kind of
+            update.
           </p>
         </details>
       )}

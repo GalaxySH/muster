@@ -12,6 +12,7 @@ import {
   datetime,
   foreignKey,
   int,
+  mediumtext,
   mysqlEnum,
   mysqlTable,
   primaryKey,
@@ -411,13 +412,18 @@ export const assignmentSourceEnum = ["engine", "manual"] as const;
  * writes a new run and flips `status`, so any regeneration can be undone by
  * marking a superseded run current again. Old runs beyond a retention count are
  * pruned. `summaryJson` holds the engine's run report for the admin view.
+ *
+ * `summary_json` is mediumtext, not text: the report carries one row per student
+ * the run covered, at roughly 140 bytes each, so text's 64KB ceiling sat about
+ * 458 students away. A full cycle is ~400 responses before non-responders are
+ * added, and an over-length insert would abort the whole run.
  */
 export const scheduleRuns = mysqlTable("schedule_runs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   generatedBy: varchar("generated_by", { length: 255 }).notNull(),
   status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
-  summaryJson: text("summary_json").notNull(),
+  summaryJson: mediumtext("summary_json").notNull(),
   /**
    * Restore flips a superseded run back to current in place (no new run row)
    * and stamps when and by whom. Retention ranks runs by

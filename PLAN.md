@@ -9,7 +9,7 @@
 > no credentials, no push, in either direction. The human scheduler still enters
 > the schedule in W2W. The **ceiling** on that side is an importable document
 > Muster produces and the scheduler uploads by hand — built as the file-based
-> shift-plan round-trip (1.08, §17, `docs/w2w-shift-plan-roundtrip.md`).
+> shift-plan round-trip (1.09, §17, `docs/w2w-shift-plan-roundtrip.md`).
 
 - **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.07
-- **Last updated:** 2026-08-02
+- **Version:** 1.08
+- **Last updated:** 2026-08-03
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1184,7 +1184,7 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 5. **Email provider + domain auth** — ✅ *resolved (v0.18):* **Resend**, sending from the
    verified domain `re.hauge.rocks` with SPF/DKIM/DMARC in place; delivery into M365
    confirmed in production (§11).
-6. **Admin export format** — ✅ *resolved (1.08):* the W2W-importable document exists.
+6. **Admin export format** — ✅ *resolved (1.09):* the W2W-importable document exists.
    The shift-plan round-trip (`docs/w2w-shift-plan-roundtrip.md`) imports the W2W week
    export as the budgeted seat plan and re-exports it filled from the current run as two
    dateless day-of-week files (week A/B), in W2W's own upload dialect. The responses
@@ -1212,14 +1212,16 @@ under-18 test (deferred → fallback, §11).
   `docs/schedule-generation-plan.md` (Phase A target staffing + coverage in 0.79; Phase
   B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
   C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
-  sheet — in 1.00). Two limits are permanent, and they are what keep the boundary meaningful:
+  sheet — in 1.00; scheduling non-responders on operational need, opt-in per run, plus
+  the Shift-Lead weekend-close bias in 1.08). Two limits are permanent, and they are
+  what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
   students).
 - **Any programmatic integration with WhenToWork** — no API, no credentials, no push or
   pull, in either direction. The **ceiling** here is a **document Muster produces and a
   human uploads**: an export in whatever format W2W's importer accepts. That ceiling is
-  now **built (1.08, roadmap 5.3)**: the file-based round-trip in
+  now **built (1.09, roadmap 5.3)**: the file-based round-trip in
   `docs/w2w-shift-plan-roundtrip.md` — the scheduler exports the W2W week by hand,
   uploads it to Muster as the seat budget, and downloads the filled week A/B files to
   upload back into W2W by hand. It changes nothing about this bullet: Muster still
@@ -1366,7 +1368,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.08 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
+- **1.09 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
   `docs/w2w-shift-plan-roundtrip.md`).** The scheduler's W2W week export becomes the
   budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,
   refuses multi-week files; live matched report against the position map + blocks; an
@@ -1387,6 +1389,44 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   0025. Domain in `src/lib/domain/w2w-plan/`; shared cp1252 codec extracted to
   `src/lib/text/`. Closes §16 q6; §17's ceiling bullet marked built. Boundary
   unchanged: file-based, human-carried, no W2W API.
+- **1.08 (2026-08-03)** — **Scheduling non-responders on operational need, and a
+  Shift-Lead weekend-close bias (§17).** Two independent changes to the generator, no
+  migration. (1) An opt-in **"Also schedule people who did not respond"** checkbox on
+  `/admin/schedule`, **off by default and chosen per run**, lets the engine staff
+  shifts with on-roster students who never submitted. They enter as **fill-ins**
+  (`ScheduleStudent.fillIn`) with a stand-in availability covering every cell their
+  position runs (`domain/scheduling/availability.ts`) and a null `desiredHours`, so
+  they aim at their position's hour floor and still obey the weekend rule, the
+  minimum day span, and every capacity target. Fill-ins are placed in a second pass
+  **after the improvement pass has settled everyone else**, so adding them provably
+  cannot change a responder's schedule; verified on 353 roster students where 51
+  fill-ins took 213 leftover seats and **not one** of the 120 responders' rows moved.
+  (Placing them merely last in FCFS order was not enough: the improvement pass then
+  found their seats taken and 11 responders lost hours.) A fill-in the run finds no
+  room for is left out of the report, so the short-of-hours count stays about people
+  the run actually scheduled; the per-student table tags the rest **"no response"**
+  and the CSV/Drive sheet gain a **Responded** column, so nobody is typed into W2W
+  as though they picked those shifts. Report rows carry `fillIn`, which is the
+  single source of truth for all of that: the next run reads it back as
+  `previousFillIns` so switching the option off retires those rows quietly instead
+  of reporting the people as having left the roster, and a fill-in who submits
+  later still reads as one on the run that placed them. **Availability comes from
+  the best record held, never the reverse:** an admin's internal copy wins, then
+  the student's own draft answers (hours and weekend opt-in included), and only
+  someone who told us nothing at all is treated as available across their
+  position. Migration **0025** widens `schedule_runs.summary_json` from `text` to
+  `mediumtext`: the report carries ~140 bytes per student, so the 64KB ceiling sat
+  about 458 students away and an over-length insert would abort a whole run.
+  An admin's internal copy (§10a) still wins over the stand-in grid. This only
+  partially closes the non-responder gap: writing one specific non-responder's real
+  availability by hand is still not possible for someone with no submission row at
+  all. (2) The engine gained **`deferredBlockIds`**, cells it fills only as a last
+  resort (ranked below every other candidate, and never a relocation destination);
+  `schedule/actions.ts` passes the **Shift Lead weekend closing block**, since Shift
+  Leads claim weekend closes by hand (§18a) and those claims never reach the
+  generator. On the same data this cut SL close pre-commitments from 9 to 6, moving
+  them to earlier weekend blocks, at the cost of one more Shift Lead short of target.
+
 - **1.07 (2026-08-02)** — **Internal availability separated from the student's
   submission.** The §10a grid's save used to overwrite `shift_selections` in place,
   destroying the student's original picks and feeding the edited rows straight back

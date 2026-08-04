@@ -28,6 +28,8 @@ const MIN_GAIN = 1e-9;
 export interface ImproveResult {
   assignments: ScheduleAssignment[];
   moved: number;
+  /** Seat counts for the rows as they ended up, for any later placement pass. */
+  ledger: SeatLedger;
 }
 
 export function improveAssignments(
@@ -35,6 +37,7 @@ export function improveAssignments(
   students: readonly ScheduleStudent[],
   blocks: readonly ShiftBlock[],
   params: SchedulingParams = DEFAULT_SCHEDULING_PARAMS,
+  deferred: ReadonlySet<string> = new Set(),
 ): ImproveResult {
   const blockById = new Map(blocks.map((b) => [b.id, b]));
   const studentByEmail = new Map(students.map((s) => [s.email, s]));
@@ -82,7 +85,7 @@ export function improveAssignments(
           ? 0
           : ledger.need(from, row.day, row.cohort) + tierBonus(from, params);
 
-      const target = bestRelocation(row, from, student, blockById, ledger, params, {
+      const target = bestRelocation(row, from, student, blockById, ledger, params, deferred, {
         taken: takenByStudent.get(row.studentEmail)!,
         siblings: rowsByStudent.get(row.studentEmail)!,
         dayCapMinutes,
@@ -104,13 +107,16 @@ export function improveAssignments(
     if (!movedThisRound) break;
   }
 
-  return { assignments: rows, moved };
+  return { assignments: rows, moved, ledger };
 }
 
 /**
  * The best same-day cell this row could move to for a strict gain over the
  * vacated cell's pull, or null. Untargeted destinations never gain (they claim
- * no need). Candidates rank by pull, then block id.
+ * no need), and deferred cells are never a destination: relocation is an
+ * optimization, never what lets a student reach their minimums, so nothing may
+ * move into one. A seat already sitting in a deferred cell is free to move out.
+ * Candidates rank by pull, then block id.
  */
 function bestRelocation(
   row: ScheduleAssignment,
@@ -119,6 +125,7 @@ function bestRelocation(
   blockById: Map<string, ShiftBlock>,
   ledger: SeatLedger,
   params: SchedulingParams,
+  deferred: ReadonlySet<string>,
   state: {
     taken: Set<string>;
     siblings: { blockId: string; day: Day }[];
@@ -139,6 +146,7 @@ function bestRelocation(
   let bestPull = 0;
   for (const cell of student.selection) {
     if (cell.day !== row.day || cell.blockId === row.blockId) continue;
+    if (deferred.has(cell.blockId)) continue;
     if (state.taken.has(demandCellKey(cell.blockId, cell.day))) continue;
     const block = blockById.get(cell.blockId);
     if (!block || block.positionId !== student.positionId) continue;
