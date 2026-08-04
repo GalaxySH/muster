@@ -7,7 +7,7 @@ import "server-only";
  * edits on /admin/positions or a remapped position show up immediately
  * instead of leaving stale resolutions in the DB.
  */
-import { asc, count, eq, max } from "drizzle-orm";
+import { asc, count, eq, isNull, max } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   positions,
@@ -51,7 +51,11 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
   const db = getDb();
   const [mapRows, blockRows, positionRows] = await Promise.all([
     db.select().from(w2wPositionMap),
-    db.select().from(shiftBlocks),
+    // Retired shifts are not candidates (PLAN §6.2a). Matching is by shape, not
+    // id, so a retired block would otherwise still answer for its own hours —
+    // and after the usual "remove a shift, add a corrected one" edit the dead
+    // original would win over its live replacement, since it was inserted first.
+    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
     db.select({ id: positions.id, name: positions.name }).from(positions),
   ]);
   return {

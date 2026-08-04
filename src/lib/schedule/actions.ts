@@ -34,7 +34,7 @@ import {
 } from "@/lib/admin/sheet-sync";
 import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
-import { fullAvailability } from "@/lib/domain/scheduling/availability";
+import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import type {
@@ -146,12 +146,26 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       getSchedulingParams(),
     ]);
 
+  // Picks on a removed shift are dropped before anything reads them (PLAN
+  // §6.2a). The engine would skip them anyway, but repair seeding tests a cell
+  // against this selection, so a dead cell left in here can freeze a student
+  // onto a shift that no longer runs. The internal copies get the same
+  // treatment, since an override replaces a student's selection wholesale.
+  const liveBlockIds = new Set(blockRows.map((b) => b.id));
+  const isLive = (c: { blockId: string }) => liveBlockIds.has(c.blockId);
   const selectionByEmail = new Map<string, { blockId: string; day: Day }[]>();
   for (const row of selectionRows) {
+    if (!isLive(row)) continue;
     const list = selectionByEmail.get(row.email) ?? [];
     list.push({ blockId: row.blockId, day: row.day });
     selectionByEmail.set(row.email, list);
   }
+  const liveInternalByEmail = new Map(
+    [...internalByEmail].map(([email, copy]) => [
+      email,
+      { ...copy, selection: copy.selection.filter(isLive) },
+    ]),
+  );
 
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
   // saved an internal copy, its cells and rotation replace the student's here.
@@ -166,7 +180,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       scheduled: r.scheduled,
       selection: selectionByEmail.get(r.email) ?? [],
     })),
-    internalByEmail,
+    liveInternalByEmail,
   );
 
   const domainBlocks = blockRows.map(toDomainBlock);
@@ -220,21 +234,18 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
 
     const nonResponders: ScheduleStudent[] = rosterRows
       .filter((r) => !responded.has(r.email) && r.positionId)
-      .map((r) => {
-        const drafted = draftByEmail.get(r.email);
-        return {
-          email: r.email,
-          positionId: r.positionId,
-          international: r.international,
-          everyWeekendOptIn: r.everyWeekendOptIn ?? false,
-          desiredHours: r.desiredHours,
-          submittedAt: null,
-          scheduled: r.scheduled ?? false,
-          fillIn: true,
-          selection: drafted?.length ? drafted : fullAvailability(r.positionId!, domainBlocks),
-        };
-      });
-    engineStudents.push(...applyInternalOverrides(nonResponders, internalByEmail));
+      .map((r) => ({
+        email: r.email,
+        positionId: r.positionId,
+        international: r.international,
+        everyWeekendOptIn: r.everyWeekendOptIn ?? false,
+        desiredHours: r.desiredHours,
+        submittedAt: null,
+        scheduled: r.scheduled ?? false,
+        fillIn: true,
+        selection: fillInSelection(r.positionId!, domainBlocks, draftByEmail.get(r.email)),
+      }));
+    engineStudents.push(...applyInternalOverrides(nonResponders, liveInternalByEmail));
   }
 
   const previous: ScheduleAssignment[] = currentRun

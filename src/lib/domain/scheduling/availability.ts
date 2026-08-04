@@ -8,6 +8,7 @@
  * downstream (the weekend seed, the minimum day span, the hour floor, and the
  * per-cell capacity targets) then applies to them unchanged.
  */
+import { knownSelection } from "../orphans";
 import { WEEKDAY_DAYS, WEEKEND_DAYS, type SelectedShift, type ShiftBlock } from "../types";
 
 /**
@@ -25,4 +26,23 @@ export function fullAvailability(
     for (const day of days) cells.push({ blockId: block.id, day });
   }
   return cells;
+}
+
+/**
+ * What a fill-in offers: the answers they actually gave when they gave any,
+ * full availability when they gave none. Never fabricate over a real answer.
+ *
+ * `blocks` must be the LIVE set. Picks on a removed shift are not answers
+ * (PLAN §6.2a), so they are dropped before the "did they tell us anything?"
+ * test — otherwise a stale draft that survives only as dead cells reads as an
+ * answer and leaves the student schedulable nowhere, silently, which is the
+ * exact case the fallback exists for.
+ */
+export function fillInSelection(
+  positionId: string,
+  blocks: readonly ShiftBlock[],
+  drafted: readonly SelectedShift[] | undefined,
+): SelectedShift[] {
+  const live = knownSelection(drafted ?? [], blocks);
+  return live.length > 0 ? live : fullAvailability(positionId, blocks);
 }

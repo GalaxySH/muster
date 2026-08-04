@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "../time";
 import type { ShiftBlock } from "../types";
-import { fullAvailability } from "./availability";
+import { fillInSelection, fullAvailability } from "./availability";
 
 function block(
   id: string,
@@ -47,5 +47,43 @@ describe("fullAvailability", () => {
 
   it("returns nothing for a position with no blocks", () => {
     expect(fullAvailability("barista", BLOCKS)).toEqual([]);
+  });
+});
+
+describe("fillInSelection", () => {
+  it("uses the answers a fill-in actually gave, never fabricating over them", () => {
+    const drafted = [{ blockId: "ca-am", day: "mon" as const }];
+    expect(fillInSelection("ca", BLOCKS, drafted)).toEqual(drafted);
+  });
+
+  it("falls back to full availability when they gave no answer at all", () => {
+    expect(fillInSelection("ca", BLOCKS, undefined)).toHaveLength(12);
+    expect(fillInSelection("ca", BLOCKS, [])).toHaveLength(12);
+  });
+
+  it("drops draft picks on removed shifts but keeps the live ones", () => {
+    const cells = fillInSelection("ca", BLOCKS, [
+      { blockId: "ca-am", day: "mon" },
+      { blockId: "ca-retired", day: "tue" },
+    ]);
+    expect(cells).toEqual([{ blockId: "ca-am", day: "mon" }]);
+  });
+
+  it("falls back to full availability when every draft pick is on a removed shift", () => {
+    // The regression this seam exists for: a stale draft that survives only as
+    // dead cells used to read as "they told us something", leaving the student
+    // schedulable nowhere and absent from every warning list.
+    const cells = fillInSelection("ca", BLOCKS, [
+      { blockId: "ca-retired", day: "mon" },
+      { blockId: "ca-also-retired", day: "tue" },
+    ]);
+    expect(cells).toHaveLength(12);
+    expect(cells.every((c) => c.blockId !== "ca-retired")).toBe(true);
+  });
+
+  it("never offers a cell outside the live block set it was given", () => {
+    const live = BLOCKS.filter((b) => b.id !== "ca-we");
+    const cells = fillInSelection("ca", live, undefined);
+    expect(cells.some((c) => c.blockId === "ca-we")).toBe(false);
   });
 });

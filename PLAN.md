@@ -619,7 +619,7 @@ columns from the roster.
   manually dismissed. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
   when the admin re-saves or reverts the internal copy — the reconcile signal that the
-  ground truth moved under the scheduler's adjustments. `orphaned_selection` (1.08) is
+  ground truth moved under the scheduler's adjustments. `orphaned_selection` (1.10) is
   owned by the orphan seam (`positions/orphans.ts`) — written whenever a submission holds
   a pick on a shift that is no longer in the student's live block set (§6.2a), deleted
   the moment the last one is cleared, never manually dismissed. It survives a student
@@ -1467,7 +1467,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   and the CSV/Drive sheet gain a **Responded** column, so nobody is typed into W2W
   as though they picked those shifts. Report rows carry `fillIn`, which is the
   single source of truth for all of that: the next run reads it back as
-  `previousFillIns` so switching the option off retires those rows quietly instead
+  `previousFillIns` so switching the option off drops those rows quietly instead
   of reporting the people as having left the roster, and a fill-in who submits
   later still reads as one on the run that placed them. **Availability comes from
   the best record held, never the reverse:** an admin's internal copy wins, then

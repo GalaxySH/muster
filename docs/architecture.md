@@ -996,7 +996,7 @@ Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
 
-### Block retirement & orphaned picks (PLAN §6.2a, v1.08)
+### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
 
 Selections point at a block **id**, so the two block edits diverge. A **time edit** is
 still an in-place `UPDATE`: picks follow the block to its new hours (the confirm spells
@@ -1050,6 +1050,31 @@ precedent exactly: `FLAG_LABELS` ("Shift removed"), `ALERT_FLAGS` in `ResponseLi
 `storedAlerts` filter on the per-student page, and an `orphaned-selections` **danger**
 alert in `buildAlerts`. It is deliberately **not** in `DismissableFlag`: the only way it
 clears is clearing the data.
+
+**Interaction with the generator and the W2W round-trip (v1.10).** Retirement was built
+in parallel with non-responder fill-ins (1.08) and the W2W round-trip (1.09), so the
+seams where they meet are worth naming:
+
+- `generateSchedule` filters its block query, but the *selection* queries do not, so it
+  drops dead cells itself (`liveBlockIds`) before building `engineStudents` — and does
+  the same to each internal copy, since an override replaces a selection wholesale. The
+  engine skipping unknown blocks is **not** sufficient cover: repair seeding
+  (`w2w/repair.ts` → `domain/w2w-plan/repair-seeds.ts`) tests a plan row against a
+  student's selection without consulting the engine's block map, so a dead cell left in
+  there freezes a student onto a shift that no longer runs, and frozen students are
+  never re-solved.
+- A fill-in's availability goes through the pure `fillInSelection`
+  (`domain/scheduling/availability.ts`), which drops dead draft cells **before** the
+  "did they tell us anything?" test. Otherwise a stale draft surviving only as orphans
+  reads as an answer and leaves the student schedulable nowhere, absent from every
+  warning list — the exact case the full-availability fallback exists for.
+- `w2w/plan-data.ts` `loadPlanMatchInputs` is the single block read behind plan
+  matching, the plan page, the staffing-target write, the filled export, and repair
+  seeding, so it is the one place the retired filter belongs. It matters more here than
+  elsewhere because `domain/w2w-plan/match.ts` matches on **shape** (position, day-type,
+  start, end) rather than id: after the ordinary "remove a shift, add a corrected one"
+  edit, an unfiltered read would let the dead original answer for its own hours and win
+  over its live replacement.
 
 ## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.79)
 
