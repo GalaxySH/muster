@@ -14,6 +14,7 @@ import { windowState, type WindowState } from "@/lib/domain/window";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { blockSetWarnings, positionCapacityCheck } from "@/lib/domain/config-validation";
 import { stalenessMessage } from "@/lib/domain/scheduling/diff";
+import type { MapIssue } from "@/lib/domain/w2w-plan/map-health";
 import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
@@ -147,6 +148,12 @@ export interface DashboardSnapshot {
   };
   /** The in-app change-digest scheduler's liveness inputs (see digest-health). */
   scheduler: { enabled: boolean; uptimeMs: number };
+  /**
+   * Problems with the W2W position map (docs/w2w-shift-plan-roundtrip.md §4).
+   * Every one of them ends as W2W shifts exported with no names, and none of
+   * them shows up anywhere else, so the hub carries the count.
+   */
+  w2wMapIssues: MapIssue[];
   /** Environment/settings toggles the alert layer reads to catch silent misconfig. */
   config: {
     /** RESEND_API_KEY is set; when false, "sending on" still delivers nothing. */
@@ -211,6 +218,8 @@ export interface DashboardView {
   groups: GroupProgress[];
   /** On-roster students with no group: they cannot open the form at all. */
   ungrouped: number;
+  /** W2W position mappings that would export shifts with no names. */
+  w2wMapProblems: number;
   alerts: DashboardAlert[];
   tiles: {
     toReview: number;
@@ -312,6 +321,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     // table (it still shows on /admin/groups, where its window is managed).
     groups: groupProgress.filter((g) => g.id !== TEST_GROUP_ID),
     ungrouped,
+    w2wMapProblems: snapshot.w2wMapIssues.filter((i) => i.severity === "danger").length,
     alerts: buildAlerts(snapshot, now, { ungrouped, groupProgress }),
     tiles: {
       toReview: submitted.filter((s) => !s.scheduled).length,
@@ -464,6 +474,25 @@ function buildAlerts(
       detail: "The shift was removed after they picked it. Clear the picks on their response.",
       href: "/admin/responses?flag=orphaned_selection",
       linkLabel: "Review",
+    });
+  }
+
+  // The W2W position map. Nothing downstream re-checks it: matching resolves,
+  // filling zips students onto seats, and the file ships. A broken mapping
+  // costs a whole position's shifts in the export, so it belongs on the hub
+  // rather than only on the page that can fix it.
+  const w2wDangers = s.w2wMapIssues.filter((i) => i.severity === "danger");
+  if (w2wDangers.length > 0) {
+    danger.push({
+      id: "w2w-map-broken",
+      severity: "danger",
+      title:
+        w2wDangers.length === 1
+          ? "A W2W position is not set up to be filled."
+          : `${w2wDangers.length} W2W positions are not set up to be filled.`,
+      detail: w2wDangers[0]!.message,
+      href: "/admin/w2w",
+      linkLabel: "Fix",
     });
   }
 

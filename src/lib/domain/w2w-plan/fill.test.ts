@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fillPlan, type ExportIdentity, type FillAssignment } from "./fill";
+import { droppedImportedNames, fillPlan, type ExportIdentity, type FillAssignment } from "./fill";
 import type { W2wPlanRow, W2wPositionMapEntry } from "./types";
 import type { Day } from "../types";
 
@@ -167,5 +167,70 @@ describe("fillPlan", () => {
     expect(() =>
       fillPlan(rows, ["blk"], [assign("amy@x.edu", "blk", "mon", "weekday")], new Map(), MAP, "a"),
     ).toThrow(/identity/);
+  });
+});
+
+describe("droppedImportedNames", () => {
+  const index = (pairs: [string, string | null][]) => new Map(pairs);
+
+  it("reports a student whose imported shifts the export does not reproduce", () => {
+    const dropped = droppedImportedNames(
+      [{ employeeName: "Ada Lovelace" }, { employeeName: "Ada Lovelace" }],
+      new Set<string>(),
+      index([["Ada Lovelace", "ada@x.edu"]]),
+    );
+    expect(dropped).toEqual([{ name: "Ada Lovelace", rowCount: 2 }]);
+  });
+
+  it("says nothing about a student the export still gives shifts to", () => {
+    const dropped = droppedImportedNames(
+      [{ employeeName: "Ada Lovelace" }],
+      new Set(["ada@x.edu"]),
+      index([["Ada Lovelace", "ada@x.edu"]]),
+    );
+    expect(dropped).toEqual([]);
+  });
+
+  it("ignores names that are not Muster students", () => {
+    // A real W2W week carries permanent staff and managers Muster never
+    // schedules. Listing them would bury the students this is meant to catch.
+    const dropped = droppedImportedNames(
+      [{ employeeName: "Pat Manager" }],
+      new Set<string>(),
+      index([["Ada Lovelace", "ada@x.edu"]]),
+    );
+    expect(dropped).toEqual([]);
+  });
+
+  it("ignores an ambiguous name rather than blaming one of the students", () => {
+    const dropped = droppedImportedNames(
+      [{ employeeName: "Sam Lee" }],
+      new Set<string>(),
+      index([["Sam Lee", null]]),
+    );
+    expect(dropped).toEqual([]);
+  });
+
+  it("skips open seats", () => {
+    const dropped = droppedImportedNames([{ employeeName: "" }], new Set<string>(), index([]));
+    expect(dropped).toEqual([]);
+  });
+
+  it("orders by how many shifts were lost, then by name", () => {
+    const dropped = droppedImportedNames(
+      [
+        { employeeName: "Bea" },
+        { employeeName: "Ann" },
+        { employeeName: "Ann" },
+        { employeeName: "Cal" },
+      ],
+      new Set<string>(),
+      index([
+        ["Ann", "ann@x.edu"],
+        ["Bea", "bea@x.edu"],
+        ["Cal", "cal@x.edu"],
+      ]),
+    );
+    expect(dropped.map((d) => d.name)).toEqual(["Ann", "Bea", "Cal"]);
   });
 });

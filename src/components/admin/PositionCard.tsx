@@ -135,9 +135,13 @@ export function PositionCard({
           res.failing === 0
             ? "No submissions fail checks."
             : `${plural(res.failing, "student")} now fail${res.failing === 1 ? "s" : ""} checks.`;
+        const w2w =
+          res.remapped > 0
+            ? ` ${plural(res.remapped, "W2W position")} now ${res.remapped === 1 ? "maps" : "map"} to ${target.name}.`
+            : "";
         setMsg({
           ok: true,
-          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}`,
+          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}${w2w}`,
         });
         setAliasTarget("");
         router.refresh();
@@ -259,12 +263,13 @@ export function PositionCard({
             disabled={pending}
             style={{ color: "var(--color-text-danger)" }}
             onClick={() => {
-              // The W2W mappings are called out separately: unlike the title
-              // mappings, nothing recreates them, so the plan import loses
-              // those positions until an admin maps them again.
+              // The W2W mappings are called out separately: they go with the
+              // position, and until they are set up again on the W2W positions
+              // page those shifts export with nobody on them.
+              const n = position.w2wMappingCount;
               const w2w =
-                position.w2wMappingCount > 0
-                  ? ` ${plural(position.w2wMappingCount, "W2W position mapping")} also go, and you will need to map ${position.w2wMappingCount === 1 ? "it" : "them"} again.`
+                n > 0
+                  ? ` ${plural(n, "W2W position")} ${n === 1 ? "maps" : "map"} to it, so ${n === 1 ? "its" : "their"} shifts will export with no names until you map ${n === 1 ? "it" : "them"} again on the W2W positions page.`
                   : "";
               if (
                 confirm(`Delete ${position.name}? Its blocks and title mappings go with it.${w2w}`)

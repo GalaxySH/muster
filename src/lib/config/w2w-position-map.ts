@@ -54,7 +54,11 @@ export const W2W_POSITION_MAP_SEED: readonly W2wPositionMapSeed[] = [
   {
     w2wPositionId: "762431386",
     w2wPositionName: "GDEC - R&C TM",
-    musterPositionId: "retail-and-cafe-team-member",
+    // Retail & Cafe Team Member is Muster's Barista, the same answer the
+    // roster title map gives ("retail and cafe team member" -> barista). This
+    // named a position id that never existed until v1.11, so both seed paths
+    // silently dropped the row and these shifts could never be filled.
+    musterPositionId: "barista",
     fillOrder: 0,
   },
 ];

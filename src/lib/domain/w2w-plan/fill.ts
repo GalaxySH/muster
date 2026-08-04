@@ -50,6 +50,47 @@ export interface ExportIdentity {
   derived: boolean;
 }
 
+/** One student the plan had shifts for and the export does not. */
+export interface DroppedName {
+  name: string;
+  /** Plan rows that carried this name. */
+  rowCount: number;
+}
+
+/**
+ * Students the imported plan gave shifts to who hold no seat in the finished
+ * export (docs/w2w-shift-plan-roundtrip.md §7). The export is a full refill:
+ * `fillPlan` ignores the name a row arrived with, so anyone the run does not
+ * place is simply gone from the file and their seat ships open. Correct when
+ * the schedule really moved them, data loss when the plan was uploaded to be
+ * repaired and repair mode was never turned on.
+ *
+ * `filledEmails` must be the union across both week files, since a weekend
+ * student appears in only one of them. Only names that resolve to a student
+ * are reported: a real W2W week also carries permanent staff and managers
+ * Muster never schedules, and listing them would bury the students. A name
+ * `nameIndex` maps to null is ambiguous (two students derive it) and is not
+ * anyone this run can be said to have dropped.
+ */
+export function droppedImportedNames(
+  planRows: readonly { employeeName: string }[],
+  filledEmails: ReadonlySet<string>,
+  nameIndex: ReadonlyMap<string, string | null>,
+): DroppedName[] {
+  const counts = new Map<string, number>();
+  for (const row of planRows) {
+    if (row.employeeName === "") continue;
+    counts.set(row.employeeName, (counts.get(row.employeeName) ?? 0) + 1);
+  }
+  const dropped: DroppedName[] = [];
+  for (const [name, rowCount] of counts) {
+    const email = nameIndex.get(name);
+    if (email == null || filledEmails.has(email)) continue;
+    dropped.push({ name, rowCount });
+  }
+  return dropped.sort((a, b) => b.rowCount - a.rowCount || a.name.localeCompare(b.name));
+}
+
 /** Which cohorts staff a weekend row in each week file. */
 const WEEK_COHORTS: Record<WeekFile, readonly Cohort[]> = {
   a: ["a", "every"],

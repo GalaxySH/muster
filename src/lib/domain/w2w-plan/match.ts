@@ -32,22 +32,41 @@ function cellKey(blockId: string, day: Day): string {
   return `${blockId}\u0000${day}`;
 }
 
-export function matchPlan(
-  rows: W2wPlanRow[],
-  map: W2wPositionMapEntry[],
-  blocks: MatchBlock[],
-): PlanMatchReport {
+/** The identifying half of a plan row: all the map is keyed on. */
+export interface MapLookupKey {
+  w2wPositionId: string;
+  w2wPositionName: string;
+}
+
+/**
+ * Resolve a plan row's W2W position against the map: by id first, then by
+ * name so a position W2W recreated under a new id still lands. Earlier
+ * entries win on a duplicate key. Shared with the map health checks, which
+ * must decide "mapped" exactly the way matching does or their verdicts lie.
+ */
+export function buildMapResolver(
+  map: readonly W2wPositionMapEntry[],
+): (row: MapLookupKey) => W2wPositionMapEntry | undefined {
   const byId = new Map<string, W2wPositionMapEntry>();
   const byName = new Map<string, W2wPositionMapEntry>();
   for (const entry of map) {
     if (!byId.has(entry.w2wPositionId)) byId.set(entry.w2wPositionId, entry);
     if (!byName.has(entry.w2wPositionName)) byName.set(entry.w2wPositionName, entry);
   }
+  return (row) =>
+    (row.w2wPositionId === "" ? undefined : byId.get(row.w2wPositionId)) ??
+    (row.w2wPositionName === "" ? undefined : byName.get(row.w2wPositionName));
+}
+
+export function matchPlan(
+  rows: W2wPlanRow[],
+  map: W2wPositionMapEntry[],
+  blocks: MatchBlock[],
+): PlanMatchReport {
+  const resolveEntry = buildMapResolver(map);
 
   const resolved: MatchedPlanRow[] = rows.map((row) => {
-    const entry =
-      (row.w2wPositionId === "" ? undefined : byId.get(row.w2wPositionId)) ??
-      (row.w2wPositionName === "" ? undefined : byName.get(row.w2wPositionName));
+    const entry = resolveEntry(row);
     const musterPositionId = entry?.musterPositionId ?? null;
     let matchedBlockId: string | null = null;
     if (musterPositionId !== null) {

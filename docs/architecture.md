@@ -1015,12 +1015,28 @@ because the FK behavior differs and so does what the row means:
   recreates the mapping anyway.
 - `w2w_position_map.muster_position_id` — **delete alongside**, but say so first. Also
   no `onDelete` (before v1.10 this raised an unhandled FK error out of the server
-  action rather than any of the friendly refusals above). Unlike a title mapping,
-  nothing recreates it: it is seeded-once config, and losing it means a plan import
-  stops matching those W2W positions. So `listPositionsAdmin` carries a
-  `w2wMappingCount` and the delete confirm names it before the fact. It is deliberately
-  **not** reported afterwards: a successful delete unmounts the card, taking any
-  message with it.
+  action rather than any of the friendly refusals above).
+
+  Worth being precise about the recovery story, because it differs from every other row
+  here. Each plan import **does** re-verify the mapping — `matchPlan` runs against the
+  live map and blocks on every upload, and the plan page lists what it could not place
+  under "Shifts with no matching block". What it does not do is re-create a mapping:
+  `importShiftPlanFromUpload` seeds `W2W_POSITION_MAP_SEED` only when the map is
+  **entirely empty** (the first-import-on-a-fresh-prod-DB case), and it filters that
+  seed to positions this DB actually has. Deleting one position's mappings leaves the
+  rest of the map populated, so the seed never fires again — and there is no admin
+  screen for editing the map, so nothing in the app can put the row back.
+
+  The consequence is bounded and safe rather than destructive: those plan rows stop
+  matching, so `fillPlan` leaves their seats open (`""`) and the export ships them with
+  no names. Nothing is overwritten; Muster just contributes no recommendation for those
+  shifts. That is what the delete confirm says, via a `w2wMappingCount` on
+  `listPositionsAdmin`. It is deliberately **not** reported afterwards: a successful
+  delete unmounts the card, taking any message with it.
+
+  Since v1.11 the map **has** an editor (`/admin/w2w`), so this is recoverable in-app:
+  the delete still takes the mappings, but the admin can add them back. The confirm
+  still names the count, because the cost is real between the delete and the re-map.
 
 ### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
 
@@ -1306,6 +1322,66 @@ every read so `/admin/positions` edits and mapping refreshes reflect
 immediately and nothing stale persists. `w2w_position_map` seeds itself on
 first import when `db:seed` never ran (prod runs only migrations); `db:seed`
 backfills missing entries without touching existing rows.
+
+### The position map surface (`/admin/w2w`, v1.11)
+
+The map is the only link between a W2W position and a Muster one, and every way it can
+be wrong is quiet. `matchPlan` resolves a row, `fillPlan` zips students onto seats by
+`(blockId, day)` alone, and the file ships: **nothing downstream re-checks that the
+students landing on a W2W shift hold the position that shift belongs to.** So a mapping
+pointing at the wrong position writes the wrong people onto real shifts with every
+screen reporting success. That is why the checks are up front rather than after the
+fact, and why each message says what the admin will see in the exported file.
+
+**Layering.** Pure `domain/w2w-plan/map-health.ts` owns every rule (`mapHealthIssues`);
+`w2w/map-data.ts` loads the inputs once for both consumers (`getW2wMapPageModel` for the
+page, `getW2wMapIssues` for the hub alert) and `w2w/map-actions.ts` holds the three
+mutations. `domain/w2w-plan/match.ts` exports `buildMapResolver`, which both matching
+and the health checks resolve through, so "unmapped" on the page can never disagree with
+what matching actually did.
+
+**The checks**, all derived live: a W2W position in the plan with no mapping; a mapping
+whose target no longer exists, is an **alias**, is inactive, or has **no live blocks**;
+two mappings sharing a Muster position *and* a fill order; and a mapping the current
+plan never uses. Dangers mean shifts export nameless and reach the hub as one
+`w2w-map-broken` alert plus a nav count; warnings stay on the page.
+
+The **alias** case is the sharp one. `setAlias` moves students to the target but the
+source keeps its blocks, so plan rows go on matching them and the plan report still
+counts them as *matched* while nobody can ever be assigned there. v1.11 fixes the cause
+(`repointW2wMappings` follows the students inside the same transaction) and keeps the
+check for maps that drifted before it, or via a route that does not go through
+`setAlias`. Aliases are never offered in the target picker and are refused server-side.
+
+**Plan reads are aggregates.** `map-data.ts` groups `shift_plan_rows` by
+`w2w_position_id` rather than loading the plan (a week is ~1000 rows) and reads plan meta
+with `ORDER BY imported_at DESC LIMIT 1`, since nothing constrains `status` to one
+`current` row. This matters because the hub calls it on every load.
+
+**Also on the surface:** the plan's A/B `rotation_week`, editable via
+`setPlanRotationWeek` (it is chosen once at upload, decides which cohort a weekend name
+resolves to in repair mode, and previously needed a full re-upload to correct), and W2W
+name coverage over the roster (the export's fallback warning only covers students the
+current run happened to place).
+
+**Export loss warning (v1.11).** The export is a full refill: `fillPlan` ignores
+`row.employeeName`, so an imported name the run does not reproduce is simply gone and its
+seat ships open. `export-data.ts` now diffs the imported names against the emails filled
+across **both** week files (a weekend student appears in only one) and reports
+`droppedNames`, splitting names it can resolve from ones it cannot. Correct when the
+schedule really moved someone; silent data loss when the plan was uploaded to be repaired
+and repair mode was never turned on.
+
+**Seed fixture.** `W2W_POSITION_MAP_SEED`'s `GDEC - R&C TM` row named
+`retail-and-cafe-team-member`, a position id that never existed, so **both** seed paths
+filtered it out in silence and those shifts could never be filled. Fixed to `barista`,
+matching `TITLE_TO_POSITION`, and `config/w2w-position-map.test.ts` now asserts every
+seed row targets a real position, that the two fixtures agree, and that shared-position
+rows carry distinct fill orders. Note this only helps a **fresh** database: the importer
+self-seeds only into an entirely empty map and deploys run migrations without `db:seed`,
+so on an existing box the row has to be added on `/admin/w2w`. Barista is weekend exempt,
+so a weekend `R&C TM` row would match nothing; `target_no_weekend_blocks` catches exactly
+that rather than letting it pass as healthy.
 
 **Identity.** `w2w_employees` (email PK, name, number; refreshed by uploading
 the Employee Details export; address/phone never ingested). Export writes the

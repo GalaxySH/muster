@@ -143,6 +143,26 @@ function ExportCard({ model }: { model: ExportModel | { reason: "no-plan" | "no-
           </ul>
         </InfoCard>
       )}
+      {warnings.droppedNames.length > 0 && (
+        <InfoCard
+          tone="danger"
+          title="On the plan, not in the export"
+          style={{ margin: "0 0 8px", fontSize: 14 }}
+        >
+          <p style={{ margin: "0 0 4px" }}>
+            These students had shifts on the plan and have none in this export, so uploading it
+            clears their shifts in W2W. To keep them, generate the schedule again with &quot;Repair
+            only&quot; turned on.
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+            {warnings.droppedNames.map((d) => (
+              <li key={d.name}>
+                {d.name} · {d.rowCount} shift{d.rowCount === 1 ? "" : "s"}
+              </li>
+            ))}
+          </ul>
+        </InfoCard>
+      )}
       {warnings.lossyNames.length > 0 && (
         <InfoCard
           tone="danger"
@@ -224,7 +244,8 @@ function PlanReport({ model }: { model: PlanPageModel }) {
             ))}
           </ul>
           <p style={{ margin: "8px 0 0", fontSize: 14 }}>
-            Shifts on these positions are kept and re-exported, but Muster cannot fill them.
+            Shifts on these positions are kept and re-exported, but Muster cannot fill them. Map
+            them on <Link href="/admin/w2w">W2W positions</Link>.
           </p>
         </InfoCard>
       )}

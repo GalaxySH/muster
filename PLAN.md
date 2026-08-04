@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.10
+- **Version:** 1.11
 - **Last updated:** 2026-08-04
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1403,6 +1403,31 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.11 (2026-08-04)** — **The W2W position map is editable, and its failures are no
+  longer silent (`/admin/w2w`, `docs/w2w-shift-plan-roundtrip.md` §4).** The map decides
+  which Muster position staffs each W2W position. It was seeded once, in code, with no
+  screen to see or change it: the plan page could *name* a W2W position nothing mapped
+  and then offer no way to map it, and deleting a Muster position took its mappings with
+  it for good. Nothing downstream re-checks the map either, since filling zips students
+  onto seats by block and day alone, so a mapping pointing at the wrong position writes
+  the wrong people onto real shifts with every screen reporting success. Now: full
+  add/edit/remove, with **fill order** on every row (it decides who lands on which shift
+  when two W2W positions share one Muster shift, and was previously invisible), an add
+  form prefilled from the current plan's unmapped positions, and live health checks in
+  the pure `domain/w2w-plan/map-health.ts` — target missing, **alias**, inactive, no live
+  blocks, duplicate fill order, unused mapping — surfaced on the page and as one hub
+  alert. Matching and the checks now share one resolver, so the page can never disagree
+  with what matching did. Four related fixes: **making a position an alias now re-points
+  its W2W mappings** (the source keeps its blocks, so its shifts stayed *matched* while
+  nobody could be assigned to them, and every one exported nameless); the plan's **A/B
+  rotation is editable** instead of needing a full re-upload; the export **warns about
+  imported names it drops** (a full refill silently erases any name the run does not
+  reproduce, which is the whole reason repair mode exists); and the seed's `GDEC - R&C TM`
+  row, which named a position id that never existed and was therefore dropped in silence
+  by both seed paths, now maps to Barista like the roster title map. **That last one is a
+  fixture fix only:** the importer re-seeds solely when the map is entirely empty and
+  deploys run migrations without `db:seed`, so an existing database still has no `R&C TM`
+  row and an admin has to add it on the new page. No schema change.
 - **1.10 (2026-08-04)** — **Removing a shift block no longer loses or hides the picks
   on it (§6.2a).** A block with picks could not be removed at all (the action refused
   and the button was disabled), and a block whose *times* were edited silently moved
@@ -1430,8 +1455,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   Position deletion got the same treatment: it now clears `w2w_position_map` (whose FK
   has no `onDelete`, so deleting a mapped position raised an unhandled FK error instead
   of a friendly refusal) and refuses outright while a saved schedule run still holds
-  shifts on the position's blocks. The delete confirm names the W2W mappings that go
-  with it, since nothing recreates them and a plan import needs them.
+  shifts on the position's blocks. The delete confirm names the W2W positions that map
+  to it and says their shifts will export with no names: a plan import re-checks the
+  mapping every time, but it only re-seeds one when the map is entirely empty, and
+  there is no screen for editing it, so losing a row is one-way in practice.
 - **1.09 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
   `docs/w2w-shift-plan-roundtrip.md`).** The scheduler's W2W week export becomes the
   budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,

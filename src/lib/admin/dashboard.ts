@@ -45,6 +45,7 @@ import {
   getLateTravelPolicy,
 } from "@/lib/settings";
 import { loadCurrentRunRow, loadScheduleStaleness } from "@/lib/schedule/data";
+import { getW2wMapIssues } from "@/lib/w2w/map-data";
 import { CLOSES_SHEET, getLastSheetSync, getSheetUrl, RESPONSES_SHEET } from "./sheet-sync";
 import { loadUpcomingTravel } from "./data";
 import type {
@@ -87,6 +88,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     recent,
     perDay,
     schedule,
+    w2wMapIssues,
   ] = await Promise.all([
     loadStudentRoll(),
     getDb()
@@ -121,6 +123,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
     loadScheduleStatus(),
+    getW2wMapIssues(),
   ]);
 
   return {
@@ -164,6 +167,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     recent,
     perDay,
     schedule,
+    w2wMapIssues,
   };
 }
 

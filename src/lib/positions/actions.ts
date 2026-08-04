@@ -353,6 +353,49 @@ export interface AliasResult extends ActionResult {
   dropped: number;
   /** Moved students whose availability now fails validation. */
   failing: number;
+  /** W2W position mappings re-pointed at the target along with the students. */
+  remapped: number;
+}
+
+/** Paths that read the W2W position map. */
+function revalidateW2wSurfaces() {
+  revalidatePath("/admin/w2w");
+  revalidatePath("/admin/schedule/plan");
+}
+
+/**
+ * Move every W2W mapping off `fromId` onto `toId`. Several W2W positions may
+ * share one Muster position (Dock Stocker rides Stocker), so landing on a
+ * target that already has mappings is normal.
+ *
+ * The moved rows are stacked above the target's highest fill order rather than
+ * keeping their own. Fill order decides which of the W2W positions sharing a
+ * block a student is written onto, and two rows arriving on the same number
+ * would leave that to the order W2W happened to export in. Their order
+ * relative to each other is preserved.
+ */
+async function repointW2wMappings(tx: DbTx, fromId: string, toId: string): Promise<number> {
+  const [moving, existing] = await Promise.all([
+    tx
+      .select({ id: w2wPositionMap.w2wPositionId, fillOrder: w2wPositionMap.fillOrder })
+      .from(w2wPositionMap)
+      .where(eq(w2wPositionMap.musterPositionId, fromId)),
+    tx
+      .select({ fillOrder: w2wPositionMap.fillOrder })
+      .from(w2wPositionMap)
+      .where(eq(w2wPositionMap.musterPositionId, toId)),
+  ]);
+  if (moving.length === 0) return 0;
+
+  const base = existing.reduce((n, r) => Math.max(n, r.fillOrder + 1), 0);
+  const ordered = [...moving].sort((a, b) => a.fillOrder - b.fillOrder || a.id.localeCompare(b.id));
+  for (const [at, row] of ordered.entries()) {
+    await tx
+      .update(w2wPositionMap)
+      .set({ musterPositionId: toId, fillOrder: base + at })
+      .where(eq(w2wPositionMap.w2wPositionId, row.id));
+  }
+  return ordered.length;
 }
 
 /**
@@ -368,6 +411,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
     kept: 0,
     dropped: 0,
     failing: 0,
+    remapped: 0,
   });
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
@@ -402,6 +446,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
   let kept = 0;
   let dropped = 0;
   let failing = 0;
+  let remapped = 0;
   await db.transaction(async (tx) => {
     const affected = await tx
       .select({ email: students.email })
@@ -424,12 +469,18 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
       if (change.revalidationFailed) failing += 1;
     }
     moved = affected.length;
+    // Follow the students. The source keeps its blocks, so W2W plan rows would
+    // go on matching them and still count as matched, while nobody is ever
+    // assigned there again: every one of those shifts would quietly export
+    // with no name (docs/w2w-shift-plan-roundtrip.md §4).
+    remapped = await repointW2wMappings(tx, sourceId, targetId);
     await tx.update(positions).set({ mergedIntoId: targetId }).where(eq(positions.id, sourceId));
   });
 
   revalidatePositions();
   revalidateStudentSurfaces();
-  return { ok: true, moved, kept, dropped, failing };
+  if (remapped > 0) revalidateW2wSurfaces();
+  return { ok: true, moved, kept, dropped, failing, remapped };
 }
 
 /**
