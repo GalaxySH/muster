@@ -34,7 +34,7 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
         <Field
           label="Max hours per day"
           help="The most hours one student works in a single day."
@@ -59,9 +59,11 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
           min={0}
           max={100}
         />
-        <button type="button" onClick={submit} disabled={pending}>
-          {pending ? "Saving…" : "Save settings"}
-        </button>
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
+          <button type="button" onClick={submit} disabled={pending}>
+            {pending ? "Saving…" : "Save settings"}
+          </button>
+        </div>
       </div>
       {msg && (
         <p
@@ -91,9 +93,18 @@ function Field({
   max: number;
 }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        fontSize: 13,
+        flex: "1 1 160px",
+        minWidth: 150,
+      }}
+    >
       <span style={{ fontWeight: 600 }}>{label}</span>
-      <span style={{ color: "var(--color-text-secondary)", maxWidth: 220 }}>{help}</span>
+      <span style={{ color: "var(--color-text-secondary)", flexGrow: 1 }}>{help}</span>
       <input
         type="number"
         value={value}

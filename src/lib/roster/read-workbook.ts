@@ -9,6 +9,7 @@
  */
 import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
+import { decodeCp1252 } from "@/lib/text/cp1252";
 import { RosterFormatError } from "./parse";
 import { parseCsv } from "./csv";
 
@@ -26,26 +27,6 @@ export interface RosterGrid {
   /** The worksheet the rows came from, or null for a CSV (which has no sheets). */
   sheetName: string | null;
   grid: string[][];
-}
-
-/**
- * Bytes 0x80-0x9F in CP1252, where ISO-8859-1 has C1 controls instead. Excel's
- * "CSV" export is CP1252, so a curly apostrophe in a name (0x92) lands in here.
- * Index = byte - 0x80; slots CP1252 leaves undefined keep their own code point.
- */
-const CP1252_C1 = "€‚ƒ„…†‡" + "ˆ‰Š‹ŒŽ" + "‘’“”•–—" + "˜™š›œžŸ";
-
-/**
- * Decode CSV bytes. The tracker exports as CP1252, so a plain UTF-8 read turns
- * "Retail and Café Team Member" into a title matching no position mapping.
- * Valid UTF-8 still wins, so a re-saved UTF-8 export reads correctly too.
- */
-function decodeCsv(bytes: Buffer): string {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return bytes.toString("latin1").replace(/[-]/g, (c) => CP1252_C1[c.charCodeAt(0) - 0x80]!);
-  }
 }
 
 /** One cell as text. Dates become `yyyy-mm-dd` so the parse layer only sees strings. */
@@ -115,7 +96,7 @@ export async function readRosterGrid(
   const bytes = typeof source === "string" ? await readFile(source) : source;
 
   if (!isXlsx(bytes)) {
-    return { sheetName: null, grid: parseCsv(decodeCsv(bytes)) };
+    return { sheetName: null, grid: parseCsv(decodeCp1252(bytes)) };
   }
 
   const wb = new ExcelJS.Workbook();

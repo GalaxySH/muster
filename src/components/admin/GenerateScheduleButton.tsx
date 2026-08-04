@@ -9,10 +9,11 @@ import { generateSchedule } from "@/lib/schedule/actions";
  * in the engine and every run is kept, so the worst case is one click away
  * from being restored.
  */
-export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
+export function GenerateScheduleButton({ hasRun, hasPlan }: { hasRun: boolean; hasPlan: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [includeNonResponders, setIncludeNonResponders] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [repairOnly, setRepairOnly] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const label = hasRun ? "Update schedule" : "Generate schedule";
@@ -20,8 +21,13 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
   const submit = () => {
     setConfirming(false);
     startTransition(async () => {
-      const res = await generateSchedule({ includeNonResponders });
-      setMsg(res.ok ? `Schedule updated: ${res.placed} assignments.` : (res.error ?? "Failed."));
+      const res = await generateSchedule({ repairFromPlan: repairOnly, includeNonResponders });
+      if (!res.ok) {
+        setMsg(res.error ?? "Failed.");
+        return;
+      }
+      const repairNote = res.repaired ? repairSummary(res.repaired) : "";
+      setMsg(`Schedule updated: ${res.placed} assignments.${repairNote}`);
     });
   };
 
@@ -45,7 +51,14 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
       </label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {!confirming ? (
-          <button type="button" onClick={() => setConfirming(true)} disabled={pending}>
+          <button
+            type="button"
+            onClick={() => {
+              setRepairOnly(false);
+              setConfirming(true);
+            }}
+            disabled={pending}
+          >
             {pending ? "Working…" : label}
           </button>
         ) : (
@@ -57,6 +70,16 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
                   ? "Rebuild recommendations for everyone not marked scheduled?"
                   : "Generate recommendations for every submitted response?"}
             </span>
+            {hasPlan && (
+              <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={repairOnly}
+                  onChange={(e) => setRepairOnly(e.target.checked)}
+                />
+                Repair only: keep everyone the imported W2W plan already places, fill gaps
+              </label>
+            )}
             <button type="button" onClick={submit}>
               Yes, {hasRun ? "update" : "generate"}
             </button>
@@ -71,6 +94,47 @@ export function GenerateScheduleButton({ hasRun }: { hasRun: boolean }) {
           </span>
         )}
       </div>
+      {hasPlan && (
+        <details style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+          <summary style={{ cursor: "pointer" }}>What normal and repair updates do</summary>
+          <p style={{ margin: "6px 0 4px", maxWidth: 640 }}>
+            <strong>Normal update</strong> rebuilds the recommendation from scratch for everyone not
+            marked scheduled, using the current responses and staffing targets. Any placement can
+            move.
+          </p>
+          <p style={{ margin: 0, maxWidth: 640 }}>
+            <strong>Repair only</strong> starts from the imported W2W plan instead. Every placement
+            named on the plan that still works is kept exactly where it is, and the engine only
+            fills open seats. If one of a student&apos;s kept placements no longer works, that
+            student is re-solved completely. The keep lasts for this run; the next normal update can
+            move them again.
+          </p>
+          <p style={{ margin: "4px 0 0", maxWidth: 640 }}>
+            The option above to include people who did not respond applies to either kind of
+            update.
+          </p>
+        </details>
+      )}
     </div>
   );
+}
+
+/** One line on what repair mode kept and what fell back to the engine. */
+function repairSummary(r: NonNullable<Awaited<ReturnType<typeof generateSchedule>>["repaired"]>) {
+  let note = ` Kept ${r.students} students where the plan places them (${r.cells} shifts).`;
+  if (r.brokenStudents.length > 0) {
+    note +=
+      r.brokenStudents.length === 1
+        ? " 1 student had a placement that no longer fits and was fully re-solved."
+        : ` ${r.brokenStudents.length} students had a placement that no longer fits and were fully re-solved.`;
+  }
+  if (r.skippedNames.length > 0) {
+    const shown = r.skippedNames.slice(0, 5).join(", ");
+    const more = r.skippedNames.length - 5;
+    note += ` Names nobody matches: ${shown}${more > 0 ? ` and ${more} more` : ""}.`;
+  }
+  if (r.skippedCells > 0) {
+    note += ` ${r.skippedCells} shifts name people who are off the roster, not submitted, or marked scheduled.`;
+  }
+  return note;
 }

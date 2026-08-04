@@ -5,7 +5,7 @@
  * whose name fields contain commas, so the values must be split with real
  * quote handling rather than a plain `split(",")`. Pure and unit-tested; the
  * bytes-to-text step (which has to cope with a non-UTF-8 export) lives in
- * ./read-workbook.
+ * @/lib/text/cp1252.
  */
 
 /** Split CSV text into a grid of raw cell strings. Quotes, embedded commas/newlines, CRLF. */

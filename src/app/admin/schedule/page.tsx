@@ -32,6 +32,7 @@ import {
   type ScheduleRunListItem,
 } from "@/lib/schedule/data";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
+import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import {
   assignedCellCount,
   coverageStatus,
@@ -68,7 +69,7 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches] =
+  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches, plan] =
     await Promise.all([
       searchParams,
       loadCoverage(),
@@ -78,7 +79,9 @@ export default async function AdminSchedulePage({
       getSheetUrl(SCHEDULE_SHEET),
       getLastSheetSync(SCHEDULE_SHEET),
       loadFrozenMismatches(),
+      getCurrentPlan(),
     ]);
+  const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
   const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
 
@@ -117,6 +120,10 @@ export default async function AdminSchedulePage({
           ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Hover a cell to see how many students could work it. Weekend cells show both rotation weeks as A·B."
           : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Set targets per block on the Positions and shift blocks page."}
       </p>
+      <p style={{ fontSize: 14, marginTop: -6 }}>
+        <Link href="/admin/schedule/plan">W2W shift plan</Link>: import the shift budget from W2W
+        and export the filled schedule back.
+      </p>
 
       <SchedulePanel
         schedule={schedule}
@@ -124,6 +131,7 @@ export default async function AdminSchedulePage({
         staleLine={staleLine}
         sheetUrl={sheetUrl}
         sheetSyncedAt={sheetSyncedAt}
+        hasPlan={hasPlan}
       />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -196,12 +204,14 @@ function SchedulePanel({
   staleLine,
   sheetUrl,
   sheetSyncedAt,
+  hasPlan,
 }: {
   schedule: CurrentSchedule | null;
   responders: number;
   staleLine: string | null;
   sheetUrl: string | null;
   sheetSyncedAt: Date | null;
+  hasPlan: boolean;
 }) {
   if (!schedule) {
     return (
@@ -211,7 +221,7 @@ function SchedulePanel({
           No schedule has been generated yet. Responses are placed in the order they came in, later
           shifts first.
         </p>
-        <GenerateScheduleButton hasRun={false} />
+        <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} />
       </section>
     );
   }
@@ -222,7 +232,10 @@ function SchedulePanel({
   const worked = report.students.filter((s) => s.assignedMinutes > 0);
   const placed = worked.filter((s) => !s.fillIn).length;
   const withoutResponse = worked.filter((s) => s.fillIn).length;
-  const frozen = report.students.filter((s) => s.frozen).length;
+  // A repair run reports plan-kept students as frozen; only the rest were
+  // actually marked scheduled by an admin.
+  const planKept = report.repaired?.students ?? 0;
+  const frozen = report.students.filter((s) => s.frozen).length - planKept;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -240,6 +253,8 @@ function SchedulePanel({
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
         {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
+        {planKept > 0 &&
+          ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.params &&
           ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
       </p>
@@ -256,7 +271,7 @@ function SchedulePanel({
         </div>
       )}
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <GenerateScheduleButton hasRun />
+      <GenerateScheduleButton hasRun hasPlan={hasPlan} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}

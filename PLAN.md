@@ -8,8 +8,8 @@
 > **What it is *not*:** It does **not** integrate with WhenToWork (W2W) — no API,
 > no credentials, no push, in either direction. The human scheduler still enters
 > the schedule in W2W. The **ceiling** on that side is an importable document
-> Muster produces and the scheduler uploads by hand: a possible future feature,
-> not built (§17).
+> Muster produces and the scheduler uploads by hand — built as the file-based
+> shift-plan round-trip (1.09, §17, `docs/w2w-shift-plan-roundtrip.md`).
 
 - **Status:** Phase 1 done; Phase 2 built (incl. proof uploads via the Drive relay,
   grant + Shared Drive write confirmed live); Phase 3 done; Phase 4 done (response list,
@@ -1184,11 +1184,11 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 5. **Email provider + domain auth** — ✅ *resolved (v0.18):* **Resend**, sending from the
    verified domain `re.hauge.rocks` with SPF/DKIM/DMARC in place; delivery into M365
    confirmed in production (§11).
-6. **Admin export format** — ⏳ *still open, and now broader.* What exact layout do you
-   want to read from while typing into W2W? Three surfaces answer to this: the responses
-   export matrix (CSV + running sheet, §10/§12), the schedule CSV (§17), and — if it is
-   ever built — the **W2W-importable document** (§17), whose format W2W dictates rather
-   than us. The existing matrix stands until the scheduler asks for changes.
+6. **Admin export format** — ✅ *resolved (1.09):* the W2W-importable document exists.
+   The shift-plan round-trip (`docs/w2w-shift-plan-roundtrip.md`) imports the W2W week
+   export as the budgeted seat plan and re-exports it filled from the current run as two
+   dateless day-of-week files (week A/B), in W2W's own upload dialect. The responses
+   export matrix and the schedule CSV stand unchanged for human reading.
 
 **Recently resolved:** ORM = Drizzle · test stack = Vitest + Playwright · reverse
 proxy = host Apache (vhost `apache/muster.conf`; bundled Caddy dropped) ·
@@ -1220,11 +1220,12 @@ under-18 test (deferred → fallback, §11).
   students).
 - **Any programmatic integration with WhenToWork** — no API, no credentials, no push or
   pull, in either direction. The **ceiling** here is a **document Muster produces and a
-  human uploads**: an export in whatever format W2W's importer accepts. That is a
-  **possible future feature — not built, not scheduled, not designed** (roadmap 5.3).
-  Until it exists the scheduler reads `/admin/schedule` or its CSV and types into W2W.
-  Should it be built, it changes nothing about this bullet: Muster still never talks to
-  W2W, it just hands the human a better piece of paper.
+  human uploads**: an export in whatever format W2W's importer accepts. That ceiling is
+  now **built (1.09, roadmap 5.3)**: the file-based round-trip in
+  `docs/w2w-shift-plan-roundtrip.md` — the scheduler exports the W2W week by hand,
+  uploads it to Muster as the seat budget, and downloads the filled week A/B files to
+  upload back into W2W by hand. It changes nothing about this bullet: Muster still
+  never talks to W2W, it just hands the human a better piece of paper.
 - Storing FERPA-protected records on the app server (by design — see §12).
 - Replacing the roster workbook (Muster *imports* it; it isn't the system of record).
 
@@ -1367,6 +1368,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.09 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
+  `docs/w2w-shift-plan-roundtrip.md`).** The scheduler's W2W week export becomes the
+  budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,
+  refuses multi-week files; live matched report against the position map + blocks; an
+  optional **"Set staffing targets from this plan"** checkbox writes per-block
+  `desired_capacity` from the plan's seat counts; a required **weekend-rotation
+  specifier (week A or B)** records which rotation the exported week is, deciding how
+  names on weekend rows are read), refresh the **email-keyed W2W name
+  mapping** from the Employee Details export (name/email/number only), and download the
+  **filled week A/B files** — the current run projected onto the plan's exact rows
+  (full refill; row count preserved; Date blanked, day names emitted; cohort a+every /
+  b+every split on weekends) with export-time warnings for overflow students,
+  roster-derived names, non-cp1252 names, unmatched rows, and a plan-newer-than-run
+  banner. The Update confirm gains a **repair-only** option that keeps every
+  still-valid placement the imported plan carries (virtually frozen through the
+  engine's carry seam) and re-solves the rest. New tables `shift_plans`,
+  `shift_plan_rows` (raw passthrough only; matching and identity always recomputed
+  live), `w2w_employees`, `w2w_position_map` (self-seeding on first import), migration
+  0025. Domain in `src/lib/domain/w2w-plan/`; shared cp1252 codec extracted to
+  `src/lib/text/`. Closes §16 q6; §17's ceiling bullet marked built. Boundary
+  unchanged: file-based, human-carried, no W2W API.
 - **1.08 (2026-08-03)** — **Scheduling non-responders on operational need, and a
   Shift-Lead weekend-close bias (§17).** Two independent changes to the generator, no
   migration. (1) An opt-in **"Also schedule people who did not respond"** checkbox on
