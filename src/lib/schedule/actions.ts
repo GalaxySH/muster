@@ -9,7 +9,7 @@
  * generation can be restored later and nothing is ever lost.
  */
 import { randomUUID } from "node:crypto";
-import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
@@ -32,24 +32,82 @@ import {
   trySyncSheet,
   type SheetSyncResult,
 } from "@/lib/admin/sheet-sync";
+import { deriveOpenClose } from "@/lib/domain/blocks";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { fullAvailability } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
-import type { Cohort, ScheduleAssignment, ScheduleStudent } from "@/lib/domain/scheduling/types";
-import type { Day } from "@/lib/domain/types";
+import type {
+  Cohort,
+  EngineReport,
+  ScheduleAssignment,
+  ScheduleStudent,
+} from "@/lib/domain/scheduling/types";
+import type { Day, ShiftBlock } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
+import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
 import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
 
 /** Superseded runs kept for restore before pruning. */
 const RUN_RETENTION = 10;
+
+/**
+ * The Shift Lead weekend closing block, which the engine fills only as a last
+ * resort. Shift Leads claim their weekend closes by hand (PLAN §18a) and those
+ * claims never reach the generator, so a generated close would double-book the
+ * slot the manual flow is about to fill.
+ */
+/** Emails a stored run scheduled as fill-ins; empty when the report is unreadable. */
+function readFillIns(summaryJson: string | undefined): string[] {
+  if (!summaryJson) return [];
+  try {
+    const report = JSON.parse(summaryJson) as EngineReport;
+    return (report.students ?? []).filter((s) => s.fillIn).map((s) => s.email);
+  } catch {
+    return [];
+  }
+}
+
+function shiftLeadWeekendCloseIds(blocks: readonly ShiftBlock[]): string[] {
+  const weekend = blocks.filter(
+    (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
+  );
+  const { closeId } = deriveOpenClose(weekend);
+  return closeId ? [closeId] : [];
+}
 
 export interface GenerateResult {
   ok: boolean;
   error?: string;
   /** Assignment rows the new run holds (on success). */
   placed?: number;
+  /** Repair mode: how much of the imported plan was kept in place. */
+  repaired?: {
+    students: number;
+    cells: number;
+    /** Students fully re-solved because one of their placements broke. */
+    brokenStudents: string[];
+    skippedNames: string[];
+    skippedCells: number;
+  };
 }
 
-export async function generateSchedule(): Promise<GenerateResult> {
+export interface GenerateOptions {
+  /**
+   * Repair-only mode (docs/w2w-shift-plan-roundtrip.md §7): keep every valid
+   * placement the imported W2W plan carries (those students are frozen for
+   * this run) and re-solve only the rest. Default is the full refill.
+   */
+  repairFromPlan?: boolean;
+  /**
+   * Also schedule on-roster students who never submitted, treating them as
+   * available for every cell their position runs. Off by default: the admin
+   * opts in per run on /admin/schedule.
+   */
+  includeNonResponders?: boolean;
+}
+
+export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
@@ -111,6 +169,74 @@ export async function generateSchedule(): Promise<GenerateResult> {
     internalByEmail,
   );
 
+  const domainBlocks = blockRows.map(toDomainBlock);
+
+  // Opt-in: fill what the responders left with roster members who did not
+  // submit. The fillIn flag holds them back until the engine has settled
+  // everyone else, so they only take capacity nobody claimed. Someone with no
+  // position has nothing to schedule into, so they drop out rather than land in
+  // the run's skipped list, which is about responses.
+  //
+  // Availability comes from the best record we hold, never the other way round:
+  // an internal copy an admin wrote (§10a) wins, then the student's own draft
+  // answers, and only someone who told us nothing at all is treated as
+  // available for every cell their position runs. Their draft hours and weekend
+  // opt-in carry over the same way, so opting a run into non-responders can
+  // never overwrite what somebody actually said.
+  if (options.includeNonResponders) {
+    const responded = new Set(engineStudents.map((s) => s.email));
+    const notSubmitted = and(eq(students.onRoster, true), ne(submissions.status, "submitted"));
+    const [rosterRows, draftCells] = await Promise.all([
+      db
+        .select({
+          email: students.email,
+          positionId: students.positionId,
+          international: students.international,
+          everyWeekendOptIn: submissions.everyWeekendOptIn,
+          desiredHours: submissions.desiredHours,
+          scheduled: submissions.scheduled,
+        })
+        .from(students)
+        .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+        .where(eq(students.onRoster, true)),
+      db
+        .select({
+          email: submissions.studentEmail,
+          blockId: shiftSelections.shiftBlockId,
+          day: shiftSelections.day,
+        })
+        .from(shiftSelections)
+        .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
+        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .where(notSubmitted),
+    ]);
+
+    const draftByEmail = new Map<string, { blockId: string; day: Day }[]>();
+    for (const row of draftCells) {
+      const list = draftByEmail.get(row.email) ?? [];
+      list.push({ blockId: row.blockId, day: row.day });
+      draftByEmail.set(row.email, list);
+    }
+
+    const nonResponders: ScheduleStudent[] = rosterRows
+      .filter((r) => !responded.has(r.email) && r.positionId)
+      .map((r) => {
+        const drafted = draftByEmail.get(r.email);
+        return {
+          email: r.email,
+          positionId: r.positionId,
+          international: r.international,
+          everyWeekendOptIn: r.everyWeekendOptIn ?? false,
+          desiredHours: r.desiredHours,
+          submittedAt: null,
+          scheduled: r.scheduled ?? false,
+          fillIn: true,
+          selection: drafted?.length ? drafted : fullAvailability(r.positionId!, domainBlocks),
+        };
+      });
+    engineStudents.push(...applyInternalOverrides(nonResponders, internalByEmail));
+  }
+
   const previous: ScheduleAssignment[] = currentRun
     ? (
         await db
@@ -126,12 +252,64 @@ export async function generateSchedule(): Promise<GenerateResult> {
       ).map((r) => ({ ...r, cohort: r.cohort as Cohort }))
     : [];
 
+  // Repair mode: the imported plan's still-valid placements become carried
+  // rows and their students are frozen for this run, so the engine keeps them
+  // in place and only fills gaps or re-solves broken placements. Students the
+  // admin marked scheduled stay on their current-run rows, which always win.
+  let engineStudentsFinal = engineStudents;
+  let previousFinal = previous;
+  let repaired: GenerateResult["repaired"];
+  if (options.repairFromPlan) {
+    const eligibleForRepair = new Map<string, RepairEligibleStudent>(
+      engineStudents
+        .filter((s) => !s.scheduled)
+        .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
+    );
+    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60);
+    if (!seeds) {
+      return {
+        ok: false,
+        error: "No shift plan has been imported, so there is nothing to repair from.",
+      };
+    }
+    engineStudentsFinal = engineStudents.map((s) =>
+      seeds.byEmail.has(s.email) ? { ...s, scheduled: true } : s,
+    );
+    // A seed identical to the student's current cell keeps its manual
+    // provenance, so diff views do not show untouched cells flipping source.
+    const currentSource = new Map(
+      previous.map((r) => [`${r.studentEmail}|${r.blockId}|${r.day}`, r.source]),
+    );
+    previousFinal = [
+      ...previous.filter((r) => !seeds.byEmail.has(r.studentEmail)),
+      ...[...seeds.byEmail.values()].flat().map((r) => ({
+        ...r,
+        source: currentSource.get(`${r.studentEmail}|${r.blockId}|${r.day}`),
+      })),
+    ];
+    repaired = {
+      students: seeds.byEmail.size,
+      cells: [...seeds.byEmail.values()].reduce((n, list) => n + list.length, 0),
+      brokenStudents: seeds.brokenStudents,
+      skippedNames: seeds.skippedNames,
+      skippedCells: seeds.skippedCells,
+    };
+  }
+
+  // Who the last run scheduled as a fill-in, so turning the option off reads as
+  // the option changing rather than as those people leaving the roster. A report
+  // we cannot read costs only that distinction, and regenerating is how an admin
+  // recovers from a bad run, so it must never be what blocks them.
+  const previousFillIns = readFillIns(currentRun?.summaryJson);
+
   const result = generateAssignments({
-    students: engineStudents,
+    students: engineStudentsFinal,
     positions: positionRows.map(toDomainPosition),
-    blocks: blockRows.map(toDomainBlock),
-    previous,
+    blocks: domainBlocks,
+    previous: previousFinal,
     params,
+    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
+    previousFillIns,
   });
 
   const runId = randomUUID();
@@ -144,7 +322,11 @@ export async function generateSchedule(): Promise<GenerateResult> {
       id: runId,
       generatedBy: gate.email,
       status: "current",
-      summaryJson: JSON.stringify(result.report),
+      // Repair runs stamp their kept-from-plan counts into the stored report
+      // so the run panel can tell virtually-frozen from admin-frozen.
+      summaryJson: JSON.stringify(
+        repaired ? { ...result.report, repaired: { students: repaired.students } } : result.report,
+      ),
     });
     // Chunked inserts: a full fall cycle is a few thousand rows.
     const rows = result.assignments.map((a) => ({
@@ -182,7 +364,7 @@ export async function generateSchedule(): Promise<GenerateResult> {
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
   await trySyncSheet(SCHEDULE_SHEET, 0);
-  return { ok: true, placed: result.assignments.length };
+  return { ok: true, placed: result.assignments.length, repaired };
 }
 
 export interface RestoreResult {

@@ -1102,7 +1102,33 @@ The generator itself, layered exactly like the rest of the app:
   destination's pull beats the vacated cell's, evaluated with the seat lifted
   out; never drops hours, never grows a day count, never touches frozen
   students). Everything is deterministically ordered; no randomness anywhere.
-- **Persistence** (migration 0017): append-only `schedule_runs`
+- **Fill-in students and deferred cells** (v1.08). Two optional inputs steer the
+  engine without teaching it any roster or close-claim concepts:
+  - `ScheduleStudent.fillIn` marks someone the run schedules only into what
+    everyone else left (the non-responders, below). Fill-ins are placed in a
+    **second pass, after `improveAssignments` has settled everyone else**, against
+    the ledger those final rows leave behind (`ImproveResult.ledger`). That
+    ordering is the guarantee: adding fill-ins can never change another student's
+    schedule, which placing them merely last in FCFS order does **not** achieve,
+    because the improvement pass would otherwise find their seats already taken.
+    A fill-in the run finds no room for is left out of the report entirely, so
+    they never inflate "short of hours" or the per-student table. Report rows
+    carry `fillIn`, and the next run passes those emails back as
+    `EngineInput.previousFillIns`: their rows disappear the moment the option is
+    switched off, and that is the option changing, not a departure, so they are
+    never counted in `droppedStudents` (which the UI renders as "left the
+    roster").
+  - `EngineInput.deferredBlockIds` marks cells to fill **only as a last resort**:
+    they rank below every other candidate in `bestCandidate`, and `improve.ts`
+    never relocates into one (relocation is an optimization, never what lets a
+    student reach a minimum, so a last-resort seat stays put and none move in).
+    `schedule/actions.ts` passes the **Shift Lead weekend closing block**
+    (`deriveOpenClose` over the SL weekend blocks), because Shift Leads claim
+    weekend closes by hand (§18a) and those claims never reach the generator. The
+    engine stays generic: it knows only that these cells come last.
+- **Persistence** (migration 0017; `summary_json` widened to `mediumtext` in 0025,
+  since the report holds ~140 bytes per student and `text` capped out around 458):
+  append-only `schedule_runs`
   (current/superseded + `summaryJson` = the engine report, retention 10) and
   fully-cascading `schedule_assignments` keyed `(runId, studentEmail,
   shiftBlockId, day)` with a `cohort` column. Recommendations are derived data;
@@ -1112,7 +1138,21 @@ The generator itself, layered exactly like the rest of the app:
   eligible students (`eligibleSubmittedFilter`, shared with the coverage
   loader) with their selections, the current run's rows as the freeze source,
   runs the pure engine, then transactionally supersedes the old run, inserts
-  the new one plus chunked assignment rows, and prunes beyond retention.
+  the new one plus chunked assignment rows, and prunes beyond retention. Its one
+  option, `includeNonResponders` (default off, chosen per run on the page), adds
+  on-roster students with no submitted response as **fill-ins**. Their availability
+  is resolved from the best record held, in order: the admin's **internal copy**
+  (§10a, via the same `applyInternalOverrides` seam), then the student's own
+  **draft** answers where a draft submission exists (its cells, `desiredHours` and
+  weekend opt-in), and only for someone who left no record at all the stand-in
+  `fullAvailability()` (`domain/scheduling/availability.ts` — every block their
+  position runs, on every day of that block's day-type) with a null `desiredHours`
+  aiming at the position floor. Opting a run into non-responders therefore never
+  overwrites what somebody actually said. Someone with no position drops out rather
+  than landing in `skippedNoPosition`, which is about responses. The previous run's
+  fill-ins are read back out of its stored report by `readFillIns`, which swallows
+  an unreadable report rather than blocking the regeneration an admin uses to
+  recover from a bad run.
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto
@@ -1182,3 +1222,62 @@ protection concept. Frozen students' rows carry forward verbatim through every
 run and consume capacity first; marking scheduled still never changes response
 status or the non-response list (both key on `confirmedAt`). With Phase C
 above, `docs/schedule-generation-plan.md` is fully built.
+
+## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
+
+The scheduler's W2W week export is the budgeted seat plan; Muster fills it and
+hands it back. File-based and human-carried in both directions (PLAN §17's
+boundary is untouched).
+
+**Layering.** Pure domain in `src/lib/domain/w2w-plan/`: `parse` (the W2W
+export dialect: day derived from Date with a numeric fallback, refusal on
+anything unplaceable and on multi-week files), `match` (position map + exact
+(position, day-type, start, end) block matching; description is not part of
+the key), `fill` (project run assignments onto plan seats per week file:
+weekday + cohort a/every vs b/every, fillOrder-then-seq seat order, byEmail
+student order, overflow accounting), `serialize` (same column set back, Date
+blanked, full day names), `identity` (Employee Details parse + the
+`Last, First` to `First Last` derivation). The shared cp1252 codec lives in
+`src/lib/text/cp1252.ts` (extracted from the roster reader; encode added,
+`isCp1252Lossy` drives an export warning). Server layer in `src/lib/w2w/`:
+`plan-data` (current plan + live match report), `export-data` (fill both week
+files + warnings), `actions` (plan import with the capacity checkbox, employee
+mapping refresh), `repair` (repair-mode seeds), `upload-validation`. UI:
+`/admin/schedule/plan` (import panels, export card with warnings, report
+sections) and the export route `/admin/schedule/plan/export?week=a|b`
+(windows-1252 bytes).
+
+**Invariants.** Row count in equals row count out per week file; Muster writes
+only the employee identity columns; everything else passes through verbatim
+(whitespace-trimmed). Only raw rows are stored (`shift_plans`,
+`shift_plan_rows`); block matching and name resolution are recomputed live on
+every read so `/admin/positions` edits and mapping refreshes reflect
+immediately and nothing stale persists. `w2w_position_map` seeds itself on
+first import when `db:seed` never ran (prod runs only migrations); `db:seed`
+backfills missing entries without touching existing rows.
+
+**Identity.** `w2w_employees` (email PK, name, number; refreshed by uploading
+the Employee Details export; address/phone never ingested). Export writes the
+mapped W2W name, or falls back to the roster-derived name and lists every such
+student in the export warnings, because a name W2W does not recognize silently
+imports the shift as unassigned. Non-representable (non-cp1252) names get
+their own warning.
+
+**Repair mode.** `generateSchedule({ repairFromPlan: true })` resolves the
+names riding on the imported plan (mapping first, roster-derived fallback; a
+name claimed twice on either side is ambiguous and resolves to nobody) and
+validates placements in the pure `domain/w2w-plan/repair-seeds.ts`: eligible
+submitted student, matched block, cell inside their effective selection, plus
+the engine's own same-day rules (unique coverage, day cap). Weekend cells take
+their rotation from the plan's `rotation_week` (the A/B specifier chosen at
+upload, since the exported week is one specific rotation); every-weekend
+opt-ins stay "every". Keeping is **all or nothing per student**: one broken placement
+drops the whole student back to a full re-solve, because freezing someone on
+a surviving subset would strand them under their hour floor with the
+shortfall warnings suppressed (frozen students are excluded from the problems
+panel). Survivors ride the frozen carry seam as virtually-scheduled for that
+run only; admin-frozen students always keep their current-run rows instead,
+and seeds matching a current manual cell keep their manual provenance. The
+run's stored report carries a `repaired.students` stamp so the panel
+distinguishes plan-kept from admin-frozen; hour caps (30/20) are not
+re-checked on kept placements.

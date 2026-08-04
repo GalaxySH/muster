@@ -127,7 +127,15 @@ total (explicit tie-breaks), so the same inputs always produce the same run.
 ### 3.1 Student ordering: first-come-first-serve by `submittedAt`
 
 Students are processed in ascending `submittedAt` order (tie-break: email).
-Only `status = "submitted"` and `onRoster = true` participate.
+Only `status = "submitted"` and `onRoster = true` participate, unless the admin
+opts a run into **fill-ins** (v1.08): on-roster students with no submitted
+response, given a stand-in availability of every cell their position runs. Those
+are not part of this ordering at all. They are placed in a **second pass after
+the improvement pass (3.4) has finished**, against the seats it left behind,
+which is what makes "they only take what is left" literally true. Ordering them
+last within FCFS is not sufficient: the improvement pass would then find their
+seats already taken and relocate responders worse (measured: 11 responders lost
+hours before the two-pass split).
 
 FCFS is the primary ordering for four reasons:
 
@@ -210,6 +218,20 @@ stay on the same day** — so the min-days concentration and the 8h cap survive
 untouched. FCFS guarantees each student's hour *quantity*; the pass may shuffle
 *which* of their acceptable same-day cells they hold. Students marked scheduled
 never move. Deterministic first-improvement ordering, fixed round cap.
+
+Since v1.08 the pass also never relocates **into** a deferred cell (3.5), and it
+returns the ledger its final rows leave, which the fill-in pass (3.1) places
+against.
+
+### 3.5 Deferred cells (shipped, v1.08)
+
+`EngineInput.deferredBlockIds` names cells to fill **only as a last resort**:
+they rank below every other candidate, so one is taken only when nothing else
+lets a student reach their minimums. `schedule/actions.ts` passes the Shift Lead
+weekend closing block, since Shift Leads claim weekend closes by hand (PLAN
+§18a) and those claims never reach the generator, making a generated SL weekend
+close wasted allocation. The engine stays generic: it knows only that these
+cells come last.
 
 ## 4. Regeneration model (shipped, v0.84: one mode)
 

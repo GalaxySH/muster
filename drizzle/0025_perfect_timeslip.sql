@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_runs` MODIFY COLUMN `summary_json` mediumtext NOT NULL;

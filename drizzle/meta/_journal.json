@@ -180,8 +180,22 @@
     {
       "idx": 25,
       "version": "5",
-      "when": 1785823680372,
-      "tag": "0025_clever_vapor",
+      "when": 1785826069248,
+      "tag": "0025_perfect_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1785858171017,
+      "tag": "0026_burly_selene",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1785866275721,
+      "tag": "0027_reflective_scarlet_spider",
       "breakpoints": true
     }
   ]
