@@ -145,10 +145,11 @@ mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withd
 never appears). A settings card at the top of that page (v1.12,
 `ChangeRequestsEnabledToggle` + `setChangeRequestsEnabled`, setting
 `change_requests_enabled` in `lib/settings.ts`, on by default) is a student-facing
-display switch only: off drops the "Schedule changes" card from `/me` and swaps the
-`/intro` copy from "submit a change request" to "send us an email". The
-`/change-requests` route and this admin queue stay reachable either way, so an admin
-can still log a request on a student's behalf or a direct link still works. Proof files render only on the per-student page, as inline
+display switch only: off keeps the "Schedule changes" card on `/me` but swaps its body
+from the `/change-requests` link to "send us an email" (same swap on `/intro`, from
+"submit a change request" to "send us an email"). The `/change-requests` route and
+this admin queue stay reachable either way, so an admin can still log a request on a
+student's behalf or a direct link still works. Proof files render only on the per-student page, as inline
 `EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches bytes through
 the Drive proxy, so only the newest `CHANGE_PREVIEW_ROWS` (3) file-bearing requests get
 thumbnails and older ones fall back to plain proof links. Every request row is an

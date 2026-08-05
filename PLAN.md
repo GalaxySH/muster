@@ -111,12 +111,10 @@ left off" (resume is **inferred from persisted data** — no progress column). T
 flip to **submitted** happens exactly once, at the final exit step (§13).
 
 1. **Sign in** with Google (`@wisc.edu` enforced) → redirected to **`/me`**.
-2. **`/me` hub** branches on the two access gates (§13) then on flow state (returning
-   employees, hired before June of the current cycle, also see a short **welcome-back**
-   greeting, from `students.hiredOn` — §9):
+2. **`/me` hub** branches on the two access gates (§13) then on flow state:
    - **Not on roster / no group** → access notice (no flow). An **admin** who is not on the
-     roster (the normal case for staff) instead gets a greeting and a card pointing at the
-     admin dashboard, in the same page shell.
+     roster (the normal case for staff) instead gets a card pointing at the admin
+     dashboard, in the same page shell.
    - **Done** (status submitted) → review links to every step (editable until the window
      closes).
    - **In progress** → "Pick up where you left off" → deep-links to the first incomplete
@@ -1407,15 +1405,20 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 
 ## Changelog
 - **1.12 (2026-08-05)** — **An admin switch to stop advertising the change-request form
-  (§4.1, roadmap 3.1).** There was no way to steer students toward email instead of the
-  form without editing code. Now a settings card at the top of `/admin/change-requests`
-  (`change_requests_enabled` in `app_settings`, on by default) toggles it: off drops the
-  "Schedule changes" card from `/me` and swaps the `/intro` line from "submit a change
+  (§4.1, roadmap 3.1), plus two `/me` copy cleanups.** There was no way to steer
+  students toward email instead of the form without editing code. Now a settings card
+  at the top of `/admin/change-requests` (`change_requests_enabled` in `app_settings`,
+  on by default) toggles it: off keeps the "Schedule changes" card on `/me` but swaps
+  its body (and the `/intro` line) from "submit a change request" / "send a change
   request" to "send us an email" (the "and these are the only requests we will also
   accept over email" aside is dropped outright, regardless of the toggle, since it read
   oddly once email became a normal path). The `/change-requests` route and the admin
   queue are unaffected either way, so an admin can still log a request on a student's
-  behalf.
+  behalf. Separately: `/me` no longer shows a "Profile" heading, the returning-student
+  "Welcome back to Gordon" greeting, or the admin "Hi {name}" greeting — all three read
+  as clutter above the actual hub content and are removed outright rather than hidden.
+  `students.hiredOn` and the returning-student check (`flow/returner.ts`) still exist
+  and are still computed into `FlowState`, just unconsumed by any UI now.
 - **1.11 (2026-08-04)** — **The W2W position map is editable, and its failures are no
   longer silent (`/admin/w2w`, `docs/w2w-shift-plan-roundtrip.md` §4).** The map decides
   which Muster position staffs each W2W position. It was seeded once, in code, with no

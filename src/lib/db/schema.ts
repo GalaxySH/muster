@@ -106,9 +106,8 @@ export const students = mysqlTable("students", {
   positionId: varchar("position_id", { length: 64 }).references(() => positions.id),
   international: boolean("international").notNull().default(false),
   onRoster: boolean("on_roster").notNull().default(false),
-  // Hire date from the People Coming sheet (PLAN §9). Used only to greet
-  // returning employees (hired before the current cycle) on /me; null when the
-  // workbook omits it or the date is unparseable.
+  // Hire date from the People Coming sheet (PLAN §9); null when the workbook
+  // omits it or the date is unparseable.
   hiredOn: date("hired_on", { mode: "date" }),
   // Form-window group membership (PLAN.md §13). No group → no form access.
   // Written on admin assignment / self-add, never at roster ingest.

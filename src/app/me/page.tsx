@@ -20,25 +20,17 @@ export default async function MePage() {
     loadFlowState(session.email),
     getChangeRequestsEnabled(),
   ]);
-  // Admins are staff, so they have no roster row and no form to fill out. Give them a
-  // greeting and the dashboard rather than the off-roster notice meant for students.
+  // Admins are staff, so they have no roster row and no form to fill out. Give them the
+  // dashboard rather than the off-roster notice meant for students.
   const adminHome = !flow.onRoster && session.isAdmin;
-  const firstName = session.name?.trim().split(/\s+/)[0];
 
   return (
     <Page>
       <AppHeader isHome />
-      <h1>Profile</h1>
       <p style={{ color: "#555" }}>
         {session.name ? `${session.name} · ` : ""}
         {session.email}
       </p>
-
-      {flow.onRoster && flow.returning && (
-        <p style={greeting}>Welcome back to Gordon</p>
-      )}
-
-      {adminHome && <p style={greeting}>{firstName ? `Hi ${firstName}` : "Hi there"}</p>}
 
       {adminHome ? (
         <InfoCard title="You're signed in as an admin">
@@ -143,11 +135,17 @@ export default async function MePage() {
         </div>
       )}
 
-      {flow.onRoster && changeRequestsEnabled && (
+      {flow.onRoster && (
         <InfoCard title="Schedule changes" style={{ marginTop: 20 }}>
           <p style={{ margin: 0 }}>
-            Need a change to your work schedule during the semester?{" "}
-            <Link href="/change-requests">Send a change request</Link>.
+            {changeRequestsEnabled ? (
+              <>
+                Need a change to your work schedule during the semester?{" "}
+                <Link href="/change-requests">Send a change request</Link>.
+              </>
+            ) : (
+              <>Need a change to your work schedule during the semester? Send us an email.</>
+            )}
           </p>
         </InfoCard>
       )}
@@ -169,8 +167,6 @@ export default async function MePage() {
     </Page>
   );
 }
-
-const greeting: React.CSSProperties = { color: "#196127", fontWeight: 600, marginTop: 0 };
 
 const reviewList: React.CSSProperties = {
   margin: 0,

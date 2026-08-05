@@ -43,7 +43,7 @@ export type FlowState =
       positionId: string | null;
       positionName: string | null;
       international: boolean;
-      /** Hired before the current cycle (§4.1) → show a welcome-back greeting. */
+      /** Hired before the current cycle (`flow/returner.ts`); not currently rendered anywhere. */
       returning: boolean;
       access: FlowAccess;
       status: FlowStatus;
