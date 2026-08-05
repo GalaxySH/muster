@@ -31,7 +31,7 @@
  * save path below stays exactly as it was.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getAppSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
@@ -45,6 +45,7 @@ import {
 } from "@/lib/db/schema";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 import { requireEditableStudent } from "@/lib/groups/gate";
+import { syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
@@ -137,8 +138,16 @@ async function replaceSelectionCells(
     });
   }
 
-  // Replace-all selection strategy keeps the write simple and correct.
-  await tx.delete(table).where(eq(table.submissionId, submissionId));
+  // Replace the cells on LIVE blocks only. Picks left on a removed shift are
+  // orphaned (PLAN §6.2a): the student can't see them, so a save of theirs must
+  // not quietly delete them. Only an admin clears an orphaned pick. With no
+  // live blocks there is nothing to replace, and `selection` is empty anyway.
+  const liveIds = blocks.map((b) => b.id);
+  if (liveIds.length > 0) {
+    await tx
+      .delete(table)
+      .where(and(eq(table.submissionId, submissionId), inArray(table.shiftBlockId, liveIds)));
+  }
   const rows = selection.map((s) => ({
     submissionId,
     shiftBlockId: s.blockId,
@@ -185,6 +194,10 @@ async function writeSelectionAndFlags(
   // raises them. The blanket delete is intentional: it also clears any
   // position_change or revalidation_failed flag (roadmap 3.3), since the
   // student saving again is exactly the self-heal those flags wait for.
+  // orphaned_selection is the exception, re-synced at the end of this
+  // function: a student can neither see nor clear an orphaned pick, so their
+  // save is never the self-heal, and dropping the flag here would hide rows
+  // that are still in the table.
   await tx.delete(flags).where(eq(flags.submissionId, submissionId));
   if (isSubmitted) {
     if (autoAssigned) {
@@ -230,6 +243,11 @@ async function writeSelectionAndFlags(
       detail: "The student changed their availability after it was adjusted internally.",
     });
   }
+
+  // Re-raise the orphan flag the blanket delete above just cleared, against
+  // the rows as they now stand. Idempotent, and it also self-heals the case
+  // where the last orphaned pick has since been cleared.
+  await syncOrphanedSelectionFlag(tx, submissionId);
   return autoAssigned;
 }
 
@@ -442,6 +460,9 @@ export async function saveAvailabilityFor(
           eq(flags.type, "student_changed_after_internal_edit"),
         ),
       );
+    // The internal copy can carry orphaned cells of its own, and this save
+    // just rewrote its live ones. Keep the flag honest either way.
+    await syncOrphanedSelectionFlag(tx, submissionId);
     return auto;
   });
 
@@ -484,6 +505,9 @@ export async function revertInternalAvailability(student: string): Promise<Rever
       .where(
         and(eq(flags.submissionId, sub.id), eq(flags.type, "student_changed_after_internal_edit")),
       );
+    // Dropping the copy takes its orphaned cells with it, so the flag may now
+    // rest on the student's rows alone, or on nothing at all.
+    await syncOrphanedSelectionFlag(tx, sub.id);
   });
 
   if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);

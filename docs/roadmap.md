@@ -24,6 +24,14 @@ capacity warning, and the per-student schedule editor with manual overrides,
 plus 6.1 step one: the batch schedule-created email is removed. PLAN 1.00
 (same day) completed **Tier 5.2**, schedule generation Phase C.
 
+**Update (2026-08-04):** PLAN 1.11 gave the W2W position map an admin surface
+(`/admin/w2w`) with live health checks, closing the "the map has no editor" gap.
+Building it surfaced a **pattern** rather than a one-off: config that is seeded
+once or inferred automatically, has no admin surface, and fails quietly when it
+is wrong. The other instances are now **Tier 7** at the foot of this file, and
+one of them (7.1, admin access that can never be revoked) is a security hole
+rather than an ergonomics gap.
+
 ---
 
 ## Tier 0 — Bug fix (do first)
@@ -456,6 +464,167 @@ path, and the hub nav card are removed; `schedule_email_sent_at` stays in the
 schema, dead. **Step two is outstanding:** drop the column once a full schedule
 cycle has passed, confirming the scheduler is not mid-cycle on a send first (no
 migration exists yet).
+
+## Tier 7 — Configuration safety (2026-08-04 audit)
+
+> Found while building the W2W position map surface (PLAN 1.11). That work
+> closed one instance of a pattern that recurs across the app: **config that is
+> seeded once or inferred automatically, has no admin surface, and fails
+> quietly when it is wrong or drifts.** These are the other instances. None was
+> in scope for 1.11 and none is started.
+>
+> Ordering is by risk, not effort, because one of them is a security hole. Sizes
+> are estimates. Everything here is on a live production system, so the same
+> rule applies: small, well-tested diffs, and confirm anything destructive.
+
+### 7.1 Admin access can never be revoked — **M** — security, do first
+
+`admin_users` is populated only by the roster importer, from the hardcoded
+`ADMIN_TITLES` set (`roster/position-mapping.ts:63`), via an upsert
+(`roster/import.ts:214`). **There is no `delete` on that table anywhere in the
+codebase.** `reconcileAdmins` (`roster/parse.ts:270`) flips the *student* row
+off-roster and never touches `admin_users`, so a supervisor who graduates keeps
+full admin — every student's evidence, the Drive proxy, roster import, schedule
+generation — for as long as their NetID keeps signing in. `getAppSession`
+(`auth/session.ts:34`) grants on `adminEmails ∪ isAdminInDb`. This accumulates
+one or more people per academic year, silently.
+
+The only surface today is a count on `/admin/roster` ("N imported admins",
+`roster/status.ts:51`). Revocation requires `DELETE FROM admin_users` by hand.
+
+Wants: an **Admins** page listing who holds admin and how they got it (env
+allowlist vs roster-derived), with revoke for the roster-derived ones and
+last-seen from `auth/last-seen.ts`. The supervisor-title list should become
+editable config too, mirroring the shipped `ExcludedTitlesPanel` — a title
+rename at HR currently locks the new supervisor out with no signal. Item 3.3's
+as-built note ("supervisor titles stay code-side") records that as a deliberate
+choice; this item is the case for revisiting it. `ADMIN_EMAILS` is also invisible
+in-app, and listing its contents belongs on the same page.
+
+### 7.2 Roster title mappings have no viewer or editor — **M**
+
+`roster_title_mappings` is the only link between a tracker job title and a
+Muster position. `db:seed` fills it from `TITLE_TO_POSITION` **only when empty**
+(`db/seed.ts:51`) and the importer reads the stored rows thereafter
+(`roster/import.ts:115`). Mappings are created in exactly two places
+(`createPositionForTitle`, `mapTitleToPosition` in `positions/actions.ts`), and
+both are reachable **only** from a ghost-title card, which renders from
+`listGhostTitles()` — on-roster students with a null position.
+
+So a mapping made in error is permanent and invisible: the students now *have* a
+position, so the title never appears as a ghost again, and no screen lists
+existing mappings. Every later import re-applies it. Undoing costs the picks a
+second time, since `applyPositionChange` already dropped every non-time-identical
+selection on the first resolution.
+
+Wants: a **Roster titles** table on `/admin/positions` (title → position, student
+count) with re-map and delete. Same shape as the W2W map surface 1.11 shipped.
+
+### 7.3 Close inventory: unbounded range, wrong-year default, cross-term claims — **M**
+
+Four defects in one flow (`closes/admin-actions.ts`, `domain/close-claims.ts`):
+
+- **No cap on the generated range.** Validation is only "both ISO dates, end ≥
+  start, capacity 1–20" (`admin-actions.ts:61`); `generateCloseSlotDates` then
+  walks day by day and every result is inserted in one statement
+  (`admin-actions.ts:93`). A fat-fingered year writes hundreds of thousands of
+  rows inside a transaction, with no slot-count preview first. Same class as the
+  quadratic-read outage (v0.96).
+- **The default range is always fall of the current calendar year**
+  (`close-claims.ts:49`). Setting up a spring term hands the admin a range eight
+  months out, with nothing marking it wrong.
+- **Claims are not term-scoped.** `close_claims` has no term column, and
+  regeneration deliberately keeps claimed slots outside the new range
+  (`admin-actions.ts:106`) while the panel copy reassures that "assignments will
+  remain". A returning Shift Lead therefore carries last term's 3 claims in,
+  reads as complete, passes the submit gate, and is **blocked** from claiming new
+  ones (`claim-write.ts:43` returns `lead-full` at 3). Unpicking is one lead at a
+  time.
+- **Generating the inventory after SLs have submitted strands them.** The step
+  appears retroactively, but a group with `lockAfterSubmit` refuses them entry
+  (`groups/gate.ts:43`), so only manual `assignCloseClaim` recovers it.
+
+Wants: a max-range guard plus a slot-count preview before writing; the year shown
+in close dates (`formatCloseDate` prints none today, so a 2025 and a 2026 slot
+look identical); a term concept or at minimum a bulk "clear all claims"; and a
+hub alert when the newest slot is in the past.
+
+### 7.4 Drive failures that report healthy — **S**
+
+In both Drive entry points the grant is fetched **outside** the try/catch that
+stamps failure: `relay.ts:79` vs the `try` at `:81` and `markDriveFailed()` at
+`:99` (same shape at `:142`/`:144`/`:179`). So an `ENCRYPTION_KEY` rotation, or
+any corrupted ciphertext, throws out of `decryptSecret` before the stamp:
+`drive_last_error_at` never moves, the `drive-failing` alert needs
+`lastErrorAt > lastOkAt` to fire, and `drive.connected` reads true because the
+row exists. **Every proof upload fails while the hub stays green.** Token-refresh
+failures are caught correctly; this gap is specifically decrypt and no-grant.
+
+Two smaller ones alongside it: `disconnectDrive` deletes at most two rows
+(`drive/actions.ts:15`), so with three or more historical grants an older one
+silently becomes active under a different person's Google identity; and
+`proofs_folder_id` is cached forever with no invalidation (`relay.ts:61` returns
+it unconditionally), so moving or deleting the folder, or reconnecting a
+different account, needs a DB delete to recover. `upsertManagedSheet` already
+self-heals on a 404; the proofs folder has no equivalent.
+
+Wants: move the grant fetch inside the try in both functions; list all grants on
+`/admin/drive` with an explicit active/revoke control instead of the implicit
+`updated_at DESC`; a "reset proofs folder" button.
+
+### 7.5 Smaller config-safety items — **S each**
+
+- **`RESEND_API_KEY` unset in production is not caught.** `env-guard.ts` checks
+  AUTH_SECRET, ENCRYPTION_KEY, DEV_LOGIN_ENABLED, the Google credentials, and
+  NEXTAUTH_URL, but not Resend. Unset means every send is logged as "would send"
+  while the digest still stamps its last-run and reads healthy. `EMAIL_FROM` has
+  the same shape, defaulting to a personal domain baked into the code.
+- **`defaultTravelCutoff` uses the current calendar year and the wrong offset**
+  (`domain/travel.ts:52`). Run in a spring cycle and the default cutoff is months
+  in the future, so nothing is ever refused; run late in the year and everything
+  is. The comment says CST (UTC−6), but September 1 is CDT (UTC−5), so it lands
+  at 01:00 Central, not midnight. The value *is* admin-settable, so the fix is
+  the default plus a hub alert when the effective cutoff is in the past or absurdly
+  far out.
+- **Roster import silently wipes hire dates when the Start Date column moves.**
+  The column is optional, so a header the matchers miss reads as `""` → null, and
+  the upsert writes that over every stored value (`roster/import.ts:184`). The
+  summary has no field for it. Related: the Title column's `contains("position")`
+  fallback (`roster/parse.ts:155`) can bind to any new header containing
+  "position", which nulls every student's position at once. The absence guard does
+  not cover either, since it counts absent *emails* and the emails are all present.
+- **Form windows close at the start of the closing day.** The inputs are
+  `type="date"` and the bound is local midnight, with `windowState` half-open, so
+  "Closes Sep 15" kills the form at 00:00 on the 15th. Echo the resolved instant,
+  or make it end-of-day.
+- **An expired default-group window silently locks out new hires.** The sweep is
+  manual only, so a mid-cycle hire swept into a group whose window closed is
+  locked out with no alert; `closed-window-shortfall` self-clears after 14 days.
+- **`desiredCapacity` null everywhere degrades the generator quietly.** Null is
+  always valid and reads as "no cap, no need" (`seats.ts:92`, `:113`), so a run
+  with no targets anywhere still reports success while packing students onto the
+  same cells. `positionCapacityCheck` returns `no_targets` and the hub
+  deliberately stays silent. One stat tile is the only signal.
+- **`SHIFT_LEAD_POSITION_ID` is a hardcoded string** gating a whole subsystem. If
+  the Shift Lead position ever carries a different id, the closes step vanishes,
+  feasibility computes against zero leads, and `shiftLeadWeekendCloseIds()`
+  returns empty so the generator **double-books** the weekend close block the
+  manual claim flow also fills. Delete/alias are already guarded; a nonexistent
+  id is not. Wants: a setting for "which position picks weekend closes".
+- **Superseded W2W plans are never pruned.** `shift_plans` and its ~1000
+  `shift_plan_rows` per import accumulate forever, with no delete, no revert, and
+  no history list; compare `RUN_RETENTION` for schedule runs. Also nothing
+  constrains `status` to one `current` row (1.11 made both readers order by
+  `imported_at DESC` rather than rely on it).
+- **The reports that matter most are transient.** A repair run's broken-student
+  and unresolved-name lists live only in component state and are gone on refresh
+  (only the kept count persists); so do the plan import's parse issues and unknown
+  names, and the employee import's `removed` count, which is the tell for the most
+  likely real mistake, uploading a filtered employee export.
+- **`clearAlias` does not return W2W mappings.** 1.11 made `setAlias` re-point
+  them; undoing the alias leaves them on the target. Consistent with students not
+  moving back, so it may be correct as-is, but it should be a decision rather than
+  an omission.
 
 ## Completeness-validation results (2026-07-08 audit)
 

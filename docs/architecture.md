@@ -959,7 +959,8 @@ picks when resolved), always writes the `position_change` flag, and calls
 future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
 upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
 and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
-`ActionResult`): position create/deactivate/delete with reference guards,
+`ActionResult`): position create/deactivate/delete with reference guards (see
+**Position delete and its foreign keys** below),
 `setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
 `mergedIntoId` set; Shift Lead is delete- and alias-protected via
 `SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
@@ -991,9 +992,131 @@ already carried blocks and `onRosterCount`; `positions/data.ts` grew its own
 the `position_change` dismiss (`clearPositionChangeFlag` in `admin/actions.ts` +
 `ClearPositionChangeButton`), and the derived no-position pill on
 `/admin/non-responses`. Flags self-heal on save because `writeSelectionAndFlags`
-rewrites the submission's flags wholesale. Seeding is insert-only-when-empty
+rewrites the submission's flags wholesale (`orphaned_selection` excepted — see below).
+Seeding is insert-only-when-empty
 (`db/seed.ts`) for positions/blocks and title mappings; `config/positions.ts` and
 `TITLE_TO_POSITION` are initial fixtures only.
+
+### Position delete and its foreign keys (v1.10)
+
+Four tables point at a position or its blocks, and each needs a different answer,
+because the FK behavior differs and so does what the row means:
+
+- `students.position_id` and the two selection tables (through `shift_blocks`) —
+  **refuse**. These are real student data; the admin is told to deactivate instead.
+- `schedule_assignments.shift_block_id` — **refuse**. This one is easy to miss: it
+  cascades off `shift_blocks`, so deleting the position's blocks would strip shifts out
+  of a saved run with no error and no warning. It is reachable even when the checks
+  above pass, because a run outlives the picks behind it (an alias move carries
+  selections to the new position but leaves the old run's rows). Same hazard as
+  `deleteBlock`'s, which counts assignments for the same reason.
+- `roster_title_mappings.position_id` — **delete alongside**. No `onDelete`, so the
+  delete would fail on the FK otherwise, and the next roster import or ghost resolution
+  recreates the mapping anyway.
+- `w2w_position_map.muster_position_id` — **delete alongside**, but say so first. Also
+  no `onDelete` (before v1.10 this raised an unhandled FK error out of the server
+  action rather than any of the friendly refusals above).
+
+  Worth being precise about the recovery story, because it differs from every other row
+  here. Each plan import **does** re-verify the mapping — `matchPlan` runs against the
+  live map and blocks on every upload, and the plan page lists what it could not place
+  under "Shifts with no matching block". What it does not do is re-create a mapping:
+  `importShiftPlanFromUpload` seeds `W2W_POSITION_MAP_SEED` only when the map is
+  **entirely empty** (the first-import-on-a-fresh-prod-DB case), and it filters that
+  seed to positions this DB actually has. Deleting one position's mappings leaves the
+  rest of the map populated, so the seed never fires again — and there is no admin
+  screen for editing the map, so nothing in the app can put the row back.
+
+  The consequence is bounded and safe rather than destructive: those plan rows stop
+  matching, so `fillPlan` leaves their seats open (`""`) and the export ships them with
+  no names. Nothing is overwritten; Muster just contributes no recommendation for those
+  shifts. That is what the delete confirm says, via a `w2wMappingCount` on
+  `listPositionsAdmin`. It is deliberately **not** reported afterwards: a successful
+  delete unmounts the card, taking any message with it.
+
+  Since v1.11 the map **has** an editor (`/admin/w2w`), so this is recoverable in-app:
+  the delete still takes the mappings, but the admin can add them back. The confirm
+  still names the count, because the cost is real between the delete and the re-map.
+
+### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
+
+Selections point at a block **id**, so the two block edits diverge. A **time edit** is
+still an in-place `UPDATE`: picks follow the block to its new hours (the confirm spells
+that out), and `savePosition` now diffs the old times to find the genuinely `retimed`
+blocks and re-runs `syncRevalidationFlag` for everyone holding them. A **removal** of a
+picked block can't delete the row (the FK is `RESTRICT`, and the times are the only
+record of what the student chose), so `deleteBlock` stamps `shift_blocks.retired_at`
+instead; `restoreBlock` is the undo. An unreferenced block is still hard-deleted, where
+"referenced" counts `shift_selections`, `internal_selections`, **and**
+`schedule_assignments` (that last one cascades, so a hard delete would silently strip
+shifts out of a saved run).
+
+The invariant is **every live block read filters `isNull(retiredAt)`** —
+`loadPositionWithBlocks`, `loadHighDemandCells` (both the targets *and* the count query,
+which needs its own join to `shift_blocks`), `loadStudentDetail`, `loadCoverage`, the
+dashboard snapshot, `export-data`, `generateSchedule`, `loadScheduleBoard`, manual
+assignment, `syncRevalidationFlag`, and `applyPositionChange`'s target set. Deliberately
+**un**filtered: `listPositionsAdmin` (the config page is the one place a retired block
+shows, so it can be put back), `orphans.ts` (it needs the retired row to know the time),
+the `scheduleAssignments → shiftBlocks` joins (historical runs), and carry-over's
+source-block lookup by id.
+
+Picks on a non-live block are **orphaned**. The pure seam is `domain/orphans.ts`
+(`partitionSelection`/`knownSelection`): every calculation consumes `.known`, which is
+also what stops `computeCapacity`'s `throw new Error("Selection references unknown
+block")` from 500ing a page. Server side is `positions/orphans.ts` (plain module, CLI-safe
+like `apply-change.ts`): `loadOrphanedCells` merges the student's rows and the internal
+copy per `(block, day)` and resolves each back to its times; `syncOrphanedSelectionFlag`
+is the single idempotent owner of the `orphaned_selection` flag (delete-then-insert, so
+it can never stack); `syncOrphanFlagsForBlocks` fans that out over everyone holding a
+given block. Both `loadOrphanedCells` and `applyPositionChange` treat "no live blocks at
+all" as **not** orphaned — a ghost resolution creates a position before its shifts exist,
+and calling every row dead there would invite an admin to delete a whole real
+availability. `createBlock` closes that loop: adding the first live block to a blockless
+position runs `resolveDeferredCarryOver`, the pending carry-over a deferred move left.
+
+Two write-path subtleties keep orphans stable. `replaceSelectionCells` deletes only rows
+whose block is in the **live** set, so a student save (which can't see orphans) preserves
+them; and because `writeSelectionAndFlags` still wipes flags wholesale, it re-runs
+`syncOrphanedSelectionFlag` at the end. Carry-over only moves picks off **live** source
+blocks — it matches on time, so an orphan sharing hours with a target block would
+otherwise return as a real pick the student never re-offered.
+
+Read side: `admin/data.ts` returns `orphaned: OrphanedCell[]` alongside the partitioned
+selection; `PrefGridCalculator` renders one greyed, struck-through row per dead shift
+under the live rows (hatched fill, red ✓, `removed` tag), every cell `disabled` except a
+picked one, which clears via `removeOrphanedSelection` (`admin/actions.ts`, admin-gated,
+re-checks orphan status **inside** the transaction against a concurrent restore, deletes
+from both tables, re-syncs both flags). Flag surfacing follows the `revalidation_failed`
+precedent exactly: `FLAG_LABELS` ("Shift removed"), `ALERT_FLAGS` in `ResponseList`, the
+`storedAlerts` filter on the per-student page, and an `orphaned-selections` **danger**
+alert in `buildAlerts`. It is deliberately **not** in `DismissableFlag`: the only way it
+clears is clearing the data.
+
+**Interaction with the generator and the W2W round-trip (v1.10).** Retirement was built
+in parallel with non-responder fill-ins (1.08) and the W2W round-trip (1.09), so the
+seams where they meet are worth naming:
+
+- `generateSchedule` filters its block query, but the *selection* queries do not, so it
+  drops dead cells itself (`liveBlockIds`) before building `engineStudents` — and does
+  the same to each internal copy, since an override replaces a selection wholesale. The
+  engine skipping unknown blocks is **not** sufficient cover: repair seeding
+  (`w2w/repair.ts` → `domain/w2w-plan/repair-seeds.ts`) tests a plan row against a
+  student's selection without consulting the engine's block map, so a dead cell left in
+  there freezes a student onto a shift that no longer runs, and frozen students are
+  never re-solved.
+- A fill-in's availability goes through the pure `fillInSelection`
+  (`domain/scheduling/availability.ts`), which drops dead draft cells **before** the
+  "did they tell us anything?" test. Otherwise a stale draft surviving only as orphans
+  reads as an answer and leaves the student schedulable nowhere, absent from every
+  warning list — the exact case the full-availability fallback exists for.
+- `w2w/plan-data.ts` `loadPlanMatchInputs` is the single block read behind plan
+  matching, the plan page, the staffing-target write, the filled export, and repair
+  seeding, so it is the one place the retired filter belongs. It matters more here than
+  elsewhere because `domain/w2w-plan/match.ts` matches on **shape** (position, day-type,
+  start, end) rather than id: after the ordinary "remove a shift, add a corrected one"
+  edit, an unfiltered read would let the dead original answer for its own hours and win
+  over its live replacement.
 
 ## Schedule coverage (roadmap 5.1, docs/schedule-generation-plan.md Phase A, v0.79)
 
@@ -1199,6 +1322,66 @@ every read so `/admin/positions` edits and mapping refreshes reflect
 immediately and nothing stale persists. `w2w_position_map` seeds itself on
 first import when `db:seed` never ran (prod runs only migrations); `db:seed`
 backfills missing entries without touching existing rows.
+
+### The position map surface (`/admin/w2w`, v1.11)
+
+The map is the only link between a W2W position and a Muster one, and every way it can
+be wrong is quiet. `matchPlan` resolves a row, `fillPlan` zips students onto seats by
+`(blockId, day)` alone, and the file ships: **nothing downstream re-checks that the
+students landing on a W2W shift hold the position that shift belongs to.** So a mapping
+pointing at the wrong position writes the wrong people onto real shifts with every
+screen reporting success. That is why the checks are up front rather than after the
+fact, and why each message says what the admin will see in the exported file.
+
+**Layering.** Pure `domain/w2w-plan/map-health.ts` owns every rule (`mapHealthIssues`);
+`w2w/map-data.ts` loads the inputs once for both consumers (`getW2wMapPageModel` for the
+page, `getW2wMapIssues` for the hub alert) and `w2w/map-actions.ts` holds the three
+mutations. `domain/w2w-plan/match.ts` exports `buildMapResolver`, which both matching
+and the health checks resolve through, so "unmapped" on the page can never disagree with
+what matching actually did.
+
+**The checks**, all derived live: a W2W position in the plan with no mapping; a mapping
+whose target no longer exists, is an **alias**, is inactive, or has **no live blocks**;
+two mappings sharing a Muster position *and* a fill order; and a mapping the current
+plan never uses. Dangers mean shifts export nameless and reach the hub as one
+`w2w-map-broken` alert plus a nav count; warnings stay on the page.
+
+The **alias** case is the sharp one. `setAlias` moves students to the target but the
+source keeps its blocks, so plan rows go on matching them and the plan report still
+counts them as *matched* while nobody can ever be assigned there. v1.11 fixes the cause
+(`repointW2wMappings` follows the students inside the same transaction) and keeps the
+check for maps that drifted before it, or via a route that does not go through
+`setAlias`. Aliases are never offered in the target picker and are refused server-side.
+
+**Plan reads are aggregates.** `map-data.ts` groups `shift_plan_rows` by
+`w2w_position_id` rather than loading the plan (a week is ~1000 rows) and reads plan meta
+with `ORDER BY imported_at DESC LIMIT 1`, since nothing constrains `status` to one
+`current` row. This matters because the hub calls it on every load.
+
+**Also on the surface:** the plan's A/B `rotation_week`, editable via
+`setPlanRotationWeek` (it is chosen once at upload, decides which cohort a weekend name
+resolves to in repair mode, and previously needed a full re-upload to correct), and W2W
+name coverage over the roster (the export's fallback warning only covers students the
+current run happened to place).
+
+**Export loss warning (v1.11).** The export is a full refill: `fillPlan` ignores
+`row.employeeName`, so an imported name the run does not reproduce is simply gone and its
+seat ships open. `export-data.ts` now diffs the imported names against the emails filled
+across **both** week files (a weekend student appears in only one) and reports
+`droppedNames`, splitting names it can resolve from ones it cannot. Correct when the
+schedule really moved someone; silent data loss when the plan was uploaded to be repaired
+and repair mode was never turned on.
+
+**Seed fixture.** `W2W_POSITION_MAP_SEED`'s `GDEC - R&C TM` row named
+`retail-and-cafe-team-member`, a position id that never existed, so **both** seed paths
+filtered it out in silence and those shifts could never be filled. Fixed to `barista`,
+matching `TITLE_TO_POSITION`, and `config/w2w-position-map.test.ts` now asserts every
+seed row targets a real position, that the two fixtures agree, and that shared-position
+rows carry distinct fill orders. Note this only helps a **fresh** database: the importer
+self-seeds only into an entirely empty map and deploys run migrations without `db:seed`,
+so on an existing box the row has to be added on `/admin/w2w`. Barista is weekend exempt,
+so a weekend `R&C TM` row would match nothing; `target_no_weekend_blocks` catches exactly
+that rather than letting it pass as healthy.
 
 **Identity.** `w2w_employees` (email PK, name, number; refreshed by uploading
 the Employee Details export; address/phone never ingested). Export writes the

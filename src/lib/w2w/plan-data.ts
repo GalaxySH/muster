@@ -7,7 +7,7 @@ import "server-only";
  * edits on /admin/positions or a remapped position show up immediately
  * instead of leaving stale resolutions in the DB.
  */
-import { asc, count, eq, max } from "drizzle-orm";
+import { asc, count, desc, eq, isNull, max } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   positions,
@@ -50,8 +50,14 @@ export interface PlanMatchInputs {
 export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
   const db = getDb();
   const [mapRows, blockRows, positionRows] = await Promise.all([
-    db.select().from(w2wPositionMap),
-    db.select().from(shiftBlocks),
+    // Ordered: resolution is first-wins by id and by name, so an unordered
+    // read could resolve a duplicated name differently between requests.
+    db.select().from(w2wPositionMap).orderBy(asc(w2wPositionMap.w2wPositionId)),
+    // Retired shifts are not candidates (PLAN §6.2a). Matching is by shape, not
+    // id, so a retired block would otherwise still answer for its own hours —
+    // and after the usual "remove a shift, add a corrected one" edit the dead
+    // original would win over its live replacement, since it was inserted first.
+    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
     db.select({ id: positions.id, name: positions.name }).from(positions),
   ]);
   return {
@@ -75,10 +81,13 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
 
 export async function getCurrentPlan(): Promise<CurrentPlan | null> {
   const db = getDb();
+  // Newest first: nothing constrains `status` to a single `current` row, and
+  // an unordered pick would let this and the map page name different plans.
   const [meta] = await db
     .select()
     .from(shiftPlans)
     .where(eq(shiftPlans.status, "current"))
+    .orderBy(desc(shiftPlans.importedAt))
     .limit(1);
   if (!meta) return null;
 

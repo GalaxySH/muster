@@ -17,6 +17,7 @@ import {
   faList,
   faMoon,
   faPlaneDeparture,
+  faRightLeft,
   faTableList,
   faTriangleExclamation,
   faUniversalAccess,
@@ -144,6 +145,14 @@ export default async function AdminPage() {
               count={snapshot.ghostTitles.length > 0 ? snapshot.ghostTitles.length : undefined}
               countTone="warning"
               countLabel="roster titles with no position"
+            />
+            <NavCard
+              icon={faRightLeft}
+              title="W2W positions"
+              href="/admin/w2w"
+              count={view.w2wMapProblems > 0 ? view.w2wMapProblems : undefined}
+              countTone="danger"
+              countLabel="W2W position mapping problems"
             />
             <NavCard icon={faFileImport} title="Roster import" href="/admin/roster" />
             <NavCard icon={faGoogleDrive} title="Google Drive" href="/admin/drive" />

@@ -89,9 +89,17 @@ export function PositionCard({
         );
       }
     }
+    // A time change keeps every pick on the block, so students who chose the old
+    // hours end up offering the new ones without being asked. Spell that out:
+    // it is the whole risk of the edit, and the save re-checks everyone after.
     if (
       repicked.length > 0 &&
-      !confirm(`Students have picked these shifts: ${repicked.join(", ")}. Change their times?`)
+      !confirm(
+        `Students have picked these shifts: ${repicked.join(", ")}.\n\n` +
+          "Their picks move to the new times. Anyone who no longer meets their hours will be flagged on the response list.\n\n" +
+          "To take a shift away instead of moving it, remove it and add a new one.\n\n" +
+          "Change the times?",
+      )
     ) {
       return;
     }
@@ -127,9 +135,13 @@ export function PositionCard({
           res.failing === 0
             ? "No submissions fail checks."
             : `${plural(res.failing, "student")} now fail${res.failing === 1 ? "s" : ""} checks.`;
+        const w2w =
+          res.remapped > 0
+            ? ` ${plural(res.remapped, "W2W position")} now ${res.remapped === 1 ? "maps" : "map"} to ${target.name}.`
+            : "";
         setMsg({
           ok: true,
-          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}`,
+          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}${w2w}`,
         });
         setAliasTarget("");
         router.refresh();
@@ -198,9 +210,7 @@ export function PositionCard({
             disabled={pending}
             onClick={() => {
               if (
-                confirm(
-                  `Remove the alias on ${position.name}? It becomes its own position again.`,
-                )
+                confirm(`Remove the alias on ${position.name}? It becomes its own position again.`)
               ) {
                 act(() => clearAlias(position.id), "Alias removed.");
               }
@@ -253,7 +263,17 @@ export function PositionCard({
             disabled={pending}
             style={{ color: "var(--color-text-danger)" }}
             onClick={() => {
-              if (confirm(`Delete ${position.name}? Its blocks and title mappings go with it.`)) {
+              // The W2W mappings are called out separately: they go with the
+              // position, and until they are set up again on the W2W positions
+              // page those shifts export with nobody on them.
+              const n = position.w2wMappingCount;
+              const w2w =
+                n > 0
+                  ? ` ${plural(n, "W2W position")} ${n === 1 ? "maps" : "map"} to it, so ${n === 1 ? "its" : "their"} shifts will export with no names until you map ${n === 1 ? "it" : "them"} again on the W2W positions page.`
+                  : "";
+              if (
+                confirm(`Delete ${position.name}? Its blocks and title mappings go with it.${w2w}`)
+              ) {
                 act(() => deletePosition(position.id), "Deleted.");
               }
             }}

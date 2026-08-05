@@ -6,7 +6,8 @@
  * response list (by display name) for a stable sheet/CSV.
  */
 import "server-only";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { partitionSelection } from "@/lib/domain/orphans";
 import { getDb } from "@/lib/db";
 import {
   positions,
@@ -67,7 +68,10 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
 
   const [blockRows, selRows, internalRows, flagRows, travelRows, ecRows] = await Promise.all([
     positionIds.length
-      ? db.select().from(shiftBlocks).where(inArray(shiftBlocks.positionId, positionIds))
+      ? db
+          .select()
+          .from(shiftBlocks)
+          .where(and(inArray(shiftBlocks.positionId, positionIds), isNull(shiftBlocks.retiredAt)))
       : Promise.resolve([]),
     db.select().from(shiftSelections).where(inArray(shiftSelections.submissionId, subIds)),
     db
@@ -76,7 +80,10 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       .where(inArray(internalAvailability.submissionId, subIds)),
     db.select().from(flags).where(inArray(flags.submissionId, subIds)),
     db.select().from(travelRequests).where(inArray(travelRequests.submissionId, subIds)),
-    db.select().from(extracurricularFiles).where(inArray(extracurricularFiles.submissionId, subIds)),
+    db
+      .select()
+      .from(extracurricularFiles)
+      .where(inArray(extracurricularFiles.submissionId, subIds)),
   ]);
 
   // The sheet keeps showing the student's own answers; this marker says an
@@ -139,6 +146,14 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
           }
         : null;
 
+    const blocks = b.positionId ? (blocksByPosition.get(b.positionId) ?? []) : [];
+    // Drop picks on removed shifts before the export does any arithmetic with
+    // them: `blocks` is live-only, and computeCapacity throws on a block it
+    // can't resolve. They are not availability, so they don't belong in the
+    // exported hours or day counts either.
+    const selection = partitionSelection(selectionBySub.get(b.submissionId) ?? [], blocks).known;
+    const autoAssigned = partitionSelection(autoBySub.get(b.submissionId) ?? [], blocks).known;
+
     return {
       email: b.email,
       displayName: b.displayName,
@@ -146,7 +161,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       onRoster: b.onRoster,
       positionName: b.positionName ?? null,
       position,
-      blocks: b.positionId ? (blocksByPosition.get(b.positionId) ?? []) : [],
+      blocks,
       status: b.status,
       scheduled: b.scheduled,
       desiredHours: b.desiredHours,
@@ -155,8 +170,8 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       updatedAt: b.updatedAt,
       studentNotes: b.studentNotes ?? "",
       schedulerNotes: b.schedulerNotes ?? "",
-      selection: selectionBySub.get(b.submissionId) ?? [],
-      autoAssigned: autoBySub.get(b.submissionId) ?? [],
+      selection,
+      autoAssigned,
       internalAdjusted: internalSubIds.has(b.submissionId),
       flags: flagsBySub.get(b.submissionId) ?? [],
       courseScheduleFileId: b.courseScheduleFileId ?? null,

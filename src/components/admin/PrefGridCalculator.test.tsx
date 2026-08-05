@@ -12,11 +12,17 @@ vi.mock("@/lib/schedule/manual", () => ({
   removeManualAssignment: vi.fn(async () => ({ ok: true })),
 }));
 
+vi.mock("@/lib/admin/actions", () => ({
+  removeOrphanedSelection: vi.fn(async () => ({ ok: true })),
+}));
+
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 import { PrefGridCalculator } from "./PrefGridCalculator";
+import type { OrphanedCell } from "@/lib/positions/orphans";
 import { saveAvailabilityFor } from "@/lib/availability/actions";
+import { removeOrphanedSelection } from "@/lib/admin/actions";
 import { removeManualAssignment, setManualAssignment } from "@/lib/schedule/manual";
 import { buildAdminGrid, type AssignedCellRef } from "@/lib/admin/summary";
 import { demandCellKey } from "@/lib/domain/demand";
@@ -64,6 +70,7 @@ function renderCalc(
     hasSchedule?: boolean;
     isInternal?: boolean;
     studentCells?: SelectedShift[] | null;
+    orphans?: OrphanedCell[];
   } = {},
 ) {
   return render(
@@ -85,6 +92,7 @@ function renderCalc(
       hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
       isInternal={opts.isInternal ?? false}
       studentCells={opts.studentCells ?? null}
+      orphans={opts.orphans ?? []}
     />,
   );
 }
@@ -380,6 +388,7 @@ describe("PrefGridCalculator", () => {
           hasSchedule={false}
           isInternal={false}
           studentCells={null}
+          orphans={[]}
         />,
       );
       expect(screen.getByText("preferred")).toBeInTheDocument();
@@ -557,9 +566,9 @@ describe("PrefGridCalculator", () => {
         expect.stringContaining("not in the saved copy"),
       );
       // A cell the copy kept carries no diff cue.
-      expect(
-        screen.getByRole("button", { name: "8a–12p Mon" }).getAttribute("title"),
-      ).toBe("In trial schedule");
+      expect(screen.getByRole("button", { name: "8a–12p Mon" }).getAttribute("title")).toBe(
+        "In trial schedule",
+      );
       // The legend explains both rings.
       expect(screen.getByText(/not picked by the student/)).toBeInTheDocument();
       expect(screen.getByText(/their pick, not in this copy/)).toBeInTheDocument();
@@ -570,15 +579,97 @@ describe("PrefGridCalculator", () => {
       renderCalc({ selection: internalSel, isInternal: true, studentCells });
 
       await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
-      expect(
-        screen.getByRole("button", { name: "8a–12p Tue" }).getAttribute("title"),
-      ).toBe("In trial schedule");
+      expect(screen.getByRole("button", { name: "8a–12p Tue" }).getAttribute("title")).toBe(
+        "In trial schedule",
+      );
     });
 
     it("shows no diff cues without an internal copy", () => {
       renderCalc();
       expect(screen.queryByText(/not picked by the student/)).not.toBeInTheDocument();
       expect(screen.queryByText(/their pick, not in this copy/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("orphaned picks (removed shifts)", () => {
+    // A retired weekday shift the student had picked on Mon and Wed.
+    const orphans: OrphanedCell[] = [
+      {
+        blockId: "gone",
+        day: "mon",
+        dayType: "weekday",
+        start: parseTime("6a"),
+        end: parseTime("10a"),
+        label: "Mon 6a–10a",
+        retired: true,
+        fromStudent: true,
+        fromInternal: false,
+      },
+      {
+        blockId: "gone",
+        day: "wed",
+        dayType: "weekday",
+        start: parseTime("6a"),
+        end: parseTime("10a"),
+        label: "Wed 6a–10a",
+        retired: true,
+        fromStudent: true,
+        fromInternal: false,
+      },
+    ];
+
+    const orphanCell = (day: string) =>
+      screen.getByRole("button", { name: `6a–10a ${day} on a removed shift` });
+
+    it("renders one row per removed shift, marked and struck through", () => {
+      renderCalc({ orphans });
+      expect(screen.getByText("removed")).toBeInTheDocument();
+      // Every day of the sub-grid gets a cell, picked or not.
+      for (const d of ["Mon", "Tue", "Wed", "Thu", "Fri"]) {
+        expect(orphanCell(d)).toBeInTheDocument();
+      }
+    });
+
+    it("disables every cell the student did not pick, so nothing can be added", () => {
+      renderCalc({ orphans });
+      expect(orphanCell("Tue")).toBeDisabled();
+      expect(orphanCell("Thu")).toBeDisabled();
+      expect(orphanCell("Tue").getAttribute("title")).toBe(
+        "This shift was removed and can't be picked.",
+      );
+    });
+
+    it("leaves the picked cells clickable, to clear them", () => {
+      renderCalc({ orphans });
+      expect(orphanCell("Mon")).toBeEnabled();
+      expect(orphanCell("Wed")).toBeEnabled();
+      expect(orphanCell("Mon").getAttribute("title")).toBe(
+        "This shift was removed. Click to clear this pick.",
+      );
+    });
+
+    it("clearing a picked cell calls the remove action for that exact cell", async () => {
+      const user = userEvent.setup();
+      renderCalc({ orphans });
+
+      await user.click(orphanCell("Wed"));
+      await waitFor(() =>
+        expect(removeOrphanedSelection).toHaveBeenCalledWith("stu@wisc.edu", "gone", "wed"),
+      );
+      // The server owns the outcome, so the page re-reads rather than guessing.
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+    });
+
+    it("never counts an orphaned pick toward the hours readout", () => {
+      // The two orphaned Mon/Wed cells are 4h each. If they counted at all, the
+      // 10h capacity would move; a removed shift is not availability.
+      renderCalc({ orphans });
+      expect(screen.getByText("10h")).toBeInTheDocument();
+    });
+
+    it("shows no removed row when there are no orphans", () => {
+      renderCalc();
+      expect(screen.queryByText("removed")).not.toBeInTheDocument();
     });
   });
 });

@@ -14,7 +14,7 @@ import {
 } from "@/lib/domain/config-validation";
 import { hhmmToMinutes, minutesToHHMM } from "@/lib/domain/time";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
-import { createBlock, deleteBlock } from "@/lib/positions/actions";
+import { createBlock, deleteBlock, restoreBlock } from "@/lib/positions/actions";
 import type { AdminBlockItem } from "@/lib/positions/data";
 
 const DAY_TYPES: { dayType: DayType; label: string }[] = [
@@ -78,7 +78,7 @@ export function parseBlockRow(
  */
 export function BlockEditor({
   position,
-  blocks,
+  blocks: allBlocks,
   onRosterCount,
   edits,
   onEdit,
@@ -105,6 +105,12 @@ export function BlockEditor({
 
   const valueOf = (b: AdminBlockItem) => edits[b.id] ?? savedBlockRow(b);
 
+  // Retired shifts are config history, not config: they are excluded from the
+  // derived open/close, the warnings, and the capacity check, exactly as every
+  // other read excludes them. They only render so the admin can put one back.
+  const blocks = allBlocks.filter((b) => !b.retired);
+  const retiredBlocks = allBlocks.filter((b) => b.retired);
+
   // The live view the Open/Close tags, warnings, and capacity check derive from.
   const liveBlocks: ShiftBlock[] = blocks.map((b) => {
     const v = valueOf(b);
@@ -130,11 +136,32 @@ export function BlockEditor({
   const seatHours = seatHoursPerWeek(liveBlocks);
 
   function removeBlock(b: AdminBlockItem) {
-    if (!confirm("Remove this block?")) return;
+    const picks = b.realPickCount;
+    const warning =
+      b.selectionCount > 0
+        ? `${picks > 0 ? `${picks} student${picks === 1 ? " has" : "s have"} picked this shift. ` : ""}Removing it takes it off their availability and out of scheduling. Their picks stay on their response for you to clear. Remove it?`
+        : "Remove this shift?";
+    if (!confirm(warning)) return;
     setMsg(null);
     startTransition(async () => {
       const res = await deleteBlock(b.id);
-      setMsg({ ok: res.ok, text: res.ok ? "Block removed." : (res.error ?? "Failed.") });
+      setMsg({
+        ok: res.ok,
+        text: res.ok
+          ? res.retired
+            ? `Shift removed. ${res.orphaned} response${res.orphaned === 1 ? "" : "s"} now ${res.orphaned === 1 ? "has" : "have"} a pick to clear.`
+            : "Shift removed."
+          : (res.error ?? "Failed."),
+      });
+      if (res.ok) router.refresh();
+    });
+  }
+
+  function putBackBlock(b: AdminBlockItem) {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await restoreBlock(b.id);
+      setMsg({ ok: res.ok, text: res.ok ? "Shift put back." : (res.error ?? "Failed.") });
       if (res.ok) router.refresh();
     });
   }
@@ -222,11 +249,11 @@ export function BlockEditor({
                     )}
                     <button
                       type="button"
-                      disabled={busy || b.selectionCount > 0}
+                      disabled={busy}
                       title={
                         b.selectionCount > 0
-                          ? `${b.selectionCount} student pick${b.selectionCount === 1 ? "" : "s"} reference this block`
-                          : undefined
+                          ? "Take this shift out of scheduling. Picks already on it stay on each response for you to clear."
+                          : "Remove this shift."
                       }
                       style={{ color: "var(--color-text-danger)" }}
                       onClick={() => removeBlock(b)}
@@ -287,6 +314,39 @@ export function BlockEditor({
                   Add block
                 </button>
               </div>
+
+              {/* Removed shifts students had already picked. Kept visible so the
+                  admin can undo a removal; putting one back makes those picks
+                  count again. */}
+              {retiredBlocks
+                .filter((b) => b.dayType === dayType)
+                .map((b) => (
+                  <div key={b.id} style={{ ...row, opacity: 0.75 }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        textDecoration: "line-through",
+                        color: "var(--color-text-tertiary)",
+                      }}
+                    >
+                      {minutesToHHMM(b.start)} to {minutesToHHMM(b.end)}
+                    </span>
+                    <span style={removedTag}>removed</span>
+                    {b.realPickCount > 0 && (
+                      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                        {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"} left to clear
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      title="Put this shift back. Picks still on it count again."
+                      onClick={() => putBackBlock(b)}
+                    >
+                      Put back
+                    </button>
+                  </div>
+                ))}
             </div>
           );
         })}
@@ -363,3 +423,8 @@ const tagBase: React.CSSProperties = {
 };
 const openTag: React.CSSProperties = { ...tagBase, background: "#e6f4ea", color: "#196127" };
 const closeTag: React.CSSProperties = { ...tagBase, background: "#e7f0fb", color: "#1a66cc" };
+const removedTag: React.CSSProperties = {
+  ...tagBase,
+  background: "#fdecec",
+  color: "var(--color-text-danger)",
+};

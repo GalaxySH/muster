@@ -3,12 +3,13 @@
  * Resolves the signed-in student → position → blocks → existing draft.
  */
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
+import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
 export interface PositionWithBlocks {
@@ -16,7 +17,12 @@ export interface PositionWithBlocks {
   blocks: ShiftBlock[];
 }
 
-/** Load a position and its blocks (authoritative copy used by the save action). */
+/**
+ * Load a position and its LIVE blocks (authoritative copy used by the save
+ * action). Retired blocks are left out everywhere a block set drives behavior:
+ * they are gone as far as students, the rules, and the generator are concerned,
+ * and picks left on them are orphaned (lib/positions/orphans.ts).
+ */
 export async function loadPositionWithBlocks(
   positionId: string,
 ): Promise<PositionWithBlocks | null> {
@@ -26,7 +32,7 @@ export async function loadPositionWithBlocks(
   const blockRows = await db
     .select()
     .from(shiftBlocks)
-    .where(eq(shiftBlocks.positionId, positionId));
+    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
   return { position: toDomainPosition(posRow), blocks: blockRows.map(toDomainBlock) };
 }
 
@@ -46,7 +52,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
   const blockRows = await db
     .select({ id: shiftBlocks.id, target: shiftBlocks.desiredCapacity })
     .from(shiftBlocks)
-    .where(eq(shiftBlocks.positionId, positionId));
+    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
   const targets = new Map<string, number | null>(blockRows.map((b) => [b.id, b.target ?? null]));
 
   const rows = await db
@@ -58,6 +64,10 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     .from(shiftSelections)
     .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
     .innerJoin(students, eq(submissions.studentEmail, students.email))
+    // Join the block so picks on a removed shift can't be counted. They render
+    // nowhere, but an uncounted target would let them into the contention
+    // ranking and push a genuinely busy cell out of it.
+    .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(
       and(
         eq(students.positionId, positionId),
@@ -65,6 +75,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
         eq(submissions.status, "submitted"),
         // Machine-assigned weekend cells aren't preferences; don't count them.
         eq(shiftSelections.autoAssigned, false),
+        isNull(shiftBlocks.retiredAt),
       ),
     )
     .groupBy(shiftSelections.shiftBlockId, shiftSelections.day);
@@ -141,12 +152,19 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
       .select()
       .from(shiftSelections)
       .where(eq(shiftSelections.submissionId, subRow.id));
-    selection = selRows
-      .filter((r) => !r.autoAssigned)
-      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
-    autoAssigned = selRows
-      .filter((r) => r.autoAssigned)
-      .map((r) => ({ blockId: r.shiftBlockId, day: r.day }));
+    // Picks on a removed shift are dropped here, before anything downstream
+    // sees them: this feeds the wizard's validateAvailability, and
+    // computeCapacity throws on a block it can't resolve. Students never see
+    // an orphaned pick, so there is nothing for them to act on either.
+    const blocks = posWithBlocks?.blocks ?? [];
+    selection = partitionSelection(
+      selRows.filter((r) => !r.autoAssigned).map((r) => ({ blockId: r.shiftBlockId, day: r.day })),
+      blocks,
+    ).known;
+    autoAssigned = partitionSelection(
+      selRows.filter((r) => r.autoAssigned).map((r) => ({ blockId: r.shiftBlockId, day: r.day })),
+      blocks,
+    ).known;
   }
 
   return {

@@ -190,6 +190,13 @@
       "when": 1785858171017,
       "tag": "0026_burly_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1785866275721,
+      "tag": "0027_reflective_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

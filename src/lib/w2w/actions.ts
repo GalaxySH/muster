@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { getAppSession } from "@/lib/auth/session";
 import {
@@ -171,6 +171,43 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
       issues: parsed.issues.slice(0, 5).map((i) => `Row ${i.row}: ${i.message}`),
     },
   };
+}
+
+/**
+ * Correct which weekend rotation the current plan represents. It is picked at
+ * upload and decides the cohort a weekend name resolves to in repair mode, so
+ * getting it wrong flips the rotation of every weekend student who is not an
+ * every-weekend opt-in. Re-uploading the file to fix one radio button would
+ * supersede the plan and throw away the row set for no reason.
+ */
+export async function setPlanRotationWeek(
+  planId: string,
+  rotationWeek: "a" | "b",
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await getAppSession();
+  if (!session) return { ok: false, error: "You are not signed in." };
+  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+  if (rotationWeek !== "a" && rotationWeek !== "b") {
+    return { ok: false, error: "Pick week A or week B." };
+  }
+
+  // Checked directly rather than through affectedRows, which counts CHANGED
+  // rows: setting the rotation it already has would otherwise look like the
+  // plan had been superseded, and re-uploading to "fix" that throws away a
+  // perfectly good plan.
+  const db = getDb();
+  const [current] = await db
+    .select({ id: shiftPlans.id })
+    .from(shiftPlans)
+    .where(and(eq(shiftPlans.id, planId), eq(shiftPlans.status, "current")))
+    .limit(1);
+  if (!current) return { ok: false, error: "That plan is no longer the current one." };
+
+  await db.update(shiftPlans).set({ rotationWeek }).where(eq(shiftPlans.id, planId));
+
+  revalidatePath("/admin/schedule/plan");
+  revalidatePath("/admin/w2w");
+  return { ok: true };
 }
 
 export interface EmployeesImportResult {

@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.08
-- **Last updated:** 2026-08-03
+- **Version:** 1.11
+- **Last updated:** 2026-08-04
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -317,6 +317,36 @@ attaches to each). Editable config so they can be merged further later.
   (per day) with a red mark plus a short steering hint, advisory only. (The old
   `shift_blocks.high_demand` column was retired.)
 
+### 6.2a Block lifecycle & orphaned picks
+Selections reference a block **by id**, so what an admin does to a block decides what
+happens to every pick already on it. The two edits differ on purpose:
+
+- **Changing a block's times** keeps the picks. The row is updated in place, so the
+  students who chose it now offer the **new** hours. The editor confirms this before
+  saving, and the save re-runs every affected student's checks, so anyone the new hours
+  drop under their floor surfaces as `revalidation_failed` instead of changing silently.
+- **Removing a block** that has picks (the students' own or an internal copy's, §10a)
+  **retires** it rather than deleting it: `shift_blocks.retired_at` is stamped and the
+  row survives, purely so those picks keep a time to display. A block nothing references
+  is still deleted outright. Retiring is reversible ("Put back").
+
+Every live read filters retired blocks out, so a retired block is **gone** from the
+student grid, the rules engine, capacity, coverage, high-demand, the export, and the
+generator. The picks left behind are **orphaned**: dead data that counts toward nothing.
+
+Orphans are **admin-only**. Students never see one and so can never clear one; a student
+save preserves them untouched. The admin sees each orphaned shift as its own disabled,
+struck-through row on the per-student grid (§10a) showing the hours originally picked —
+cells that were never picked can't be selected, and a picked cell is clickable **only**
+to clear it, which removes it from the student's rows and the internal copy alike. The
+submission carries an `orphaned_selection` flag ("Shift removed") naming the dead shifts,
+which raises a **danger** alert on the hub and a red pill on the response list.
+
+A position with **no live blocks at all** (a ghost resolution creates one before its
+shifts exist) is *not* treated as orphaning everything: the carry-over is still pending,
+and calling every row dead would invite an admin to delete a whole real availability.
+Adding that position's first block runs the deferred carry-over instead.
+
 ### 6.3 Canonical block table
 **Initial** per-position blocks (provided 2026-06) — this is the seed fixture
 (`config/positions.ts`), inserted only into an empty database; once seeded, the DB is
@@ -577,7 +607,8 @@ columns from the roster.
   policy; false = late, stored when the admin's accept-late toggle is on — §7b),
   `resolved: bool` (admin review marker — §10a).
 - **Flag**: `submissionId`, `type` (`auto_assigned_weekend`, `travel_late`,
-  `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`),
+  `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`,
+  `orphaned_selection`),
   `detail`. `position_change` is written on
   any position modification of a student holding a submission (import, alias switch,
   ghost resolution; detail carries old/new position + picks kept/dropped) and clears on
@@ -588,7 +619,11 @@ columns from the roster.
   manually dismissed. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
   when the admin re-saves or reverts the internal copy — the reconcile signal that the
-  ground truth moved under the scheduler's adjustments.
+  ground truth moved under the scheduler's adjustments. `orphaned_selection` (1.10) is
+  owned by the orphan seam (`positions/orphans.ts`) — written whenever a submission holds
+  a pick on a shift that is no longer in the student's live block set (§6.2a), deleted
+  the moment the last one is cleared, never manually dismissed. It survives a student
+  save, because a student can neither see nor clear an orphaned pick.
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
@@ -1368,6 +1403,62 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.11 (2026-08-04)** — **The W2W position map is editable, and its failures are no
+  longer silent (`/admin/w2w`, `docs/w2w-shift-plan-roundtrip.md` §4).** The map decides
+  which Muster position staffs each W2W position. It was seeded once, in code, with no
+  screen to see or change it: the plan page could *name* a W2W position nothing mapped
+  and then offer no way to map it, and deleting a Muster position took its mappings with
+  it for good. Nothing downstream re-checks the map either, since filling zips students
+  onto seats by block and day alone, so a mapping pointing at the wrong position writes
+  the wrong people onto real shifts with every screen reporting success. Now: full
+  add/edit/remove, with **fill order** on every row (it decides who lands on which shift
+  when two W2W positions share one Muster shift, and was previously invisible), an add
+  form prefilled from the current plan's unmapped positions, and live health checks in
+  the pure `domain/w2w-plan/map-health.ts` — target missing, **alias**, inactive, no live
+  blocks, duplicate fill order, unused mapping — surfaced on the page and as one hub
+  alert. Matching and the checks now share one resolver, so the page can never disagree
+  with what matching did. Four related fixes: **making a position an alias now re-points
+  its W2W mappings** (the source keeps its blocks, so its shifts stayed *matched* while
+  nobody could be assigned to them, and every one exported nameless); the plan's **A/B
+  rotation is editable** instead of needing a full re-upload; the export **warns about
+  imported names it drops** (a full refill silently erases any name the run does not
+  reproduce, which is the whole reason repair mode exists); and the seed's `GDEC - R&C TM`
+  row, which named a position id that never existed and was therefore dropped in silence
+  by both seed paths, now maps to Barista like the roster title map. **That last one is a
+  fixture fix only:** the importer re-seeds solely when the map is entirely empty and
+  deploys run migrations without `db:seed`, so an existing database still has no `R&C TM`
+  row and an admin has to add it on the new page. No schema change.
+- **1.10 (2026-08-04)** — **Removing a shift block no longer loses or hides the picks
+  on it (§6.2a).** A block with picks could not be removed at all (the action refused
+  and the button was disabled), and a block whose *times* were edited silently moved
+  every pick with it, with no revalidation. Now: a picked block is **retired**
+  (`shift_blocks.retired_at`, migration `0027`) instead of deleted, and every live read
+  filters retired blocks out, so the shift leaves the student grid, the rules, capacity,
+  coverage, high-demand, the export, and the generator together. The picks left behind
+  are **orphaned** and surface to the admin only: their own greyed, struck-through row
+  on the §10a grid showing the hours originally picked, un-pickable except to clear a
+  cell, plus an `orphaned_selection` flag ("Shift removed") with a hub danger alert, a
+  response-list pill, and a filter. Retiring is reversible ("Put back"). A time edit
+  keeps its old carry-the-picks behavior by design, but now warns concretely and re-runs
+  every affected student's checks so a new floor failure shows up as
+  `revalidation_failed`. Also fixed alongside: the per-student admin page **500'd**
+  whenever a selection referenced a block outside the student's position, since
+  `computeCapacity` throws on an unknown block — a new pure `domain/orphans.ts`
+  (`partitionSelection`) is now the single seam every calculation reads through, on the
+  admin page, the student form loader (which crashed **every** wizard page the same way),
+  and the export (which took the CSV route and the running Drive sheet down with it).
+  Orphaned picks no longer skew high-demand counts, no longer come back to life through
+  a position change's time-matched carry-over, and no longer vanish when the student
+  saves. Adding the first block to a blockless position now runs the carry-over a ghost
+  resolution deferred, and a block referenced only by a saved schedule run is retired
+  rather than hard-deleted (its assignments would have cascaded away silently).
+  Position deletion got the same treatment: it now clears `w2w_position_map` (whose FK
+  has no `onDelete`, so deleting a mapped position raised an unhandled FK error instead
+  of a friendly refusal) and refuses outright while a saved schedule run still holds
+  shifts on the position's blocks. The delete confirm names the W2W positions that map
+  to it and says their shifts will export with no names: a plan import re-checks the
+  mapping every time, but it only re-seeds one when the map is entirely empty, and
+  there is no screen for editing it, so losing a row is one-way in practice.
 - **1.09 (2026-08-03)** — **W2W shift-plan round-trip (roadmap 5.3;
   `docs/w2w-shift-plan-roundtrip.md`).** The scheduler's W2W week export becomes the
   budgeted seat plan: upload it on **`/admin/schedule/plan`** (parsed in memory, cp1252,
@@ -1408,7 +1499,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   and the CSV/Drive sheet gain a **Responded** column, so nobody is typed into W2W
   as though they picked those shifts. Report rows carry `fillIn`, which is the
   single source of truth for all of that: the next run reads it back as
-  `previousFillIns` so switching the option off retires those rows quietly instead
+  `previousFillIns` so switching the option off drops those rows quietly instead
   of reporting the people as having left the roster, and a fill-in who submits
   later still reads as one on the run that placed them. **Availability comes from
   the best record held, never the reverse:** an admin's internal copy wins, then

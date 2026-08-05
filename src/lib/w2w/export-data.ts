@@ -13,8 +13,11 @@ import { scheduleAssignments, students, w2wEmployees } from "@/lib/db/schema";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
+import { buildNameIndex } from "@/lib/domain/w2w-plan/repair-seeds";
 import {
+  droppedImportedNames,
   fillPlan,
+  type DroppedName,
   type ExportIdentity,
   type FillAssignment,
   type FillResult,
@@ -35,6 +38,8 @@ export interface ExportWarnings {
   unmatchedRowCount: number;
   /** Set when the plan changed after the run was generated; regenerate first. */
   planNewerThanRun: boolean;
+  /** Students the plan gave shifts to who have none here (see droppedImportedNames). */
+  droppedNames: DroppedName[];
 }
 
 export interface ExportModel {
@@ -130,6 +135,29 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
     ...new Set([...files.a.fallbackEmails, ...files.b.fallbackEmails]),
   ].sort();
 
+  // Who the export actually gives shifts to, across both week files: a weekend
+  // student appears in only one of them, so the union is the right question to
+  // ask of an imported name.
+  const filledEmails = new Set<string>();
+  for (const week of ["a", "b"] as const) {
+    for (const row of files[week].rows) {
+      if (row.filledEmail !== null) filledEmails.add(row.filledEmail);
+    }
+  }
+  // Resolving imported names needs the whole roster and name list, so it is
+  // skipped outright for a plan that arrived with no names on it.
+  const hasImportedNames = plan.rows.some((r) => r.employeeName !== "");
+  const [allNameRows, allRosterRows] = hasImportedNames
+    ? await Promise.all([
+        db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
+        db.select({ email: students.email, displayName: students.displayName }).from(students),
+      ])
+    : [[], []];
+  const nameIndex = buildNameIndex(
+    allNameRows.map((m) => ({ name: m.name, email: m.email })),
+    allRosterRows.map((r) => ({ name: deriveW2wName(r.displayName), email: r.email })),
+  );
+
   return {
     planMeta: plan.meta,
     runGeneratedAt: run.generatedAt,
@@ -147,6 +175,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         .sort((x, y) => x.email.localeCompare(y.email)),
       unmatchedRowCount: report.unmatched.reduce((n, u) => n + u.rowCount, 0),
       planNewerThanRun: plan.meta.importedAt > run.generatedAt,
+      droppedNames: droppedImportedNames(plan.rows, filledEmails, nameIndex),
     },
     files,
   };

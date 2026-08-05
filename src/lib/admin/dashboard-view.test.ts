@@ -30,6 +30,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
       available: 0,
       feasible: true,
     },
+    w2wMapIssues: [],
     drive: { connected: true, email: "admin@wisc.edu", lastOkAt: ago(HOURS(1)), lastErrorAt: null },
     sheet: { url: "https://sheet", lastSyncedAt: ago(HOURS(1)) },
     closesSheet: { lastSyncedAt: ago(HOURS(1)) },
@@ -286,6 +287,48 @@ describe("alerts", () => {
     const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "revalidation-failed");
     expect(a?.severity).toBe("danger");
     expect(a?.href).toBe("/admin/responses?flag=revalidation_failed");
+  });
+
+  it("raises one alert for a broken W2W position map, quoting the first problem", () => {
+    const snap = healthy({
+      w2wMapIssues: [
+        {
+          kind: "target_alias",
+          severity: "danger",
+          w2wPositionId: "100",
+          message: "GDEC - Stocker points at Stocker, which is now an alias of Cashier.",
+        },
+        {
+          kind: "unmapped_position",
+          severity: "danger",
+          w2wPositionId: "101",
+          message: "GDEC - Dock is not mapped to a Muster position.",
+        },
+      ],
+    });
+    const view = buildDashboardView(snap, NOW);
+    const a = view.alerts.find((x) => x.id === "w2w-map-broken");
+    expect(a?.severity).toBe("danger");
+    expect(a?.title).toContain("2 W2W positions");
+    expect(a?.detail).toContain("alias of Cashier");
+    expect(a?.href).toBe("/admin/w2w");
+    expect(view.w2wMapProblems).toBe(2);
+  });
+
+  it("does not alert on W2W map warnings, which are not broken exports", () => {
+    const snap = healthy({
+      w2wMapIssues: [
+        {
+          kind: "unused_mapping",
+          severity: "warning",
+          w2wPositionId: "100",
+          message: "GDEC - Stocker is mapped but the current plan has no shifts on it.",
+        },
+      ],
+    });
+    const view = buildDashboardView(snap, NOW);
+    expect(ids(snap)).not.toContain("w2w-map-broken");
+    expect(view.w2wMapProblems).toBe(0);
   });
 
   it("ignores close problems until an inventory exists", () => {

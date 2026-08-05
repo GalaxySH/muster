@@ -1,0 +1,2 @@
+ALTER TABLE `flags` MODIFY COLUMN `type` enum('auto_assigned_weekend','travel_late','position_change','revalidation_failed','student_changed_after_internal_edit','orphaned_selection') NOT NULL;--> statement-breakpoint
+ALTER TABLE `shift_blocks` ADD `retired_at` timestamp;
