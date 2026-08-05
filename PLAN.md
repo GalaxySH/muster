@@ -164,7 +164,10 @@ render on the admin per-student page (§10) and are batched into a **daily diges
 to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
 daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
 no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
-remains as a manual fallback trigger (docs/deploy.md §7).
+remains as a manual fallback trigger (docs/deploy.md §7). An admin toggle on
+`/admin/change-requests` (1.12, on by default) controls only whether it's advertised
+to students: off drops the `/me` card and points the `/intro` copy at email instead,
+but `/change-requests` itself and the admin queue stay reachable.
 
 ### 4.2 Admin flow
 - **Roster import** — upload the roster tracker on **`/admin/roster`** (file upload →
@@ -1403,6 +1406,16 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.12 (2026-08-05)** — **An admin switch to stop advertising the change-request form
+  (§4.1, roadmap 3.1).** There was no way to steer students toward email instead of the
+  form without editing code. Now a settings card at the top of `/admin/change-requests`
+  (`change_requests_enabled` in `app_settings`, on by default) toggles it: off drops the
+  "Schedule changes" card from `/me` and swaps the `/intro` line from "submit a change
+  request" to "send us an email" (the "and these are the only requests we will also
+  accept over email" aside is dropped outright, regardless of the toggle, since it read
+  oddly once email became a normal path). The `/change-requests` route and the admin
+  queue are unaffected either way, so an admin can still log a request on a student's
+  behalf.
 - **1.11 (2026-08-04)** — **The W2W position map is editable, and its failures are no
   longer silent (`/admin/w2w`, `docs/w2w-shift-plan-roundtrip.md` §4).** The map decides
   which Muster position staffs each W2W position. It was seeded once, in code, with no

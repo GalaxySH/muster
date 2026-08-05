@@ -34,6 +34,7 @@ import {
   SETTING_EMAIL_SENDING_ENABLED,
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
+  SETTING_CHANGE_REQUESTS_ENABLED,
 } from "@/lib/settings";
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
@@ -338,6 +339,22 @@ export async function setChangeDigestEnabled(enabled: boolean): Promise<AdminAct
   if (!gate.ok) return { ok: false, error: gate.error };
   await setSetting(SETTING_CHANGE_DIGEST_ENABLED, enabled ? "1" : "0");
   revalidatePath("/admin/email-settings");
+  return { ok: true };
+}
+
+/**
+ * Toggle whether the student-facing change-request form is offered
+ * (/admin/change-requests). Off hides the /me card and swaps the /intro copy
+ * to point at email instead; the form route and the admin queue stay reachable
+ * either way, so nothing already submitted is affected.
+ */
+export async function setChangeRequestsEnabled(enabled: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_CHANGE_REQUESTS_ENABLED, enabled ? "1" : "0");
+  revalidatePath("/admin/change-requests");
+  revalidatePath("/me");
+  revalidatePath("/intro");
   return { ok: true };
 }
 

@@ -10,12 +10,16 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { getChangeRequestsEnabled } from "@/lib/settings";
 
 export default async function MePage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
-  const flow = await loadFlowState(session.email);
+  const [flow, changeRequestsEnabled] = await Promise.all([
+    loadFlowState(session.email),
+    getChangeRequestsEnabled(),
+  ]);
   // Admins are staff, so they have no roster row and no form to fill out. Give them a
   // greeting and the dashboard rather than the off-roster notice meant for students.
   const adminHome = !flow.onRoster && session.isAdmin;
@@ -139,7 +143,7 @@ export default async function MePage() {
         </div>
       )}
 
-      {flow.onRoster && (
+      {flow.onRoster && changeRequestsEnabled && (
         <InfoCard title="Schedule changes" style={{ marginTop: 20 }}>
           <p style={{ margin: 0 }}>
             Need a change to your work schedule during the semester?{" "}
