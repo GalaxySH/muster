@@ -10,31 +10,27 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { getChangeRequestsEnabled } from "@/lib/settings";
 
 export default async function MePage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
-  const flow = await loadFlowState(session.email);
-  // Admins are staff, so they have no roster row and no form to fill out. Give them a
-  // greeting and the dashboard rather than the off-roster notice meant for students.
+  const [flow, changeRequestsEnabled] = await Promise.all([
+    loadFlowState(session.email),
+    getChangeRequestsEnabled(),
+  ]);
+  // Admins are staff, so they have no roster row and no form to fill out. Give them the
+  // dashboard rather than the off-roster notice meant for students.
   const adminHome = !flow.onRoster && session.isAdmin;
-  const firstName = session.name?.trim().split(/\s+/)[0];
 
   return (
     <Page>
       <AppHeader isHome />
-      <h1>Profile</h1>
       <p style={{ color: "#555" }}>
         {session.name ? `${session.name} · ` : ""}
         {session.email}
       </p>
-
-      {flow.onRoster && flow.returning && (
-        <p style={greeting}>Welcome back to Gordon</p>
-      )}
-
-      {adminHome && <p style={greeting}>{firstName ? `Hi ${firstName}` : "Hi there"}</p>}
 
       {adminHome ? (
         <InfoCard title="You're signed in as an admin">
@@ -142,8 +138,14 @@ export default async function MePage() {
       {flow.onRoster && (
         <InfoCard title="Schedule changes" style={{ marginTop: 20 }}>
           <p style={{ margin: 0 }}>
-            Need a change to your work schedule during the semester?{" "}
-            <Link href="/change-requests">Send a change request</Link>.
+            {changeRequestsEnabled ? (
+              <>
+                Need a change to your work schedule during the semester?{" "}
+                <Link href="/change-requests">Send a change request</Link>.
+              </>
+            ) : (
+              <>Need a change to your work schedule during the semester? Send us an email.</>
+            )}
           </p>
         </InfoCard>
       )}
@@ -165,8 +167,6 @@ export default async function MePage() {
     </Page>
   );
 }
-
-const greeting: React.CSSProperties = { color: "#196127", fontWeight: 600, marginTop: 0 };
 
 const reviewList: React.CSSProperties = {
   margin: 0,

@@ -142,7 +142,14 @@ permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
 (`ShowResolvedToggle`, state in `?resolved=1` so the server page drives the query)
 mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withdrawn
-never appears). Proof files render only on the per-student page, as inline
+never appears). A settings card at the top of that page (v1.12,
+`ChangeRequestsEnabledToggle` + `setChangeRequestsEnabled`, setting
+`change_requests_enabled` in `lib/settings.ts`, on by default) is a student-facing
+display switch only: off keeps the "Schedule changes" card on `/me` but swaps its body
+from the `/change-requests` link to "send us an email" (same swap on `/intro`, from
+"submit a change request" to "send us an email"). The `/change-requests` route and
+this admin queue stay reachable either way, so an admin can still log a request on a
+student's behalf or a direct link still works. Proof files render only on the per-student page, as inline
 `EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches bytes through
 the Drive proxy, so only the newest `CHANGE_PREVIEW_ROWS` (3) file-bearing requests get
 thumbnails and older ones fall back to plain proof links. Every request row is an

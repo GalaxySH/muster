@@ -6,7 +6,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
 import { CONTACT_EMAIL } from "@/components/evidence/shared";
-import { getTravelCutoff } from "@/lib/settings";
+import { getChangeRequestsEnabled, getTravelCutoff } from "@/lib/settings";
 import Link from "next/link";
 
 /**
@@ -20,7 +20,10 @@ export default async function IntroPage() {
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email);
-  const { cutoff } = await getTravelCutoff(new Date());
+  const [{ cutoff }, changeRequestsEnabled] = await Promise.all([
+    getTravelCutoff(new Date()),
+    getChangeRequestsEnabled(),
+  ]);
 
   return (
     <Page>
@@ -56,7 +59,12 @@ export default async function IntroPage() {
             Travel during the semester is only excused if you submit it via this form <strong>before {cutoff.toLocaleDateString()}</strong>. We will not excuse any travel requested after this date.
           </li>
           <li>
-            If your availability changes during the semester, <Link href="/change-requests">submit a change request</Link>. We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams, and these are the only requests we will also accept over email.
+            {changeRequestsEnabled ? (
+              <>If your availability changes during the semester, <Link href="/change-requests">submit a change request</Link>.</>
+            ) : (
+              "If your availability changes during the semester, send us an email."
+            )}{" "}
+            We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams.
           </li>
           <li>
             If you have questions, contact the scheduler (<strong>{CONTACT_EMAIL}</strong>).

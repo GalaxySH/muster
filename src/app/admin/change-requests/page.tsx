@@ -7,7 +7,9 @@ import { changeRequestAdminPath } from "@/lib/changes/links";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { ShowResolvedToggle } from "@/components/admin/ShowResolvedToggle";
+import { ChangeRequestsEnabledToggle } from "@/components/admin/ChangeRequestsEnabledToggle";
 import { DAY_LABEL } from "@/lib/domain/types";
+import { getChangeRequestsEnabled } from "@/lib/settings";
 import { Page } from "@/components/ui";
 
 /**
@@ -26,7 +28,10 @@ export default async function AdminChangeRequestsPage({
   if (!session.isAdmin) redirect("/me");
 
   const showResolved = (await searchParams).resolved === "1";
-  const requests = await listChangeRequestQueue(showResolved);
+  const [requests, formEnabled] = await Promise.all([
+    listChangeRequestQueue(showResolved),
+    getChangeRequestsEnabled(),
+  ]);
 
   return (
     <Page width="wide">
@@ -36,6 +41,9 @@ export default async function AdminChangeRequestsPage({
         <Crumb href="/change-requests" label="Request form" />
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>Change requests</h1>
+      <div style={{ maxWidth: 720, marginBottom: 18 }}>
+        <ChangeRequestsEnabledToggle enabled={formEnabled} />
+      </div>
       <div
         style={{
           display: "flex",

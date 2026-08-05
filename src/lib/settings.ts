@@ -60,6 +60,8 @@ export const SETTING_DRIVE_LAST_OK_AT = "drive_last_ok_at";
 export const SETTING_DRIVE_LAST_ERROR_AT = "drive_last_error_at";
 /** JSON SchedulingParams for the schedule engine, admin-set on /admin/schedule. Absent ⇒ defaults. */
 export const SETTING_SCHEDULE_PARAMS = "schedule_params";
+/** "1"/"0": whether the student-facing change-request form is offered (roadmap 3.1). Absent ⇒ on. */
+export const SETTING_CHANGE_REQUESTS_ENABLED = "change_requests_enabled";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -151,6 +153,16 @@ export async function getExcludedRosterTitles(): Promise<string[]> {
  */
 export async function getSchedulingParams(): Promise<SchedulingParams> {
   return parseSchedulingParams(await getSetting(SETTING_SCHEDULE_PARAMS));
+}
+
+/**
+ * Whether the student-facing change-request form is offered (admin-set on
+ * /admin/change-requests). On by default; off hides the /me card and swaps the
+ * /intro copy to point at email instead. The `/change-requests` route itself
+ * and the admin queue stay reachable either way.
+ */
+export async function getChangeRequestsEnabled(): Promise<boolean> {
+  return (await getSetting(SETTING_CHANGE_REQUESTS_ENABLED)) !== "0";
 }
 
 /** Parse a stored ISO instant, treating an unparseable value as absent. */
