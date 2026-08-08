@@ -59,6 +59,21 @@ export async function positionOptions(): Promise<{ id: string; name: string }[]>
   return items.map(({ position }) => ({ id: position.id, name: position.name }));
 }
 
+/**
+ * A position's admin-configured return-to-work date ("YYYY-MM-DD", shown on
+ * /travel), or null when unset. Null positionId (no position assigned) also
+ * reads null.
+ */
+export async function getPositionReturnDate(positionId: string | null): Promise<string | null> {
+  if (!positionId) return null;
+  const [row] = await getDb()
+    .select({ returnDate: positions.returnDate })
+    .from(positions)
+    .where(eq(positions.id, positionId))
+    .limit(1);
+  return row?.returnDate ?? null;
+}
+
 /** One block on the admin surface, with its live selection reference count. */
 export interface AdminBlockItem {
   id: string;
@@ -92,6 +107,8 @@ export interface AdminPositionItem {
   mergedIntoId: string | null;
   /** Resolved name of the alias target, when mergedIntoId is set. */
   mergedIntoName: string | null;
+  /** Return-to-work date ("YYYY-MM-DD") shown on /travel; null falls back to the built-in default. */
+  returnDate: string | null;
   /** students.positionId references, on- and off-roster (delete guard). */
   studentCount: number;
   /** On-roster students holding this position (the capacity check's demand side). */
@@ -200,6 +217,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     active: p.active,
     mergedIntoId: p.mergedIntoId,
     mergedIntoName: p.mergedIntoId ? (nameById.get(p.mergedIntoId) ?? p.mergedIntoId) : null,
+    returnDate: p.returnDate,
     studentCount: studentCount.get(p.id) ?? 0,
     onRosterCount: onRosterCount.get(p.id) ?? 0,
     w2wMappingCount: w2wMappingCount.get(p.id) ?? 0,

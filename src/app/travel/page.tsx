@@ -21,9 +21,19 @@ import { Page } from "@/components/ui";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 import { isTravelExcused } from "@/lib/domain/travel";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { getPositionReturnDate } from "@/lib/positions/data";
 
-function returnDateFor(positionId: string | null) {
+// The built-in default when a position has no return date configured on
+// /admin/positions (roadmap: return date is per-position, admin-editable).
+function defaultReturnDateFor(positionId: string | null) {
   return positionId === SHIFT_LEAD_POSITION_ID ? "8/17" : "8/27";
+}
+
+/** `isoDate` is the stored "YYYY-MM-DD"; formatted without a Date object so no timezone applies. */
+function formatReturnDate(isoDate: string | null, positionId: string | null): string {
+  if (!isoDate) return defaultReturnDateFor(positionId);
+  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(isoDate) ?? [];
+  return month && day ? `${Number(month)}/${Number(day)}` : defaultReturnDateFor(positionId);
 }
 
 export default async function TravelPage({
@@ -51,14 +61,16 @@ export default async function TravelPage({
   }
 
   const now = new Date();
-  const [evidence, drive, { cutoff }, policy] = await Promise.all([
+  const [evidence, drive, { cutoff }, policy, returnDateRow] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     getTravelCutoff(now),
     getLateTravelPolicy(),
+    getPositionReturnDate(student.positionId),
   ]);
   const pastCutoff = !isTravelExcused(now, cutoff);
   const lateAccepted = policy === "accept-and-flag";
+  const returnDate = formatReturnDate(returnDateRow, student.positionId);
 
   if (onBehalf) {
     return (
@@ -72,7 +84,7 @@ export default async function TravelPage({
           pastCutoff={pastCutoff}
           lateAccepted={lateAccepted}
           onBehalfOf={onBehalf.email}
-          returnDate={returnDateFor(onBehalf.positionId)}
+          returnDate={returnDate}
         />
       </Page>
     );
@@ -116,7 +128,7 @@ export default async function TravelPage({
         cutoffMs={cutoff.getTime()}
         pastCutoff={pastCutoff}
         lateAccepted={lateAccepted}
-        returnDate={returnDateFor(student.positionId)}
+        returnDate={returnDate}
       />
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />
