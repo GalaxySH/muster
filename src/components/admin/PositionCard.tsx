@@ -38,6 +38,8 @@ export function PositionCard({
   const [minHours, setMinHours] = useState(String(position.minHours));
   const [minDays, setMinDays] = useState(String(position.minDays));
   const [weekendExempt, setWeekendExempt] = useState(position.weekendExempt);
+  const savedReturnDate = position.returnDate ?? "";
+  const [returnDate, setReturnDate] = useState(savedReturnDate);
   // Unsaved block-row edits, keyed by block id. Kept after save; dirtiness is
   // computed against the saved values, so a refresh settles it back to clean.
   const [edits, setEdits] = useState<Record<string, BlockRowEdit>>({});
@@ -53,7 +55,8 @@ export function PositionCard({
     name !== position.name ||
     minHours !== String(position.minHours) ||
     minDays !== String(position.minDays) ||
-    weekendExempt !== position.weekendExempt;
+    weekendExempt !== position.weekendExempt ||
+    returnDate !== savedReturnDate;
   const dirtyBlocks = position.blocks.filter((b) => blockRowDirty(b, edits[b.id]));
   const dirty = detailsDirty || dirtyBlocks.length > 0;
 
@@ -112,7 +115,13 @@ export function PositionCard({
       if (!confirm(ask)) return;
     }
     const details = detailsDirty
-      ? { name, minHours: Number(minHours), minDays: Number(minDays), weekendExempt }
+      ? {
+          name,
+          minHours: Number(minHours),
+          minDays: Number(minDays),
+          weekendExempt,
+          returnDate: returnDate || null,
+        }
       : undefined;
     act(() => savePosition(position.id, { details, blockEdits }), "Saved.");
   }
@@ -197,7 +206,19 @@ export function PositionCard({
           />
           Weekend exempt
         </label>
+        <label style={label}>
+          Return date
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+            style={input}
+          />
+        </label>
       </div>
+      <p style={{ margin: "-6px 0 12px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+        Shown to students in this position on /travel. Leave blank to hide that card.
+      </p>
 
       {isAlias ? (
         <div style={{ margin: "12px 0" }}>

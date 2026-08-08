@@ -20,6 +20,19 @@ import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 import { isTravelExcused } from "@/lib/domain/travel";
+import { getPositionReturnDate } from "@/lib/positions/data";
+
+/**
+ * `isoDate` is the stored "YYYY-MM-DD"; formatted without a Date object so no
+ * timezone applies. Null (unset on /admin/positions, or malformed) means no
+ * return date to show: the card is left off /travel entirely rather than
+ * guessing one.
+ */
+function formatReturnDate(isoDate: string | null): string | null {
+  if (!isoDate) return null;
+  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(isoDate) ?? [];
+  return month && day ? `${Number(month)}/${Number(day)}` : null;
+}
 
 export default async function TravelPage({
   searchParams,
@@ -46,14 +59,16 @@ export default async function TravelPage({
   }
 
   const now = new Date();
-  const [evidence, drive, { cutoff }, policy] = await Promise.all([
+  const [evidence, drive, { cutoff }, policy, returnDateRow] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
     getTravelCutoff(now),
     getLateTravelPolicy(),
+    getPositionReturnDate(student.positionId),
   ]);
   const pastCutoff = !isTravelExcused(now, cutoff);
   const lateAccepted = policy === "accept-and-flag";
+  const returnDate = formatReturnDate(returnDateRow);
 
   if (onBehalf) {
     return (
@@ -67,6 +82,7 @@ export default async function TravelPage({
           pastCutoff={pastCutoff}
           lateAccepted={lateAccepted}
           onBehalfOf={onBehalf.email}
+          returnDate={returnDate}
         />
       </Page>
     );
@@ -110,6 +126,7 @@ export default async function TravelPage({
         cutoffMs={cutoff.getTime()}
         pastCutoff={pastCutoff}
         lateAccepted={lateAccepted}
+        returnDate={returnDate}
       />
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />

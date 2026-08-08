@@ -1,0 +1,1 @@
+ALTER TABLE `positions` ADD `return_date` date;

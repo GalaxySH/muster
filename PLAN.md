@@ -287,6 +287,10 @@ attaches to each). Editable config so they can be merged further later.
 > Muster's preference grid — students give one merged "Cashier"/"Stocker" availability,
 > and venue assignment happens scheduler-side in W2W.
 
+> **Return date (built — v1.13):** each position carries an admin-editable return-to-work
+> date (`/admin/positions`), shown on `/travel`. Unset means no return-date card at all
+> for students in that position, rather than a guessed date.
+
 > **Consolidation (built — roadmap 3.3):** positions and block sets are admin-editable
 > data on **`/admin/positions`**. The PCPL roster stays the source of truth for who
 > holds which position; consolidations happen via **alias mode**: marking position A an
@@ -1404,6 +1408,14 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.13 (2026-08-08)** — **A return-date card on `/travel`, with the date editable per
+  position (§6.1, `/admin/positions`).** The card tells a student their expected
+  return-to-work date and points them at the excusal form below if they will not make
+  it back in time. `positions.return_date` (nullable, stored as a plain "YYYY-MM-DD"
+  string rather than a `date`-mode `Date` — mysql2 serializes JS `Date` params using
+  the server's local timezone, which was silently rolling the saved date back a day)
+  holds the admin-set value; when unset, the card is left off `/travel` entirely
+  rather than showing a guessed date.
 - **1.12 (2026-08-05)** — **An admin switch to stop advertising the change-request form
   (§4.1, roadmap 3.1), plus two `/me` copy cleanups.** There was no way to steer
   students toward email instead of the form without editing code. Now a settings card

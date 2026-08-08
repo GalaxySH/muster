@@ -129,6 +129,30 @@ export interface PositionUpdate {
   minHours: number;
   minDays: number;
   weekendExempt: boolean;
+  /** ISO date ("YYYY-MM-DD"), or null to clear (hides the return-date card on /travel). */
+  returnDate: string | null;
+}
+
+/**
+ * Validates the "YYYY-MM-DD" a date input sends, or null to clear. Kept and
+ * stored as a plain string (never parsed into a JS Date for the DB write):
+ * mysql2 serializes Date params using the server's local timezone, which can
+ * roll a UTC-intended date back a day.
+ */
+function checkReturnDate(
+  value: string | null,
+): { ok: true; date: string | null } | { ok: false; error: string } {
+  if (!value) return { ok: true, date: null };
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return { ok: false, error: "Enter a valid return date." };
+  const [, y, m, d] = match;
+  const check = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  const real =
+    check.getUTCFullYear() === Number(y) &&
+    check.getUTCMonth() === Number(m) - 1 &&
+    check.getUTCDate() === Number(d);
+  if (!real) return { ok: false, error: "Enter a valid return date." };
+  return { ok: true, date: value };
 }
 
 /** One edited block inside a position save: minutes plus the target staffing. */
@@ -151,7 +175,15 @@ export async function savePosition(
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
 
-  let details: PositionUpdate | undefined;
+  let details:
+    | {
+        name: string;
+        minHours: number;
+        minDays: number;
+        weekendExempt: boolean;
+        returnDate: string | null;
+      }
+    | undefined;
   if (changes.details) {
     const checked = checkName(changes.details.name);
     if (!checked.ok) return checked;
@@ -161,7 +193,9 @@ export async function savePosition(
     if (!Number.isInteger(changes.details.minDays) || changes.details.minDays < 0) {
       return { ok: false, error: "Minimum days must be a whole number, 0 or more." };
     }
-    details = { ...changes.details, name: checked.name };
+    const checkedReturnDate = checkReturnDate(changes.details.returnDate);
+    if (!checkedReturnDate.ok) return checkedReturnDate;
+    details = { ...changes.details, name: checked.name, returnDate: checkedReturnDate.date };
   }
   for (const edit of changes.blockEdits) {
     const timeError = validateBlockTimes(edit.start, edit.end);
@@ -223,6 +257,7 @@ export async function savePosition(
           minHours: details.minHours,
           minDays: details.minDays,
           weekendExempt: details.weekendExempt,
+          returnDate: details.returnDate,
         })
         .where(eq(positions.id, id));
     }
