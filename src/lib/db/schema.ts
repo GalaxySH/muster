@@ -57,7 +57,7 @@ export const positions = mysqlTable("positions", {
   // as "YYYY-MM-DD". Kept as a string (mode "string", not "date") so mysql2 never
   // round-trips it through a JS Date, which it serializes using the server's local
   // timezone and can roll the stored date back a day. Null = unconfigured; the
-  // travel page falls back to the position's built-in default.
+  // travel page shows no return-date card at all.
   returnDate: date("return_date", { mode: "string" }),
 });
 

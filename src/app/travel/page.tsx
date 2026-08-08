@@ -20,20 +20,18 @@ import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 import { isTravelExcused } from "@/lib/domain/travel";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { getPositionReturnDate } from "@/lib/positions/data";
 
-// The built-in default when a position has no return date configured on
-// /admin/positions (roadmap: return date is per-position, admin-editable).
-function defaultReturnDateFor(positionId: string | null) {
-  return positionId === SHIFT_LEAD_POSITION_ID ? "8/17" : "8/27";
-}
-
-/** `isoDate` is the stored "YYYY-MM-DD"; formatted without a Date object so no timezone applies. */
-function formatReturnDate(isoDate: string | null, positionId: string | null): string {
-  if (!isoDate) return defaultReturnDateFor(positionId);
+/**
+ * `isoDate` is the stored "YYYY-MM-DD"; formatted without a Date object so no
+ * timezone applies. Null (unset on /admin/positions, or malformed) means no
+ * return date to show: the card is left off /travel entirely rather than
+ * guessing one.
+ */
+function formatReturnDate(isoDate: string | null): string | null {
+  if (!isoDate) return null;
   const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(isoDate) ?? [];
-  return month && day ? `${Number(month)}/${Number(day)}` : defaultReturnDateFor(positionId);
+  return month && day ? `${Number(month)}/${Number(day)}` : null;
 }
 
 export default async function TravelPage({
@@ -70,7 +68,7 @@ export default async function TravelPage({
   ]);
   const pastCutoff = !isTravelExcused(now, cutoff);
   const lateAccepted = policy === "accept-and-flag";
-  const returnDate = formatReturnDate(returnDateRow, student.positionId);
+  const returnDate = formatReturnDate(returnDateRow);
 
   if (onBehalf) {
     return (

@@ -107,7 +107,7 @@ export interface AdminPositionItem {
   mergedIntoId: string | null;
   /** Resolved name of the alias target, when mergedIntoId is set. */
   mergedIntoName: string | null;
-  /** Return-to-work date ("YYYY-MM-DD") shown on /travel; null falls back to the built-in default. */
+  /** Return-to-work date ("YYYY-MM-DD") shown on /travel; null hides that card entirely. */
   returnDate: string | null;
   /** students.positionId references, on- and off-roster (delete guard). */
   studentCount: number;

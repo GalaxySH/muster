@@ -129,7 +129,7 @@ export interface PositionUpdate {
   minHours: number;
   minDays: number;
   weekendExempt: boolean;
-  /** ISO date ("YYYY-MM-DD"), or null to clear back to the built-in default. */
+  /** ISO date ("YYYY-MM-DD"), or null to clear (hides the return-date card on /travel). */
   returnDate: string | null;
 }
 

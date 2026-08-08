@@ -217,8 +217,7 @@ export function PositionCard({
         </label>
       </div>
       <p style={{ margin: "-6px 0 12px", fontSize: 12, color: "var(--color-text-secondary)" }}>
-        Shown to students in this position on /travel. Leave blank to use the built-in default (
-        {isShiftLead ? "8/17" : "8/27"}).
+        Shown to students in this position on /travel. Leave blank to hide that card.
       </p>
 
       {isAlias ? (
