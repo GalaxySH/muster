@@ -1404,6 +1404,30 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.13 (2026-08-08)** — **Schedule generation can be run one position at a time,
+  and coverage cells now say who they are counting (roadmap 5.1,
+  `docs/architecture.md`).** The generator was whole-roster or nothing, which did
+  not match how the scheduler works: they want to settle Shift Leads, look at the
+  result, then move on. Scoping needed no engine change, because the engine
+  already has the mechanism. `generateSchedule({ scope: { positionIds } })` marks
+  everyone outside the scope `scheduled: true` for that run only
+  (`domain/scheduling/scope.ts`), which is the transform repair mode already used
+  with W2W seeds; the whole student list still reaches the engine, so nobody is
+  mistaken for having left the roster. Positions are the unit because they never
+  share a shift block, so a scoped run cannot disturb another position's coverage.
+  Scoped runs chain: a Culinary Assistant run keeps a previous Shift Lead run's
+  rows verbatim with nobody marked scheduled. The gap is the *unscoped* run, which
+  unfreezes everyone, and `submissions.scheduled` is still what protects a slice
+  from that. Migration **0028** adds `schedule_runs.scope_json` (NULL = whole
+  roster). Two read-layer features derive from it with nothing else persisted: the
+  run report's single `frozen` flag is split into **marked / not in this update /
+  kept**, since one chip for three situations had become misleading, and an
+  **Updated by position** panel shows when each position was last re-solved and how
+  many responses are new or edited since. Separately, coverage grid cells are now
+  clickable and list the people behind the number; that list runs the same query as
+  the count, including auto-assigned weekend cells (flagged, not hidden), so the
+  two can never disagree. Known gap: the staleness banner is still global, so a
+  response in one position makes a run scoped to another look stale.
 - **1.12 (2026-08-05)** — **An admin switch to stop advertising the change-request form
   (§4.1, roadmap 3.1), plus two `/me` copy cleanups.** There was no way to steer
   students toward email instead of the form without editing code. Now a settings card

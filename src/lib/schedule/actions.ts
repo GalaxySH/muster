@@ -36,6 +36,12 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import {
+  applyScopeFreeze,
+  normalizeScope,
+  serializeScope,
+  type ScheduleScope,
+} from "@/lib/domain/scheduling/scope";
 import { validateSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import type {
   Cohort,
@@ -46,7 +52,12 @@ import type {
 import type { Day, ShiftBlock } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
 import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
-import { eligibleSubmittedFilter, loadCurrentRunRow } from "./data";
+import {
+  eligibleSubmittedFilter,
+  loadCellAvailability,
+  loadCurrentRunRow,
+  type CellAvailability,
+} from "./data";
 
 /** Superseded runs kept for restore before pruning. */
 const RUN_RETENTION = 10;
@@ -105,6 +116,15 @@ export interface GenerateOptions {
    * opts in per run on /admin/schedule.
    */
   includeNonResponders?: boolean;
+  /**
+   * Re-solve only these positions and carry everyone else forward untouched
+   * (`domain/scheduling/scope.ts`). Absent or empty means the whole roster.
+   *
+   * Positions never share a shift block, so a scoped run cannot disturb the
+   * coverage of a position outside it. That is what makes position the safe
+   * unit to scope by.
+   */
+  scope?: ScheduleScope;
 }
 
 export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
@@ -263,16 +283,34 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       ).map((r) => ({ ...r, cohort: r.cohort as Cohort }))
     : [];
 
+  // Scoping: freeze everyone outside the chosen positions for this run only, so
+  // the engine re-solves the slice and carries the rest forward verbatim. The
+  // whole student list still goes to the engine (see scope.ts), so nobody
+  // outside the scope is mistaken for someone who left the roster.
+  const scope = normalizeScope(options.scope);
+  if (scope) {
+    const known = new Set(positionRows.map((p) => p.id));
+    const unknown = scope.positionIds.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      return {
+        ok: false,
+        error: "That position is not on the list any more. Reload and try again.",
+      };
+    }
+  }
+
   // Repair mode: the imported plan's still-valid placements become carried
   // rows and their students are frozen for this run, so the engine keeps them
   // in place and only fills gaps or re-solves broken placements. Students the
   // admin marked scheduled stay on their current-run rows, which always win.
-  let engineStudentsFinal = engineStudents;
+  // Applied on top of the scope freeze, so a scoped repair run seeds only
+  // inside its slice.
+  let engineStudentsFinal = applyScopeFreeze(engineStudents, scope);
   let previousFinal = previous;
   let repaired: GenerateResult["repaired"];
   if (options.repairFromPlan) {
     const eligibleForRepair = new Map<string, RepairEligibleStudent>(
-      engineStudents
+      engineStudentsFinal
         .filter((s) => !s.scheduled)
         .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
     );
@@ -283,7 +321,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         error: "No shift plan has been imported, so there is nothing to repair from.",
       };
     }
-    engineStudentsFinal = engineStudents.map((s) =>
+    engineStudentsFinal = engineStudentsFinal.map((s) =>
       seeds.byEmail.has(s.email) ? { ...s, scheduled: true } : s,
     );
     // A seed identical to the student's current cell keeps its manual
@@ -333,6 +371,8 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       id: runId,
       generatedBy: gate.email,
       status: "current",
+      // Null for a whole-roster run, which is what every run before scoping was.
+      scopeJson: serializeScope(scope),
       // Repair runs stamp their kept-from-plan counts into the stored report
       // so the run panel can tell virtually-frozen from admin-frozen.
       summaryJson: JSON.stringify(
@@ -457,6 +497,24 @@ export async function rebuildScheduleSheet(): Promise<RebuildScheduleSheetResult
 export interface SaveParamsResult {
   ok: boolean;
   error?: string;
+}
+
+export type CellAvailabilityResult =
+  | { ok: true; data: CellAvailability }
+  | { ok: false; error: string };
+
+/**
+ * Who is behind one coverage cell's number, for the grid's slot dialog. Reads
+ * the same seam the count comes from (see `loadCellAvailability`), so the names
+ * and the number can never disagree.
+ */
+export async function fetchCellAvailability(
+  blockId: string,
+  day: Day,
+): Promise<CellAvailabilityResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  return { ok: true, data: await loadCellAvailability(blockId, day) };
 }
 
 /**

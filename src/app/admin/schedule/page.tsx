@@ -16,6 +16,7 @@ import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
+import { SlotCell } from "@/components/admin/SlotCell";
 import { getSchedulingParams } from "@/lib/settings";
 import { rebuildScheduleSheet } from "@/lib/schedule/actions";
 import {
@@ -25,9 +26,11 @@ import {
   loadFrozenMismatches,
   loadRunDiff,
   loadScheduleStaleness,
+  loadScopeLedger,
   type CurrentSchedule,
   type FrozenMismatchView,
   type PositionCoverage,
+  type PositionLedgerRow,
   type RunDiffData,
   type ScheduleRunListItem,
 } from "@/lib/schedule/data";
@@ -69,7 +72,7 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches, plan] =
+  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches, plan, ledger] =
     await Promise.all([
       searchParams,
       loadCoverage(),
@@ -80,7 +83,9 @@ export default async function AdminSchedulePage({
       getLastSheetSync(SCHEDULE_SHEET),
       loadFrozenMismatches(),
       getCurrentPlan(),
+      loadScopeLedger(),
     ]);
+  const scopePositions = coverage.map((c) => ({ id: c.positionId, name: c.positionName }));
   const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
   const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
@@ -117,8 +122,8 @@ export default async function AdminSchedulePage({
       <h1>Schedule</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
         {schedule
-          ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Hover a cell to see how many students could work it. Weekend cells show both rotation weeks as A·B."
-          : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Set targets per block on the Positions and shift blocks page."}
+          ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Click a cell to see everyone who could work it. Weekend cells show both rotation weeks as A·B."
+          : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Click a cell to see who they are. Set targets per block on the Positions and shift blocks page."}
       </p>
       <p style={{ fontSize: 14, marginTop: -6 }}>
         <Link href="/admin/schedule/plan">W2W shift plan</Link>: import the shift budget from W2W
@@ -132,7 +137,9 @@ export default async function AdminSchedulePage({
         sheetUrl={sheetUrl}
         sheetSyncedAt={sheetSyncedAt}
         hasPlan={hasPlan}
+        positions={scopePositions}
       />
+      <ScopeLedgerPanel ledger={ledger} />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <SectionLabel>Generation settings</SectionLabel>
@@ -205,6 +212,7 @@ function SchedulePanel({
   sheetUrl,
   sheetSyncedAt,
   hasPlan,
+  positions,
 }: {
   schedule: CurrentSchedule | null;
   responders: number;
@@ -212,6 +220,7 @@ function SchedulePanel({
   sheetUrl: string | null;
   sheetSyncedAt: Date | null;
   hasPlan: boolean;
+  positions: { id: string; name: string }[];
 }) {
   if (!schedule) {
     return (
@@ -221,7 +230,7 @@ function SchedulePanel({
           No schedule has been generated yet. Responses are placed in the order they came in, later
           shifts first.
         </p>
-        <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} />
+        <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} positions={positions} />
       </section>
     );
   }
@@ -232,10 +241,18 @@ function SchedulePanel({
   const worked = report.students.filter((s) => s.assignedMinutes > 0);
   const placed = worked.filter((s) => !s.fillIn).length;
   const withoutResponse = worked.filter((s) => s.fillIn).length;
-  // A repair run reports plan-kept students as frozen; only the rest were
-  // actually marked scheduled by an admin.
-  const planKept = report.repaired?.students ?? 0;
-  const frozen = report.students.filter((s) => s.frozen).length - planKept;
+  // The engine reports one `frozen` flag for three different reasons; the read
+  // layer has already split them (see FrozenReason), so count off that rather
+  // than subtracting the repair count out of the total.
+  const frozen = schedule.students.filter((s) => s.frozenReason === "marked").length;
+  const outOfScope = schedule.students.filter((s) => s.frozenReason === "out-of-scope").length;
+  const planKept = schedule.students.filter((s) => s.frozenReason === "kept").length;
+  const scopeNames = schedule.scope
+    ? positions
+        .filter((p) => schedule.scope!.positionIds.includes(p.id))
+        .map((p) => p.name)
+        .join(", ")
+    : null;
 
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
@@ -253,6 +270,10 @@ function SchedulePanel({
         {schedule.totalAssignments} assignments across {placed} of {responders} responses.
         {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
         {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
+        {/* Says "not changed", not "kept their shifts": on the first run of a
+            cycle the out-of-scope students have no shifts yet to keep. */}
+        {outOfScope > 0 &&
+          ` This update only covered ${scopeNames}, so ${outOfScope} people in other positions were not changed.`}
         {planKept > 0 &&
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.params &&
@@ -271,7 +292,7 @@ function SchedulePanel({
         </div>
       )}
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <GenerateScheduleButton hasRun hasPlan={hasPlan} />
+      <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}
@@ -281,6 +302,61 @@ function SchedulePanel({
       </div>
     </section>
   );
+}
+
+/**
+ * Which positions have been updated recently and what has changed under them
+ * since. Only worth showing once a scoped run exists: with whole-roster updates
+ * every line says the same thing, so it would be noise.
+ */
+function ScopeLedgerPanel({ ledger }: { ledger: PositionLedgerRow[] }) {
+  const behind = ledger.filter((r) => r.newSubmissions > 0 || r.edited > 0);
+  const anyScoped = new Set(ledger.map((r) => r.lastSolvedAt?.getTime() ?? 0)).size > 1;
+  if (!anyScoped && behind.length === 0) return null;
+
+  return (
+    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
+      <SectionLabel>Updated by position</SectionLabel>
+      <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ ...cellTh, textAlign: "left" }}>Position</th>
+            <th style={{ ...cellTh, textAlign: "left" }}>Last updated</th>
+            <th style={cellTh}>Changed since</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ledger.map((row) => (
+            <tr key={row.positionId}>
+              <td style={{ ...cellTd, textAlign: "left" }}>{row.positionName}</td>
+              <td style={{ ...cellTd, textAlign: "left", color: "var(--color-text-secondary)" }}>
+                {row.lastSolvedAt ? row.lastSolvedAt.toLocaleString("en-US") : "Never"}
+              </td>
+              <td
+                style={{
+                  ...cellTd,
+                  color:
+                    row.newSubmissions + row.edited > 0
+                      ? "var(--color-text-warning)"
+                      : "var(--color-text-secondary)",
+                }}
+              >
+                {changedLabel(row)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** "3 new, 1 edited", or "Nothing" when the slice is up to date. */
+function changedLabel(row: PositionLedgerRow): string {
+  const parts: string[] = [];
+  if (row.newSubmissions > 0) parts.push(`${row.newSubmissions} new`);
+  if (row.edited > 0) parts.push(`${row.edited} edited`);
+  return parts.length > 0 ? parts.join(", ") : "Nothing";
 }
 
 /** One warning line that expands to the affected students. */
@@ -638,28 +714,27 @@ function CoverageTableRow({
       </td>
       <td style={{ ...cellTd, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
       {row.cells.map((cell) => {
-        if (!schedule) {
-          return (
-            <td key={cell.day} style={{ ...cellTd, ...statusStyles[cell.status] }}>
-              {cell.count}
-              {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
-            </td>
-          );
-        }
-        const counts = schedule.assignedCells.get(demandCellKey(row.blockId, cell.day));
-        const assigned = assignedCellCount(row.dayType, counts);
-        const status = coverageStatus(assigned, cell.target);
-        const shown =
-          row.dayType === "weekend" ? `${counts?.a ?? 0}·${counts?.b ?? 0}` : String(assigned);
+        const counts = schedule?.assignedCells.get(demandCellKey(row.blockId, cell.day));
+        const assigned = schedule ? assignedCellCount(row.dayType, counts) : 0;
+        const status = schedule ? coverageStatus(assigned, cell.target) : cell.status;
+        const shown = !schedule
+          ? String(cell.count)
+          : row.dayType === "weekend"
+            ? `${counts?.a ?? 0}·${counts?.b ?? 0}`
+            : String(assigned);
         return (
-          <td
+          <SlotCell
             key={cell.day}
-            title={`${cell.count} could work this shift`}
+            blockId={row.blockId}
+            day={cell.day}
+            dayLabel={DAY_LABEL[cell.day]}
+            shiftLabel={formatSpan(row.start, row.end)}
+            supply={cell.count}
             style={{ ...cellTd, ...statusStyles[status] }}
           >
             {shown}
             {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
-          </td>
+          </SlotCell>
         );
       })}
     </tr>

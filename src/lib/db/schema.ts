@@ -439,6 +439,18 @@ export const scheduleRuns = mysqlTable("schedule_runs", {
    */
   restoredAt: datetime("restored_at", { mode: "date" }),
   restoredBy: varchar("restored_by", { length: 255 }),
+  /**
+   * Which slice of the roster this run re-solved, as
+   * `{"positionIds":["shift-lead"]}`. NULL means the whole roster, which is what
+   * every run before scoping was and what an unscoped run still is.
+   *
+   * A scoped run is not a partial record: students outside the scope are frozen
+   * for that run, so their rows carry forward verbatim and the run still holds
+   * everybody. The column says what *moved*, not what the run contains, which is
+   * what lets the read layer tell an out-of-scope student from one an admin
+   * marked scheduled without the engine knowing scoping exists.
+   */
+  scopeJson: varchar("scope_json", { length: 1024 }),
 });
 
 /**

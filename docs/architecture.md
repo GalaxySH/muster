@@ -1292,10 +1292,69 @@ The generator itself, layered exactly like the rest of the app:
   the mismatch list — rendered standalone when only one run exists).
 
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
-protection concept. Frozen students' rows carry forward verbatim through every
-run and consume capacity first; marking scheduled still never changes response
-status or the non-response list (both key on `confirmedAt`). With Phase C
-above, `docs/schedule-generation-plan.md` is fully built.
+*persisted* protection concept. Frozen students' rows carry forward verbatim
+through every run and consume capacity first; marking scheduled still never
+changes response status or the non-response list (both key on `confirmedAt`).
+With Phase C above, `docs/schedule-generation-plan.md` is fully built.
+
+### Scoped runs (v1.13)
+
+**Scope is the freeze, applied per run.** `generateSchedule({ scope: {
+positionIds } })` marks every out-of-scope student `scheduled: true` *in memory
+for that run only* (`domain/scheduling/scope.ts`, `applyScopeFreeze`) and hands
+the engine the unchanged whole-student list. The engine therefore needs no
+knowledge of scoping at all: it already carries frozen students' rows forward
+and already skips them in the improvement pass. Repair mode does the same
+transform with W2W seeds as its predicate, and the two compose (scope first,
+repair on top of it).
+
+Three properties follow, and the tests in
+`domain/scheduling/scope-runs.test.ts` pin all of them:
+
+- **Never filter `input.students`.** The engine computes `droppedStudents` as
+  previous-minus-input, so an omitted student is reported as having left the
+  roster. Freezing is the only safe way to exclude someone from a pass.
+- **Chained scoped runs accumulate.** A run scoped to Culinary Assistant keeps
+  a previous Shift-Lead-scoped run's rows verbatim, with no one marked
+  scheduled. The durability gap is the *unscoped* run, which unfreezes
+  everybody; `submissions.scheduled` is what protects a slice from that.
+- **The first scoped run of a cycle really is partial.** Out-of-scope students
+  have no previous rows to carry, and a frozen student with no rows gets none
+  generated.
+
+**Positions are the scope unit** because they never share a shift block, so a
+scoped run cannot disturb another position's coverage. Students with no position
+are deliberately left unfrozen, so they keep landing in the run report's
+"no position" warning instead of disappearing into its frozen list.
+
+**`schedule_runs.scope_json`** stores the scope (NULL = whole roster, which is
+what every pre-v1.13 run reads as). It is provenance, not content: a scoped run
+still holds everybody. Two read-layer features derive from it, with nothing new
+persisted:
+
+- **The frozen split** (`FrozenReason` in `schedule/data.ts`). The engine reports
+  one `frozen` boolean for three different situations, which made the old "kept"
+  chip misleading under scoping. `loadScheduleForRun` splits it into `marked`
+  (admin toggle, the durable one, and it wins when both apply), `out-of-scope`,
+  and `kept` (repair seed, or unmarked since the run).
+- **The scope ledger** (`loadScopeLedger`). Per position: the newest run that was
+  unscoped or named it, plus how many eligible responses are new or edited since.
+  Aggregated in JS over one flat query rather than a per-position subquery, since
+  each position needs a different cutoff.
+
+**Known gap:** the staleness banner stays global, so new Barista responses still
+make a Shift-Lead-scoped run look stale. The ledger is the per-slice answer.
+
+### Slot availability dialog (v1.13)
+
+Coverage grid cells are buttons (`components/admin/SlotCell.tsx`) that open the
+people behind the cell's number, fetched per cell on demand through
+`fetchCellAvailability`. `loadCellAvailability` deliberately mirrors
+`loadCoverage`'s cell query exactly, same seam and same eligibility filter, so
+the list and the number it explains cannot disagree. That grid counts
+auto-assigned weekend cells, so the dialog returns those people too and flags
+them rather than filtering them out. Any change to one query belongs in the
+other.
 
 ## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
 
