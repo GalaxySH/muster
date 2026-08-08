@@ -36,6 +36,7 @@ export function TravelForm({
   pastCutoff,
   lateAccepted,
   onBehalfOf,
+  returnDate,
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
@@ -49,6 +50,8 @@ export function TravelForm({
   lateAccepted: boolean;
   /** Set when an admin is filling this in for a student: their email, carried into every action. */
   onBehalfOf?: string;
+  /** The student's expected return-to-work date (e.g. "8/17"), by position. */
+  returnDate: string;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   const canAddTravel = !pastCutoff || lateAccepted;
@@ -59,6 +62,13 @@ export function TravelForm({
   return (
     <div style={{ maxWidth: 720 }}>
       <h1>Travel excusals</h1>
+      <InfoCard title="Return date">
+        <p style={{ margin: 0 }}>
+          Your return date is {returnDate}, you are expected to be able to begin work on this
+          date. If you will not be back by then and you have not otherwise communicated it,
+          submit an excusal for that travel here.
+        </p>
+      </InfoCard>
       <p style={{ color: "#555" }}>
         Add any planned travel during the semester. Upload proof and a date range for each trip,
         these will be manually reviewed for eligibility.{" "}

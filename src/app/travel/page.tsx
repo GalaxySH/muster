@@ -17,22 +17,13 @@ import {
 } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
-import { InfoCard, Page } from "@/components/ui";
+import { Page } from "@/components/ui";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 import { isTravelExcused } from "@/lib/domain/travel";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 
-function ReturnDateCard({ positionId }: { positionId: string | null }) {
-  const returnDate = positionId === SHIFT_LEAD_POSITION_ID ? "8/17" : "8/27";
-  return (
-    <InfoCard title="Return date">
-      <p style={{ margin: 0 }}>
-        Your return date is {returnDate}, you are expected to be able to begin work on this date.
-        If you will not be back by then and you have not otherwise communicated it, submit an
-        excusal for that travel here.
-      </p>
-    </InfoCard>
-  );
+function returnDateFor(positionId: string | null) {
+  return positionId === SHIFT_LEAD_POSITION_ID ? "8/17" : "8/27";
 }
 
 export default async function TravelPage({
@@ -74,7 +65,6 @@ export default async function TravelPage({
       <Page>
         <AppHeader />
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
-        <ReturnDateCard positionId={onBehalf.positionId} />
         <TravelForm
           initial={evidence}
           driveConnected={drive.connected}
@@ -82,6 +72,7 @@ export default async function TravelPage({
           pastCutoff={pastCutoff}
           lateAccepted={lateAccepted}
           onBehalfOf={onBehalf.email}
+          returnDate={returnDateFor(onBehalf.positionId)}
         />
       </Page>
     );
@@ -118,7 +109,6 @@ export default async function TravelPage({
           closesAt={access.closesAt}
         />
       )}
-      <ReturnDateCard positionId={student.positionId} />
       <TravelForm
         initial={evidence}
         driveConnected={drive.connected}
@@ -126,6 +116,7 @@ export default async function TravelPage({
         cutoffMs={cutoff.getTime()}
         pastCutoff={pastCutoff}
         lateAccepted={lateAccepted}
+        returnDate={returnDateFor(student.positionId)}
       />
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />
