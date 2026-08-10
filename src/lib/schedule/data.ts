@@ -37,6 +37,7 @@ import {
   type RunDiff,
 } from "@/lib/domain/scheduling/diff";
 import { problemGroups, type ProblemGroup } from "@/lib/domain/scheduling/problems";
+import { isInScope, parseScope, type ScheduleScope } from "@/lib/domain/scheduling/scope";
 import type {
   AssignmentSource,
   Cohort,
@@ -150,6 +151,92 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
   });
 }
 
+/** One person behind a coverage cell's count. */
+export interface CellPerson {
+  email: string;
+  displayName: string;
+  positionName: string | null;
+  /**
+   * The weekend cell auto-assign added for them (PLAN §5), not one they picked.
+   * Included because the grid's count includes it; flagged because the student
+   * never offered it.
+   */
+  autoAssigned: boolean;
+  /** Already holds this cell in the current run. */
+  assignedHere: boolean;
+}
+
+export interface CellAvailability {
+  blockId: string;
+  day: Day;
+  people: CellPerson[];
+}
+
+/**
+ * The people behind one coverage cell's number.
+ *
+ * This deliberately mirrors `loadCoverage`'s cell query exactly: the same
+ * effective-selections seam, the same eligibility filter, no extra conditions.
+ * The list and the number it explains must never disagree, so any change to one
+ * belongs in the other. Note the grid counts auto-assigned weekend cells, so
+ * this returns those people too rather than quietly filtering them out; they
+ * carry `autoAssigned` for the UI to mark.
+ */
+export async function loadCellAvailability(blockId: string, day: Day): Promise<CellAvailability> {
+  const db = getDb();
+  const eff = effectiveSelections();
+  const currentRun = await loadCurrentRunRow();
+  const [rows, assignedRows] = await Promise.all([
+    db
+      .select({
+        email: students.email,
+        displayName: students.displayName,
+        positionName: positions.name,
+        autoAssigned: eff.autoAssigned,
+      })
+      .from(eff)
+      .innerJoin(submissions, eq(eff.submissionId, submissions.id))
+      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .leftJoin(positions, eq(students.positionId, positions.id))
+      .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
+    currentRun
+      ? db
+          .select({ email: scheduleAssignments.studentEmail })
+          .from(scheduleAssignments)
+          .where(
+            and(
+              eq(scheduleAssignments.runId, currentRun.id),
+              eq(scheduleAssignments.shiftBlockId, blockId),
+              eq(scheduleAssignments.day, day),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
+
+  const assigned = new Set(assignedRows.map((r) => r.email));
+  // The count is distinct per submission and a student holds one, so collapse
+  // to one row per person and the two stay in step.
+  const byEmail = new Map<string, CellPerson>();
+  for (const row of rows) {
+    if (byEmail.has(row.email)) continue;
+    byEmail.set(row.email, {
+      email: row.email,
+      displayName: row.displayName,
+      positionName: row.positionName,
+      autoAssigned: row.autoAssigned,
+      assignedHere: assigned.has(row.email),
+    });
+  }
+
+  const people = [...byEmail.values()].sort(
+    (a, b) =>
+      Number(b.assignedHere) - Number(a.assignedHere) ||
+      a.displayName.localeCompare(b.displayName) ||
+      a.email.localeCompare(b.email),
+  );
+  return { blockId, day, people };
+}
+
 /** Seats a run fills in one cell, per weekend rotation week (weekday uses `a`). */
 export interface AssignedCellCounts {
   a: number;
@@ -165,12 +252,28 @@ export interface AssignedCell {
   cohort: "weekday" | "a" | "b" | "every";
 }
 
+/**
+ * Why a frozen student did not move, split apart at read time so the engine
+ * never has to know scoping exists. The engine reports one `frozen` boolean;
+ * these three cases are derived from it plus the run's stored scope and the
+ * student's live toggle:
+ *
+ * - `marked` — an admin marked them scheduled, so no run will move them.
+ * - `out-of-scope` — this run only re-solved other positions. They are not
+ *   protected from the next unscoped run.
+ * - `kept` — frozen for neither reason, which today means a repair run held
+ *   them on the imported plan, or they were unmarked after the run.
+ */
+export type FrozenReason = "marked" | "out-of-scope" | "kept";
+
 /** One eligible student's row in the current run's per-student list. */
 export interface ScheduleStudentRow extends StudentScheduleReport {
   displayName: string;
   positionName: string | null;
   /** The live "mark scheduled" toggle (frozen shows the value at generation). */
   scheduled: boolean;
+  /** Null when the student was not frozen in this run. */
+  frozenReason: FrozenReason | null;
   cells: AssignedCell[];
 }
 
@@ -179,6 +282,8 @@ export interface CurrentSchedule {
   generatedAt: Date;
   generatedBy: string;
   report: StoredRunReport;
+  /** Which positions this run re-solved; null means the whole roster. */
+  scope: ScheduleScope | null;
   /** Keyed by demandCellKey(blockId, day). */
   assignedCells: Map<string, AssignedCellCounts>;
   students: ScheduleStudentRow[];
@@ -306,13 +411,20 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
   ];
   const infoByEmail = new Map<
     string,
-    { displayName: string; positionName: string | null; minDays: number | null; scheduled: boolean }
+    {
+      displayName: string;
+      positionId: string | null;
+      positionName: string | null;
+      minDays: number | null;
+      scheduled: boolean;
+    }
   >();
   if (emails.length > 0) {
     const infoRows = await db
       .select({
         email: students.email,
         displayName: students.displayName,
+        positionId: students.positionId,
         positionName: positions.name,
         minDays: positions.minDays,
         scheduled: submissions.scheduled,
@@ -324,6 +436,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     for (const r of infoRows) {
       infoByEmail.set(r.email, {
         displayName: r.displayName,
+        positionId: r.positionId,
         positionName: r.positionName,
         minDays: r.minDays,
         scheduled: r.scheduled ?? false,
@@ -331,13 +444,25 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     }
   }
 
+  const scope = parseScope(run.scopeJson);
   const studentRows: ScheduleStudentRow[] = report.students.map((s) => {
     const info = infoByEmail.get(s.email);
+    const scheduled = info?.scheduled ?? false;
+    // Marked wins over out-of-scope: it is the stronger claim, since it also
+    // protects the student from the next unscoped run.
+    const frozenReason: FrozenReason | null = !s.frozen
+      ? null
+      : scheduled
+        ? "marked"
+        : isInScope(info?.positionId ?? null, scope)
+          ? "kept"
+          : "out-of-scope";
     return {
       ...s,
       displayName: info?.displayName ?? s.email,
       positionName: info?.positionName ?? null,
-      scheduled: info?.scheduled ?? false,
+      scheduled,
+      frozenReason,
       cells: cellsByStudent.get(s.email) ?? [],
     };
   });
@@ -350,6 +475,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     generatedAt: run.generatedAt,
     generatedBy: run.generatedBy,
     report,
+    scope,
     assignedCells,
     students: studentRows,
     totalAssignments: rows.length,
@@ -555,6 +681,84 @@ export interface ScheduleStaleness {
   newSubmissions: number;
   /** Eligible responses submitted before the run but edited after it. */
   edited: number;
+}
+
+/** One position's line in the scope ledger. */
+export interface PositionLedgerRow {
+  positionId: string;
+  positionName: string;
+  /**
+   * When a kept run last re-solved this position: the newest run that was
+   * either unscoped or named it. Null when no kept run covers it, which after
+   * pruning can also mean the covering run has aged out.
+   */
+  lastSolvedAt: Date | null;
+  /** Eligible responses first submitted since then (all of them when never solved). */
+  newSubmissions: number;
+  /** Eligible responses submitted before then but edited since. */
+  edited: number;
+  /** Eligible responders holding this position. */
+  responders: number;
+}
+
+/**
+ * Which slices have been re-solved and what has changed under them since
+ * (machinery B of the scoping design). Derived entirely from run history plus
+ * each run's stored scope, so nothing new is persisted and the ledger cannot
+ * drift out of step with the runs it describes.
+ *
+ * Counting happens in JS over one flat query rather than a per-position
+ * subquery: each position needs a different cutoff, and a few hundred rows is
+ * far cheaper than the per-position round trips that shape would invite.
+ */
+export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
+  const db = getDb();
+  const [positionRows, runRows, responderRows] = await Promise.all([
+    db.select({ id: positions.id, name: positions.name }).from(positions),
+    db
+      .select({ generatedAt: scheduleRuns.generatedAt, scopeJson: scheduleRuns.scopeJson })
+      .from(scheduleRuns)
+      .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
+    db
+      .select({
+        positionId: students.positionId,
+        submittedAt: submissions.submittedAt,
+        updatedAt: submissions.updatedAt,
+      })
+      .from(submissions)
+      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .where(eligibleSubmittedFilter()),
+  ]);
+
+  const runs = runRows.map((r) => ({ at: r.generatedAt, scope: parseScope(r.scopeJson) }));
+
+  return positionRows
+    .map((position) => {
+      // Runs are already newest-first, so the first covering one is the latest.
+      const lastSolvedAt = runs.find((r) => isInScope(position.id, r.scope))?.at ?? null;
+      const mine = responderRows.filter((r) => r.positionId === position.id);
+      const newSubmissions = mine.filter(
+        (r) => !lastSolvedAt || (r.submittedAt !== null && r.submittedAt > lastSolvedAt),
+      ).length;
+      const edited = lastSolvedAt
+        ? mine.filter(
+            (r) =>
+              r.submittedAt !== null &&
+              r.submittedAt <= lastSolvedAt &&
+              r.updatedAt !== null &&
+              r.updatedAt > lastSolvedAt,
+          ).length
+        : 0;
+      return {
+        positionId: position.id,
+        positionName: position.name,
+        lastSolvedAt,
+        newSubmissions,
+        edited,
+        responders: mine.length,
+      };
+    })
+    .sort((a, b) => a.positionName.localeCompare(b.positionName));
 }
 
 /** How much eligible input changed since the current run was generated. */

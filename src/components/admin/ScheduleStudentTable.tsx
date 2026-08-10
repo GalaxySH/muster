@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { ScheduleStudentRow } from "@/lib/schedule/data";
+import type { FrozenReason, ScheduleStudentRow } from "@/lib/schedule/data";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL } from "@/lib/domain/types";
 import { hoursLabel } from "@/lib/domain/config-validation";
@@ -10,6 +10,13 @@ import { hoursLabel } from "@/lib/domain/config-validation";
 type SortKey = "name" | "position" | "hours" | "days" | "rotation" | "scheduled";
 
 const ROTATION_LABEL = { a: "A", b: "B", every: "Every" } as const;
+
+/** Why this student's shifts did not move. See FrozenReason for the split. */
+const FROZEN_LABEL: Record<FrozenReason, string> = {
+  marked: "kept",
+  "out-of-scope": "not in this update",
+  kept: "kept",
+};
 
 /**
  * The current run's per-student list on /admin/schedule, sortable by column
@@ -116,7 +123,7 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
         ) : (
           s.cells.map((c) => `${DAY_LABEL[c.day]} ${formatSpan(c.start, c.end)}`).join(", ")
         )}
-        {s.frozen && <span style={keptTag}>kept</span>}
+        {s.frozenReason && <span style={keptTag}>{FROZEN_LABEL[s.frozenReason]}</span>}
       </td>
       <td style={tdStyle}>{s.scheduled ? "✓" : ""}</td>
     </tr>

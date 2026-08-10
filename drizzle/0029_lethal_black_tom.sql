@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_runs` ADD `scope_json` varchar(1024);

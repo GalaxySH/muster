@@ -43,6 +43,17 @@ export interface ScheduleStudent {
   /** FCFS key: earlier submissions pick first. Null sorts last. */
   submittedAt: Date | null;
   /**
+   * Hired before the current hiring cycle (`flow/returner.ts`). Returners are
+   * ordered ahead of new hires, which spreads experience across shifts without
+   * a per-cell "N experienced" constraint that could not be guaranteed anyway.
+   * FCFS still decides everything within each cohort.
+   *
+   * Resolved by the caller, not here: the check needs a `now` and the engine
+   * has no clock. Absent means new hire, which is also what an unknown hire
+   * date means, so a roster imported without dates degrades to plain FCFS.
+   */
+  returner?: boolean;
+  /**
    * The admin's "mark scheduled" toggle. A scheduled student is frozen: their
    * assignments from the previous run are carried forward verbatim and no pass
    * may add, remove, or move anything of theirs.
@@ -113,6 +124,21 @@ export interface EngineReport {
   belowMinDays: number;
   /** The knobs this run was generated with (absent on pre-0.85 stored runs). */
   params?: SchedulingParams;
+  /**
+   * Returner ordering as this run saw it (absent on pre-1.13 stored runs).
+   * The cutoff is snapshotted because returner status flips on June 1: without
+   * it, two runs with identical inputs either side of that date would order
+   * differently and "same inputs reproduce same outputs" would quietly stop
+   * being true. `unknownHireDate` counts eligible students with no hire date,
+   * who are ordered as new hires; when that number is high the ordering has
+   * degraded toward plain FCFS and the admin needs to know.
+   */
+  returners?: {
+    /** `yyyy-mm-dd`, the June 1 that divided returners from new hires. */
+    cutoff: string;
+    count: number;
+    unknownHireDate: number;
+  };
 }
 
 export interface EngineResult {

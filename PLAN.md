@@ -1408,6 +1408,44 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.14 (2026-08-10)** — **Schedule generation can be run one position at a time,
+  and coverage cells now say who they are counting (roadmap 5.1,
+  `docs/architecture.md`).** The generator was whole-roster or nothing, which did
+  not match how the scheduler works: they want to settle Shift Leads, look at the
+  result, then move on. Scoping needed no engine change, because the engine
+  already has the mechanism. `generateSchedule({ scope: { positionIds } })` marks
+  everyone outside the scope `scheduled: true` for that run only
+  (`domain/scheduling/scope.ts`), which is the transform repair mode already used
+  with W2W seeds; the whole student list still reaches the engine, so nobody is
+  mistaken for having left the roster. Positions are the unit because they never
+  share a shift block, so a scoped run cannot disturb another position's coverage.
+  Scoped runs chain: a Culinary Assistant run keeps a previous Shift Lead run's
+  rows verbatim with nobody marked scheduled. The gap is the *unscoped* run, which
+  unfreezes everyone, and `submissions.scheduled` is still what protects a slice
+  from that. Migration **0029** adds `schedule_runs.scope_json` (NULL = whole
+  roster). Two read-layer features derive from it with nothing else persisted: the
+  run report's single `frozen` flag is split into **marked / not in this update /
+  kept**, since one chip for three situations had become misleading, and an
+  **Updated by position** panel shows when each position was last re-solved and how
+  many responses are new or edited since. Separately, coverage grid cells are now
+  clickable and list the people behind the number; that list runs the same query as
+  the count, including auto-assigned weekend cells (flagged, not hidden), so the
+  two can never disagree.
+  Also: **returners are now scheduled before new students.** Student order is
+  cohort first, then first come first served inside each cohort, which spreads
+  experienced staff across shifts without a per-cell "N experienced" rule that
+  could never have been guaranteed. Returner means hired before the current
+  cycle's June 1 (`flow/returner.ts`, which already existed and was rendered
+  nowhere). The engine stays clockless: `schedule/actions.ts` resolves the flag
+  once per run and passes a plain boolean, and each run snapshots the cutoff it
+  used, so a re-run either side of June 1 still reproduces. An unknown hire date
+  counts as a new student, so the run panel warns when any eligible student has
+  no start date; without that the ordering would silently fall back to plain
+  first come first served. The hire date comes from the **PCPL** workbook's
+  `People Coming` sheet (`Start Date`); a roster imported from the PC & Training
+  Tracker has no date column at all and will trip that warning.
+  Known gap: the staleness banner is still global, so a response in one position
+  makes a run scoped to another look stale.
 - **1.13 (2026-08-08)** — **A return-date card on `/travel`, with the date editable per
   position (§6.1, `/admin/positions`).** The card tells a student their expected
   return-to-work date and points them at the excusal form below if they will not make
