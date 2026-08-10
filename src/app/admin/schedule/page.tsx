@@ -276,9 +276,19 @@ function SchedulePanel({
           ` This update only covered ${scopeNames}, so ${outOfScope} people in other positions were not changed.`}
         {planKept > 0 &&
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
+        {report.returners &&
+          ` ${report.returners.count} returners were placed before new students.`}
         {report.params &&
           ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
       </p>
+      {/* Without hire dates everyone counts as a new student, so the ordering
+          quietly becomes plain first come first served. Say so. */}
+      {report.returners && report.returners.unknownHireDate > 0 && (
+        <div style={{ ...bannerStyle, marginBottom: 10 }}>
+          {report.returners.unknownHireDate} people have no start date on the roster, so they were
+          scheduled as new students. Re-import the roster from the PCPL workbook to fix this.
+        </div>
+      )}
       {(problems.length > 0 || report.droppedBlockGone > 0) && (
         <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
           {problems.map((group) => (

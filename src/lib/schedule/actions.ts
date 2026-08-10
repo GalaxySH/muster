@@ -36,6 +36,7 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
 import {
   applyScopeFreeze,
   normalizeScope,
@@ -147,6 +148,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           desiredHours: submissions.desiredHours,
           submittedAt: submissions.submittedAt,
           scheduled: submissions.scheduled,
+          hiredOn: students.hiredOn,
         })
         .from(submissions)
         .innerJoin(students, eq(submissions.studentEmail, students.email))
@@ -187,6 +189,13 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     ]),
   );
 
+  // Returner status is resolved here, not in the engine: the check needs a
+  // clock and the engine deliberately has none. The cutoff is captured once so
+  // every student in this run is judged against the same boundary, and it is
+  // stored on the run so a re-run either side of June 1 stays reproducible.
+  const now = new Date();
+  const cutoff = returnerCutoff(now);
+
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
   // saved an internal copy, its cells and rotation replace the student's here.
   const engineStudents: ScheduleStudent[] = applyInternalOverrides(
@@ -198,10 +207,15 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       desiredHours: r.desiredHours,
       submittedAt: r.submittedAt,
       scheduled: r.scheduled,
+      returner: isReturningStudent(r.hiredOn, now),
       selection: selectionByEmail.get(r.email) ?? [],
     })),
     liveInternalByEmail,
   );
+  // An unknown hire date reads as a new hire, so a roster imported without
+  // dates silently becomes plain FCFS. Count it rather than let that pass
+  // unseen.
+  const unknownHireDate = studentRows.filter((r) => r.hiredOn === null).length;
 
   const domainBlocks = blockRows.map(toDomainBlock);
 
@@ -229,6 +243,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           everyWeekendOptIn: submissions.everyWeekendOptIn,
           desiredHours: submissions.desiredHours,
           scheduled: submissions.scheduled,
+          hiredOn: students.hiredOn,
         })
         .from(students)
         .leftJoin(submissions, eq(submissions.studentEmail, students.email))
@@ -262,6 +277,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         desiredHours: r.desiredHours,
         submittedAt: null,
         scheduled: r.scheduled ?? false,
+        returner: isReturningStudent(r.hiredOn, now),
         fillIn: true,
         selection: fillInSelection(r.positionId!, domainBlocks, draftByEmail.get(r.email)),
       }));
@@ -360,6 +376,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
     previousFillIns,
   });
+  result.report.returners = {
+    cutoff: cutoff.toISOString().slice(0, 10),
+    count: engineStudentsFinal.filter((s) => s.returner === true).length,
+    unknownHireDate,
+  };
 
   const runId = randomUUID();
   await db.transaction(async (tx) => {

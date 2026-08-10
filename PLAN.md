@@ -1426,8 +1426,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   many responses are new or edited since. Separately, coverage grid cells are now
   clickable and list the people behind the number; that list runs the same query as
   the count, including auto-assigned weekend cells (flagged, not hidden), so the
-  two can never disagree. Known gap: the staleness banner is still global, so a
-  response in one position makes a run scoped to another look stale.
+  two can never disagree.
+  Also: **returners are now scheduled before new students.** Student order is
+  cohort first, then first come first served inside each cohort, which spreads
+  experienced staff across shifts without a per-cell "N experienced" rule that
+  could never have been guaranteed. Returner means hired before the current
+  cycle's June 1 (`flow/returner.ts`, which already existed and was rendered
+  nowhere). The engine stays clockless: `schedule/actions.ts` resolves the flag
+  once per run and passes a plain boolean, and each run snapshots the cutoff it
+  used, so a re-run either side of June 1 still reproduces. An unknown hire date
+  counts as a new student, so the run panel warns when any eligible student has
+  no start date; without that the ordering would silently fall back to plain
+  first come first served. The hire date comes from the **PCPL** workbook's
+  `People Coming` sheet (`Start Date`); a roster imported from the PC & Training
+  Tracker has no date column at all and will trip that warning.
+  Known gap: the staleness banner is still global, so a response in one position
+  makes a run scoped to another look stale.
 - **1.12 (2026-08-05)** — **An admin switch to stop advertising the change-request form
   (§4.1, roadmap 3.1), plus two `/me` copy cleanups.** There was no way to steer
   students toward email instead of the form without editing code. Now a settings card

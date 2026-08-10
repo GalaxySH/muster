@@ -1,9 +1,13 @@
 /**
  * Recommended-schedule engine (docs/schedule-generation-plan.md §3).
  *
- * Deterministic greedy, first-come-first-serve by submittedAt: early responders
- * pick first, which is fair, easy to explain, and makes rerunning the engine
- * reproduce unchanged students' schedules (no randomness anywhere).
+ * Deterministic greedy: returners first, then first-come-first-serve by
+ * submittedAt within each cohort. Early responders pick first among their
+ * peers, which is fair, easy to explain, and makes rerunning the engine
+ * reproduce unchanged students' schedules (no randomness anywhere). Ranking
+ * returners ahead of new hires is how experience gets spread across shifts;
+ * the caller resolves that flag, since the check needs a clock and this
+ * module has none.
  *
  * Per student the engine concentrates work onto the fewest days: it seeds the
  * position's minimum day count (2, Shift Lead 3), then fills already-worked
@@ -58,6 +62,9 @@ export function targetMinutes(student: ScheduleStudent, position: Position): num
 const fcfsTime = (s: ScheduleStudent) =>
   s.submittedAt ? s.submittedAt.getTime() : Number.MAX_SAFE_INTEGER;
 
+/** Returners sort first (0 before 1); everyone else, including unknown, is a new hire. */
+const cohortRank = (s: ScheduleStudent) => (s.returner === true ? 0 : 1);
+
 interface ActiveState {
   student: ScheduleStudent;
   position: Position;
@@ -77,8 +84,13 @@ export function generateAssignments(input: EngineInput): EngineResult {
   const ledger = new SeatLedger();
   const weekendMinutes = { a: 0, b: 0 };
 
+  // Returners first, then first come first served inside each cohort. Putting
+  // the cohort ahead of the timestamp is what actually spreads experience:
+  // as a tiebreak it would do nothing, since two responses never share a
+  // millisecond.
   const fcfs = [...input.students].sort(
-    (x, y) => fcfsTime(x) - fcfsTime(y) || byEmail(x.email, y.email),
+    (x, y) =>
+      cohortRank(x) - cohortRank(y) || fcfsTime(x) - fcfsTime(y) || byEmail(x.email, y.email),
   );
   const eligible = new Set(fcfs.map((s) => s.email));
 

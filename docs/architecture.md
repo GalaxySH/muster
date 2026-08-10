@@ -1345,6 +1345,42 @@ persisted:
 **Known gap:** the staleness banner stays global, so new Barista responses still
 make a Shift-Lead-scoped run look stale. The ledger is the per-slice answer.
 
+### Returner-first ordering (v1.13)
+
+Student order in the engine is **cohort, then FCFS**: returners are placed
+before new students, and `submittedAt` still decides everything inside each
+cohort (`cohortRank` then `fcfsTime` in `engine.ts`). This is how experience
+gets spread across shifts; the owner explicitly ruled out a per-cell
+"N experienced required" constraint, on the grounds that it could not be
+guaranteed anyway.
+
+The cohort term must come **before** the timestamp. As a tiebreak it would do
+nothing, since two responses never share a millisecond.
+
+**The engine stays clockless.** `isReturningStudent(hiredOn, now)`
+(`flow/returner.ts`, hired before the most recent June 1) needs a clock, so
+`schedule/actions.ts` resolves it once per run and passes a plain
+`returner` boolean on `ScheduleStudent`, the same way `fillIn` is handled. The
+cutoff is captured once so every student is judged against one boundary.
+
+**Reproducibility.** Returner status flips on June 1, so each run snapshots
+`report.returners = { cutoff, count, unknownHireDate }`. Without the stored
+cutoff, two runs with identical inputs either side of that date would order
+differently and "same inputs reproduce same outputs" would quietly stop holding.
+
+**Silent-degradation guard.** An unknown hire date reads as a new student, so a
+roster imported without dates turns the ordering back into plain FCFS with no
+visible symptom. `unknownHireDate` counts those students and the run panel warns
+when it is non-zero.
+
+**Data source, verified 2026-08-08:** the hire date lives in the **PCPL**
+workbook's `People Coming` sheet as `Start Date` (column F), and the importer's
+existing matchers read it: 258/258 rows in `PCPL F26.08.06.xlsx` parse to a
+usable date. The **PC & Training Tracker** sheet has no date column at all, so a
+roster imported from the tracker leaves `hired_on` NULL for everyone and trips
+the guard above. `docs/roadmap.md` records the underlying importer defect (the
+column is optional, and the upsert writes NULL over stored values).
+
 ### Slot availability dialog (v1.13)
 
 Coverage grid cells are buttons (`components/admin/SlotCell.tsx`) that open the
