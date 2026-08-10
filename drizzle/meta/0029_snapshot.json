@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "7e93269e-8ec6-4fea-b634-ecaaf164ae51",
-  "prevId": "fc0b0692-1a70-4946-af4f-5a2daed6b3a5",
+  "id": "1987efe4-0a45-461c-92d4-4b879ad2aa73",
+  "prevId": "7e93269e-8ec6-4fea-b634-ecaaf164ae51",
   "tables": {
     "admin_google_grants": {
       "name": "admin_google_grants",
@@ -1106,6 +1106,13 @@
         "restored_by": {
           "name": "restored_by",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope_json": {
+          "name": "scope_json",
+          "type": "varchar(1024)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
