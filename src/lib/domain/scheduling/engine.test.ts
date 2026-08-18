@@ -3,6 +3,7 @@ import { parseTime } from "../time";
 import { computeCapacity } from "../capacity";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { DAY_CAP_MINUTES, generateAssignments, targetMinutes } from "./engine";
+import { DEFAULT_SCHEDULING_PARAMS } from "./params";
 import type { EngineInput, ScheduleAssignment, ScheduleStudent } from "./types";
 
 const CA: Position = {
@@ -809,7 +810,7 @@ describe("generateAssignments", () => {
       positions: POSITIONS,
       blocks,
       previous: [],
-      params: { dayCapHours: 8, nightPriority: 100, eveningPriority: 25 },
+      params: { ...DEFAULT_SCHEDULING_PARAMS, nightPriority: 100 },
     });
     const s4First = rowsOf(nightsFirst, "s4@w").map((a) => `${a.blockId}|${a.day}`);
     expect(s4First).toContain("night|mon");
@@ -825,7 +826,7 @@ describe("generateAssignments", () => {
       positions: POSITIONS,
       blocks: barGrid,
       previous: [],
-      params: { dayCapHours: 6, nightPriority: 50, eveningPriority: 25 },
+      params: { ...DEFAULT_SCHEDULING_PARAMS, dayCapHours: 6 },
     });
     const report = reportOf(r, "b@w");
     expect(report.daysUsed).toBe(3);

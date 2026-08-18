@@ -4,6 +4,16 @@ import { useState, useTransition } from "react";
 import {
   DAY_CAP_HOURS_MAX,
   DAY_CAP_HOURS_MIN,
+  MAX_CONSECUTIVE_DAYS_MAX,
+  MAX_CONSECUTIVE_DAYS_MIN,
+  MAX_DAYS_PER_WEEK_MAX,
+  MAX_DAYS_PER_WEEK_MIN,
+  MIN_REST_HOURS_MAX,
+  MIN_REST_HOURS_MIN,
+  PREFERRED_DAYS_PER_WEEK_MIN,
+  PREFERRED_REST_HOURS_MAX,
+  REPEAT_START_PENALTY_MAX,
+  REPEAT_START_PENALTY_MIN,
   type SchedulingParams,
 } from "@/lib/domain/scheduling/params";
 import { saveScheduleParams } from "@/lib/schedule/actions";
@@ -16,6 +26,12 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
   const [dayCap, setDayCap] = useState(String(initial.dayCapHours));
   const [night, setNight] = useState(String(initial.nightPriority));
   const [evening, setEvening] = useState(String(initial.eveningPriority));
+  const [repeatPenalty, setRepeatPenalty] = useState(String(initial.repeatStartPenalty));
+  const [minRest, setMinRest] = useState(String(initial.minRestHours));
+  const [preferredRest, setPreferredRest] = useState(String(initial.preferredRestHours));
+  const [maxRun, setMaxRun] = useState(String(initial.maxConsecutiveDays));
+  const [maxDays, setMaxDays] = useState(String(initial.maxDaysPerWeek));
+  const [preferredDays, setPreferredDays] = useState(String(initial.preferredDaysPerWeek));
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -25,6 +41,12 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
         dayCapHours: Number(dayCap),
         nightPriority: Number(night),
         eveningPriority: Number(evening),
+        repeatStartPenalty: Number(repeatPenalty),
+        minRestHours: Number(minRest),
+        preferredRestHours: Number(preferredRest),
+        maxConsecutiveDays: Number(maxRun),
+        maxDaysPerWeek: Number(maxDays),
+        preferredDaysPerWeek: Number(preferredDays),
       });
       setMsg(
         res.ok ? "Saved. Applies the next time the schedule is updated." : (res.error ?? "Failed."),
@@ -58,6 +80,54 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
           onChange={setEvening}
           min={0}
           max={100}
+        />
+        <Field
+          label="Repeat start penalty"
+          help="0 ignores repeats. 100 pushes hardest against giving one student the same start time again."
+          value={repeatPenalty}
+          onChange={setRepeatPenalty}
+          min={REPEAT_START_PENALTY_MIN}
+          max={REPEAT_START_PENALTY_MAX}
+        />
+        <Field
+          label="Minimum rest hours"
+          help="The least rest between one day's last shift and the next day's first."
+          value={minRest}
+          onChange={setMinRest}
+          min={MIN_REST_HOURS_MIN}
+          max={MIN_REST_HOURS_MAX}
+        />
+        <Field
+          label="Preferred rest hours"
+          help="The rest the engine aims for between days. At least the minimum."
+          value={preferredRest}
+          onChange={setPreferredRest}
+          min={MIN_REST_HOURS_MIN}
+          max={PREFERRED_REST_HOURS_MAX}
+        />
+        <Field
+          label="Max consecutive days"
+          help="The most days in a row one student works."
+          value={maxRun}
+          onChange={setMaxRun}
+          min={MAX_CONSECUTIVE_DAYS_MIN}
+          max={MAX_CONSECUTIVE_DAYS_MAX}
+        />
+        <Field
+          label="Max days per week"
+          help="The most working days in one week."
+          value={maxDays}
+          onChange={setMaxDays}
+          min={MAX_DAYS_PER_WEEK_MIN}
+          max={MAX_DAYS_PER_WEEK_MAX}
+        />
+        <Field
+          label="Preferred days per week"
+          help="The days per week the engine aims for. At most the max."
+          value={preferredDays}
+          onChange={setPreferredDays}
+          min={PREFERRED_DAYS_PER_WEEK_MIN}
+          max={MAX_DAYS_PER_WEEK_MAX}
         />
         <div style={{ display: "flex", alignItems: "flex-end" }}>
           <button type="button" onClick={submit} disabled={pending}>

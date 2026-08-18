@@ -9,7 +9,12 @@ describe("validateSchedulingParams", () => {
   it("accepts the defaults and sensible values", () => {
     expect(validateSchedulingParams(DEFAULT_SCHEDULING_PARAMS)).toBeNull();
     expect(
-      validateSchedulingParams({ dayCapHours: 6, nightPriority: 100, eveningPriority: 0 }),
+      validateSchedulingParams({
+        ...DEFAULT_SCHEDULING_PARAMS,
+        dayCapHours: 6,
+        nightPriority: 100,
+        eveningPriority: 0,
+      }),
     ).toBeNull();
   });
 
@@ -30,6 +35,124 @@ describe("validateSchedulingParams", () => {
       validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, eveningPriority: 101 }),
     ).not.toBeNull();
   });
+
+  it("ships the documented defaults, all nine pinned", () => {
+    expect(DEFAULT_SCHEDULING_PARAMS).toEqual({
+      dayCapHours: 8,
+      nightPriority: 50,
+      eveningPriority: 25,
+      repeatStartPenalty: 0,
+      minRestHours: 8,
+      preferredRestHours: 10,
+      maxConsecutiveDays: 5,
+      maxDaysPerWeek: 6,
+      preferredDaysPerWeek: 5,
+    });
+  });
+
+  it("accepts every field exactly at its bounds", () => {
+    expect(
+      validateSchedulingParams({
+        dayCapHours: 16,
+        nightPriority: 100,
+        eveningPriority: 100,
+        repeatStartPenalty: 100,
+        minRestHours: 16,
+        preferredRestHours: 16,
+        maxConsecutiveDays: 14,
+        maxDaysPerWeek: 7,
+        preferredDaysPerWeek: 7,
+      }),
+    ).toBeNull();
+    expect(
+      validateSchedulingParams({
+        dayCapHours: 1,
+        nightPriority: 0,
+        eveningPriority: 0,
+        repeatStartPenalty: 0,
+        minRestHours: 4,
+        preferredRestHours: 4,
+        maxConsecutiveDays: 1,
+        maxDaysPerWeek: 1,
+        preferredDaysPerWeek: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a repeat start penalty outside 0 to 100 or fractional", () => {
+    for (const repeatStartPenalty of [-1, 101, 0.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty });
+      expect(msg).toMatch(/Repeat start penalty/);
+      expect(msg).not.toMatch(/—/);
+    }
+  });
+
+  it("rejects minimum rest hours outside 4 to 16 or fractional", () => {
+    for (const minRestHours of [3, 17, 8.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, minRestHours });
+      expect(msg).toMatch(/Minimum rest hours/);
+    }
+  });
+
+  it("rejects preferred rest hours outside 4 to 16 or fractional", () => {
+    for (const preferredRestHours of [3, 17, 10.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, preferredRestHours });
+      expect(msg).toMatch(/Preferred rest hours/);
+    }
+  });
+
+  it("rejects max consecutive days outside 1 to 14 or fractional", () => {
+    for (const maxConsecutiveDays of [0, 15, 5.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, maxConsecutiveDays });
+      expect(msg).toMatch(/Max consecutive days/);
+    }
+  });
+
+  it("rejects max days per week outside 1 to 7 or fractional", () => {
+    for (const maxDaysPerWeek of [0, 8, 6.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, maxDaysPerWeek });
+      expect(msg).toMatch(/Max days per week/);
+    }
+  });
+
+  it("rejects preferred days per week outside 1 to 7 or fractional", () => {
+    for (const preferredDaysPerWeek of [0, 8, 5.5]) {
+      const msg = validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, preferredDaysPerWeek });
+      expect(msg).toMatch(/Preferred days per week/);
+    }
+  });
+
+  it("keeps preferred rest at or above minimum rest, from either side", () => {
+    expect(
+      validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, preferredRestHours: 7 }),
+    ).toMatch(/Preferred rest hours/);
+    expect(validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, minRestHours: 12 })).toMatch(
+      /Preferred rest hours/,
+    );
+    expect(
+      validateSchedulingParams({
+        ...DEFAULT_SCHEDULING_PARAMS,
+        minRestHours: 10,
+        preferredRestHours: 10,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps preferred days at or below max days, from either side", () => {
+    expect(
+      validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, preferredDaysPerWeek: 7 }),
+    ).toMatch(/Preferred days per week/);
+    expect(validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, maxDaysPerWeek: 4 })).toMatch(
+      /Preferred days per week/,
+    );
+    expect(
+      validateSchedulingParams({
+        ...DEFAULT_SCHEDULING_PARAMS,
+        maxDaysPerWeek: 5,
+        preferredDaysPerWeek: 5,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("parseSchedulingParams", () => {
@@ -42,14 +165,33 @@ describe("parseSchedulingParams", () => {
 
   it("fills missing fields from the defaults", () => {
     expect(parseSchedulingParams('{"dayCapHours": 6}')).toEqual({
+      ...DEFAULT_SCHEDULING_PARAMS,
       dayCapHours: 6,
-      nightPriority: 50,
-      eveningPriority: 25,
+    });
+  });
+
+  it("backfills a pre-overhaul stored value with the labor defaults", () => {
+    const stored = '{"dayCapHours": 6, "nightPriority": 80, "eveningPriority": 10}';
+    expect(parseSchedulingParams(stored)).toEqual({
+      ...DEFAULT_SCHEDULING_PARAMS,
+      dayCapHours: 6,
+      nightPriority: 80,
+      eveningPriority: 10,
     });
   });
 
   it("round-trips a full valid value", () => {
-    const params = { dayCapHours: 10, nightPriority: 80, eveningPriority: 10 };
+    const params = {
+      dayCapHours: 10,
+      nightPriority: 80,
+      eveningPriority: 10,
+      repeatStartPenalty: 30,
+      minRestHours: 9,
+      preferredRestHours: 11,
+      maxConsecutiveDays: 6,
+      maxDaysPerWeek: 5,
+      preferredDaysPerWeek: 4,
+    };
     expect(parseSchedulingParams(JSON.stringify(params))).toEqual(params);
   });
 });
