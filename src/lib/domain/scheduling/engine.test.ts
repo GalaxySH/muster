@@ -4,6 +4,7 @@ import { computeCapacity } from "../capacity";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { DAY_CAP_MINUTES, generateAssignments, targetMinutes } from "./engine";
 import { DEFAULT_SCHEDULING_PARAMS } from "./params";
+import { orderHash } from "./seats";
 import type { EngineInput, ScheduleAssignment, ScheduleStudent } from "./types";
 
 const CA: Position = {
@@ -193,7 +194,7 @@ describe("generateAssignments", () => {
     expect(reportOf(r, "lead@w").daysUsed).toBe(3);
   });
 
-  it("lets a single block longer than 8h stand alone on its day", () => {
+  it("refuses a single block longer than 8h even alone on its day", () => {
     const blocks = [
       block("long", "barista", "weekday", "8a", "5p"), // 9h
       ...barGrid,
@@ -209,9 +210,11 @@ describe("generateAssignments", () => {
       blocks,
     );
     const loads = dayLoads(rowsOf(r, "b@w"), blocks);
-    expect(loads.get("mon")).toBe(540);
-    // Nothing stacked past the cap on Monday: only the long block lives there.
-    expect(rowsOf(r, "b@w").filter((a) => a.day === "mon")).toHaveLength(1);
+    expect(loads.get("mon")).toBe(240); // day-hours: a 9h block breaks the hard 8h day cap even standing alone
+    const ids = rowsOf(r, "b@w")
+      .map((a) => `${a.blockId}|${a.day}`)
+      .sort();
+    expect(ids).toEqual(["bar-am|mon", "bar-pm|tue"]); // day-hours: the long block is never assigned
   });
 
   it("gives a contested last seat to the earlier responder", () => {
@@ -364,7 +367,7 @@ describe("generateAssignments", () => {
     expect(monIds).toEqual(["b-late", "c-mid"]);
   });
 
-  it("allows a shift between two disjoint ones (coverage is a set, not a hull)", () => {
+  it("takes only one of several disjoint same-day blocks (no split shifts)", () => {
     const blocks = [
       block("early", "barista", "weekday", "8a", "10a"),
       block("mid", "barista", "weekday", "12p", "2p"),
@@ -386,12 +389,11 @@ describe("generateAssignments", () => {
       ],
       blocks,
     );
-    // mid sits inside the hull of the other two but adds real time.
     const monIds = rowsOf(r, "b@w")
       .filter((a) => a.day === "mon")
       .map((a) => a.blockId)
       .sort();
-    expect(monIds).toEqual(["early", "late", "mid"]);
+    expect(monIds).toEqual(["late"]); // split-shift: a second disjoint block would split the day (this case used to stack all three)
   });
 
   it("assigns only cells the student selected", () => {
@@ -851,5 +853,289 @@ describe("generateAssignments", () => {
     );
     expect(r.report.shortOfTarget).toBe(1);
     expect(reportOf(r, "b@w").assignedMinutes).toBe(480);
+  });
+
+  describe("labor rules and the relax ladder", () => {
+    it("takes a soft-violating non-deferred cell before any deferred cell", () => {
+      // The only strict-legal second day is the deferred afternoon; the
+      // morning after the Monday night leaves 9h of rest, a soft violation.
+      const blocks = [
+        block("night", "barista", "weekday", "6p", "10p"),
+        block("next-am", "barista", "weekday", "7a", "11a"),
+        block("depth", "barista", "weekday", "2p", "6p"),
+      ];
+      const r = run(
+        [
+          student("b@w", {
+            positionId: "barista",
+            desiredHours: 10,
+            selection: [sel("night", "mon"), sel("next-am", "tue"), sel("depth", "tue")],
+          }),
+        ],
+        blocks,
+        [],
+        ["depth"],
+      );
+      const ids = rowsOf(r, "b@w").map((a) => `${a.blockId}|${a.day}`);
+      // Deferred is the last resort: a short-rest (relax-rest) non-deferred
+      // cell wins before the deferred cell is even considered.
+      expect(ids).toContain("night|mon");
+      expect(ids).toContain("next-am|tue");
+      expect(ids).not.toContain("depth|tue");
+      expect(r.report.laborRelaxed).toEqual({ students: 1 });
+    });
+
+    it("takes a clean deferred cell over hard-violating alternatives", () => {
+      // Mirror case: the morning after an 11:30p close is a clopen (hard,
+      // never relaxed), so the ladder falls through to the deferred cell.
+      const blocks = [
+        block("night", "barista", "weekday", "6p", "11:30p"),
+        block("clopen-am", "barista", "weekday", "5a", "9a"),
+        block("depth", "barista", "weekday", "2p", "6p"),
+      ];
+      const r = run(
+        [
+          student("b@w", {
+            positionId: "barista",
+            desiredHours: 10,
+            selection: [sel("night", "mon"), sel("clopen-am", "tue"), sel("depth", "tue")],
+          }),
+        ],
+        blocks,
+        [],
+        ["depth"],
+      );
+      const ids = rowsOf(r, "b@w").map((a) => `${a.blockId}|${a.day}`);
+      expect(ids).toContain("depth|tue");
+      expect(ids).not.toContain("clopen-am|tue");
+      expect(r.report.laborRelaxed).toEqual({ students: 0 });
+    });
+
+    it("places only one of a night close and the next morning open", () => {
+      const blocks = [
+        block("close", "barista", "weekday", "6p", "11:30p"),
+        block("open", "barista", "weekday", "5a", "9a"),
+      ];
+      const r = run(
+        [
+          student("b@w", {
+            positionId: "barista",
+            desiredHours: 10,
+            selection: [sel("close", "mon"), sel("open", "tue")],
+          }),
+        ],
+        blocks,
+      );
+      // 5.5h of rest is under the 8h floor. Clopen is hard, so no ladder mode
+      // ever places the pair together; the student lands in belowMinDays.
+      expect(rowsOf(r, "b@w").map((a) => a.blockId)).toEqual(["close"]);
+      expect(r.report.belowMinDays).toBe(1);
+    });
+
+    it("holds a dense student to 5 consecutive days over the cycle", () => {
+      const blocks = [
+        block("wd", "ca", "weekday", "10a", "2p"),
+        block("we", "ca", "weekend", "10a", "2p"),
+      ];
+      const selection = [
+        sel("we", "sun"),
+        sel("we", "sat"),
+        ...(["mon", "tue", "wed", "thu", "fri"] as const).map((d) => sel("wd", d)),
+      ];
+      const r = run([student("s@w", { desiredHours: 30, selection })], blocks);
+      // Sun (cohort a) through Thu is a run of 5; Fri or Sat would make 6.
+      const days = new Set(rowsOf(r, "s@w").map((a) => a.day));
+      expect(days).toEqual(new Set(["sun", "mon", "tue", "wed", "thu"]));
+      expect(reportOf(r, "s@w").daysUsed).toBe(5);
+    });
+
+    it("evaluates an every-weekend opt-in's weekend candidates as 'every'", () => {
+      // With both weekend days held, "every" puts them in BOTH halves: the
+      // opt-in's week would reach 7 working days (hard), while an A/B student
+      // with the same picks stays at 6 (soft, reachable at relax-days). The
+      // consecutive-days knob is opened so only the days-per-week rule bites.
+      const blocks = [
+        block("wd", "ca", "weekday", "10a", "2p"),
+        block("we", "ca", "weekend", "10a", "2p"),
+      ];
+      const selection = [
+        sel("we", "sun"),
+        sel("we", "sat"),
+        ...(["mon", "tue", "wed", "thu", "fri"] as const).map((d) => sel("wd", d)),
+      ];
+      const r = generateAssignments({
+        students: [
+          student("opt@w", {
+            desiredHours: 28,
+            everyWeekendOptIn: true,
+            selection,
+            submittedAt: at(1),
+          }),
+          student("twin@w", { desiredHours: 28, selection, submittedAt: at(2) }),
+        ],
+        positions: POSITIONS,
+        blocks,
+        previous: [],
+        params: { ...DEFAULT_SCHEDULING_PARAMS, maxConsecutiveDays: 14 },
+      });
+      // The A/B twin takes Saturday (6 days per half); the opt-in is refused
+      // it, which is only explainable by the "every" evaluation.
+      expect(rowsOf(r, "twin@w").some((a) => a.day === "sat")).toBe(true);
+      const optDays = rowsOf(r, "opt@w").map((a) => a.day);
+      expect(optDays).toContain("sun");
+      expect(optDays).not.toContain("sat");
+      expect(reportOf(r, "opt@w").daysUsed).toBe(6);
+      expect(r.report.laborRelaxed).toEqual({ students: 2 });
+    });
+  });
+
+  describe("repeat-start penalty", () => {
+    const blocks = [
+      block("s1", "barista", "weekday", "8a", "1p"),
+      block("s2", "barista", "weekday", "9a", "2p"),
+    ];
+    const selection = [sel("s1", "mon"), sel("s2", "mon"), sel("s1", "tue"), sel("s2", "tue")];
+
+    it("is a no-op at the default 0: the block-id tie-break welds both days", () => {
+      const r = run([student("b@w", { positionId: "barista", selection })], blocks);
+      const byDay = (day: string) =>
+        rowsOf(r, "b@w")
+          .filter((a) => a.day === day)
+          .map((a) => a.blockId);
+      expect(byDay("mon")).toEqual(["s1"]);
+      expect(byDay("tue")).toEqual(["s1"]);
+    });
+
+    it("diversifies start times at a positive penalty", () => {
+      const r = generateAssignments({
+        students: [student("b@w", { positionId: "barista", selection })],
+        positions: POSITIONS,
+        blocks,
+        previous: [],
+        params: { ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty: 60 },
+      });
+      const byDay = (day: string) =>
+        rowsOf(r, "b@w")
+          .filter((a) => a.day === day)
+          .map((a) => a.blockId);
+      expect(byDay("mon")).toEqual(["s1"]);
+      expect(byDay("tue")).toEqual(["s2"]); // the repeated 8a start is penalized below the fresh 9a one
+    });
+
+    it("applies the penalty in the fill loop, not only while seeding", () => {
+      // Mon and Tue start apart so the seeds are penalty-free and stable;
+      // only the Wed fill step ever sees a repeated start.
+      const perDay = [
+        block("m1", "barista", "weekday", "8a", "12p"),
+        block("t1", "barista", "weekday", "10a", "2p"),
+        block("w1", "barista", "weekday", "8a", "12p"),
+        block("w2", "barista", "weekday", "9a", "1p"),
+      ];
+      const pick = (repeatStartPenalty: number) => {
+        const r = generateAssignments({
+          students: [
+            student("b@w", {
+              positionId: "barista",
+              desiredHours: 12,
+              selection: [sel("m1", "mon"), sel("t1", "tue"), sel("w1", "wed"), sel("w2", "wed")],
+            }),
+          ],
+          positions: POSITIONS,
+          blocks: perDay,
+          previous: [],
+          params: { ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty },
+        });
+        return rowsOf(r, "b@w")
+          .filter((a) => a.day === "wed")
+          .map((a) => a.blockId);
+      };
+      // The third day comes from the fill loop, after both seeds are placed.
+      expect(pick(0)).toEqual(["w1"]); // tie on pull, block id decides
+      expect(pick(60)).toEqual(["w2"]); // Mon's 8a start sinks w1 below the fresh 9a
+    });
+
+    it("never lifts an untargeted cell over a penalized targeted one", () => {
+      const tiered = [
+        block("t1", "barista", "weekday", "8a", "12p", 9),
+        block("t2", "barista", "weekday", "8a", "12p", 9),
+        block("u2", "barista", "weekday", "9a", "1p"),
+      ];
+      const r = generateAssignments({
+        students: [
+          student("b@w", {
+            positionId: "barista",
+            selection: [sel("t1", "mon"), sel("t2", "tue"), sel("u2", "tue")],
+          }),
+        ],
+        positions: POSITIONS,
+        blocks: tiered,
+        previous: [],
+        params: { ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty: 100 },
+      });
+      // At penalty 100 the repeated-start t2 pulls 0 while u2 pulls above it,
+      // but targeted cells still outrank untargeted ones, so t2 seeds Tuesday.
+      expect(rowsOf(r, "b@w")[1]).toMatchObject({ blockId: "t2", day: "tue" });
+    });
+  });
+
+  it("seats fill-ins in hashed-email order, not alphabetical", () => {
+    // Chosen so the two orders disagree; computed here so the fixture cannot
+    // rot silently if the emails change.
+    expect(orderHash("c@w")).toBeGreaterThan(orderHash("d@w"));
+    const tight = [block("only", "ca", "weekday", "8a", "4p", 1)];
+    const selection = [sel("only", "mon")];
+    const r = run(
+      [
+        student("c@w", { fillIn: true, submittedAt: null, selection }),
+        student("d@w", { fillIn: true, submittedAt: null, selection }),
+      ],
+      tight,
+    );
+    expect(r.assignments.map((a) => a.studentEmail)).toEqual(["d@w"]);
+  });
+
+  it("is deterministic on a dense mixed fixture, ladder included", () => {
+    const blocks = [
+      block("am", "ca", "weekday", "8a", "12p", 2),
+      block("pm", "ca", "weekday", "12p", "5p", 2),
+      block("we", "ca", "weekend", "10a", "6p", 2),
+      block("we-late", "ca", "weekend", "3p", "11p", 2),
+      // A close-then-open pair 9h apart: reaching minimums through it needs
+      // the relax-rest rung, so this fixture exercises the ladder too.
+      block("cl", "ca", "weekday", "2p", "10p"),
+      block("op", "ca", "weekday", "7a", "11a"),
+    ];
+    const everywhere = [
+      ...(["mon", "tue", "wed", "thu", "fri"] as const).flatMap((d) => [
+        sel("am", d),
+        sel("pm", d),
+      ]),
+      ...(["sat", "sun"] as const).flatMap((d) => [sel("we", d), sel("we-late", d)]),
+    ];
+    const students = [
+      ...[1, 2, 3, 4].map((n) =>
+        student(`r${n}@w`, { desiredHours: 16, selection: everywhere, submittedAt: at(n) }),
+      ),
+      student("opt@w", {
+        desiredHours: 16,
+        everyWeekendOptIn: true,
+        selection: everywhere,
+        submittedAt: at(5),
+      }),
+      ...[1, 2].map((n) =>
+        student(`f${n}@w`, { submittedAt: null, fillIn: true, selection: everywhere }),
+      ),
+      student("relax@w", {
+        desiredHours: 12,
+        selection: [sel("cl", "mon"), sel("op", "tue")],
+        submittedAt: at(6),
+      }),
+    ];
+    const first = run(students, blocks, [], ["we-late"]);
+    const second = run(students, blocks, [], ["we-late"]);
+    expect(second).toEqual(first);
+    // The 9h Mon close to Tue open rest is only placeable at relax-rest, so
+    // the ladder demonstrably ran inside this determinism check.
+    expect(first.report.laborRelaxed).toEqual({ students: 1 });
   });
 });

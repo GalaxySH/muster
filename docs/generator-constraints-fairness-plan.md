@@ -73,7 +73,7 @@ Consequences worth stating because they are not obvious:
 
 | Rule | Severity | Evaluation on the fortnight |
 |---|---|---|
-| ≤8h merged day span | hard (exists today) | per template day; the engine's existing check short-circuits first |
+| ≤8h merged day span | hard | per template day, applied unconditionally; this retires the old engine's allowance for a lone over-cap block to stand on its day (a configured block longer than the cap is now never assignable, so P3 adds a config-time warning naming it) |
 | ≤40h W2W week | hard **constant** (payroll law, not a knob) | per fortnight half; unreachable for engine-placed rows (target ≤30h cycle-averaged) — exists for frozen/manual rows and the validator |
 | ≤5 consecutive days | hard, param default 5 | longest cyclic run of occupied slots over the 14-cycle |
 | ≤6 days per W2W week hard, 5 soft | params | occupied-slot count per half |
@@ -223,7 +223,7 @@ param.
 |---|---|---|
 | **P1** | `labor.ts` + tests, params fields + form. No engine wiring; nothing behavioral changes. | Adversarial review: fortnight mapping proof, 13→0 seam, symmetry counterexample hunt, soft/hard classification vs the one-off table, midnight rest math, param cross-field validation. |
 | **P2** | Engine/improve/manual integration, relax ladder, repeat-start penalty (default 0), hashed orderings, `laborRelaxed`. Synthetic before/after numbers in the commit message. | Review: weakened-test hunt, ladder ordering vs deferred, cohort canonicalization, frozen leakage, improve termination, double-run determinism, measured perf. |
-| **P3** | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring. | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
+| **P3** | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring, and a config-time warning for blocks longer than the day cap (the engine can never fill one; the admin must learn why from `/admin/positions`, not from a silent shortfall). | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
 | **P4** | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges. |
 | **P5** | Docs (this doc's statuses, `schedule-generation-plan.md` §3.6/§3.7, `architecture.md`, PLAN §5/§7/§9 + changelog, roadmap), `src/scripts/tune-schedule-params.ts`, tuned `repeatStartPenalty` default. Full suite + lint + build. | Whole-branch review: doc/code drift, PLAN §7 consistency, changelog honesty, no smuggled expectation changes in the tuning commit. |
 

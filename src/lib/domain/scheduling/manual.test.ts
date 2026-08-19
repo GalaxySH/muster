@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "../types";
-import { findDayConflict, manualWeekendCohort, type ExistingAssignment } from "./manual";
+import { laborLimits } from "./labor";
+import {
+  findDayConflict,
+  laborWarningsForEdit,
+  manualWeekendCohort,
+  type ExistingAssignment,
+} from "./manual";
+import { DEFAULT_SCHEDULING_PARAMS } from "./params";
 
 const block = (id: string, start: number, end: number): ShiftBlock => ({
   id,
@@ -101,6 +108,36 @@ describe("findDayConflict", () => {
     const reversed = findDayConflict(swallow, "mon", [late, early]);
     expect(forward).toMatchObject({ kind: "existing-covered", row: { blockId: "early" } });
     expect(reversed).toEqual(forward);
+  });
+});
+
+describe("laborWarningsForEdit", () => {
+  const limits = laborLimits(DEFAULT_SCHEDULING_PARAMS);
+
+  it("returns nothing for a clean week", () => {
+    const existing = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
+    const edit = { block: block("pm", 12 * 60, 16 * 60), day: "wed" as const };
+    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([]);
+  });
+
+  it("describes a clopen the new shift would create", () => {
+    const existing = [row("night", "mon", "weekday", 18 * 60, 23 * 60 + 30)];
+    const edit = { block: block("open", 7 * 60, 11 * 60), day: "tue" as const };
+    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([
+      "Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a.",
+    ]);
+  });
+
+  it("skips a student whose weekend rows mix cohorts", () => {
+    // A Sat close in rotation a against a Sun open in rotation b would read as
+    // a clopen under either single rotation, but the mixed pattern is outside
+    // labor.ts's one-cohort scope; the read-time validator owns it.
+    const existing = [
+      row("sat-close", "sat", "a", 18 * 60, 23 * 60 + 30),
+      row("sun-open", "sun", "b", 7 * 60, 11 * 60),
+    ];
+    const edit = { block: block("pm", 12 * 60, 16 * 60), day: "wed" as const };
+    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([]);
   });
 });
 

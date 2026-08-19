@@ -204,6 +204,8 @@ describe("improveAssignments", () => {
     );
     // a-spare may not take late: first and late together would cover all of
     // mid. first may (mid and late form a legal double), so that move wins.
+    // The day is split before and after the move, so the diff-based labor
+    // check stays neutral and the pre-labor behavior stands.
     expect(r.moved).toBe(1);
     expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["a-spare", "late", "mid"]);
   });
@@ -226,9 +228,46 @@ describe("improveAssignments", () => {
       blocks,
     );
     // mid sits inside the hull of am and pm but adds real time, so the move
-    // out of a-spare lands there.
+    // out of a-spare lands there. The day stays split either way, so the
+    // diff-based labor check stays neutral.
     expect(r.moved).toBe(1);
     expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["am", "mid", "pm"]);
+  });
+
+  it("refuses a move that would create a clopen on an adjacent day", () => {
+    const blocks = [
+      block("day", "weekday", "10a", "2p"),
+      block("late", "weekday", "3:30p", "11:30p", 3),
+      block("tue-am", "weekday", "7a", "11a"),
+    ];
+    const students = [student("s@w", { selection: [sel("day", "mon"), sel("late", "mon")] })];
+    const r = improveAssignments(
+      [row("s@w", "day", "mon"), row("s@w", "tue-am", "tue")],
+      students,
+      blocks,
+    );
+    // The targeted late cell out-pulls the vacated one and raises coverage,
+    // but ending Monday at 11:30p leaves 7.5h before the Tuesday 7a open.
+    expect(r.moved).toBe(0);
+    expect(r.assignments[0]!.blockId).toBe("day");
+  });
+
+  it("allows a move that cures a short-rest soft violation", () => {
+    const blocks = [
+      block("night", "weekday", "6:30p", "10:30p"),
+      block("day2", "weekday", "2p", "6p", 3),
+      block("tue-am", "weekday", "7a", "11a"),
+    ];
+    const students = [student("s@w", { selection: [sel("night", "mon"), sel("day2", "mon")] })];
+    const r = improveAssignments(
+      [row("s@w", "night", "mon"), row("s@w", "tue-am", "tue")],
+      students,
+      blocks,
+    );
+    // 8.5h of rest into Tuesday is a standing soft violation; the move to the
+    // afternoon cell keeps coverage and cures it, so nothing blocks the gain.
+    expect(r.moved).toBe(1);
+    expect(r.assignments[0]!.blockId).toBe("day2");
   });
 
   it("refuses a move that would push the day past the 8h cap", () => {

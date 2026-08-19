@@ -9,11 +9,13 @@
  * (domain/intervals.ts) and are fine, which is how a double across a handoff
  * overlap gets scheduled. Assigning a cell the student never selected is
  * allowed; the scheduler owns the schedule and the split grid makes the
- * mismatch visible.
+ * mismatch visible. Labor rules (scheduling/labor.ts) never block an edit
+ * either: laborWarningsForEdit turns them into warnings the admin sees.
  */
 import { redundantRangeIndex } from "../intervals";
 import type { TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
+import { laborViolations, type LaborLimits } from "./labor";
 import type { Cohort } from "./types";
 
 /** One of the student's existing current-run rows, with its block's times. */
@@ -62,6 +64,41 @@ export function findDayConflict(
   return redundant === 0
     ? { kind: "candidate-covered" }
     : { kind: "existing-covered", row: rows[redundant - 1]! };
+}
+
+/**
+ * Labor-rule warnings for a new manual assignment: the student's existing
+ * current-run rows plus the candidate, judged as one standing week
+ * (scheduling/labor.ts). Warn only, never block; the hard refusals live in
+ * findDayConflict and the scheduler owns the schedule. Returns one short
+ * sentence per violation, or [] when the week is clean.
+ */
+export function laborWarningsForEdit(
+  candidate: { block: ShiftBlock; day: Day },
+  cohort: Cohort,
+  existing: readonly ExistingAssignment[],
+  limits: LaborLimits,
+): string[] {
+  // labor.ts reads one weekend rotation for the whole map, so a student whose
+  // rows mix cohorts (possible through manual edits across runs) is outside
+  // its scope; skip the warnings rather than judge half the picture. The
+  // read-time validator owns the mixed case.
+  const weekendCohorts = new Set<Cohort>();
+  for (const row of existing) if (row.cohort !== "weekday") weekendCohorts.add(row.cohort);
+  if (cohort !== "weekday") weekendCohorts.add(cohort);
+  if (weekendCohorts.size > 1) return [];
+
+  const ranges = new Map<Day, TimeRange[]>();
+  const add = (day: Day, range: TimeRange) => {
+    const list = ranges.get(day) ?? [];
+    list.push(range);
+    ranges.set(day, list);
+  };
+  for (const row of existing) add(row.day, { start: row.start, end: row.end });
+  add(candidate.day, { start: candidate.block.start, end: candidate.block.end });
+
+  const laborCohort = [...weekendCohorts][0] ?? null;
+  return laborViolations(ranges, laborCohort, limits).map((v) => `${v.detail}.`);
 }
 
 /**

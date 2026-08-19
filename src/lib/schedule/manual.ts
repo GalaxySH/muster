@@ -8,7 +8,8 @@
  * carry source "manual"; removing an engine row is allowed, since the
  * scheduler owns the schedule. The only hard rule is that every same-day
  * shift must add unique time (domain/scheduling/manual.ts); assigning a cell
- * the student never selected is deliberate scheduler prerogative.
+ * the student never selected is deliberate scheduler prerogative, and labor
+ * rule violations come back as warnings on the success result, never refusals.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -21,12 +22,15 @@ import {
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { laborLimits } from "@/lib/domain/scheduling/labor";
 import {
   findDayConflict,
+  laborWarningsForEdit,
   manualWeekendCohort,
   type ExistingAssignment,
 } from "@/lib/domain/scheduling/manual";
-import type { Cohort } from "@/lib/domain/scheduling/types";
+import { DEFAULT_SCHEDULING_PARAMS } from "@/lib/domain/scheduling/params";
+import type { Cohort, EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, dayTypeOf, type Day } from "@/lib/domain/types";
@@ -38,6 +42,8 @@ const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
 export interface AssignmentEditResult {
   ok: boolean;
   error?: string;
+  /** Labor rule notes on a successful assignment. The edit is applied anyway. */
+  warnings?: string[];
 }
 
 const fail = (error: string): AssignmentEditResult => ({ ok: false, error });
@@ -122,6 +128,21 @@ export async function setManualAssignment(
     cohort = manualWeekendCohort(existing, sub?.internalOptIn ?? sub?.everyWeekendOptIn ?? false);
   }
 
+  // Labor rules warn, never block, judged against the run's snapshotted
+  // params (spread over the defaults for runs predating the labor fields),
+  // the same knobs the read-time validator will use. Warn-never-block also
+  // means a failure HERE cannot refuse the edit: an unreadable report or a
+  // corrupt block range just yields no warnings (readFillIns sets the
+  // precedent for tolerating a bad summaryJson).
+  let warnings: string[] = [];
+  try {
+    const storedParams = (JSON.parse(run.summaryJson) as EngineReport).params;
+    const limits = laborLimits({ ...DEFAULT_SCHEDULING_PARAMS, ...storedParams });
+    warnings = laborWarningsForEdit({ block, day }, cohort, existing, limits);
+  } catch {
+    warnings = [];
+  }
+
   await db.insert(scheduleAssignments).values({
     runId: run.id,
     studentEmail: email,
@@ -132,7 +153,7 @@ export async function setManualAssignment(
   });
 
   await refreshAfterEdit(email);
-  return { ok: true };
+  return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
 }
 
 /**

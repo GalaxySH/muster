@@ -514,6 +514,30 @@ describe("PrefGridCalculator", () => {
       await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
     });
 
+    it("shows labor warnings from an accepted assignment without blocking it", async () => {
+      const user = userEvent.setup();
+      vi.mocked(setManualAssignment).mockResolvedValue({
+        ok: true,
+        warnings: ["Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a."],
+      });
+      renderCalc({ hasCurrentRun: true });
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+
+      expect(await screen.findByText(/Added, but worth checking/)).toBeInTheDocument();
+      expect(screen.getByText(/Only 7h 30m of rest/)).toBeInTheDocument();
+      // Warn only: the edit landed and the grid re-reads as usual.
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+
+      // The next toggle starts clean: a warning-free edit clears the notice.
+      vi.mocked(setManualAssignment).mockResolvedValue({ ok: true });
+      await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
+      await waitFor(() =>
+        expect(screen.queryByText(/Added, but worth checking/)).not.toBeInTheDocument(),
+      );
+    });
+
     it("surfaces a refused assignment", async () => {
       const user = userEvent.setup();
       vi.mocked(setManualAssignment).mockResolvedValue({

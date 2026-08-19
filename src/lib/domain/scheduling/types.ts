@@ -125,6 +125,14 @@ export interface EngineReport {
   /** The knobs this run was generated with (absent on pre-0.85 stored runs). */
   params?: SchedulingParams;
   /**
+   * Students who took at least one cell only after the labor ladder relaxed a
+   * soft rule (short rest or preferred days). Counted at placement time: the
+   * improvement pass may later cure the violation, so this reports where the
+   * ladder worked, not which violations survive. Absent on pre-labor stored
+   * runs.
+   */
+  laborRelaxed?: { students: number };
+  /**
    * Returner ordering as this run saw it (absent on pre-1.13 stored runs).
    * The cutoff is snapshotted because returner status flips on June 1: without
    * it, two runs with identical inputs either side of that date would order

@@ -155,6 +155,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // The failing hard checks a save must acknowledge, or null when none pending.
   const [overrideChecks, setOverrideChecks] = useState<string[] | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  // Labor notes from the last successful assignment; the shift is placed anyway.
+  const [assignWarnings, setAssignWarnings] = useState<string[] | null>(null);
   const [busyCell, setBusyCell] = useState<string | null>(null);
   const [orphanError, setOrphanError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -328,6 +330,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     if (busyCell) return;
     const key = selectionKey(blockId, day);
     setAssignError(null);
+    setAssignWarnings(null);
     setBusyCell(key);
     startTransition(async () => {
       const res = assigned.has(key)
@@ -338,6 +341,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         setAssignError(res.error ?? "Something went wrong.");
         return;
       }
+      if (res.warnings && res.warnings.length > 0) setAssignWarnings(res.warnings);
       // The new assignment comes back as grid props.
       router.refresh();
     });
@@ -569,6 +573,18 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         <p role="status" style={saveErrorStyle}>
           {assignError}
         </p>
+      )}
+      {/* Non-blocking labor notes: the shift is placed, the admin decides.
+          Deliberately quieter than the amber acknowledge panel, which blocks. */}
+      {assignWarnings && (
+        <div role="status" style={laborNotePanel}>
+          <p style={{ margin: 0, fontWeight: 600 }}>Added, but worth checking:</p>
+          <ul style={overrideList}>
+            {assignWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
       )}
       {orphanError && (
         <p role="status" style={saveErrorStyle}>
@@ -1017,6 +1033,15 @@ const overridePanel: React.CSSProperties = {
 const overrideList: React.CSSProperties = {
   margin: "4px 0 0",
   paddingLeft: 18,
+};
+const laborNotePanel: React.CSSProperties = {
+  marginTop: 10,
+  padding: "8px 10px",
+  fontSize: 12,
+  background: "var(--color-background-secondary)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  color: "var(--color-text-secondary)",
 };
 const overrideBtn: React.CSSProperties = {
   ...miniBtn,
