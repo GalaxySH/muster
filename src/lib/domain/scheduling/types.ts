@@ -122,6 +122,12 @@ export interface EngineReport {
   shortOfTarget: number;
   /** Active students spanning fewer days than their position minimum. */
   belowMinDays: number;
+  /**
+   * Active students whose assigned hours ended below their position's minimum
+   * (a subset of shortOfTarget, since the target never sits under the floor).
+   * The scheduler fills these in by hand. Absent on pre-overhaul stored runs.
+   */
+  belowMinHours?: number;
   /** The knobs this run was generated with (absent on pre-0.85 stored runs). */
   params?: SchedulingParams;
   /**
@@ -147,6 +153,24 @@ export interface EngineReport {
     count: number;
     unknownHireDate: number;
   };
+  /**
+   * Students whose hire date falls after their position went back to work, so
+   * the template's earliest shifts cannot be theirs. Stamped by the caller, not
+   * the engine, which has no clock and no dates (see `returners`). Absent on
+   * pre-1.14 stored runs; an empty list means the run found none.
+   */
+  lateStarts?: LateStartWarning[];
+}
+
+/** One student who starts after the date their position's shifts resume. */
+export interface LateStartWarning {
+  email: string;
+  /** `yyyy-mm-dd` hire date from the roster. */
+  hiredOn: string;
+  /** `yyyy-mm-dd` the hire date was judged against (position return date, else the semester start). */
+  expectedStart: string;
+  /** Null only for a frozen student carrying rows with no position set. */
+  positionId: string | null;
 }
 
 export interface EngineResult {

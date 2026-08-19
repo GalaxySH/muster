@@ -3,15 +3,22 @@
  *
  * Each aggregate warning on /admin/schedule expands to the students behind it,
  * so the derivations here must mirror the engine's counters (engine.ts)
- * exactly: both counters look at non-frozen students only, hours compare with
+ * exactly: every counter looks at non-frozen students only, hours compare with
  * the EPSILON_MINUTES tolerance, and day spans compare against the position
- * minimum. droppedBlockGone has no group because the report keeps only a count
- * for it, not who was affected.
+ * minimum. A fill-in the run found no room for is left out of report.students
+ * altogether, which is how that exemption carries over here. droppedBlockGone
+ * has no group because the report keeps only a count for it, not who was
+ * affected.
  */
 import { EPSILON_MINUTES } from "./seats";
 import type { EngineReport } from "./types";
 
-export type ProblemKind = "dropped" | "no-position" | "short-of-hours" | "below-min-days";
+export type ProblemKind =
+  | "dropped"
+  | "no-position"
+  | "short-of-hours"
+  | "below-min-hours"
+  | "below-min-days";
 
 /** One affected student in a warning's expandable list. */
 export interface ProblemStudent {
@@ -26,11 +33,23 @@ export interface ProblemGroup {
   students: ProblemStudent[];
 }
 
+/**
+ * Assigned under the position's hour floor. The one copy of this test: the
+ * warning line, the per-student pill, and the engine's own counter all have to
+ * agree on who is below minimum, or the page contradicts itself. Null minimum
+ * hours means the position is unknown, which is never below anything.
+ */
+export function isBelowMinHours(assignedMinutes: number, minHours: number | null): boolean {
+  return minHours !== null && assignedMinutes + EPSILON_MINUTES < minHours * 60;
+}
+
 export interface ProblemLookup {
   /** Display name for an email; return the email itself when unknown. */
   nameOf: (email: string) => string;
   /** The minimum day span of the student's position, or null when unknown. */
   minDaysOf: (email: string) => number | null;
+  /** The minimum weekly hours of the student's position, or null when unknown. */
+  minHoursOf: (email: string) => number | null;
 }
 
 /**
@@ -42,6 +61,9 @@ export interface ProblemLookup {
 export function problemGroups(report: EngineReport, lookup: ProblemLookup): ProblemGroup[] {
   const active = report.students.filter((s) => !s.frozen);
   const short = active.filter((s) => s.assignedMinutes + EPSILON_MINUTES < s.targetMinutes);
+  const belowMinHours = active.filter((s) =>
+    isBelowMinHours(s.assignedMinutes, lookup.minHoursOf(s.email)),
+  );
   const belowMinDays = active.filter((s) => {
     const minDays = lookup.minDaysOf(s.email);
     return minDays !== null && s.daysUsed < minDays;
@@ -58,6 +80,11 @@ export function problemGroups(report: EngineReport, lookup: ProblemLookup): Prob
       "short-of-hours",
       short.map((s) => s.email),
       (n) => `${n} ${n === 1 ? "student is" : "students are"} short of their hours`,
+    ],
+    [
+      "below-min-hours",
+      belowMinHours.map((s) => s.email),
+      (n) => `${n} ${n === 1 ? "student is" : "students are"} below their position's minimum hours`,
     ],
     [
       "below-min-days",

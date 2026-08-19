@@ -228,6 +228,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
 
   let shortOfTarget = 0;
   let belowMinDays = 0;
+  let belowMinHours = 0;
   for (const state of states) {
     const ranges = finalRanges.get(state.student.email) ?? new Map<Day, TimeRange[]>();
     // A fill-in the run found no room for is simply not in it: they stay a
@@ -236,6 +237,10 @@ export function generateAssignments(input: EngineInput): EngineResult {
     const assigned = averagedAssignedMinutes(ranges, state.student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES < state.target) shortOfTarget += 1;
     if (ranges.size < state.position.minDays) belowMinDays += 1;
+    // The floor, not the goal: a student under it needs hours added by hand.
+    // Mirrors problems.ts isBelowMinHours, which re-derives the same set from
+    // the stored report; the two must agree or the count and its list differ.
+    if (assigned + EPSILON_MINUTES < state.position.minHours * 60) belowMinHours += 1;
     reports.push({
       email: state.student.email,
       targetMinutes: state.target,
@@ -256,6 +261,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       skippedNoPosition,
       shortOfTarget,
       belowMinDays,
+      belowMinHours,
       params,
       laborRelaxed: { students: states.filter((s) => s.relaxed).length },
     },

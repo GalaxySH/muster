@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_SCHEDULING_PARAMS,
   parseSchedulingParams,
+  storedSchedulingParams,
   validateSchedulingParams,
 } from "./params";
 
@@ -152,6 +153,33 @@ describe("validateSchedulingParams", () => {
         preferredDaysPerWeek: 5,
       }),
     ).toBeNull();
+  });
+});
+
+describe("storedSchedulingParams", () => {
+  it("fills a partial value from the defaults", () => {
+    expect(storedSchedulingParams(undefined)).toEqual(DEFAULT_SCHEDULING_PARAMS);
+    expect(storedSchedulingParams({})).toEqual(DEFAULT_SCHEDULING_PARAMS);
+    expect(storedSchedulingParams({ dayCapHours: 6, minRestHours: 9 })).toEqual({
+      ...DEFAULT_SCHEDULING_PARAMS,
+      dayCapHours: 6,
+      minRestHours: 9,
+    });
+  });
+
+  it("drops the whole value when any field is out of range", () => {
+    expect(storedSchedulingParams({ dayCapHours: 99, nightPriority: 80 })).toEqual(
+      DEFAULT_SCHEDULING_PARAMS,
+    );
+  });
+
+  it("drops the whole value when a cross-field rule fails", () => {
+    expect(storedSchedulingParams({ minRestHours: 12, preferredRestHours: 4 })).toEqual(
+      DEFAULT_SCHEDULING_PARAMS,
+    );
+    expect(storedSchedulingParams({ maxDaysPerWeek: 3, preferredDaysPerWeek: 6 })).toEqual(
+      DEFAULT_SCHEDULING_PARAMS,
+    );
   });
 });
 

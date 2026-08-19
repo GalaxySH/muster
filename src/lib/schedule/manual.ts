@@ -29,7 +29,7 @@ import {
   manualWeekendCohort,
   type ExistingAssignment,
 } from "@/lib/domain/scheduling/manual";
-import { DEFAULT_SCHEDULING_PARAMS } from "@/lib/domain/scheduling/params";
+import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import type { Cohort, EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
 import { formatSpan } from "@/lib/domain/time";
@@ -129,7 +129,7 @@ export async function setManualAssignment(
   }
 
   // Labor rules warn, never block, judged against the run's snapshotted
-  // params (spread over the defaults for runs predating the labor fields),
+  // params (backfilled and validated for runs predating the labor fields),
   // the same knobs the read-time validator will use. Warn-never-block also
   // means a failure HERE cannot refuse the edit: an unreadable report or a
   // corrupt block range just yields no warnings (readFillIns sets the
@@ -137,7 +137,7 @@ export async function setManualAssignment(
   let warnings: string[] = [];
   try {
     const storedParams = (JSON.parse(run.summaryJson) as EngineReport).params;
-    const limits = laborLimits({ ...DEFAULT_SCHEDULING_PARAMS, ...storedParams });
+    const limits = laborLimits(storedSchedulingParams(storedParams));
     warnings = laborWarningsForEdit({ block, day }, cohort, existing, limits);
   } catch {
     warnings = [];

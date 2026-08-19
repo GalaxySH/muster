@@ -7,6 +7,7 @@
  * components can both import it. Colors go through the globals.css tokens.
  */
 import Link from "next/link";
+import type { FrozenReason } from "@/lib/schedule/run-warnings";
 
 export const panelStyle: React.CSSProperties = {
   background: "var(--color-background-primary)",
@@ -89,6 +90,50 @@ export const warningPillStyle: React.CSSProperties = {
   fontSize: 12,
   whiteSpace: "nowrap",
 };
+
+/**
+ * The small tag that rides after a shift list or a warning line. The two
+ * schedule surfaces share these so a run reads the same in both places: green
+ * for a row nothing moved, purple for one a person placed by hand (the same
+ * purple the preference grid paints manual cells).
+ */
+const tagStyle: React.CSSProperties = {
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontSize: 11,
+  marginLeft: 6,
+  whiteSpace: "nowrap",
+};
+
+export const keptTagStyle: React.CSSProperties = {
+  ...tagStyle,
+  background: "#e6f4ea",
+  color: "#196127",
+};
+
+export const manualTagStyle: React.CSSProperties = {
+  ...tagStyle,
+  background: "#f3ecfb",
+  color: "#8a4fd3",
+};
+
+/** Why a student's shifts did not move. See FrozenReason for the split. */
+export const FROZEN_LABEL: Record<FrozenReason, string> = {
+  marked: "kept",
+  "out-of-scope": "not in this update",
+  kept: "kept",
+};
+
+/**
+ * A stored `yyyy-mm-dd` as "Sep 2". Read as UTC so the day never shifts, and
+ * pinned to en-US so the server and the client render the same string.
+ */
+export const formatDayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 
 const tileStyle: React.CSSProperties = {
   display: "block",

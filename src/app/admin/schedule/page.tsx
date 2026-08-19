@@ -4,10 +4,14 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import {
+  FROZEN_LABEL,
   SectionLabel,
   StatTile,
   bannerStyle,
   cardsGridStyle,
+  formatDayLabel,
+  keptTagStyle,
+  manualTagStyle,
   panelStyle,
   successPillStyle,
 } from "@/components/admin/ui";
@@ -34,6 +38,11 @@ import {
   type RunDiffData,
   type ScheduleRunListItem,
 } from "@/lib/schedule/data";
+import {
+  laborFindingSections,
+  type LaborFindingSection,
+  type LaborFindingView,
+} from "@/lib/schedule/run-warnings";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import {
@@ -47,8 +56,9 @@ import {
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
+import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import type { ProblemGroup } from "@/lib/domain/scheduling/problems";
-import type { Cohort } from "@/lib/domain/scheduling/types";
+import type { Cohort, LateStartWarning } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
 
@@ -247,6 +257,10 @@ function SchedulePanel({
   const frozen = schedule.students.filter((s) => s.frozenReason === "marked").length;
   const outOfScope = schedule.students.filter((s) => s.frozenReason === "out-of-scope").length;
   const planKept = schedule.students.filter((s) => s.frozenReason === "kept").length;
+  const nameByEmail = new Map(schedule.students.map((s) => [s.email, s.displayName]));
+  // Backfilled, so a run stored before the labor knobs existed shows the values
+  // it is now judged against rather than a line full of blanks.
+  const knobs = report.params ? storedSchedulingParams(report.params) : null;
   const scopeNames = schedule.scope
     ? positions
         .filter((p) => schedule.scope!.positionIds.includes(p.id))
@@ -278,8 +292,8 @@ function SchedulePanel({
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.returners &&
           ` ${report.returners.count} returners were placed before new students.`}
-        {report.params &&
-          ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
+        {knobs &&
+          ` Used max ${knobs.dayCapHours}h per day, night priority ${knobs.nightPriority}, evening ${knobs.eveningPriority}, rest ${knobs.minRestHours}h/${knobs.preferredRestHours}h, days ${knobs.preferredDaysPerWeek}/${knobs.maxDaysPerWeek}, run cap ${knobs.maxConsecutiveDays}.`}
       </p>
       {/* Without hire dates everyone counts as a new student, so the ordering
           quietly becomes plain first come first served. Say so. */}
@@ -301,6 +315,11 @@ function SchedulePanel({
           )}
         </div>
       )}
+      <LateStartWarnings
+        lateStarts={report.lateStarts ?? []}
+        nameOf={(email) => nameByEmail.get(email) ?? email}
+      />
+      <LaborFindings findings={schedule.laborFindings} />
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
       <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
@@ -386,6 +405,102 @@ function ProblemWarning({ group }: { group: ProblemGroup }) {
   );
 }
 
+/**
+ * Students hired after their position's shifts resume. The engine is dateless,
+ * so their generated week is a template the scheduler has to trim by hand.
+ */
+function LateStartWarnings({
+  lateStarts,
+  nameOf,
+}: {
+  lateStarts: LateStartWarning[];
+  nameOf: (email: string) => string;
+}) {
+  if (lateStarts.length === 0) return null;
+  const n = lateStarts.length;
+  return (
+    <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-warning)" }}>
+      <details>
+        <summary style={{ cursor: "pointer" }}>
+          {n} {n === 1 ? "student starts" : "students start"} after the schedule begins.
+        </summary>
+        <p style={{ margin: "4px 0 0" }}>Edit their shifts by hand in W2W.</p>
+        <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+          {lateStarts.map((w) => (
+            <li key={w.email}>
+              <Link href={`/admin/students/${encodeURIComponent(w.email)}`}>{nameOf(w.email)}</Link>{" "}
+              starts {formatDayLabel(w.hiredOn)}, after shifts resume{" "}
+              {formatDayLabel(w.expectedStart)}.
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+/** Hard labor rule breaks first, then the soft preferences. */
+function laborSectionLabel(section: LaborFindingSection): string {
+  const n = section.students;
+  return section.severity === "hard"
+    ? `${n} ${n === 1 ? "student breaks" : "students break"} a labor rule`
+    : `${n} ${n === 1 ? "student is" : "students are"} outside a preferred limit`;
+}
+
+/**
+ * The read-time validator's verdicts on the run as it stands now, hand edits
+ * included (`domain/scheduling/validate.ts`).
+ */
+function LaborFindings({ findings }: { findings: LaborFindingView[] }) {
+  const sections = laborFindingSections(findings);
+  if (sections.length === 0) return null;
+  const lines = sections.flatMap((s) => s.lines);
+  const anyFrozen = lines.some((l) => l.frozenReason !== null);
+  const anyManual = lines.some((l) => l.involvesManual);
+  return (
+    <div style={{ margin: "0 0 10px", fontSize: 13 }}>
+      {sections.map((section) => (
+        <details
+          key={section.severity}
+          style={{
+            margin: "0 0 4px",
+            color:
+              section.severity === "hard"
+                ? "var(--color-text-danger)"
+                : "var(--color-text-warning)",
+          }}
+        >
+          <summary style={{ cursor: "pointer" }}>{laborSectionLabel(section)}.</summary>
+          <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+            {section.lines.map((line, i) => (
+              <li key={`${line.email}|${i}`}>
+                <Link href={`/admin/students/${encodeURIComponent(line.email)}`}>
+                  {line.displayName}
+                </Link>
+                {": "}
+                {line.message}
+                {line.frozenReason && (
+                  <span style={keptTagStyle}>{FROZEN_LABEL[line.frozenReason]}</span>
+                )}
+                {line.involvesManual && <span style={manualTagStyle}>manual</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      {(anyFrozen || anyManual) && (
+        <p style={{ margin: "0 0 4px", color: "var(--color-text-secondary)" }}>
+          {anyFrozen && anyManual
+            ? "Kept and hand-edited shifts are included."
+            : anyFrozen
+              ? "Kept shifts are included."
+              : "Hand-edited shifts are included."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const ROTATION_LABEL: Record<Cohort, string> = {
   weekday: "",
   a: "week A",
@@ -418,6 +533,7 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
               <th style={cellTh}>Assignments</th>
               <th style={cellTh}>Students</th>
               <th style={cellTh}>Short of hours</th>
+              <th style={cellTh}>Below min</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Restored</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Status</th>
             </tr>
@@ -432,6 +548,8 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
                 <td style={cellTd}>{r.assignments}</td>
                 <td style={cellTd}>{r.students}</td>
                 <td style={cellTd}>{r.shortOfTarget}</td>
+                {/* Runs stored before the counter existed have nothing to show. */}
+                <td style={cellTd}>{r.belowMinHours ?? "-"}</td>
                 <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
                   {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
                 </td>

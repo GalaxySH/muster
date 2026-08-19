@@ -100,11 +100,23 @@ export function validateSchedulingParams(p: SchedulingParams): string | null {
 }
 
 /**
- * Parse the stored JSON. Missing fields backfill from the defaults first
- * (older stored values predate the labor fields); then, if the combined value
- * fails validation anywhere, including the cross-field rules, the WHOLE
- * stored value falls back to the defaults, not just the bad field. Never
- * throws: a corrupt setting must not take schedule generation down.
+ * A stored, possibly partial params value made whole. Missing fields backfill
+ * from the defaults (older stored values predate the labor fields); then, if
+ * the combined value fails validation anywhere, including the cross-field
+ * rules, the WHOLE value falls back to the defaults rather than just the bad
+ * field. Half-validated knobs are worse than known ones: a stored pair like
+ * min rest 12 with preferred rest 4 is incoherent, and judging a run against
+ * it would produce findings nobody can act on.
+ */
+export function storedSchedulingParams(p: Partial<SchedulingParams> | undefined): SchedulingParams {
+  const candidate: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, ...p };
+  return validateSchedulingParams(candidate) === null ? candidate : DEFAULT_SCHEDULING_PARAMS;
+}
+
+/**
+ * Parse the stored JSON into params. Never throws: a corrupt setting must not
+ * take schedule generation down, so anything unreadable is the defaults, and
+ * anything readable goes through `storedSchedulingParams`.
  */
 export function parseSchedulingParams(raw: string | null): SchedulingParams {
   if (!raw) return DEFAULT_SCHEDULING_PARAMS;
@@ -115,9 +127,5 @@ export function parseSchedulingParams(raw: string | null): SchedulingParams {
     return DEFAULT_SCHEDULING_PARAMS;
   }
   if (typeof parsed !== "object" || parsed === null) return DEFAULT_SCHEDULING_PARAMS;
-  const candidate: SchedulingParams = {
-    ...DEFAULT_SCHEDULING_PARAMS,
-    ...(parsed as Partial<SchedulingParams>),
-  };
-  return validateSchedulingParams(candidate) === null ? candidate : DEFAULT_SCHEDULING_PARAMS;
+  return storedSchedulingParams(parsed as Partial<SchedulingParams>);
 }

@@ -59,9 +59,17 @@ import {
   loadCurrentRunRow,
   type CellAvailability,
 } from "./data";
+import { lateStartWarnings } from "./run-warnings";
 
 /** Superseded runs kept for restore before pruning. */
 const RUN_RETENTION = 10;
+
+/**
+ * The fall 2026 semester start, and the late-start threshold for a position
+ * with no return date of its own. Cycle-specific, so it lives here next to the
+ * clock rather than in the engine, which has no dates at all.
+ */
+const DEFAULT_SEMESTER_START = "2026-09-02";
 
 /**
  * The Shift Lead weekend closing block, which the engine fills only as a last
@@ -216,6 +224,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // dates silently becomes plain FCFS. Count it rather than let that pass
   // unseen.
   const unknownHireDate = studentRows.filter((r) => r.hiredOn === null).length;
+  // Hire dates for the late-start check below. Non-responders add theirs when
+  // the option brings them in.
+  const hiredOnByEmail = new Map<string, Date | null>(studentRows.map((r) => [r.email, r.hiredOn]));
 
   const domainBlocks = blockRows.map(toDomainBlock);
 
@@ -259,6 +270,10 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         .innerJoin(students, eq(submissions.studentEmail, students.email))
         .where(notSubmitted),
     ]);
+
+    for (const r of rosterRows) {
+      if (!hiredOnByEmail.has(r.email)) hiredOnByEmail.set(r.email, r.hiredOn);
+    }
 
     const draftByEmail = new Map<string, { blockId: string; day: Day }[]>();
     for (const row of draftCells) {
@@ -381,6 +396,16 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     count: engineStudentsFinal.filter((s) => s.returner === true).length,
     unknownHireDate,
   };
+  // Late starts: someone hired after their position is back at work cannot
+  // cover the template's first shifts, so the scheduler edits theirs by hand in
+  // W2W. Every email holding a row is checked, frozen and manual carries too.
+  result.report.lateStarts = lateStartWarnings({
+    assignments: result.assignments,
+    hiredOn: hiredOnByEmail,
+    positionOf: new Map(engineStudentsFinal.map((s) => [s.email, s.positionId])),
+    returnDateOf: new Map(positionRows.map((p) => [p.id, p.returnDate])),
+    defaultStart: DEFAULT_SEMESTER_START,
+  });
 
   const runId = randomUUID();
   await db.transaction(async (tx) => {

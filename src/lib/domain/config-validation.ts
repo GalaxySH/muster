@@ -8,6 +8,7 @@
  * checks.
  */
 import { computeCapacity } from "./capacity";
+import { formatSpan } from "./time";
 import {
   WEEKDAY_DAYS,
   WEEKEND_DAYS,
@@ -24,8 +25,7 @@ const MINUTES_PER_DAY = 1440;
 const EPSILON = 1e-6;
 
 /** Whole hours plain, fractions with one decimal (10, 12.5). */
-export const hoursLabel = (minutes: number) =>
-  (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
+export const hoursLabel = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
 
 /** Upper bound on a block's target staffing; keeps typos out of coverage math. */
 export const DESIRED_CAPACITY_MAX = 99;
@@ -60,7 +60,8 @@ export type BlockSetWarningKind =
   | "no_weekday_blocks"
   | "no_weekend_blocks"
   | "min_hours_unreachable"
-  | "min_days_unreachable";
+  | "min_days_unreachable"
+  | "block_over_day_cap";
 
 export interface BlockSetWarning {
   kind: BlockSetWarningKind;
@@ -76,10 +77,15 @@ export interface BlockSetWarning {
  * average stays below position.minHours, §5 #2), and a min-days floor no
  * selection can span (the block set touches fewer distinct days than
  * position.minDays, §7).
+ *
+ * `dayCapHours` is the schedule engine's ceiling on merged hours in one day.
+ * Pass it to also flag blocks longer than that, which no student can ever be
+ * scheduled on. Callers with no schedule params in hand leave it out.
  */
 export function blockSetWarnings(
   position: Position,
   blocks: readonly ShiftBlock[],
+  dayCapHours?: number,
 ): BlockSetWarning[] {
   const warnings: BlockSetWarning[] = [];
 
@@ -125,6 +131,20 @@ export function blockSetWarnings(
       kind: "min_days_unreachable",
       message: `These blocks span at most ${maxDays} ${maxDays === 1 ? "day" : "days"}, under the ${position.minDays}-day minimum.`,
     });
+  }
+
+  // A block longer than the engine's day cap can never be part of anyone's day,
+  // so it silently costs the position a whole shift's coverage every day it
+  // runs. Named per block, in the order they were passed.
+  if (dayCapHours !== undefined) {
+    for (const b of blocks) {
+      const minutes = b.end - b.start;
+      if (minutes <= dayCapHours * 60) continue;
+      warnings.push({
+        kind: "block_over_day_cap",
+        message: `The ${b.dayType === "weekend" ? "weekend" : "weekday"} ${formatSpan(b.start, b.end)} shift is ${hoursLabel(minutes)}h long, over the ${dayCapHours}h day cap, so nobody can be scheduled on it.`,
+      });
+    }
   }
 
   return warnings;

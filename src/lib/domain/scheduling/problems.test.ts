@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { parseTime } from "../time";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { generateAssignments } from "./engine";
-import { problemGroups, type ProblemKind, type ProblemLookup } from "./problems";
+import { isBelowMinHours, problemGroups, type ProblemKind, type ProblemLookup } from "./problems";
+import { EPSILON_MINUTES } from "./seats";
 import type {
   EngineReport,
   ScheduleAssignment,
@@ -72,12 +73,27 @@ function row(email: string, over: Partial<StudentScheduleReport> = {}): StudentS
 function lookup(
   names: Record<string, string> = {},
   minDays: (email: string) => number | null = () => 2,
+  minHours: (email: string) => number | null = () => CA.minHours,
 ): ProblemLookup {
-  return { nameOf: (e) => names[e] ?? e, minDaysOf: minDays };
+  return { nameOf: (e) => names[e] ?? e, minDaysOf: minDays, minHoursOf: minHours };
 }
 
 const sizeOf = (groups: ReturnType<typeof problemGroups>, kind: ProblemKind) =>
   groups.find((g) => g.kind === kind)?.students.length ?? 0;
+
+describe("isBelowMinHours", () => {
+  it("compares against the floor with the rounding tolerance", () => {
+    expect(isBelowMinHours(540, 10)).toBe(true);
+    expect(isBelowMinHours(600, 10)).toBe(false);
+    expect(isBelowMinHours(660, 10)).toBe(false);
+    // A hair under the floor is the floor, not a violation.
+    expect(isBelowMinHours(600 - EPSILON_MINUTES / 2, 10)).toBe(false);
+  });
+
+  it("never flags a student whose position is unknown", () => {
+    expect(isBelowMinHours(0, null)).toBe(false);
+  });
+});
 
 describe("problemGroups", () => {
   it("matches the engine's aggregate counts on a real run", () => {
@@ -106,11 +122,13 @@ describe("problemGroups", () => {
     expect(r.report.skippedNoPosition).toEqual(["nopos@w"]);
     expect(r.report.shortOfTarget).toBe(2);
     expect(r.report.belowMinDays).toBe(1);
+    expect(r.report.belowMinHours).toBe(2);
 
     const groups = problemGroups(r.report, lookup());
     expect(sizeOf(groups, "dropped")).toBe(r.report.droppedStudents.length);
     expect(sizeOf(groups, "no-position")).toBe(r.report.skippedNoPosition.length);
     expect(sizeOf(groups, "short-of-hours")).toBe(r.report.shortOfTarget);
+    expect(sizeOf(groups, "below-min-hours")).toBe(r.report.belowMinHours);
     expect(sizeOf(groups, "below-min-days")).toBe(r.report.belowMinDays);
     expect(groups.find((g) => g.kind === "below-min-days")?.students).toEqual([
       { email: "oneday@w", name: "oneday@w" },
@@ -135,6 +153,32 @@ describe("problemGroups", () => {
     expect(sizeOf(problemGroups(rep, lookup()), "below-min-days")).toBe(1);
   });
 
+  it("skips the hours-minimum judgment when the position minimum is unknown", () => {
+    const rep = report({ students: [row("s@w", { assignedMinutes: 60 })] });
+    expect(
+      sizeOf(
+        problemGroups(
+          rep,
+          lookup(
+            {},
+            () => 2,
+            () => null,
+          ),
+        ),
+        "below-min-hours",
+      ),
+    ).toBe(0);
+    expect(sizeOf(problemGroups(rep, lookup()), "below-min-hours")).toBe(1);
+  });
+
+  it("leaves a student who clears the floor but not their target out of below-min-hours", () => {
+    // 12h assigned against a 20h target and the position's 10h floor.
+    const rep = report({ students: [row("s@w", { assignedMinutes: 720, targetMinutes: 1200 })] });
+    const groups = problemGroups(rep, lookup());
+    expect(sizeOf(groups, "short-of-hours")).toBe(1);
+    expect(sizeOf(groups, "below-min-hours")).toBe(0);
+  });
+
   it("orders groups fixedly and students by name then email", () => {
     const rep = report({
       students: [
@@ -149,6 +193,7 @@ describe("problemGroups", () => {
       "dropped",
       "no-position",
       "short-of-hours",
+      "below-min-hours",
       "below-min-days",
     ]);
     expect(groups[0]!.students).toEqual([
@@ -156,6 +201,7 @@ describe("problemGroups", () => {
       { email: "alpha@w", name: "alpha@w" },
     ]);
     expect(groups[2]!.students.map((s) => s.email)).toEqual(["amy@w", "zed@w"]);
+    expect(groups[3]!.students.map((s) => s.email)).toEqual(["amy@w", "zed@w"]);
   });
 
   it("writes count-aware labels", () => {
@@ -171,6 +217,7 @@ describe("problemGroups", () => {
       "1 left the roster and was dropped",
       "1 skipped with no position set",
       "1 student is short of their hours",
+      "1 student is below their position's minimum hours",
       "1 could not span their minimum days",
     ]);
 

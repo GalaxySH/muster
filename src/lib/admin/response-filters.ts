@@ -180,7 +180,10 @@ export function matchesStarted(
   started: { mode: StartedMode; date: string },
 ): boolean {
   if (!hiredOn) return false;
-  const day = hiredOn.toISOString().slice(0, 10);
+  // `students.hired_on` is a `date` column, handed back at local midnight, so
+  // its calendar day has to be read with the local getters too.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const day = `${hiredOn.getFullYear()}-${pad(hiredOn.getMonth() + 1)}-${pad(hiredOn.getDate())}`;
   switch (started.mode) {
     case "before":
       return day < started.date;

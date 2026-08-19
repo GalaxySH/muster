@@ -855,6 +855,30 @@ describe("generateAssignments", () => {
     expect(reportOf(r, "b@w").assignedMinutes).toBe(480);
   });
 
+  it("counts students left under their position's minimum hours", () => {
+    const blocks = [
+      block("am", "barista", "weekday", "8a", "12p"),
+      block("pm", "barista", "weekday", "12p", "4p"),
+    ];
+    const r = run(
+      [
+        // One 4h cell offered, against the position's 10h floor.
+        student("thin@w", { positionId: "barista", selection: [sel("am", "mon")] }),
+        // Clears the floor at 12h but asked for 20, so short of target only.
+        student("wide@w", {
+          positionId: "barista",
+          desiredHours: 20,
+          selection: [sel("am", "mon"), sel("pm", "mon"), sel("am", "tue")],
+        }),
+      ],
+      blocks,
+    );
+    expect(reportOf(r, "thin@w").assignedMinutes).toBe(240);
+    expect(reportOf(r, "wide@w").assignedMinutes).toBe(720);
+    expect(r.report.belowMinHours).toBe(1);
+    expect(r.report.shortOfTarget).toBe(2);
+  });
+
   describe("labor rules and the relax ladder", () => {
     it("takes a soft-violating non-deferred cell before any deferred cell", () => {
       // The only strict-legal second day is the deferred afternoon; the

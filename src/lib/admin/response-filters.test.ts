@@ -103,8 +103,10 @@ const rows: Row[] = [
   },
 ];
 
+/** A `date` column as the driver hands it back: midnight in the local zone. */
 function iso(day: string): Date {
-  return new Date(`${day}T00:00:00.000Z`);
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y!, m! - 1, d!);
 }
 
 const emails = (r: Row[]) => r.map((x) => x.email);

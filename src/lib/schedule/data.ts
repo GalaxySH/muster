@@ -36,8 +36,13 @@ import {
   type RunCell,
   type RunDiff,
 } from "@/lib/domain/scheduling/diff";
-import { problemGroups, type ProblemGroup } from "@/lib/domain/scheduling/problems";
+import {
+  isBelowMinHours,
+  problemGroups,
+  type ProblemGroup,
+} from "@/lib/domain/scheduling/problems";
 import { isInScope, parseScope, type ScheduleScope } from "@/lib/domain/scheduling/scope";
+import { runLaborFindings, type FrozenReason, type LaborFindingView } from "./run-warnings";
 import type {
   AssignmentSource,
   Cohort,
@@ -252,19 +257,7 @@ export interface AssignedCell {
   cohort: "weekday" | "a" | "b" | "every";
 }
 
-/**
- * Why a frozen student did not move, split apart at read time so the engine
- * never has to know scoping exists. The engine reports one `frozen` boolean;
- * these three cases are derived from it plus the run's stored scope and the
- * student's live toggle:
- *
- * - `marked` — an admin marked them scheduled, so no run will move them.
- * - `out-of-scope` — this run only re-solved other positions. They are not
- *   protected from the next unscoped run.
- * - `kept` — frozen for neither reason, which today means a repair run held
- *   them on the imported plan, or they were unmarked after the run.
- */
-export type FrozenReason = "marked" | "out-of-scope" | "kept";
+export type { FrozenReason };
 
 /** One eligible student's row in the current run's per-student list. */
 export interface ScheduleStudentRow extends StudentScheduleReport {
@@ -274,6 +267,10 @@ export interface ScheduleStudentRow extends StudentScheduleReport {
   scheduled: boolean;
   /** Null when the student was not frozen in this run. */
   frozenReason: FrozenReason | null;
+  /** Assigned under their position's hour floor, so the run needs hand filling. */
+  belowMinHours: boolean;
+  /** Set when they were hired after their position's shifts resume. */
+  lateStart: { expectedStart: string } | null;
   cells: AssignedCell[];
 }
 
@@ -290,6 +287,8 @@ export interface CurrentSchedule {
   totalAssignments: number;
   /** The report's warning lines with the students behind each. */
   problems: ProblemGroup[];
+  /** Labor rule violations the independent validator found in these rows. */
+  laborFindings: LaborFindingView[];
 }
 
 const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
@@ -365,6 +364,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       start: shiftBlocks.startMinutes,
       end: shiftBlocks.endMinutes,
       blockId: shiftBlocks.id,
+      source: scheduleAssignments.source,
     })
     .from(scheduleAssignments)
     .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
@@ -416,6 +416,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       positionId: string | null;
       positionName: string | null;
       minDays: number | null;
+      minHours: number | null;
       scheduled: boolean;
     }
   >();
@@ -427,6 +428,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionId: students.positionId,
         positionName: positions.name,
         minDays: positions.minDays,
+        minHours: positions.minHours,
         scheduled: submissions.scheduled,
       })
       .from(students)
@@ -439,15 +441,19 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionId: r.positionId,
         positionName: r.positionName,
         minDays: r.minDays,
+        minHours: r.minHours,
         scheduled: r.scheduled ?? false,
       });
     }
   }
 
   const scope = parseScope(run.scopeJson);
+  const lateStartByEmail = new Map((report.lateStarts ?? []).map((w) => [w.email, w]));
   const studentRows: ScheduleStudentRow[] = report.students.map((s) => {
     const info = infoByEmail.get(s.email);
     const scheduled = info?.scheduled ?? false;
+    const minHours = info?.minHours ?? null;
+    const lateStart = lateStartByEmail.get(s.email);
     // Marked wins over out-of-scope: it is the stronger claim, since it also
     // protects the student from the next unscoped run.
     const frozenReason: FrozenReason | null = !s.frozen
@@ -463,12 +469,17 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       positionName: info?.positionName ?? null,
       scheduled,
       frozenReason,
+      // Same predicate as the below-min-hours problem group, so the pills and
+      // the warning line always count the same people.
+      belowMinHours: !s.frozen && isBelowMinHours(s.assignedMinutes, minHours),
+      lateStart: lateStart ? { expectedStart: lateStart.expectedStart } : null,
       cells: cellsByStudent.get(s.email) ?? [],
     };
   });
   studentRows.sort(
     (a, b) => a.displayName.localeCompare(b.displayName) || a.email.localeCompare(b.email),
   );
+  const frozenReasonByEmail = new Map(studentRows.map((s) => [s.email, s.frozenReason]));
 
   return {
     runId: run.id,
@@ -482,6 +493,15 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     problems: problemGroups(report, {
       nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
       minDaysOf: (email) => infoByEmail.get(email)?.minDays ?? null,
+      minHoursOf: (email) => infoByEmail.get(email)?.minHours ?? null,
+    }),
+    // Read time, not generation time: the rules are re-checked against the
+    // run's own params every load, so hand edits made since are judged too.
+    // The findings borrow the student list's freeze reasons so both surfaces
+    // say the same thing about why someone did not move.
+    laborFindings: runLaborFindings(rows, report, {
+      nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
+      frozenReasonOf: (email) => frozenReasonByEmail.get(email) ?? null,
     }),
   };
 }
@@ -498,6 +518,8 @@ export interface ScheduleRunListItem {
   /** Students the run's report covers. */
   students: number;
   shortOfTarget: number;
+  /** The run's own below-minimum count; null on runs stored before it existed. */
+  belowMinHours: number | null;
 }
 
 /** Every kept run, newest generation first. */
@@ -523,6 +545,7 @@ export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
       assignments: countByRun.get(r.id) ?? 0,
       students: report.students.length,
       shortOfTarget: report.shortOfTarget,
+      belowMinHours: report.belowMinHours ?? null,
     };
   });
 }
