@@ -74,10 +74,18 @@ export function StudentScheduleModalLink({
   );
 }
 
+/** The card's width bound and a height estimate for the above/below flip. */
+const HOVER_WIDTH = 360;
+const HOVER_HEIGHT_ESTIMATE = 400;
+
 /**
- * The coverage-dialog trigger: wraps a student's name; hovering (or focusing)
- * it floats the card underneath. The fetch starts on hover so the card is
- * usually filled by the time the delay elapses.
+ * A name-hover trigger: hovering (or focusing) the wrapped name floats the
+ * card at the anchor. The fetch starts on hover so the card is usually filled
+ * by the time the delay elapses. The card is FIXED-positioned off the anchor's
+ * viewport rect: both hosts (the cell dialog's scrolling panel, the students
+ * table's overflow wrapper) clip absolutely-positioned children, and a fixed
+ * element escapes any overflow ancestor. The price is that scrolling would
+ * detach it from its anchor, so any scroll or resize simply closes it.
  */
 export function StudentScheduleHover({
   email,
@@ -86,9 +94,27 @@ export function StudentScheduleHover({
   email: string;
   children: React.ReactNode;
 }) {
-  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const wrap = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<number | null>(null);
   const state = useStudentSchedule(email);
+
+  const hide = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    setPos(null);
+  };
+
+  useEffect(() => {
+    if (!pos) return;
+    const close = () => setPos(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pos]);
 
   useEffect(
     () => () => {
@@ -99,27 +125,44 @@ export function StudentScheduleHover({
 
   const enter = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
-    // A beat of delay so skimming the list does not flash cards.
-    timer.current = window.setTimeout(() => setShow(true), 150);
     state.load();
-  };
-  const leave = () => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = null;
-    setShow(false);
+    // A beat of delay so skimming the list does not flash cards.
+    timer.current = window.setTimeout(() => {
+      const rect = wrap.current?.getBoundingClientRect();
+      if (!rect) return;
+      const fitsBelow =
+        rect.bottom + HOVER_HEIGHT_ESTIMATE <= window.innerHeight ||
+        rect.top - HOVER_HEIGHT_ESTIMATE < 0;
+      setPos({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - HOVER_WIDTH - 8)),
+        // Flush against the anchor, so mousing down into the card never
+        // crosses a gap that would fire the wrapper's mouseleave.
+        top: fitsBelow ? rect.bottom : rect.top,
+        above: !fitsBelow,
+      });
+    }, 150);
   };
 
   return (
     <span
-      style={{ position: "relative", display: "inline-block" }}
+      ref={wrap}
+      style={{ display: "inline-block" }}
       onMouseEnter={enter}
-      onMouseLeave={leave}
+      onMouseLeave={hide}
       onFocus={enter}
-      onBlur={leave}
+      onBlur={hide}
     >
       {children}
-      {show && (
-        <span role="tooltip" style={hoverPanel}>
+      {pos && (
+        <span
+          role="tooltip"
+          style={{
+            ...hoverPanel,
+            left: pos.left,
+            top: pos.top,
+            transform: pos.above ? "translateY(-100%)" : undefined,
+          }}
+        >
           <PopupBody {...state} />
         </span>
       )}
@@ -140,7 +183,10 @@ function PopupBody({ view, error }: { view: StudentScheduleView | null; error: s
 /** The card both triggers show: header line, the grids, a one-line legend. */
 export function StudentScheduleCard({ view }: { view: StudentScheduleView }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    // flex-start keeps the grid tables shrink-wrapped: as stretched flex items
+    // (here and again in .modal-panel) the browser would spread their columns
+    // across the full panel width.
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
         <Link
           href={`/admin/students/${encodeURIComponent(view.email)}`}
@@ -229,14 +275,11 @@ const linkButton: React.CSSProperties = {
 };
 
 const hoverPanel: React.CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: 0,
+  position: "fixed",
   zIndex: 30,
-  marginTop: 4,
   padding: 10,
   width: "max-content",
-  maxWidth: 360,
+  maxWidth: HOVER_WIDTH,
   background: "var(--color-background-primary)",
   border: "1px solid var(--color-border-secondary)",
   borderRadius: 8,

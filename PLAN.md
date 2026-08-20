@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.17
+- **Version:** 1.18
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1475,6 +1475,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.18 (2026-08-20)** — **Popup polish and zebra tables.** The student
+  schedule popup's grids shrink-wrap again: as flex items (in the card and
+  again in the modal panel) they were being stretched across the full width,
+  spreading the columns apart. The hover card is now fixed-positioned off its
+  anchor's viewport rect, because both of its hosts, the cell dialog's
+  scrolling panel and the students table's overflow wrapper, clip
+  absolutely-positioned children; a scroll or resize closes it rather than
+  letting it drift off its anchor, and it sits flush against the name so the
+  pointer can travel into it. Hovering a name in the students table now
+  floats the same card the cell dialog shows. And the two widest admin
+  lists, the schedule students table and the response list, take alternate
+  row shading (`.zebra-table`) so a row can be followed across its columns.
 - **1.17 (2026-08-20)** — **A one-student schedule popup, and the honest
   numbers an adversarial review demanded (§5 #11, §7a, §10a).** The students
   table's shift enumeration is now a count that opens the familiar

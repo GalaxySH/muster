@@ -109,7 +109,7 @@ export function ResponseList({
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <table className="stack-table" style={{ fontSize: 14 }}>
+        <table className="stack-table zebra-table" style={{ fontSize: 14 }}>
           <thead>
             <tr>
               <Th onClick={() => toggleSort("name")}>Name{arrow("name")}</Th>

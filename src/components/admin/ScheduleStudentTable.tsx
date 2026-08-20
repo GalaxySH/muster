@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ScheduleStudentRow } from "@/lib/schedule/data";
 import { FROZEN_LABEL, formatDayLabel, keptTagStyle } from "@/components/admin/ui";
-import { StudentScheduleModalLink } from "@/components/admin/StudentSchedulePopup";
+import {
+  StudentScheduleHover,
+  StudentScheduleModalLink,
+} from "@/components/admin/StudentSchedulePopup";
 import { hoursLabel } from "@/lib/domain/config-validation";
 
 type SortKey = "name" | "position" | "hours" | "days" | "rotation" | "scheduled";
@@ -40,7 +43,7 @@ export function ScheduleStudentTable({ students }: { students: ScheduleStudentRo
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+      <table className="zebra-table" style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
         <thead>
           <tr>
             <Th onClick={() => toggleSort("name")} align="left">
@@ -92,7 +95,9 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
   return (
     <tr>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
-        <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
+        <StudentScheduleHover email={s.email}>
+          <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
+        </StudentScheduleHover>
         {s.fillIn && <span style={warningTag}>no response</span>}
         {s.lateStart && (
           <span
