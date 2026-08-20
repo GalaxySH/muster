@@ -11,6 +11,7 @@
 import { useState, useTransition } from "react";
 
 import { Modal } from "@/components/Modal";
+import { StudentScheduleHover } from "@/components/admin/StudentSchedulePopup";
 import type { Day } from "@/lib/domain/types";
 import { fetchCellAvailability } from "@/lib/schedule/actions";
 import type { CellPerson } from "@/lib/schedule/data";
@@ -99,7 +100,9 @@ export function SlotCell({
                       fontSize: 13,
                     }}
                   >
-                    <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
+                    <StudentScheduleHover email={p.email}>
+                      <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
+                    </StudentScheduleHover>
                     <span style={{ display: "flex", gap: 8, whiteSpace: "nowrap" }}>
                       {p.autoAssigned && (
                         <span style={{ color: "var(--color-text-auto)" }}>auto weekend</span>
