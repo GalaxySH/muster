@@ -83,7 +83,7 @@ export default async function AdminTestUsersPage({
           <h2 style={{ fontSize: 16, marginTop: 0 }}>Sign-in link for {linkFor}</h2>
           <p style={{ fontSize: 14, color: "#555", marginTop: 0 }}>
             Open this link in a private or incognito window to use the test account while
-            staying signed in here as admin. It works once and expires in 30 minutes.
+            staying signed in here as admin. It works once and expires in 1 day.
           </p>
           <MagicLinkCopy url={magicLinkUrl} />
         </section>

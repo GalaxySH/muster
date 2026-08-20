@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.11
-- **Last updated:** 2026-08-04
+- **Version:** 1.16
+- **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -704,9 +704,10 @@ columns from the roster.
   default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
   awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
-  `tokenHash`, `requestedAt`, `expiresAt` (**as built: 30 minutes from issue**, not the
-  form-window close the original design proposed), `redeemedAt?`, `redeemedFrom?`,
-  `revokedAt?`. Issued self-service, or by an admin from the per-student page (0.92).
+  `tokenHash`, `requestedAt`, `expiresAt` (**as built: 1 day from issue** — 1.16, up
+  from 30 minutes — not the form-window close the original design proposed),
+  `redeemedAt?`, `redeemedFrom?`, `revokedAt?`. Issued self-service, or by an admin
+  from the per-student page (0.92).
   Redemption establishes the **standard JWT `AppSession`** — the window-scoped session
   cookie stays deferred (§11). Store hash only.
 - **ChangeRequest** (schedule change mini-flow — roadmap 3.1, §4.1): `id`,
@@ -960,7 +961,7 @@ allowlist, no manual admin step. Identity proof = the link is only ever delivere
 the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
 
 > **As built (auth-only):** `/signin` has a "Email me a sign-in link" disclosure →
-> `requestMagicLink` issues a hashed, single-use, 30-min token (`magic_links` table) and
+> `requestMagicLink` issues a hashed, single-use, 1-day token (`magic_links` table) and
 > sends it via **Resend** (verified domain `re.hauge.rocks`; no `RESEND_API_KEY` ⇒ the link
 > is logged to the server console for local dev). **Eligibility = the email is already a
 > known student or admin** (neutral "if eligible, we've sent a link" either way — no
@@ -1007,11 +1008,15 @@ prevents mail-scanner / link-preview bots from consuming a one-time link on a ba
 not a targeted attacker — sufficient given the low stakes.)
 
 **Token properties:** bound to one student email; high-entropy; stored **hashed**;
-expires (**as built: 30 minutes**, not the form-window close proposed here); issuance +
-redemption audited. **Deferred:** an admin **revoke UI** — the `revokedAt` column exists
-and *is* honored on redeem, but nothing writes it yet — and per-IP rate limiting (only
-the 60 s per-address cooldown ships). Blast radius of a leak = that one student's
-availability prefs (no other student, no admin view, no records).
+expires (**as built: 1 day** — 1.16, up from the 30 minutes it launched with — not the
+form-window close proposed here); issuance + redemption audited. **Deferred:** an
+admin **revoke UI** — the `revokedAt` column exists and *is* honored on redeem, but
+nothing writes it yet, so until it exists an unredeemed leaked link cannot be killed
+before its day runs out — and per-IP rate limiting (the 60 s per-address cooldown and
+the global send budget ship; nothing is keyed to IP). Blast radius of a leaked
+**student** link = that one student's availability prefs (no other student, no admin
+view, no records). An **admin's own** link redeems to a full admin session — the
+allowlists gate on identity, not on how the session was established.
 
 **Email transport (decided): app sends directly via a transactional email provider.**
 Power Automate is **ruled out** — its "When a HTTP request is received" trigger is
@@ -1470,6 +1475,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.16 (2026-08-20)** — **Magic links now expire after 1 day, up from the 30
+  minutes they launched with (§9, §11).** A sign-in link should still work when
+  the student opens the email hours after asking for it; the old window forced a
+  re-request more often than it stopped anything. What protects a link already
+  sitting in a mailbox is unchanged: it works exactly once (one atomic UPDATE),
+  only for the typed email, and only its hash is at rest. The issuance limits
+  (per-email cooldown, global send budget) never bounded that window, and the
+  admin and test-account mint paths skip them anyway. Two things the longer
+  life makes worth stating plainly: re-issuing never invalidates earlier links,
+  so several unredeemed links can now be live for one address at once; and
+  until the deferred admin revoke UI (§11) exists, nothing can kill a leaked
+  link before its day runs out — that deferral is more load-bearing than it was
+  at 30 minutes. Historical changelog mentions of the 30-minute token (0.98's
+  reconciliation, 0.18's launch entry) describe what was true then and stand as
+  written.
 - **1.15 (2026-08-20)** — **The generator now knows labor law, and every run
   reports its own health (roadmap 5.5, §5 #11, §7a,
   `docs/generator-constraints-fairness-plan.md`).** The engine bounded exactly one

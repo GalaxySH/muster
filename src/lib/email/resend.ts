@@ -70,11 +70,11 @@ export async function sendMagicLinkEmail({ to, url, name }: MagicLinkEmail): Pro
   const greeting = name ? `Hi ${name},` : "Hi,";
   const text =
     `${greeting}\n\nUse this link to sign in to GDEC Scheduling (Muster). ` +
-    `It expires in 30 minutes and can be used once:\n\n${url}\n\n` +
+    `It expires in 1 day and can be used once:\n\n${url}\n\n` +
     `If you didn't request this, you can ignore this email.`;
   const html =
     `<p>${escapeHtml(greeting)}</p>` +
-    `<p>Use this link to sign in to GDEC Scheduling (Muster). It expires in 30 minutes and can be used once:</p>` +
+    `<p>Use this link to sign in to GDEC Scheduling (Muster). It expires in 1 day and can be used once:</p>` +
     `<p><a href="${url}">Sign in to Muster</a></p>` +
     `<p style="color:#666">If you didn't request this, you can ignore this email.</p>`;
 

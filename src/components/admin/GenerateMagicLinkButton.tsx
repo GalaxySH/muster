@@ -36,7 +36,7 @@ export function GenerateMagicLinkButton({ studentEmail }: { studentEmail: string
         <Modal label="Sign-in link" onClose={() => setLink(null)} maxWidth="480px">
           <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 14 }}>
             <p style={{ margin: 0 }}>
-              Send this link to the student. It works once and expires in 30 minutes.
+              Send this link to the student. It works once and expires in 1 day.
             </p>
             <MagicLinkCopy url={link.url} />
             <div style={reminderBox}>

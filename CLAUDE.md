@@ -295,7 +295,7 @@ email) — keep the rest of the app auth-method-agnostic:
    enforced via an Auth.js domain-check callback. This is the student path.
 2. **Self-service magic link** (built, auth-only — PLAN §11) for users Google rejects
    (mainly under-18): the app generates + owns a high-entropy token (stored **hashed**,
-   single-use, 30-min), Resend delivers it (from `re.hauge.rocks`); redemption via the
+   single-use, 1-day), Resend delivers it (from `re.hauge.rocks`); redemption via the
    `magic-link` Credentials provider sets the same JWT session (`method: "magic-link"`).
    Responses are always neutral ("if eligible, we've sent a link"), issued only to known
    students/admins, and rate-limited to avoid roster probing. (Session is a standard JWT
