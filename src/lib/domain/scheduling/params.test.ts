@@ -37,7 +37,7 @@ describe("validateSchedulingParams", () => {
     ).not.toBeNull();
   });
 
-  it("ships the documented defaults, all nine pinned", () => {
+  it("ships the documented defaults, all ten pinned", () => {
     expect(DEFAULT_SCHEDULING_PARAMS).toEqual({
       dayCapHours: 8,
       nightPriority: 50,
@@ -48,6 +48,7 @@ describe("validateSchedulingParams", () => {
       maxConsecutiveDays: 5,
       maxDaysPerWeek: 6,
       preferredDaysPerWeek: 5,
+      coveragePoolPositionIds: ["culinary-assistant", "cashier"],
     });
   });
 
@@ -63,6 +64,7 @@ describe("validateSchedulingParams", () => {
         maxConsecutiveDays: 14,
         maxDaysPerWeek: 7,
         preferredDaysPerWeek: 7,
+        coveragePoolPositionIds: [],
       }),
     ).toBeNull();
     expect(
@@ -76,8 +78,29 @@ describe("validateSchedulingParams", () => {
         maxConsecutiveDays: 1,
         maxDaysPerWeek: 1,
         preferredDaysPerWeek: 1,
+        coveragePoolPositionIds: ["a", "b", "c"],
       }),
     ).toBeNull();
+  });
+
+  it("takes any list of ids for the cross-coverage pool, empty or unknown", () => {
+    for (const coveragePoolPositionIds of [[], ["cashier"], ["gone-position", "cashier"]]) {
+      expect(
+        validateSchedulingParams({ ...DEFAULT_SCHEDULING_PARAMS, coveragePoolPositionIds }),
+      ).toBeNull();
+    }
+  });
+
+  it("rejects a cross-coverage pool that is not a list of ids", () => {
+    const bad: unknown[] = ["cashier", [["cashier"]], [""], ["  "], [1], [null], null];
+    for (const coveragePoolPositionIds of bad) {
+      const msg = validateSchedulingParams({
+        ...DEFAULT_SCHEDULING_PARAMS,
+        coveragePoolPositionIds: coveragePoolPositionIds as string[],
+      });
+      expect(msg).toMatch(/cross-coverage/);
+      expect(msg).not.toMatch(/—/);
+    }
   });
 
   it("rejects a repeat start penalty outside 0 to 100 or fractional", () => {
@@ -181,6 +204,22 @@ describe("storedSchedulingParams", () => {
       DEFAULT_SCHEDULING_PARAMS,
     );
   });
+
+  it("drops the whole value when the cross-coverage pool is not a list of ids", () => {
+    expect(
+      storedSchedulingParams({
+        dayCapHours: 6,
+        coveragePoolPositionIds: "cashier" as unknown as string[],
+      }),
+    ).toEqual(DEFAULT_SCHEDULING_PARAMS);
+  });
+
+  it("keeps an empty cross-coverage pool, which turns the pooling off", () => {
+    expect(storedSchedulingParams({ coveragePoolPositionIds: [] })).toEqual({
+      ...DEFAULT_SCHEDULING_PARAMS,
+      coveragePoolPositionIds: [],
+    });
+  });
 });
 
 describe("parseSchedulingParams", () => {
@@ -219,7 +258,34 @@ describe("parseSchedulingParams", () => {
       maxConsecutiveDays: 6,
       maxDaysPerWeek: 5,
       preferredDaysPerWeek: 4,
+      coveragePoolPositionIds: ["barista", "stocker"],
     };
     expect(parseSchedulingParams(JSON.stringify(params))).toEqual(params);
+  });
+});
+
+describe("the shipped defaults as a value", () => {
+  it("is frozen, object and pool array alike", () => {
+    expect(Object.isFrozen(DEFAULT_SCHEDULING_PARAMS)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds)).toBe(true);
+  });
+
+  it("hands the same pool array to every value that omits one", () => {
+    // The spread inside storedSchedulingParams copies the array BY REFERENCE,
+    // so this alias is real. Freezing is what stops one push on it from
+    // editing the shipped default for the rest of the process.
+    const filled = storedSchedulingParams({ dayCapHours: 6 });
+    expect(filled.coveragePoolPositionIds).toBe(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds);
+    expect(() => filled.coveragePoolPositionIds.push("barista")).toThrow();
+    expect(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds).toEqual([
+      "culinary-assistant",
+      "cashier",
+    ]);
+  });
+
+  it("hands the default object itself back for a setting it cannot read", () => {
+    expect(parseSchedulingParams(null)).toBe(DEFAULT_SCHEDULING_PARAMS);
+    expect(parseSchedulingParams("not json")).toBe(DEFAULT_SCHEDULING_PARAMS);
+    expect(storedSchedulingParams({ dayCapHours: 99 })).toBe(DEFAULT_SCHEDULING_PARAMS);
   });
 });

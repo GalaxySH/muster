@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseResponseFilters,
   applyResponseFilters,
+  neighborFallbackFilters,
   serializeResponseFilters,
   FLAG_FILTER_OPTIONS,
   type ResponseFilters,
@@ -162,11 +163,23 @@ describe("parseResponseFilters", () => {
     expect(parseResponseFilters({ roster: "" })).toEqual({});
   });
 
-  it("reads the all-students switch and rejects other values", () => {
-    expect(parseResponseFilters({ all: "1" })).toEqual({ includeMissing: true });
+  it("reads every submission state and rejects unknown ones", () => {
+    for (const status of ["submitted", "draft", "missing", "all"] as const) {
+      expect(parseResponseFilters({ status })).toEqual({ status });
+    }
+    expect(parseResponseFilters({ status: "bogus" })).toEqual({});
+    expect(parseResponseFilters({ status: "" })).toEqual({});
+  });
+
+  it("still reads the old all=1 link as everyone", () => {
+    expect(parseResponseFilters({ all: "1" })).toEqual({ status: "all" });
     expect(parseResponseFilters({ all: "0" })).toEqual({});
     expect(parseResponseFilters({ all: "bogus" })).toEqual({});
     expect(parseResponseFilters({ all: "" })).toEqual({});
+  });
+
+  it("lets an explicit state win over the old switch", () => {
+    expect(parseResponseFilters({ status: "draft", all: "1" })).toEqual({ status: "draft" });
   });
 
   it("reads a start-date filter when both mode and date are valid", () => {
@@ -238,20 +251,20 @@ describe("applyResponseFilters", () => {
     );
   });
 
-  it("includes students with no submission when the all-students switch is on", () => {
-    expect(emails(applyResponseFilters(rows, { includeMissing: true }))).toEqual(
+  it("includes students with no submission when the state is everyone", () => {
+    expect(emails(applyResponseFilters(rows, { status: "all" }))).toEqual(
       ["a", "b", "c", "d", "e", "g", "h"].map((x) => `${x}@wisc.edu`),
     );
   });
 
-  it("combines the all-students and off-roster switches", () => {
-    expect(
-      emails(applyResponseFilters(rows, { includeMissing: true, includeOffRoster: true })),
-    ).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"].map((x) => `${x}@wisc.edu`));
+  it("combines everyone with the off-roster switch", () => {
+    expect(emails(applyResponseFilters(rows, { status: "all", includeOffRoster: true }))).toEqual(
+      ["a", "b", "c", "d", "e", "f", "g", "h"].map((x) => `${x}@wisc.edu`),
+    );
   });
 
-  it("combines the all-students switch with other filters", () => {
-    expect(emails(applyResponseFilters(rows, { includeMissing: true, groupId: "g1" }))).toEqual([
+  it("combines everyone with other filters", () => {
+    expect(emails(applyResponseFilters(rows, { status: "all", groupId: "g1" }))).toEqual([
       "a@wisc.edu",
       "b@wisc.edu",
       "g@wisc.edu",
@@ -370,17 +383,126 @@ describe("serializeResponseFilters", () => {
       positionId: "p2",
       flag: "travel_late",
       includeOffRoster: true,
-      includeMissing: true,
+      status: "all",
       started: { mode: "on", date: "2026-01-15" },
     };
     const qs = serializeResponseFilters(f);
     expect(qs).toBe(
-      "group=g2&position=p2&flag=travel_late&roster=all&all=1&started=on&startedDate=2026-01-15",
+      "group=g2&position=p2&flag=travel_late&roster=all&status=all&started=on&startedDate=2026-01-15",
     );
     expect(parseResponseFilters(Object.fromEntries(new URLSearchParams(qs)))).toEqual(f);
   });
 
-  it("carries the all-students switch on its own", () => {
-    expect(serializeResponseFilters({ includeMissing: true })).toBe("all=1");
+  it("round-trips every submission state and never writes the old param", () => {
+    for (const status of ["submitted", "draft", "missing", "all"] as const) {
+      const qs = serializeResponseFilters({ status });
+      expect(qs).toBe(`status=${status}`);
+      expect(parseResponseFilters(Object.fromEntries(new URLSearchParams(qs)))).toEqual({ status });
+    }
+  });
+
+  it("writes nothing for the default view", () => {
+    expect(serializeResponseFilters({ status: undefined })).toBe("");
+  });
+});
+
+describe("the submission-state filter", () => {
+  it("hides students with no submission by default, exactly as before", () => {
+    // The pre-overhaul default was `includeMissing` absent, which is this.
+    expect(emails(applyResponseFilters(rows, {}))).toEqual(
+      ["a", "b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
+    );
+    expect(applyResponseFilters(rows, {})).toEqual(
+      applyResponseFilters(rows, { status: undefined }),
+    );
+  });
+
+  it("shows only submitted responses", () => {
+    expect(emails(applyResponseFilters(rows, { status: "submitted" }))).toEqual(
+      ["a", "b", "d", "e"].map((x) => `${x}@wisc.edu`),
+    );
+  });
+
+  it("shows only drafts", () => {
+    expect(emails(applyResponseFilters(rows, { status: "draft" }))).toEqual(["c@wisc.edu"]);
+  });
+
+  it("shows only the students who never started one", () => {
+    expect(emails(applyResponseFilters(rows, { status: "missing" }))).toEqual(
+      ["g", "h"].map((x) => `${x}@wisc.edu`),
+    );
+  });
+
+  it("keeps the off-roster switch as its own toggle", () => {
+    // f is off roster and submitted, so a submitted-only view still hides them.
+    expect(emails(applyResponseFilters(rows, { status: "submitted" }))).not.toContain("f@wisc.edu");
+    expect(
+      emails(applyResponseFilters(rows, { status: "submitted", includeOffRoster: true })),
+    ).toContain("f@wisc.edu");
+  });
+
+  it("composes with the review filter, which is unchanged", () => {
+    expect(emails(applyResponseFilters(rows, { status: "submitted", review: "done" }))).toEqual(
+      ["b", "e"].map((x) => `${x}@wisc.edu`),
+    );
+    // A draft matches neither side of review, so the two together find nobody.
+    expect(applyResponseFilters(rows, { status: "draft", review: "todo" })).toEqual([]);
+  });
+
+  it("composes with the group and flag filters", () => {
+    expect(emails(applyResponseFilters(rows, { status: "missing", groupId: "g1" }))).toEqual([
+      "g@wisc.edu",
+    ]);
+    expect(emails(applyResponseFilters(rows, { status: "all", flag: "any" }))).toEqual(
+      ["b", "c", "d", "e"].map((x) => `${x}@wisc.edu`),
+    );
+  });
+
+  it("applies the old all=1 link the same way everyone does", () => {
+    expect(applyResponseFilters(rows, parseResponseFilters({ all: "1" }))).toEqual(
+      applyResponseFilters(rows, { status: "all" }),
+    );
+  });
+});
+
+describe("neighborFallbackFilters", () => {
+  /**
+   * What the per-student arrows do when the active filters hide the student on
+   * screen: re-list with these filters, then walk the result.
+   */
+  const walk = (filters: ResponseFilters) =>
+    emails(applyResponseFilters(rows, neighborFallbackFilters(filters)));
+
+  it("keeps a chosen submission state, so the arrows stay inside it", () => {
+    // Viewing g@wisc.edu under "No submission" walks g and h, not everyone.
+    // Widening the state away here would march the arrows through a list the
+    // dashboard never showed.
+    expect(walk({ status: "missing" })).toEqual(["g@wisc.edu", "h@wisc.edu"]);
+  });
+
+  it("gives a student outside the chosen state no arrows, as the review filter does", () => {
+    const list = applyResponseFilters(rows, neighborFallbackFilters({ status: "missing" }));
+    expect(list.findIndex((r) => r.email === "a@wisc.edu")).toBe(-1);
+  });
+
+  it("widens to everyone only when no state was chosen", () => {
+    // The default view hides students who never started a submission, but that
+    // is a default rather than a choice, so one still walks with the rest.
+    expect(neighborFallbackFilters({}).status).toBe("all");
+    expect(walk({})).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"].map((x) => `${x}@wisc.edu`));
+  });
+
+  it("always opens the off-roster switch, which is only about visibility", () => {
+    expect(neighborFallbackFilters({ status: "submitted" }).includeOffRoster).toBe(true);
+    expect(walk({ status: "submitted" })).toContain("f@wisc.edu");
+  });
+
+  it("leaves every other filter exactly as it found it", () => {
+    expect(neighborFallbackFilters({ status: "draft", groupId: "g2", review: "todo" })).toEqual({
+      status: "draft",
+      groupId: "g2",
+      review: "todo",
+      includeOffRoster: true,
+    });
   });
 });

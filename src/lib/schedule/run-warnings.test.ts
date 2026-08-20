@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { problemGroups } from "@/lib/domain/scheduling/problems";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import type { EngineReport, StudentScheduleReport } from "@/lib/domain/scheduling/types";
+// Type only: ./data is server-only, and the import is erased before it runs.
+import type { StoredRunReport } from "./data";
 import {
   laborFindingSections,
   lateStartWarnings,
@@ -402,7 +404,7 @@ describe("a pre-overhaul stored run", () => {
     params: { dayCapHours: 8, nightPriority: 50, eveningPriority: 25 },
   });
 
-  const report = JSON.parse(OLD_SUMMARY_JSON) as EngineReport;
+  const report = JSON.parse(OLD_SUMMARY_JSON) as StoredRunReport;
 
   it("parses with every new field simply absent", () => {
     expect(report.students).toHaveLength(2);
@@ -410,6 +412,8 @@ describe("a pre-overhaul stored run", () => {
     expect(report.lateStarts).toBeUndefined();
     expect(report.laborRelaxed).toBeUndefined();
     expect(report.returners).toBeUndefined();
+    // No health section renders for a run generated before the stats existed.
+    expect(report.stats).toBeUndefined();
   });
 
   it("validates its rows against the backfilled labor params", () => {

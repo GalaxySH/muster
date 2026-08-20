@@ -260,10 +260,12 @@ seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses`
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
 `ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the
 `listResponses` SQL): off-roster responders are hidden unless `roster=all`, and
-never-started students unless `all=1` (the "Show all students" switch, off by default so
-the dashboard is still a list of responses), each badged in the list.
-`getResponseNeighbors` re-lists with **both** switches on when the student being viewed
-isn't in the filtered list, so the open student is always part of the prev/next walk.
+never-started students unless the submission-state select asks for them (`status` =
+submitted|draft|missing|all, empty being the default view that keeps the dashboard a list
+of responses; the old `all=1` link still parses as an alias for `status=all`), each badged
+in the list. `getResponseNeighbors` re-lists with off-roster on when the student being
+viewed isn't in the filtered list, widening the submission state only when none was
+chosen, so a chosen state still governs the prev/next walk.
 The start-date filter (`started` = before|after|on + `startedDate`, applied only when
 both halves are valid) compares `students.hiredOn` by calendar day; rows with no hire
 date never match. The list itself (`ResponseList`) is a full-bleed

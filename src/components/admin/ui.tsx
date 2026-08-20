@@ -7,6 +7,7 @@
  * components can both import it. Colors go through the globals.css tokens.
  */
 import Link from "next/link";
+import type { HealthBar, HealthTone } from "@/lib/admin/schedule-health-view";
 import type { FrozenReason } from "@/lib/schedule/run-warnings";
 
 export const panelStyle: React.CSSProperties = {
@@ -187,6 +188,72 @@ export function StatTile({
     <Link href={href} style={tileStyle}>
       {body}
     </Link>
+  );
+}
+
+/** The groove a bar's fill sits in; the fill paints over it at its own width. */
+export const barTrackStyle: React.CSSProperties = {
+  height: 6,
+  borderRadius: 3,
+  overflow: "hidden",
+  background: "var(--color-background-secondary)",
+};
+
+/** The quiet aside a SectionLabel parks on the right to explain its figures. */
+export const hintStyle: React.CSSProperties = {
+  fontWeight: 400,
+  fontSize: 12,
+  color: "var(--color-text-tertiary)",
+};
+
+/** The smallest line on a panel: provenance, caveats, "nothing to show here". */
+export const footnoteStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--color-text-tertiary)",
+  margin: 0,
+};
+
+/** Text color for a health tone: red for danger, amber for warning, plain otherwise. */
+export const toneColor = (tone: HealthTone): string =>
+  tone === "danger"
+    ? "var(--color-text-danger)"
+    : tone === "warning"
+      ? "var(--color-text-warning)"
+      : "var(--color-text-primary)";
+
+/** The same three tones as a bar fill, where the warning reads better as a wash. */
+export const barColor = (tone: HealthTone): string =>
+  tone === "danger"
+    ? "var(--color-text-danger)"
+    : tone === "warning"
+      ? "var(--color-background-warning)"
+      : "var(--color-text-info)";
+
+/**
+ * One hand-rolled bar: label and figure on a line, the track under them. Shared
+ * with the analytics funnel's shape on purpose, and hand-rolled on purpose:
+ * these pages carry no chart library.
+ */
+export function Bar({ bar }: { bar: HealthBar }) {
+  return (
+    <div style={{ padding: "6px 0", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}
+      >
+        <span style={{ color: toneColor(bar.tone) }}>{bar.label}</span>
+        <span style={{ color: "var(--color-text-secondary)" }}>{bar.caption}</span>
+      </div>
+      <div style={barTrackStyle}>
+        <div
+          style={{
+            width: `${bar.percent}%`,
+            height: "100%",
+            borderRadius: 3,
+            background: barColor(bar.tone),
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   successPillStyle,
 } from "@/components/admin/ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
+import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
 import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
@@ -43,6 +44,7 @@ import {
   type LaborFindingSection,
   type LaborFindingView,
 } from "@/lib/schedule/run-warnings";
+import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import {
@@ -53,6 +55,7 @@ import {
   type CoverageStatus,
   type CoverageSummary,
 } from "@/lib/domain/coverage";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
@@ -96,6 +99,7 @@ export default async function AdminSchedulePage({
       loadScopeLedger(),
     ]);
   const scopePositions = coverage.map((c) => ({ id: c.positionId, name: c.positionName }));
+  const positionNames = new Map(scopePositions.map((p) => [p.id, p.name]));
   const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
   const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
@@ -150,10 +154,17 @@ export default async function AdminSchedulePage({
         positions={scopePositions}
       />
       <ScopeLedgerPanel ledger={ledger} />
+      <ScheduleHealthSection schedule={schedule} positionNames={positionNames} />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <SectionLabel>Generation settings</SectionLabel>
-        <ScheduleParamsForm initial={params} />
+        {/* Shift Lead is not offered in the cross-coverage pool: the statistics
+            drop the lead id from it and measure new leads on their own floor,
+            so a ticked box there would look like a setting and do nothing. */}
+        <ScheduleParamsForm
+          initial={params}
+          positions={scopePositions.filter((p) => p.id !== SHIFT_LEAD_POSITION_ID)}
+        />
       </section>
 
       <div style={{ ...cardsGridStyle, maxWidth: 720 }}>
@@ -331,6 +342,31 @@ function SchedulePanel({
       </div>
     </section>
   );
+}
+
+/**
+ * The run's stored health figures. A run generated before stats existed has
+ * none of its own, and so does one stamped under a snapshot version this build
+ * cannot read (a rollback meeting a newer run). Both take the same quiet line:
+ * regenerating is how the admin gets the section back, and neither is allowed
+ * to take the rest of the page down.
+ */
+function ScheduleHealthSection({
+  schedule,
+  positionNames,
+}: {
+  schedule: CurrentSchedule | null;
+  positionNames: ReadonlyMap<string, string>;
+}) {
+  if (!schedule) return null;
+  if (!isReadableRunStats(schedule.report.stats)) {
+    return (
+      <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        Update the schedule to see health statistics.
+      </p>
+    );
+  }
+  return <ScheduleHealth stats={schedule.report.stats} positionNames={positionNames} />;
 }
 
 /**

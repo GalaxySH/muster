@@ -16,13 +16,20 @@ import {
   REPEAT_START_PENALTY_MIN,
   type SchedulingParams,
 } from "@/lib/domain/scheduling/params";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { saveScheduleParams } from "@/lib/schedule/actions";
 
 /**
  * The engine's tunable knobs on /admin/schedule. Saved values apply from the
  * next Update schedule on; the server action revalidates and re-validates.
  */
-export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
+export function ScheduleParamsForm({
+  initial,
+  positions,
+}: {
+  initial: SchedulingParams;
+  positions: { id: string; name: string }[];
+}) {
   const [dayCap, setDayCap] = useState(String(initial.dayCapHours));
   const [night, setNight] = useState(String(initial.nightPriority));
   const [evening, setEvening] = useState(String(initial.eveningPriority));
@@ -32,8 +39,12 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
   const [maxRun, setMaxRun] = useState(String(initial.maxConsecutiveDays));
   const [maxDays, setMaxDays] = useState(String(initial.maxDaysPerWeek));
   const [preferredDays, setPreferredDays] = useState(String(initial.preferredDaysPerWeek));
+  const [pool, setPool] = useState<string[]>(initial.coveragePoolPositionIds);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const togglePool = (id: string, on: boolean) =>
+    setPool((ids) => (on ? [...ids, id] : ids.filter((p) => p !== id)));
 
   const submit = () => {
     startTransition(async () => {
@@ -47,6 +58,19 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
         maxConsecutiveDays: Number(maxRun),
         maxDaysPerWeek: Number(maxDays),
         preferredDaysPerWeek: Number(preferredDays),
+        // Ordered by the position list, so the saved value does not depend on
+        // the order the admin clicked the boxes. Saved ids the list does not
+        // offer are carried through rather than dropped: deactivating a
+        // position does not retire its blocks, so it keeps producing seats and
+        // keeps being pooled, and an unrelated save must not be what quietly
+        // ends that. Shift Lead is the one id we do drop, because the
+        // statistics discard it from the pool and measure leads on their own.
+        coveragePoolPositionIds: [
+          ...positions.map((p) => p.id).filter((id) => pool.includes(id)),
+          ...initial.coveragePoolPositionIds.filter(
+            (id) => id !== SHIFT_LEAD_POSITION_ID && !positions.some((p) => p.id === id),
+          ),
+        ],
       });
       setMsg(
         res.ok ? "Saved. Applies the next time the schedule is updated." : (res.error ?? "Failed."),
@@ -129,6 +153,25 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
           min={PREFERRED_DAYS_PER_WEEK_MIN}
           max={MAX_DAYS_PER_WEEK_MAX}
         />
+        <fieldset style={fieldsetStyle}>
+          <legend style={{ fontWeight: 600, fontSize: 13, padding: 0 }}>
+            Cross-coverage positions
+          </legend>
+          <span style={{ color: "var(--color-text-secondary)", fontSize: 13, flexGrow: 1 }}>
+            Positions that cover for each other. Schedule health counts them as one. Does not change
+            generation.
+          </span>
+          {positions.map((p) => (
+            <label key={p.id} style={checkboxRowStyle}>
+              <input
+                type="checkbox"
+                checked={pool.includes(p.id)}
+                onChange={(e) => togglePool(p.id, e.target.checked)}
+              />
+              {p.name}
+            </label>
+          ))}
+        </fieldset>
         <div style={{ display: "flex", alignItems: "flex-end" }}>
           <button type="button" onClick={submit} disabled={pending}>
             {pending ? "Saving…" : "Save settings"}
@@ -146,6 +189,24 @@ export function ScheduleParamsForm({ initial }: { initial: SchedulingParams }) {
     </div>
   );
 }
+
+const fieldsetStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 13,
+  flex: "1 1 200px",
+  minWidth: 180,
+  border: 0,
+  margin: 0,
+  padding: 0,
+};
+
+const checkboxRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+};
 
 function Field({
   label,

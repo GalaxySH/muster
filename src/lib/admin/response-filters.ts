@@ -1,8 +1,8 @@
 /**
  * Pure response-list filters that follow you (PLAN §10, roadmap 2.2).
  *
- * The group, position, flag, off-roster, and all-students filters live in the URL so they survive
- * navigation into the per-student view and drive the prev/next walk there. This
+ * The group, position, flag, off-roster, and submission-state filters live in the URL so they
+ * survive navigation into the per-student view and drive the prev/next walk there. This
  * module owns the parse ↔ apply ↔ serialize round-trip; `admin/data.ts` fetches
  * the rows and the pages read/write the query. Search + sort stay client-side in
  * the list table.
@@ -25,6 +25,13 @@ export type StartedMode = "before" | "after" | "on";
  */
 export type ReviewFilter = "todo" | "done";
 
+/**
+ * Which submission states the list shows. Absent is the default view: the
+ * responses, submitted and draft alike, with the students who never started one
+ * hidden. "all" is everyone including those.
+ */
+export type StatusFilter = "submitted" | "draft" | "missing" | "all";
+
 export interface ResponseFilters {
   /** A group id, or "none" for responders with no group. */
   groupId?: string | "none";
@@ -34,8 +41,8 @@ export interface ResponseFilters {
   flag?: FlagFilter;
   /** Also list off-roster responders (hidden by default). */
   includeOffRoster?: boolean;
-  /** Also list students who never started a submission (hidden by default). */
-  includeMissing?: boolean;
+  /** Restrict by submission state; absent shows the responses and hides the rest. */
+  status?: StatusFilter;
   /** Restrict by roster start date (`date` is `yyyy-mm-dd`). Rows with no
    *  recorded start date never match while this is set. */
   started?: { mode: StartedMode; date: string };
@@ -99,6 +106,17 @@ export const REVIEW_FILTER_OPTIONS: { value: string; label: string }[] = [
 
 const REVIEW_FILTERS: readonly ReviewFilter[] = ["todo", "done"];
 
+/** Options for the submission-state dropdown (value "" = the default view). */
+export const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Responses" },
+  { value: "submitted", label: "Submitted" },
+  { value: "draft", label: "Drafts" },
+  { value: "missing", label: "No submission" },
+  { value: "all", label: "Everyone" },
+];
+
+const STATUS_FILTERS: readonly StatusFilter[] = ["submitted", "draft", "missing", "all"];
+
 const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 
 /** Read filters from raw query params (unknown/absent values are dropped). */
@@ -107,6 +125,7 @@ export function parseResponseFilters(params: {
   position?: string;
   flag?: string;
   roster?: string;
+  status?: string;
   all?: string;
   started?: string;
   startedDate?: string;
@@ -122,7 +141,13 @@ export function parseResponseFilters(params: {
     filters.flag = flag as FlagFilter;
   }
   if (params.roster?.trim() === "all") filters.includeOffRoster = true;
-  if (params.all?.trim() === "1") filters.includeMissing = true;
+  const status = params.status?.trim();
+  if (status && (STATUS_FILTERS as readonly string[]).includes(status)) {
+    filters.status = status as StatusFilter;
+  } else if (params.all?.trim() === "1") {
+    // `all=1` was the old show-everyone switch; saved links keep working.
+    filters.status = "all";
+  }
   const mode = params.started?.trim();
   const date = params.startedDate?.trim();
   if (mode && date && (STARTED_MODES as readonly string[]).includes(mode) && isIsoDate(date)) {
@@ -144,9 +169,13 @@ export function applyResponseFilters<T extends FilterableResponse>(
     // Responders who have since moved to "People Leaving" (PLAN §4.2) stay
     // hidden unless the off-roster switch is on; their submission is retained.
     if (!r.onRoster && !filters.includeOffRoster) return false;
-    // Students who never started a submission only show under the all-students
-    // switch, so the default dashboard stays a list of responses.
-    if (r.status === "missing" && !filters.includeMissing) return false;
+    // With no state chosen the dashboard stays a list of responses, so students
+    // who never started one are out; otherwise the chosen state decides.
+    if (filters.status === undefined) {
+      if (r.status === "missing") return false;
+    } else if (filters.status !== "all" && r.status !== filters.status) {
+      return false;
+    }
     if (filters.groupId === UNGROUPED) {
       if (r.groupId !== null) return false;
     } else if (filters.groupId && r.groupId !== filters.groupId) {
@@ -194,6 +223,26 @@ export function matchesStarted(
   }
 }
 
+/**
+ * The filters the per-student prev/next walk falls back to when the active ones
+ * hide the student being viewed (`getResponseNeighbors`).
+ *
+ * Off-roster is a visibility switch, not a question about the data, so it
+ * always widens: the open student is on screen either way. A submission state
+ * the admin CHOSE is a real restriction, and widening it away would have the
+ * arrows walk a list the dashboard never showed. So an explicit state is kept,
+ * and a student outside it gets no arrows, exactly as the review filter already
+ * behaves. With no state chosen the default view is "the responses", which is a
+ * default rather than a choice, so a student who never started one still walks.
+ */
+export function neighborFallbackFilters(filters: ResponseFilters): ResponseFilters {
+  return {
+    ...filters,
+    ...(filters.status === undefined ? { status: "all" as const } : {}),
+    includeOffRoster: true,
+  };
+}
+
 /** Serialize to a query string (no leading "?"); empty when no filters are set. */
 export function serializeResponseFilters(filters: ResponseFilters): string {
   const params = new URLSearchParams();
@@ -201,7 +250,8 @@ export function serializeResponseFilters(filters: ResponseFilters): string {
   if (filters.positionId) params.set("position", filters.positionId);
   if (filters.flag) params.set("flag", filters.flag);
   if (filters.includeOffRoster) params.set("roster", "all");
-  if (filters.includeMissing) params.set("all", "1");
+  // Always the new param, never the `all=1` alias the parser still reads.
+  if (filters.status) params.set("status", filters.status);
   if (filters.started) {
     params.set("started", filters.started.mode);
     params.set("startedDate", filters.started.date);

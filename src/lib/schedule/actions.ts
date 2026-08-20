@@ -36,6 +36,7 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
 import {
   applyScopeFreeze,
@@ -58,6 +59,7 @@ import {
   loadCellAvailability,
   loadCurrentRunRow,
   type CellAvailability,
+  type StoredRunReport,
 } from "./data";
 import { lateStartWarnings } from "./run-warnings";
 
@@ -406,6 +408,33 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     returnDateOf: new Map(positionRows.map((p) => [p.id, p.returnDate])),
     defaultStart: DEFAULT_SEMESTER_START,
   });
+  // A health snapshot of the run as generated (fairness, stretch, coverage
+  // fragility). The read-time validator stays the live truth about the rows;
+  // this records what the run looked like on the day it was made.
+  const frozenEmails = new Set(result.report.students.filter((s) => s.frozen).map((s) => s.email));
+  const storedReport: StoredRunReport = {
+    ...result.report,
+    stats: computeRunStats({
+      assignments: result.assignments,
+      blocks: domainBlocks,
+      students: engineStudentsFinal.map((s) => ({
+        email: s.email,
+        positionId: s.positionId,
+        international: s.international,
+        returner: s.returner === true,
+        fillIn: s.fillIn === true,
+        frozen: frozenEmails.has(s.email),
+      })),
+      poolPositionIds: params.coveragePoolPositionIds,
+      leadPositionId: SHIFT_LEAD_POSITION_ID,
+      // The run's own limit, so the health section and the read-time validator
+      // judge a long stretch against the same number.
+      maxConsecutiveDays: params.maxConsecutiveDays,
+    }),
+    // Repair runs stamp their kept-from-plan counts in too, so the run panel
+    // can tell virtually-frozen from admin-frozen.
+    ...(repaired ? { repaired: { students: repaired.students } } : {}),
+  };
 
   const runId = randomUUID();
   await db.transaction(async (tx) => {
@@ -419,11 +448,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       status: "current",
       // Null for a whole-roster run, which is what every run before scoping was.
       scopeJson: serializeScope(scope),
-      // Repair runs stamp their kept-from-plan counts into the stored report
-      // so the run panel can tell virtually-frozen from admin-frozen.
-      summaryJson: JSON.stringify(
-        repaired ? { ...result.report, repaired: { students: repaired.students } } : result.report,
-      ),
+      summaryJson: JSON.stringify(storedReport),
     });
     // Chunked inserts: a full fall cycle is a few thousand rows.
     const rows = result.assignments.map((a) => ({

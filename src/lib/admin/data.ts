@@ -32,7 +32,11 @@ import { loadOrphanedCells, type OrphanedCell } from "@/lib/positions/orphans";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
-import { applyResponseFilters, type ResponseFilters } from "./response-filters";
+import {
+  applyResponseFilters,
+  neighborFallbackFilters,
+  type ResponseFilters,
+} from "./response-filters";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
@@ -276,9 +280,9 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    // Roster + never-started visibility are filter concerns: applyResponseFilters
-    // hides off-roster students (PLAN §4.2) and students with no submission
-    // unless the matching switch is on.
+    // Roster + submission-state visibility are filter concerns:
+    // applyResponseFilters hides off-roster students (PLAN §4.2), and students
+    // with no submission unless the state filter asks for them.
     .orderBy(asc(students.displayName), asc(students.email));
 
   // One follow-up query for the flag types keyed by submission, avoiding a
@@ -439,10 +443,12 @@ export async function getResponseNeighbors(
 ): Promise<ResponseNeighbors> {
   const email = normalizeEmail(emailRaw);
   let list = await listResponses(filters);
-  // The student you are looking at is always part of the walk: if the active
-  // switches hide them, redo the list with both visibility switches on.
+  // When the active filters hide the student you are looking at, redo the list
+  // with the visibility switches open. A chosen submission state survives that,
+  // so the arrows keep walking the list the dashboard actually showed; see
+  // `neighborFallbackFilters` for which parts widen and why.
   if (!list.some((r) => r.email === email)) {
-    list = await listResponses({ ...filters, includeMissing: true, includeOffRoster: true });
+    list = await listResponses(neighborFallbackFilters(filters));
   }
   const people = list.map((r) => ({ email: r.email, displayName: r.displayName }));
   const i = list.findIndex((r) => r.email === email);

@@ -141,6 +141,8 @@ export default async function StudentDetailPage({
     position?: string;
     flag?: string;
     roster?: string;
+    status?: string;
+    /** The old show-everyone switch, still read so saved links keep working. */
     all?: string;
     started?: string;
     startedDate?: string;

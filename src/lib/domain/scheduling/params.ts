@@ -31,9 +31,24 @@ export interface SchedulingParams {
   maxDaysPerWeek: number;
   /** Days per week the engine aims for; up to the max is a last resort. */
   preferredDaysPerWeek: number;
+  /**
+   * Positions that cover for each other, so a returner on one is real backup
+   * for the other. Read only by the run statistics (./stats.ts), which measure
+   * them as a single floor; the engine never looks at this. Ids that no longer
+   * exist simply match nothing.
+   */
+  coveragePoolPositionIds: string[];
 }
 
-export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = {
+/**
+ * Frozen, object and pool array alike. Two callers hand this exact value out:
+ * `parseSchedulingParams` returns it for an unreadable setting, and
+ * `storedSchedulingParams` spreads it, which copies the array BY REFERENCE into
+ * every params value that omits a pool. One `push` anywhere would then edit the
+ * default for the whole process. Nothing mutates it today; freezing is what
+ * keeps that true.
+ */
+export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = Object.freeze({
   dayCapHours: 8,
   nightPriority: 50,
   eveningPriority: 25,
@@ -43,7 +58,8 @@ export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = {
   maxConsecutiveDays: 5,
   maxDaysPerWeek: 6,
   preferredDaysPerWeek: 5,
-};
+  coveragePoolPositionIds: Object.freeze(["culinary-assistant", "cashier"]) as string[],
+});
 
 export const DAY_CAP_HOURS_MIN = 1;
 export const DAY_CAP_HOURS_MAX = 16;
@@ -95,6 +111,15 @@ export function validateSchedulingParams(p: SchedulingParams): string | null {
   }
   if (p.preferredDaysPerWeek > p.maxDaysPerWeek) {
     return "Preferred days per week cannot be higher than max days per week.";
+  }
+  // Runtime shape check, not just a type: this arrives from stored JSON and
+  // from the form. Unknown ids are fine (they match no position), a value that
+  // is not a list of ids is not.
+  if (
+    !Array.isArray(p.coveragePoolPositionIds) ||
+    p.coveragePoolPositionIds.some((id) => typeof id !== "string" || id.trim() === "")
+  ) {
+    return "Pick the cross-coverage positions from the list.";
   }
   return null;
 }
