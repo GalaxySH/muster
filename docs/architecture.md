@@ -1162,8 +1162,12 @@ coverage view, no generator yet. Standard layering:
 The generator itself, layered exactly like the rest of the app:
 
 - **Pure domain** `domain/scheduling/` (TDD; no I/O): `params.ts` (the
-  admin-tunable `SchedulingParams` — max hours per day, night/evening priority
-  0..100 — with validation and a never-throwing parse), `types.ts` (engine
+  admin-tunable `SchedulingParams`: max hours per day, night/evening priority
+  0..100, the repeat-start penalty, the labor bounds that feed `labor.ts` (rest,
+  consecutive days, days per week), and the stats-only cross-coverage pool, with
+  cross-field validation and a never-throwing parse that backfills missing
+  fields from the defaults and falls back wholesale when the result is
+  incoherent), `types.ts` (engine
   input/output including the run report, which snapshots the params used),
   `seats.ts` (the shared `SeatLedger` counting seats per cell **per weekend
   rotation week** so capacity binds where it is worked, plus `need` = unmet
@@ -1393,6 +1397,77 @@ the list and the number it explains cannot disagree. That grid counts
 auto-assigned weekend cells, so the dialog returns those people too and flags
 them rather than filtering them out. Any change to one query belongs in the
 other.
+
+### Labor rules, validation, and schedule health (v1.15)
+
+Five modules, added by the overhaul in
+`docs/generator-constraints-fairness-plan.md`. Each file's header is the long
+version; this is the seam map.
+
+- **`domain/scheduling/labor.ts`** owns the canonical fortnight calendar and the
+  six labor rules on it. `slotIndices(day, cohort)` maps a template day to slots
+  in 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂]; `laborLimits`
+  derives the numeric bounds from params (with `WEEK_CAP_MINUTES`, the 40h
+  payroll ceiling, a constant here and never a knob); `laborViolations` returns
+  typed hard and soft findings, and the hot-path `candidateAllowed` answers
+  yes-or-no at a given `LaborMode`. O(days) per call: it builds at most 14 slots
+  from at most 7 map entries and never a minute timeline. Its header carries the
+  symmetry proof that lets a null cohort evaluate canonically as `"a"`, so the
+  predicate never depends on the ledger's later cohort-balance choice. Shared by
+  the engine, the improvement pass, and manual edits; PLAN §7 records the same
+  calendar as the authoritative reading.
+- **`domain/scheduling/validate.ts`** is the independent read-time validator and
+  a **deliberate second derivation**, written from the spec by an author who did
+  not read `labor.ts`, re-implementing the interval merging and the fortnight
+  mapping on purpose. A divergence between the two is the safety net working;
+  the header says not to fold them together. `validateRunLabor(rows, limits)`
+  returns per-student findings with frozen and manual attribution, judges every
+  row it is given (frozen and manual rows are the point, not an exception), and
+  maps each row by that row's **own** cohort, so a mixed-cohort student from
+  manual editing is judged correctly. Same-person overlaps are deliberately not
+  flagged: staggered doubles merge, and the shared minutes count once.
+- **`domain/scheduling/stats.ts`** computes the versioned `RunStats` each run
+  stores as `report.stats`: fairness (weekly-minutes distribution, realized-week
+  maxima, over-cap counts, modal-start share and `welded`, `lockstep`,
+  alphabetical-rank against hours correlation), stretch (cyclic consecutive-days
+  and days-per-fortnight histograms, per-cohort split), per-position load, 14
+  `perDay` entries, and coverage fragility. It imports `slotIndices` rather than
+  mapping the fortnight a third time; the validator is the one sanctioned
+  duplicate. Two denominators differ on purpose: per-day figures run over all 14
+  slots, fragility over the 9 distinct staffing pictures (one per weekday, one
+  per weekend day per rotation week). Everything is a count, share, or
+  distribution except `stretch.overLimit`, which is judged against the run's own
+  `maxConsecutiveDays` and stores it as `overLimitAt`.
+- **`schedule/run-warnings.ts`** is the pure seam between the stored run and its
+  warnings, kept out of the I/O in `data.ts` and `actions.ts`. `lateStartWarnings`
+  compares `students.hired_on` against `positions.return_date` as `yyyy-mm-dd`
+  **strings**, never as Dates: the return date is stored as a string and stays
+  one, while the hire date arrives as a Date pinned to LOCAL midnight and so is
+  read with `localDay`'s local getters (`toISOString` would read the UTC frame
+  and land a day early east of UTC). The rest wires the validator to a stored
+  run, assignment rows in and display-ready findings out, and never throws: a run
+  whose report or blocks are unreadable must still render its page.
+- **`admin/schedule-health-view.ts`** builds the Schedule health section on
+  `/admin/schedule` from the stored snapshot, following the `analytics-view.ts`
+  precedent so the component holds layout and nothing else (bar widths as whole
+  percents, every figure already a string). `isReadableRunStats` gates on
+  `RUN_STATS_VERSION`, so an older or newer snapshot costs the section and not
+  the page. Tones: a floor over `SOLO_SHARE_DANGER` (20%) of its staffed time
+  with no returner is danger, over `SOLO_SHARE_WARNING` (10%) is a warning, and
+  any `newLeadSolo` minute at all is danger. Hand-rolled div bars, no chart
+  library.
+
+Wiring: `engine.ts` filters candidates through `candidateAllowed` and climbs the
+`strict` then `relax-rest` then `relax-days` ladder inside the existing deferred
+double pass (deferred exclusion stays outermost), applies the
+`repeatStartPenalty` against a per-student map of starts already held, and orders
+final ties by `byHashedEmail`; `improve.ts` uses the same predicate as a filter
+and never as a score; `schedule/manual.ts` warns and never blocks;
+`domain/scheduling/problems.ts` gained a `below-min-hours` group mirroring the
+engine counter; `data.ts` `loadScheduleForRun` runs the validator against the
+run's snapshotted params and extends `ScheduleStudentRow` with `belowMinHours`
+and `lateStart`; `components/admin/ScheduleHealth.tsx` renders the view model.
+Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
 ## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
 

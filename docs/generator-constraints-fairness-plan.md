@@ -1,8 +1,10 @@
 # Generator labor constraints, fairness, and schedule health — implementation plan
 
-**Status: in progress on `worktree-generator-constraints-fairness`.** Phases
-P1–P5 below land as separate commits on this branch, each gated by an
-adversarial review before the next begins. This doc is the design record;
+**Status: complete.** P0 through P4 are committed on
+`worktree-generator-constraints-fairness`; P5 (docs, the tuning script, and the
+tuned `repeatStartPenalty` default) is this commit and the one after it. Each
+phase was gated by an adversarial review before the next began. §9 records what
+was deliberately left undone. This doc is the design record;
 `docs/constraints-from-welcome-week.md` is the imported checklist it
 implements, and `docs/schedule-generation-plan.md` §3 describes the engine
 this extends.
@@ -39,7 +41,8 @@ this extends.
 The rotation calendar has never been pinned down in this repo
 (`domain/types.ts` treats Sun and Sat as opposite week-edge days for the pick
 UI; `domain/capacity.ts` speaks of a contiguous "on-weekend"). This plan
-canonizes it — PLAN §7 gets amended in P5:
+canonizes it. **PLAN §7a now carries this as the authoritative reading** (amended
+in P5), and `labor.ts`'s header is the implementation and its proof:
 
 ```
 Fortnight indices 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂].
@@ -219,13 +222,16 @@ param.
 
 ## 7. Phases
 
-| Phase | Contents | Gate |
-|---|---|---|
-| **P1** | `labor.ts` + tests, params fields + form. No engine wiring; nothing behavioral changes. | Adversarial review: fortnight mapping proof, 13→0 seam, symmetry counterexample hunt, soft/hard classification vs the one-off table, midnight rest math, param cross-field validation. |
-| **P2** | Engine/improve/manual integration, relax ladder, repeat-start penalty (default 0), hashed orderings, `laborRelaxed`. Synthetic before/after numbers in the commit message. | Review: weakened-test hunt, ladder ordering vs deferred, cohort canonicalization, frozen leakage, improve termination, double-run determinism, measured perf. |
-| **P3** | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring, and a config-time warning for blocks longer than the day cap (the engine can never fill one; the admin must learn why from `/admin/positions`, not from a silent shortfall). | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
-| **P4** | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. Also (owner, 2026-08-19): the response list's show-unsubmitted checkbox becomes a submission-state filter in `response-filters.ts` and the filter bar. One `status` dropdown: Responses (default, submitted + draft, missing hidden, today's default view unchanged), Submitted, Draft, No submission, Everyone. The old `all=1` URL keeps parsing as Everyone so saved filter links survive; serialization emits the new param. The review (scheduled) filter is unchanged and composes as before. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges; filter parse/apply/serialize round-trip incl. the `all=1` alias, and the default view staying byte-identical. |
-| **P5** | Docs (this doc's statuses, `schedule-generation-plan.md` §3.6/§3.7, `architecture.md`, PLAN §5/§7/§9 + changelog, roadmap), `src/scripts/tune-schedule-params.ts`, tuned `repeatStartPenalty` default. Tuning runs against a read-only snapshot of production availability (pulled over SSH with SELECT-only queries; the snapshot file holds student emails, so it lives outside the repo and is never committed), with the synthetic generator as the CI-side fallback. Full suite + lint + build. | Whole-branch review: doc/code drift, PLAN §7 consistency, changelog honesty, no smuggled expectation changes in the tuning commit. |
+All phases are shipped. P0 (not a row below) imported
+`constraints-from-welcome-week.md` and this plan.
+
+| Phase | Status | Contents | Gate |
+|---|---|---|---|
+| **P1** | ✅ done | `labor.ts` + tests, params fields + form. No engine wiring; nothing behavioral changes. | Adversarial review: fortnight mapping proof, 13→0 seam, symmetry counterexample hunt, soft/hard classification vs the one-off table, midnight rest math, param cross-field validation. |
+| **P2** | ✅ done | Engine/improve/manual integration, relax ladder, repeat-start penalty (default 0), hashed orderings, `laborRelaxed`. Synthetic before/after numbers in the commit message. | Review: weakened-test hunt, ladder ordering vs deferred, cohort canonicalization, frozen leakage, improve termination, double-run determinism, measured perf. |
+| **P3** | ✅ done | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring, and a config-time warning for blocks longer than the day cap (the engine can never fill one; the admin must learn why from `/admin/positions`, not from a silent shortfall). | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
+| **P4** | ✅ done | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. Also (owner, 2026-08-19): the response list's show-unsubmitted checkbox becomes a submission-state filter in `response-filters.ts` and the filter bar. One `status` dropdown: Responses (default, submitted + draft, missing hidden, today's default view unchanged), Submitted, Draft, No submission, Everyone. The old `all=1` URL keeps parsing as Everyone so saved filter links survive; serialization emits the new param. The review (scheduled) filter is unchanged and composes as before. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges; filter parse/apply/serialize round-trip incl. the `all=1` alias, and the default view staying byte-identical. |
+| **P5** | ✅ done | Docs (this doc's statuses, `schedule-generation-plan.md` §3.6/§3.7, `architecture.md`, PLAN §5/§7/§9 + changelog, roadmap), `src/scripts/tune-schedule-params.ts`, tuned `repeatStartPenalty` default. Tuning runs against a read-only snapshot of production availability (pulled over SSH with SELECT-only queries; the snapshot file holds student emails, so it lives outside the repo and is never committed), with the synthetic generator as the CI-side fallback. Full suite + lint + build. | Whole-branch review: doc/code drift, PLAN §7 consistency, changelog honesty, no smuggled expectation changes in the tuning commit. |
 
 ## 8. Verification
 
@@ -236,3 +242,47 @@ param.
   penalty tuning table into the changelog.
 - A pre-overhaul `summaryJson` fixture parses; the dashboard hides gracefully
   on runs without stats.
+
+## 9. P5: tuning, and what was deliberately left undone
+
+### 9.1 The `repeatStartPenalty` sweep
+
+`src/scripts/tune-schedule-params.ts` (`npm run dev:tune-params`) sweeps the
+penalty over {0, 2, 5, 10, 20} with every other knob at its default, running the
+pure engine path (`generateAssignments`, which runs the improvement pass itself)
+rather than the server action, so no database is involved. With `--snapshot` it
+reads a read-only production export; without it, it builds a seeded synthetic
+population over the repo's own initial block config, which is the CI-safe path.
+Every penalty runs **twice** and the two runs are compared before either is
+reported, so determinism is checked rather than assumed. Metrics come from
+`computeRunStats`, not from a reimplementation.
+
+The table and the chosen default are recorded in the PLAN changelog entry for
+1.15, alongside the flip itself.
+
+### 9.2 Known deferred items
+
+Two things this branch knowingly did not do. Both are recorded here rather than
+left for a later reader to rediscover.
+
+1. **`src/lib/flow/returner.ts` carries the same latent timezone hazard class
+   that was fixed elsewhere on this branch.** `isReturningStudent` compares a
+   `hiredOn` Date against a cutoff built with `Date.UTC(year, 5, 1)`. The mysql2
+   driver hands back a `date` column as **local** midnight, so the two sides are
+   read in different frames and a hire date landing exactly on the June 1
+   boundary can be classified wrongly depending on the server's timezone. This is
+   the same defect class `run-warnings.ts` fixed with `localDay` and
+   `response-filters.ts` fixed for its start-date comparison. The fix is the same
+   shape: read the hire date's day with local getters and compare calendar days
+   as strings, never as instants. It is **deliberately deferred** to keep this
+   branch's production diff minimal, because returner status feeds student
+   ordering on every run and changing it belongs in a commit whose whole subject
+   is that change. The blast radius today is limited to students hired exactly on
+   a June 1.
+2. **Event and blackout modeling is deferred entirely** (roadmap 5.6,
+   `constraints-from-welcome-week.md` §3). A freshman event that takes a whole
+   cohort out for part of one specific day cannot constrain a dateless repeating
+   template, and how a dated blackout should project onto that template is
+   unfinished design rather than unfinished code. Nothing in this branch pretends
+   otherwise: the engine has no calendar, the run report says nothing about
+   events, and the scheduler handles them in W2W as they already do travel.

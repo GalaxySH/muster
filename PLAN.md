@@ -258,6 +258,7 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** by default — the form stops accepting them; the admin's accept-late toggle stores them late/unexcused instead (§7b) |
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
 | 10 | **Desired hours** must be stated and reach the position floor | **Hard** | `desiredHours` entered + finite + ≥ position `minHours` (v0.34; §7). The 20/30h cap is still not applied at entry — see #3 |
+| 11 | **Labor rules** on the written schedule (v1.15) | **scheduler-side**, like #3 | Six rules the generator enforces and an independent validator re-checks at read time, evaluated on the canonical fortnight of §7. Never an entry constraint: a student may select anything, and these bind only when the schedule is written. **Hard:** merged day span ≤ `dayCapHours` (default 8); ≤ 40h per W2W week (payroll law, a constant in `domain/scheduling/labor.ts`, deliberately not a knob); longest cyclic run of working days ≤ `maxConsecutiveDays` (default 5); days per W2W week ≤ `maxDaysPerWeek` (default 6); rest from one day's close to the next day's open ≥ `minRestHours` (default 8, the clopen floor); one contiguous span per worked day (no split shifts, though staggered handoff doubles merge and stay legal). **Soft**, relaxed one at a time by the engine's ladder and flagged rather than blocked: days per week ≤ `preferredDaysPerWeek` (default 5), rest ≥ `preferredRestHours` (default 10). Knobs live in `schedule_params` (§9) and are snapshotted per run. Design in `docs/generator-constraints-fairness-plan.md`, behavior in `docs/schedule-generation-plan.md` §3.6 |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
 > many shifts as they want; the two hours hard-blocks are #2 (min reachable via the
@@ -486,6 +487,48 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `borderLeft` on the Sat column, in that grid's border colour.
   No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
+### 7a. The canonical fortnight calendar (v1.15, authoritative)
+
+Until v1.15 this repo never pinned **which Saturday pairs with which Sunday**.
+`domain/types.ts` treated Sun and Sat as opposite week-edge days for the pick
+grid, and `domain/capacity.ts` spoke of a contiguous "on-weekend", but no
+document said how the two W2W weeks line up against the A/B rotation. The labor
+rules needed that answer to exist, so the overhaul settled it. **This is now the
+authoritative reading**, and `domain/scheduling/labor.ts`'s header comment is its
+implementation and proof:
+
+```
+Fortnight indices 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂].
+W2W week 1 = 0..6, week 2 = 7..13. Index 13 is cyclically adjacent to index 0.
+Rotation A's on-weekend is the contiguous pair (Sat₁ = 6, Sun₂ = 7).
+Rotation B's on-weekend is the contiguous pair (Sat₂ = 13, Sun₁ = 0).
+Weekday rows occupy both halves (d and d + 7). "Every" rows occupy all four
+weekend slots. Weekday-only students degenerate to a 7-day-periodic pattern.
+```
+
+Four consequences, none of them obvious, all of them load-bearing:
+
+- A calendar weekend **straddles** the W2W Sun-to-Sat boundary: Saturday ends one
+  W2W week and Sunday starts the next. So an A/B student structurally tops out at
+  **6 days per W2W week**; only an "every" student can reach 7.
+- The longest possible run for an A/B student is **12 consecutive days**
+  (Mon₁ through Fri₁, Sat₁, Sun₂, Mon₂ through Fri₂), not 7, because weekday rows
+  repeat in both halves. An "every" student can occupy all 14. This is why the
+  consecutive-days rule (§5 #11) is the one that bites dense availabilities.
+- **Rotation is symmetric.** The "b" slot table is the "a" table rotated by +7
+  mod 14, and every labor rule is invariant under that rotation (cyclic runs and
+  cyclically adjacent rest pairs rotate whole; per-half totals just swap between
+  two halves checked against identical limits). So an A verdict and a B verdict
+  agree for **every** availability, and a student whose rotation is not chosen yet
+  is evaluated canonically as "a" without prejudging the ledger's cohort balance.
+- A student **can clopen against their own on-weekend**: Sat close into Sun open
+  is an adjacent pair inside the on-weekend, and Sun close into Mon open wraps
+  into the weekday template.
+
+Nothing student-facing changed. The pick grid still renders Sun then Sat as
+opposite week edges (above), which this model agrees with: those two columns
+really do sit at opposite ends of a W2W week.
+
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
 `fileId`s, never image bytes. All are **advisory input for manual review** by the
@@ -651,7 +694,12 @@ columns from the roster.
   travel cutoff + `late_travel_accept` (§7b), `excluded_roster_titles` (§4.2),
   `default_group_auto_assign` (§13), the email master switch + change-digest
   enabled/recipients/last-run (§11), and `schedule_params` (the tunable generation
-  knobs — §17). Rows are created on first write, so an unset key means "use the coded
+  knobs — §17; since 1.15 also the labor bounds of §5 #11, the repeat-start penalty,
+  and the stats-only cross-coverage pool. A stored value missing the newer fields
+  backfills them from the coded defaults, and a value that fails cross-field
+  validation falls back **wholesale** rather than field by field, because judging a
+  run against half-validated knobs produces findings nobody can act on). Rows are
+  created on first write, so an unset key means "use the coded
   default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
   awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
@@ -676,7 +724,12 @@ columns from the roster.
 - **ScheduleRun** (recommended schedule — `docs/schedule-generation-plan.md` §2.2):
   `id`, `generatedAt`, `generatedBy` (admin email), `status` (`current`|`superseded`),
   `summaryJson` (the engine's run report), `restoredAt` + `restoredBy` (1.00 — stamped
-  when an admin restores the run; also its retention rank). **Append-only:** generating
+  when an admin restores the run; also its retention rank). The report grew in 1.15
+  with **no schema change at all**, since it is one JSON column: `belowMinHours`,
+  `laborRelaxed`, `lateStarts`, and `stats` (the versioned per-run statistics
+  snapshot behind the Schedule health section). Every one of those fields is
+  **optional**, so runs generated before the overhaul still parse and simply render
+  without the new sections. **Append-only:** generating
   writes a new run and flips the old one to superseded (retention 10, ranked by
   restore-or-generate time so a restored run moves to the front of the queue; the
   current run is never pruned), so any generation can be restored and nothing is ever
@@ -1408,6 +1461,66 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.15 (2026-08-20)** — **The generator now knows labor law, and every run
+  reports its own health (roadmap 5.5, §5 #11, §7a,
+  `docs/generator-constraints-fairness-plan.md`).** The engine bounded exactly one
+  thing about a student's time: merged hours in a single day. Everything else that
+  makes a schedule legal or humane lived in the scheduler's head. Six rules now
+  bind the whole two-week cycle: the day cap, the 40h W2W week (payroll law, so a
+  constant in `domain/scheduling/labor.ts` rather than a knob anyone can raise),
+  at most 5 consecutive working days, at most 6 days per W2W week, at least 8
+  hours of rest between a day's close and the next day's open, and one contiguous
+  span per worked day. Soft preferences (5 days, 10 hours of rest) give way one at
+  a time through a `strict` then `relax-rest` then `relax-days` ladder composed
+  inside the existing deferred-cells pass, so a relaxed ordinary cell is still
+  taken before any last-resort Shift Lead weekend close. Hard rules never relax.
+  Manual edits **warn and never block**: the schedule belongs to the scheduler.
+  Getting here required settling something the repo had **never written down**,
+  which Saturday pairs with which Sunday. **§7a is now the authoritative reading**
+  and `labor.ts`'s header is its proof. Two consequences justify the whole
+  exercise: a calendar weekend straddles the W2W Sun-to-Sat boundary, so an A/B
+  student structurally tops out at 6 days a week, and the longest run an A/B
+  student can work is **12 consecutive days**, not 7, because weekday rows repeat
+  in both halves of the fortnight. That 12-day run is the violation the old engine
+  produced most and nobody had a name for.
+  A second, **independent validator** (`domain/scheduling/validate.ts`) re-checks
+  every stored run at read time. It was written from the spec by an author who did
+  not read the engine-side module, and it re-implements the interval merging and
+  the calendar mapping deliberately, so a disagreement between the two surfaces a
+  bug instead of being duplication to delete. It judges frozen and manual rows
+  too, which is the entire point: it sees hand edits made after a run was
+  generated, and the as-generated snapshot never will.
+  Also shipped: **below-min-hours** flags and a matching problem group for
+  students the engine could not bring to their position floor; **late-start
+  warnings** for anyone hired after their position went back to work (compared as
+  date strings, never as Dates, so no timezone can roll the day); a config-time
+  warning on `/admin/positions` naming any block longer than the day cap, since
+  such a block is now never assignable and the admin should learn that there
+  rather than from a silent shortfall; and a **Schedule health** section on
+  `/admin/schedule` built from a versioned statistics snapshot stored with each
+  run: hours fairness, how long people's stretches run, per-position load, and
+  **coverage fragility**, the share of each floor's operating time covered only by
+  new hires with no returner overlapping. A new shift lead working alone reads as
+  an alarm at any share above zero.
+  **Two honest warnings for the first run after this deploys.** (1) The final
+  ordering tie-break is now a **hashed** email rather than the alphabet, so that a
+  static list cannot quietly act as a seniority list. That decides only genuinely
+  equal timestamps, which in practice is the fill-in pass, so **fill-in placement
+  reshuffles once**, at rollout, and then stays put. (2) More importantly, **the
+  labor rules will move a lot of students on the first regeneration.** Schedules
+  that were legal under the old single-rule engine can violate the consecutive-days
+  or rest rules, and re-solving them is the correct behavior, not a regression.
+  **Operator guidance: generate, inspect the diff view, then mark students
+  scheduled.** The diff is what turns a large reshuffle into something reviewable,
+  and the scheduled mark is what freezes each student once you are satisfied.
+  Runs generated before this release still parse and simply render without the new
+  sections; every added report field is optional. **No migration:** the run report
+  is one JSON column and the knobs are one `app_settings` row.
+  Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
+  A freshman event that removes every first-year student for part of one specific
+  day cannot constrain a dateless weekly template, and deciding how a dated
+  blackout should project onto that template is unfinished design, not an
+  oversight. The scheduler handles those in W2W, as with travel.
 - **1.14 (2026-08-10)** — **Schedule generation can be run one position at a time,
   and coverage cells now say who they are counting (roadmap 5.1,
   `docs/architecture.md`).** The generator was whole-roster or nothing, which did
