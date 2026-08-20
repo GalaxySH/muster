@@ -8,8 +8,7 @@ vi.mock("@/lib/availability/actions", () => ({
 }));
 
 vi.mock("@/lib/schedule/manual", () => ({
-  setManualAssignment: vi.fn(async () => ({ ok: true })),
-  removeManualAssignment: vi.fn(async () => ({ ok: true })),
+  applyScheduleEdits: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("@/lib/admin/actions", () => ({
@@ -23,7 +22,7 @@ import { PrefGridCalculator } from "./PrefGridCalculator";
 import type { OrphanedCell } from "@/lib/positions/orphans";
 import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { removeOrphanedSelection } from "@/lib/admin/actions";
-import { removeManualAssignment, setManualAssignment } from "@/lib/schedule/manual";
+import { applyScheduleEdits } from "@/lib/schedule/manual";
 import { buildAdminGrid, type AssignedCellRef } from "@/lib/admin/summary";
 import { demandCellKey } from "@/lib/domain/demand";
 import { parseTime } from "@/lib/domain/time";
@@ -39,6 +38,11 @@ const blocks: ShiftBlock[] = [
   b("wd-b", "weekday", "1p", "5p"),
   b("we-a", "weekend", "9a", "1p"),
 ];
+
+// An extra weekday block for the coverage rule: 9a-11a sits entirely inside
+// wd-a's 8a-12p, so the two can never both be scheduled on the same day. Only
+// the tests that need a conflict render with it.
+const innerBlocks: ShiftBlock[] = [...blocks, b("wd-c", "weekday", "9a", "11a")];
 
 // Two weekday picks (8h) + one weekend pick (4h). Under A/B the weekend halves,
 // so the preference capacity is 8 + 2 = 10h.
@@ -58,6 +62,7 @@ const position = (minHours: number): Position => ({
 
 function renderCalc(
   opts: {
+    blocks?: ShiftBlock[];
     selection?: SelectedShift[];
     autoAssigned?: SelectedShift[];
     highDemand?: Set<string>;
@@ -74,17 +79,18 @@ function renderCalc(
     orphans?: OrphanedCell[];
   } = {},
 ) {
+  const gridBlocks = opts.blocks ?? blocks;
   return render(
     <PrefGridCalculator
       grid={buildAdminGrid(
-        blocks,
+        gridBlocks,
         opts.selection ?? picks,
         opts.autoAssigned ?? [],
         opts.highDemand ?? new Set(),
         opts.assignments ?? [],
       )}
       studentEmail="stu@wisc.edu"
-      blocks={blocks}
+      blocks={gridBlocks}
       position={position(opts.minHours ?? 10)}
       desiredHours={opts.desiredHours === undefined ? 12 : opts.desiredHours}
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
@@ -102,10 +108,8 @@ function renderCalc(
 beforeEach(() => {
   vi.mocked(saveAvailabilityFor).mockClear();
   vi.mocked(saveAvailabilityFor).mockResolvedValue({ ok: true, errors: [] });
-  vi.mocked(setManualAssignment).mockClear();
-  vi.mocked(setManualAssignment).mockResolvedValue({ ok: true });
-  vi.mocked(removeManualAssignment).mockClear();
-  vi.mocked(removeManualAssignment).mockResolvedValue({ ok: true });
+  vi.mocked(applyScheduleEdits).mockClear();
+  vi.mocked(applyScheduleEdits).mockResolvedValue({ ok: true });
   refresh.mockClear();
 });
 
@@ -551,6 +555,18 @@ describe("PrefGridCalculator", () => {
   });
 
   describe("schedule mode", () => {
+    const save = () => screen.queryByRole("button", { name: /^(Save|Saving…|Saved)$/ });
+    const monEngine = [{ blockId: "wd-a", day: "mon", source: "engine" } as const];
+
+    /** Render with one engine row on Mon and switch straight into schedule mode. */
+    async function inScheduleMode(
+      user: ReturnType<typeof userEvent.setup>,
+      opts: Parameters<typeof renderCalc>[0] = {},
+    ) {
+      renderCalc({ hasCurrentRun: true, assignments: [...monEngine], ...opts });
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+    }
+
     it("stays disabled with a note before any run", () => {
       renderCalc();
       expect(screen.getByRole("button", { name: "Edit schedule" })).toBeDisabled();
@@ -559,83 +575,219 @@ describe("PrefGridCalculator", () => {
       ).toBeInTheDocument();
     });
 
-    it("toggles assignments through the manual actions, not the preference save", async () => {
+    it("toggles the trial locally, writing nothing until Save", async () => {
       const user = userEvent.setup();
-      renderCalc({
-        hasCurrentRun: true,
-        assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
-      });
-
-      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      await inScheduleMode(user);
       expect(
         screen.getByText(
           "Updating the schedule can replace these shifts unless the student is marked scheduled.",
         ),
       ).toBeInTheDocument();
 
-      // An unassigned cell gets scheduled, even one the student never picked.
+      // An unassigned cell joins the trial, even one the student never picked.
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
-      await waitFor(() =>
-        expect(setManualAssignment).toHaveBeenCalledWith("stu@wisc.edu", "wd-b", "wed"),
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
       );
-
-      // An assigned cell is removed, engine rows included.
+      // An assigned cell leaves it, engine rows included.
       await user.click(screen.getByRole("button", { name: "8a–12p Mon" }));
-      await waitFor(() =>
-        expect(removeManualAssignment).toHaveBeenCalledWith("stu@wisc.edu", "wd-a", "mon"),
+      expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
       );
+
+      expect(applyScheduleEdits).not.toHaveBeenCalled();
       expect(saveAvailabilityFor).not.toHaveBeenCalled();
-      await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
-    });
-
-    it("shows labor warnings from an accepted assignment without blocking it", async () => {
-      const user = userEvent.setup();
-      vi.mocked(setManualAssignment).mockResolvedValue({
-        ok: true,
-        warnings: ["Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a."],
-      });
-      renderCalc({ hasCurrentRun: true });
-
-      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
-      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
-
-      expect(await screen.findByText(/Added, but worth checking/)).toBeInTheDocument();
-      expect(screen.getByText(/Only 7h 30m of rest/)).toBeInTheDocument();
-      // Warn only: the edit landed and the grid re-reads as usual.
-      await waitFor(() => expect(refresh).toHaveBeenCalled());
-
-      // The next toggle starts clean: a warning-free edit clears the notice.
-      vi.mocked(setManualAssignment).mockResolvedValue({ ok: true });
-      await user.click(screen.getByRole("button", { name: "8a–12p Tue" }));
-      await waitFor(() =>
-        expect(screen.queryByText(/Added, but worth checking/)).not.toBeInTheDocument(),
-      );
-    });
-
-    it("surfaces a refused assignment", async () => {
-      const user = userEvent.setup();
-      vi.mocked(setManualAssignment).mockResolvedValue({
-        ok: false,
-        error: "Their Mon shifts already cover 8a to 12p.",
-      });
-      renderCalc({ hasCurrentRun: true });
-
-      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
-      await user.click(screen.getByRole("button", { name: "1p–5p Mon" }));
-
-      expect(
-        await screen.findByText("Their Mon shifts already cover 8a to 12p."),
-      ).toBeInTheDocument();
       expect(refresh).not.toHaveBeenCalled();
     });
 
-    it("keeps preference clicks off the schedule actions", async () => {
+    it("Save sends the whole diff in one call", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add
+      await user.click(screen.getByRole("button", { name: "8a–12p Mon" })); // remove
+      await user.click(save()!);
+
+      expect(applyScheduleEdits).toHaveBeenCalledTimes(1);
+      expect(applyScheduleEdits).toHaveBeenCalledWith(
+        "stu@wisc.edu",
+        [{ blockId: "wd-a", day: "mon" }],
+        [{ blockId: "wd-b", day: "wed" }],
+      );
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+    });
+
+    it("offers no Save until the trial differs, and no Clear at all", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user);
+      expect(save()).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      expect(save()).toHaveTextContent("Save");
+      expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+    });
+
+    it("Reset restores the run's own rows", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(screen.getByRole("button", { name: "8a–12p Mon" }));
+      await user.click(screen.getByRole("button", { name: "Reset" }));
+
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(save()).not.toBeInTheDocument();
+      expect(applyScheduleEdits).not.toHaveBeenCalled();
+    });
+
+    it("blocks a toggle that would break the coverage rule, in the server's words", async () => {
+      const user = userEvent.setup();
+      // 9a-11a sits inside the Mon 8a-12p row this student already holds.
+      await inScheduleMode(user, { blocks: innerBlocks });
+
+      await user.click(screen.getByRole("button", { name: "9a–11a Mon" }));
+
+      expect(screen.getByText("Their Mon shifts already cover 9a to 11a.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "9a–11a Mon" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(save()).not.toBeInTheDocument(); // nothing entered the trial
+      expect(applyScheduleEdits).not.toHaveBeenCalled();
+
+      // Free the day and the same cell goes in.
+      await user.click(screen.getByRole("button", { name: "8a–12p Mon" }));
+      await user.click(screen.getByRole("button", { name: "9a–11a Mon" }));
+      expect(screen.getByRole("button", { name: "9a–11a Mon" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("moves the scheduled figure with the trial and snaps back on Reset", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user, { scheduledMinutes: 12.5 * 60 });
+      expect(screen.getByText("12.5h").style.fontSize).toBe("22px");
+
+      // The delta is the grid's own arithmetic: one more 4h weekday cell.
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      const figure = screen.getByText("16.5h");
+      expect(figure.style.fontSize).toBe("22px");
+      expect(within(figure.parentElement!).getByText("trial schedule")).toBeInTheDocument();
+
+      // Dropping the Mon row it already holds takes those 4h back off again.
+      await user.click(screen.getByRole("button", { name: "8a–12p Mon" }));
+      expect(screen.getByText("12.5h")).toBeInTheDocument();
+      expect(screen.getByText("trial schedule")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Reset" }));
+      const clean = screen.getByText("12.5h");
+      expect(within(clean.parentElement!).getByText("scheduled")).toBeInTheDocument();
+    });
+
+    it("goes loud on a trial that lands over the cap, before it is saved", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user, { cap: 20, scheduledMinutes: 19 * 60 });
+      expect(screen.getByText("19h").style.color).toBe("var(--color-text-info)");
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // +4h
+      const figure = screen.getByText("23h");
+      expect(figure.style.color).toBe("var(--color-text-danger)");
+      expect(within(figure.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
+    });
+
+    it("rings the pending cells and legends the cue", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user);
+      expect(screen.getByText(/pending change/)).toBeInTheDocument();
+      const wed = () => screen.getByRole("button", { name: "1p–5p Wed" });
+      const mon = () => screen.getByRole("button", { name: "8a–12p Mon" });
+      expect(wed().style.border).not.toContain("dashed");
+
+      await user.click(wed()); // pending add: violet schedule half, dashed ring
+      expect(wed().style.border).toContain("dashed");
+      expect(wed().style.background).toContain("#8a4fd3");
+      expect(wed().getAttribute("title")).toContain("Pending: added on Save");
+
+      await user.click(mon()); // pending removal: empty schedule half, same ring
+      expect(mon().style.border).toContain("dashed");
+      expect(mon().style.background).not.toContain("#2e9e5b");
+      expect(mon().getAttribute("title")).toContain("Pending: removed on Save");
+    });
+
+    it("keeps a dirty trial when the admin looks at preferences and comes back", async () => {
+      const user = userEvent.setup();
+      await inScheduleMode(user);
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+
+      await user.click(screen.getByRole("button", { name: "Edit preferences" }));
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(save()).toHaveTextContent("Save");
+    });
+
+    it("shows the labor notes a save comes back with", async () => {
+      const user = userEvent.setup();
+      vi.mocked(applyScheduleEdits).mockResolvedValue({
+        ok: true,
+        warnings: ["Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a."],
+      });
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+
+      expect(await screen.findByText(/Saved, but worth checking/)).toBeInTheDocument();
+      expect(screen.getByText(/Only 7h 30m of rest/)).toBeInTheDocument();
+      // Warn only: the batch landed and the grid re-reads as usual.
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+    });
+
+    it("keeps the trial when the save is refused, so the named cell can be fixed", async () => {
+      const user = userEvent.setup();
+      vi.mocked(applyScheduleEdits).mockResolvedValue({
+        ok: false,
+        error: "Mon 9a to 11a: Their Mon shifts already cover 9a to 11a.",
+      });
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+
+      expect(
+        await screen.findByText("Mon 9a to 11a: Their Mon shifts already cover 9a to 11a."),
+      ).toBeInTheDocument();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(save()).toHaveTextContent("Save");
+      expect(save()).toBeEnabled();
+    });
+
+    it("keeps preference clicks off the schedule action", async () => {
       const user = userEvent.setup();
       renderCalc({ hasCurrentRun: true });
 
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
-      expect(setManualAssignment).not.toHaveBeenCalled();
-      expect(removeManualAssignment).not.toHaveBeenCalled();
+      expect(applyScheduleEdits).not.toHaveBeenCalled();
     });
   });
 

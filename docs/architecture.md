@@ -343,8 +343,17 @@ The layer is fed by `buildAdminGrid`'s optional assignments parameter (`AdminCel
 autoAssigned, assigned, assignmentSource}`, loaded via `loadStudentCurrentAssignments`
 in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
 preferences** is the trial/save behavior above; **Edit schedule** (disabled with a
-generate-first note until a run exists) toggles per-cell manual overrides through
-`setManualAssignment`/`removeManualAssignment` (see the schedule generation section).
+generate-first note until a run exists) is the SAME trial/save shape since 1.15. Clicks
+build a local trial of the run's rows for this student and write nothing; Save sends the
+whole diff to `applyScheduleEdits` as one transaction (see the schedule generation
+section), and Reset drops it. There is no Clear in schedule mode: wiping a schedule
+should not be one click. A click that would break the unique-coverage rule is refused on
+the spot, in the sentence the server would use (`dayConflictMessage`, shared so the two
+cannot paraphrase each other); a removal is always allowed in a trial, since a later add
+in the same batch can make it legal and the save-time check on the final state is the
+truth. Pending cells carry the amber dashed ring the grid already uses for "deviates",
+with a matching legend entry, a pending add showing the manual violet in its schedule
+half and a pending removal showing that half empty.
 Since 1.15 the readout line carries **two** figures and the mode decides their sizes: the
 preferred hours above and the student's **scheduled** hours from the current run, whichever
 the mode is about at full size with the status line, the other as a labelled miniature
@@ -352,8 +361,14 @@ the mode is about at full size with the status line, the other as a labelled min
 scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
 `averagedAssignedMinutes` the schedule page's student table uses and off the run's own
 rows, so a row carried on a retired shift still counts and every `router.refresh()` after
-a schedule edit moves it. Its status line reads "scheduled", "nothing scheduled" at zero,
-or "over Nh cap" in the danger accent, matching the over-max pill on `/admin/schedule`.
+a schedule edit moves it. While the schedule trial is dirty the figure follows it, as
+`scheduledMinutes` plus a **delta** between the trial's grid cells and the persisted ones
+(both `computeCapacity` under the student's effective rotation): a delta rather than a
+fresh total precisely so the retired-shift rows above stay counted. Its status line reads
+"scheduled", "trial schedule" while dirty, "nothing scheduled" at zero, or "over Nh cap"
+in the danger accent, matching the over-max pill on `/admin/schedule`; with the cap a hard
+generation rule since 1.15, the trial is where an over-cap composition should get loud,
+before it lands.
 Preference saves that fail hard rules warn and need an explicit Save anyway (see the
 availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
@@ -1271,22 +1286,32 @@ The generator itself, layered exactly like the rest of the app:
   `--clean` removes exactly the `synthetic-` rows; refuses production.
 
 - **Manual overrides** (0.99, ahead of Phase C): `schedule_assignments.source`
-  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes the
-  admin-gated `setManualAssignment`/`removeManualAssignment`: current run only
-  (refuse cleanly when none exists), same-day conflicts refused via the pure
+  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes one
+  admin-gated action, `applyScheduleEdits(email, removes, adds)` (1.15; it
+  replaced the per-click `setManualAssignment`/`removeManualAssignment` pair
+  when the grid moved to trial + Save, and the grid was their only caller):
+  current run only (refuse cleanly when none exists), then ONE transaction that
+  loads the student's rows, applies the removals (a missing row is a no-op),
+  and applies the additions in calendar order, each one re-validated against
+  the EVOLVING row set. Any addition that fails aborts the whole batch and
+  comes back naming its cell ("Sat 8a to 12p: ..."), so the admin never lands
+  half a save. Same-day conflicts are refused via the pure
   `domain/scheduling/manual.ts` (`findDayConflict` — every shift must add
   unique coverage, 1.04: a block already covered by the student's other shifts
   refuses, as does one whose arrival would leave an existing shift covering
   nothing of its own; staggered overlaps and touching are allowed, so handoff
   doubles are schedulable, and the same `redundantRangeIndex` predicate drives
-  the engine's candidate filter and the improvement pass —
-  `manualWeekendCohort` — reuse the student's current-run cohort, else `every`
-  for opt-ins, else `a`), cells outside the student's picks allowed (the
-  scheduler owns the schedule; the grid renders the mismatch). Edits mutate the
-  current run in place and never create a run. `generateSchedule`'s
-  carry-forward preserves `source` on frozen students' rows; a non-frozen
-  student's manual rows are superseded by the next update by design. The
-  per-student grid (PLAN §10a) is the UI.
+  the engine's candidate filter and the improvement pass; `dayConflictMessage`
+  turns a conflict into the admin's sentence, so the grid's client-side cue and
+  this refusal cannot drift apart — `manualWeekendCohort` — reuse the student's
+  current-run cohort, else `every` for opt-ins, else `a`), cells outside the
+  student's picks allowed (the scheduler owns the schedule; the grid renders
+  the mismatch). Labor and over-cap warnings are computed once on the state the
+  batch landed on (`laborWarningsForRows`, `weekMinutesForRows`), still warning
+  and never blocking. Edits mutate the current run in place and never create a run.
+  `generateSchedule`'s carry-forward preserves `source` on frozen students'
+  rows; a non-frozen student's manual rows are superseded by the next update by
+  design. The per-student grid (PLAN §10a) is the UI.
 
 - **Phase C — regeneration ergonomics** (1.00): migration 0022 adds
   `schedule_runs.restoredAt`/`restoredBy`. `restoreScheduleRun` flips a

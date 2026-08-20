@@ -300,14 +300,16 @@ count, evaluated as a diff because a same-day move shifts that day's first start
 and last end and can therefore create or cure a clopen with an adjacent day. The
 termination argument is unchanged.
 
-Manual edits **warn and never block** (`laborWarningsForEdit` in
+Manual edits **warn and never block** (`laborWarningsForRows` in
 `schedule/manual.ts`). The schedule belongs to the scheduler; the read-time
-validator keeps flagging whatever they accept. The hour cap warns there on the
-same terms: `setManualAssignment` adds "This puts them over their 20h weekly
-cap." when the added cell carries the student's averaged week past it, judged on
-`weekMinutesForEdit` and `isOverMaxHours` so the note and the over-max flag can
-never disagree, and inside its own try/catch so a week it cannot measure costs a
-warning line rather than the edit.
+validator keeps flagging whatever they accept. Since 1.15 the grid saves a batch
+of edits rather than writing one cell per click, so the warnings arrive once, at
+Save, describing the week the batch landed on. The hour cap warns there on the
+same terms: `applyScheduleEdits` adds "This puts them over their 20h weekly
+cap." when the saved state carries the student's averaged week past it, judged
+on `weekMinutesForRows` and `isOverMaxHours` so the note and the over-max flag
+can never disagree, and inside its own try/catch so a week it cannot measure
+costs a warning line rather than the save.
 
 **The independent validator.** `domain/scheduling/validate.ts` re-checks a
 stored run at read time, and it is a deliberate second derivation rather than a

@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "../types";
 import { laborLimits } from "./labor";
 import {
+  dayConflictMessage,
   findDayConflict,
-  laborWarningsForEdit,
+  laborWarningsForRows,
   manualWeekendCohort,
-  weekMinutesForEdit,
+  weekMinutesForRows,
   type ExistingAssignment,
 } from "./manual";
 import { DEFAULT_SCHEDULING_PARAMS } from "./params";
@@ -112,69 +113,111 @@ describe("findDayConflict", () => {
   });
 });
 
-describe("laborWarningsForEdit", () => {
+describe("dayConflictMessage", () => {
+  const existing = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
+
+  // One composition for both callers: the grid blocks the click with the same
+  // sentence the save would have refused with.
+  it("says the candidate adds nothing", () => {
+    const inner = block("inner", 9 * 60, 11 * 60);
+    const clash = findDayConflict(inner, "mon", existing)!;
+    expect(dayConflictMessage(inner, "mon", clash)).toBe(
+      "Their Mon shifts already cover 9a to 11a.",
+    );
+  });
+
+  it("names the existing shift a new one would leave redundant", () => {
+    const big = block("big", 7 * 60, 13 * 60);
+    const clash = findDayConflict(big, "mon", existing)!;
+    expect(dayConflictMessage(big, "mon", clash)).toBe(
+      "That would leave their Mon 8a to 12p shift covering nothing new. Remove that one first.",
+    );
+  });
+
+  it("blames the stored rows when the day was already broken", () => {
+    const broken = [
+      row("outer", "mon", "weekday", 14 * 60, 20 * 60),
+      row("nested", "mon", "weekday", 16 * 60, 18 * 60),
+    ];
+    const am = block("am", 8 * 60, 10 * 60);
+    const clash = findDayConflict(am, "mon", broken)!;
+    expect(dayConflictMessage(am, "mon", clash)).toBe(
+      "Their Mon 4p to 6p shift already covers nothing new. Remove that one first.",
+    );
+  });
+});
+
+// The grid saves a batch, so the warnings describe the state it lands on
+// rather than each click along the way.
+describe("laborWarningsForRows", () => {
   const limits = laborLimits(DEFAULT_SCHEDULING_PARAMS);
 
   it("returns nothing for a clean week", () => {
-    const existing = [row("morning", "mon", "weekday", 8 * 60, 12 * 60)];
-    const edit = { block: block("pm", 12 * 60, 16 * 60), day: "wed" as const };
-    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([]);
+    const rows = [
+      row("morning", "mon", "weekday", 8 * 60, 12 * 60),
+      row("pm", "wed", "weekday", 12 * 60, 16 * 60),
+    ];
+    expect(laborWarningsForRows(rows, limits)).toEqual([]);
   });
 
-  it("describes a clopen the new shift would create", () => {
-    const existing = [row("night", "mon", "weekday", 18 * 60, 23 * 60 + 30)];
-    const edit = { block: block("open", 7 * 60, 11 * 60), day: "tue" as const };
-    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([
+  it("describes a clopen the rows come to", () => {
+    const rows = [
+      row("night", "mon", "weekday", 18 * 60, 23 * 60 + 30),
+      row("open", "tue", "weekday", 7 * 60, 11 * 60),
+    ];
+    expect(laborWarningsForRows(rows, limits)).toEqual([
       "Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a.",
     ]);
+  });
+
+  it("judges the final state, so a batch that drops the offender is clean", () => {
+    // The Mon night close is gone by the time the batch lands, so the Tue open
+    // it used to clash with is no longer worth a word.
+    const rows = [row("open", "tue", "weekday", 7 * 60, 11 * 60)];
+    expect(laborWarningsForRows(rows, limits)).toEqual([]);
   });
 
   it("skips a student whose weekend rows mix cohorts", () => {
     // A Sat close in rotation a against a Sun open in rotation b would read as
     // a clopen under either single rotation, but the mixed pattern is outside
     // labor.ts's one-cohort scope; the read-time validator owns it.
-    const existing = [
+    const rows = [
       row("sat-close", "sat", "a", 18 * 60, 23 * 60 + 30),
       row("sun-open", "sun", "b", 7 * 60, 11 * 60),
     ];
-    const edit = { block: block("pm", 12 * 60, 16 * 60), day: "wed" as const };
-    expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([]);
+    expect(laborWarningsForRows(rows, limits)).toEqual([]);
   });
 });
 
 // What the caller's over-cap warning is judged on. It has to be the report's
 // own arithmetic, or a warning and the read-time over-max flag could disagree
 // about the very same week.
-describe("weekMinutesForEdit", () => {
-  const weekendBlock = (id: string, start: number, end: number): ShiftBlock => ({
-    id,
-    positionId: "p",
-    dayType: "weekend",
-    start,
-    end,
-  });
-
-  it("counts weekday rows and the candidate whole", () => {
-    const existing = [
+describe("weekMinutesForRows", () => {
+  it("counts weekday rows whole", () => {
+    const rows = [
       row("mon", "mon", "weekday", 8 * 60, 16 * 60),
       row("tue", "tue", "weekday", 8 * 60, 16 * 60),
+      row("wed", "wed", "weekday", 8 * 60, 16 * 60),
     ];
-    const edit = { block: block("wed", 8 * 60, 16 * 60), day: "wed" as const };
-    expect(weekMinutesForEdit(edit, existing, false)).toBe(3 * 8 * 60);
+    expect(weekMinutesForRows(rows, false)).toBe(3 * 8 * 60);
   });
 
-  it("halves a weekend candidate under A/B and counts it whole under every", () => {
-    const existing = [row("mon", "mon", "weekday", 8 * 60, 16 * 60)];
-    const edit = { block: weekendBlock("sat", 9 * 60, 17 * 60), day: "sat" as const };
-    expect(weekMinutesForEdit(edit, existing, false)).toBe(480 + 240);
-    expect(weekMinutesForEdit(edit, existing, true)).toBe(480 + 480);
+  it("halves a weekend row under A/B and counts it whole under every", () => {
+    const rows = [
+      row("mon", "mon", "weekday", 8 * 60, 16 * 60),
+      row("sat", "sat", "a", 9 * 60, 17 * 60),
+    ];
+    expect(weekMinutesForRows(rows, false)).toBe(480 + 240);
+    expect(weekMinutesForRows(rows, true)).toBe(480 + 480);
   });
 
   it("counts a staggered same-day double once over its merged span", () => {
     // 8a-12p plus 11a-3p is one 7h clock-in, not 8h of two shifts.
-    const existing = [row("am", "mon", "weekday", 8 * 60, 12 * 60)];
-    const edit = { block: block("mid", 11 * 60, 15 * 60), day: "mon" as const };
-    expect(weekMinutesForEdit(edit, existing, false)).toBe(7 * 60);
+    const rows = [
+      row("am", "mon", "weekday", 8 * 60, 12 * 60),
+      row("mid", "mon", "weekday", 11 * 60, 15 * 60),
+    ];
+    expect(weekMinutesForRows(rows, false)).toBe(7 * 60);
   });
 });
 

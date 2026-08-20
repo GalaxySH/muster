@@ -1581,7 +1581,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
   It now reads the day with local getters, the same shape as the late-start fix
   above and the `localDay` fix in `run-warnings.ts`.
-  **Five follow-ups on the schedule surfaces shipped with it.** (1) The Cover
+  **Six follow-ups on the schedule surfaces shipped with it.** (1) The Cover
   table's **bars now draw total coverage**, the staffed share of each floor's
   scheduled open time, with the no-returner share beside them as the right-hand
   column: a bar whose width means "alarm" cannot also mean "staffed", and the
@@ -1628,7 +1628,28 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   "none"): the Uncovered shifts tile counts the run, and this says which floor.
   It uses the same instance definition, and there is still only one enumeration
   of it, since a block belongs to exactly one position and the run-wide figure
-  is now the sum of the rows. `RUN_STATS_VERSION` is **3** accordingly.
+  is now the sum of the rows. `RUN_STATS_VERSION` is **3** accordingly. (6) The
+  per-student grid's **Edit schedule mode becomes trial + Save**, the shape Edit
+  preferences already had. Every click used to write to the live run, so a
+  scheduler rearranging somebody's week walked the schedule through states they
+  never meant to create, one refresh at a time, and a cell that could only be
+  added after another was removed had to be done in exactly that order. Clicks
+  now build a local trial and Save sends the whole diff to one new action,
+  `applyScheduleEdits`, which applies every removal and addition inside a single
+  transaction: all of it lands or none of it does, and a failing cell comes back
+  named ("Sat 8a to 12p: ...") with the trial still on screen to fix. The
+  per-click actions are gone, folded into it; the grid was their only caller.
+  The scheduled hours figure follows the trial while it is dirty and reads
+  "trial schedule", pending cells carry the amber dashed ring the grid already
+  uses for cells that deviate, and there is deliberately **no Clear** in
+  schedule mode, since wiping a whole schedule should not be one click. Adds
+  that break the unique-coverage rule are refused at the click, in the sentence
+  the server would have used, while removals are always allowed in a trial: a
+  removal that orphans another row can be legal in a batch where a later add
+  covers it, and the save-time check on the final state is the truth. One honest
+  cost: **labor warnings now arrive once at Save, describing the state the batch
+  landed on, instead of per click**, so the admin no longer sees a clopen the
+  moment they create it, only when they commit the week that contains it.
   **The 20h/30h weekly hour cap is now a hard generation rule** (§5 #3). It was
   only ever a clamp on the target the engine aimed for, which stopped the fill
   loop *aiming* past a student's cap but let it overshoot by a whole block, and
