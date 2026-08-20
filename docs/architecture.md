@@ -345,6 +345,15 @@ in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
 preferences** is the trial/save behavior above; **Edit schedule** (disabled with a
 generate-first note until a run exists) toggles per-cell manual overrides through
 `setManualAssignment`/`removeManualAssignment` (see the schedule generation section).
+Since 1.15 the readout line carries **two** figures and the mode decides their sizes: the
+preferred hours above and the student's **scheduled** hours from the current run, whichever
+the mode is about at full size with the status line, the other as a labelled miniature
+("12.5h scheduled", "10h preferred") so the two can never be read as one number. The
+scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
+`averagedAssignedMinutes` the schedule page's student table uses and off the run's own
+rows, so a row carried on a retired shift still counts and every `router.refresh()` after
+a schedule edit moves it. Its status line reads "scheduled", "nothing scheduled" at zero,
+or "over Nh cap" in the danger accent, matching the over-max pill on `/admin/schedule`.
 Preference saves that fail hard rules warn and need an explicit Save anyway (see the
 availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from

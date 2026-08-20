@@ -325,6 +325,13 @@ export interface StudentAssignment {
   day: Day;
   cohort: Cohort;
   source: AssignmentSource;
+  /**
+   * The block's span, joined here so the page can total the student's scheduled
+   * hours off the run's own rows. A retired block still has its row in
+   * `shift_blocks`, so a carried assignment on one keeps its span and its hours.
+   */
+  start: number;
+  end: number;
 }
 
 export interface StudentCurrentAssignments {
@@ -349,8 +356,11 @@ export async function loadStudentCurrentAssignments(
       day: scheduleAssignments.day,
       cohort: scheduleAssignments.cohort,
       source: scheduleAssignments.source,
+      start: shiftBlocks.startMinutes,
+      end: shiftBlocks.endMinutes,
     })
     .from(scheduleAssignments)
+    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
     .where(and(eq(scheduleAssignments.runId, run.id), eq(scheduleAssignments.studentEmail, email)));
   return { runId: run.id, cells };
 }

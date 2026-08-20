@@ -1581,7 +1581,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
   It now reads the day with local getters, the same shape as the late-start fix
   above and the `localDay` fix in `run-warnings.ts`.
-  **Three follow-ups on the schedule surfaces shipped with it.** (1) The Cover
+  **Four follow-ups on the schedule surfaces shipped with it.** (1) The Cover
   table's **bars now draw total coverage**, the staffed share of each floor's
   scheduled open time, with the no-returner share beside them as the right-hand
   column: a bar whose width means "alarm" cannot also mean "staffed", and the
@@ -1603,7 +1603,17 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   international, 30h otherwise). The cap is a policy target and not a labor rule,
   so the engine may overshoot it and a hand edit certainly can; unlike every
   other problem group this one **includes frozen students**, because an edit to a
-  kept row is the likeliest way somebody lands over it.
+  kept row is the likeliest way somebody lands over it. (4) The per-student grid's
+  hours readout is now **two figures**, preferred and scheduled, with the edit mode
+  deciding which is full size and which shrinks to a labelled miniature beside it
+  ("12.5h scheduled", "10h preferred"). Editing preferences asks what the student
+  offered; editing the schedule asks what they actually hold, and the answer to the
+  other question stays worth a glance either way. The scheduled figure is
+  server-computed with the same `averagedAssignedMinutes` the schedule page's
+  student table reads, off the run's own rows rather than the grid cells, so a row
+  carried on a retired shift still counts and every refresh after a schedule edit
+  moves it. Its status line reads "scheduled", "nothing scheduled" at zero, or
+  "over Nh cap" in the danger accent.
   Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
   A freshman event that removes every first-year student for part of one specific
   day cannot constrain a dateless weekly template, and deciding how a dated

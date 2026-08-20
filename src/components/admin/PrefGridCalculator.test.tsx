@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@/lib/availability/actions", () => ({
@@ -66,6 +66,7 @@ function renderCalc(
     minHours?: number;
     desiredHours?: number | null;
     cap?: number;
+    scheduledMinutes?: number | null;
     hasCurrentRun?: boolean;
     hasSchedule?: boolean;
     isInternal?: boolean;
@@ -88,6 +89,7 @@ function renderCalc(
       desiredHours={opts.desiredHours === undefined ? 12 : opts.desiredHours}
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
       cap={opts.cap ?? 30}
+      scheduledMinutes={opts.scheduledMinutes === undefined ? null : opts.scheduledMinutes}
       hasCurrentRun={opts.hasCurrentRun ?? false}
       hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
       isInternal={opts.isInternal ?? false}
@@ -330,6 +332,77 @@ describe("PrefGridCalculator", () => {
     );
   });
 
+  describe("the preferred and scheduled readouts", () => {
+    // The mode decides which figure is the big one; the other stays visible as a
+    // labelled miniature. Sizes are the assertion because that IS the feature.
+    const sizeOf = (text: string) => screen.getByText(text).style.fontSize;
+
+    it("keeps preferred big and scheduled miniature while editing preferences", () => {
+      renderCalc({ hasCurrentRun: true, scheduledMinutes: 12.5 * 60 });
+      expect(sizeOf("10h")).toBe("22px");
+      expect(screen.getByText("preferred")).toBeInTheDocument();
+      expect(sizeOf("12.5h scheduled")).toBe("12px");
+    });
+
+    it("swaps the sizes when the admin switches to Edit schedule", async () => {
+      const user = userEvent.setup();
+      renderCalc({ hasCurrentRun: true, scheduledMinutes: 12.5 * 60 });
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      const figure = screen.getByText("12.5h");
+      expect(figure.style.fontSize).toBe("22px");
+      // Scoped to the readout: the legend says "scheduled" too, about a swatch.
+      expect(within(figure.parentElement!).getByText("scheduled")).toBeInTheDocument();
+      expect(sizeOf("10h preferred")).toBe("12px");
+    });
+
+    it("keeps the auto-weekend range in the miniature preferred form", async () => {
+      const user = userEvent.setup();
+      renderCalc({
+        selection: [
+          { blockId: "wd-a", day: "mon" },
+          { blockId: "wd-a", day: "tue" },
+        ],
+        autoAssigned: [{ blockId: "we-a", day: "sat" }],
+        hasCurrentRun: true,
+        scheduledMinutes: 12.5 * 60,
+      });
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      // 8h picked, up to 10h with the auto weekend: a single number would state
+      // an upper bound as a fact.
+      expect(screen.getByText("8–10h preferred")).toBeInTheDocument();
+    });
+
+    it("flags a scheduled week over the cap, in either size", async () => {
+      const user = userEvent.setup();
+      renderCalc({ cap: 20, hasCurrentRun: true, scheduledMinutes: 21 * 60 });
+      expect(screen.getByText("21h scheduled").style.color).toBe("var(--color-text-danger)");
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      const figure = screen.getByText("21h");
+      expect(figure.style.color).toBe("var(--color-text-danger)");
+      expect(within(figure.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
+    });
+
+    it("says so when the run holds nothing for the student", async () => {
+      const user = userEvent.setup();
+      renderCalc({ hasCurrentRun: true, scheduledMinutes: 0 });
+      expect(screen.getByText("0h scheduled")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      const figure = screen.getByText("0h");
+      expect(figure.style.fontSize).toBe("22px");
+      expect(within(figure.parentElement!).getByText("nothing scheduled")).toBeInTheDocument();
+    });
+
+    it("renders no scheduled readout at all before there is a run", () => {
+      renderCalc();
+      expect(screen.queryByText(/scheduled$/)).toBeNull();
+      expect(sizeOf("10h")).toBe("22px");
+    });
+  });
+
   describe("saving on the student's behalf", () => {
     const save = () => screen.queryByRole("button", { name: /^(Save|Saving…|Saved)$/ });
 
@@ -384,6 +457,7 @@ describe("PrefGridCalculator", () => {
           desiredHours={12}
           everyWeekendOptIn={false}
           cap={30}
+          scheduledMinutes={null}
           hasCurrentRun={false}
           hasSchedule={false}
           isInternal={false}

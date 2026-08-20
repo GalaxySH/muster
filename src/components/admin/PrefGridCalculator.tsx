@@ -42,6 +42,13 @@ import {
  * **Edit schedule** toggles the current run's rows per cell through the manual
  * assignment actions (source "manual"; removing an engine row is allowed).
  * Disabled until a run exists.
+ *
+ * The header carries BOTH hour figures at once, because the question the admin
+ * is asking changes with the mode and the other number is still worth a glance:
+ * the trial's preferred hours and the run's scheduled hours. Whichever the
+ * current mode is about takes the full size and the status line, the other
+ * shrinks to a labelled miniature beside it, so the two can never be mistaken
+ * for each other.
  */
 
 // Compact fixed cell size; keeps the grid tight instead of stretching wide.
@@ -85,6 +92,14 @@ export interface PrefGridCalculatorProps {
   everyWeekendOptIn: boolean;
   /** Weekly hours cap (scheduler-side context), for the over-cap cue. */
   cap: number;
+  /**
+   * The student's cycle-averaged SCHEDULED minutes in the current run, totalled
+   * on the server from the run's own rows (the same measure the schedule page's
+   * student table shows). Null before any generation, which hides the scheduled
+   * readout entirely. Deliberately not derived from the grid cells: a row
+   * carried on a retired shift has no cell and would go missing.
+   */
+  scheduledMinutes: number | null;
   /** False before any generation: schedule mode stays disabled. */
   hasCurrentRun: boolean;
   /**
@@ -374,6 +389,30 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       ? "var(--color-text-warning)"
       : "var(--color-text-info)";
 
+  // The scheduled figure is the server's, not the trial's: it describes the run
+  // as it stands, so it only moves when an edit lands and the page refreshes.
+  const scheduledHours = props.scheduledMinutes === null ? null : props.scheduledMinutes / 60;
+  const scheduledOverCap = scheduledHours !== null && scheduledHours > props.cap;
+  const scheduledAccent = scheduledOverCap
+    ? "var(--color-text-danger)"
+    : scheduledHours === 0
+      ? "var(--color-text-secondary)"
+      : "var(--color-text-info)";
+  // Same wording as the schedule page's over-max pill, so the two agree.
+  const scheduledStatus = scheduledOverCap
+    ? `over ${props.cap}h cap`
+    : scheduledHours === 0
+      ? "nothing scheduled"
+      : "scheduled";
+  // Mini form of the preferred figure: the auto-weekend range survives, since
+  // dropping it here would quietly restate an upper bound as a single number.
+  const preferredMini = showAutoRange
+    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} preferred`
+    : `${fmtHours(hours)} preferred`;
+  // Schedule mode without a run cannot happen (the button is disabled), but the
+  // fallback keeps the preferred readout big rather than rendering nothing.
+  const scheduleIsBig = mode === "schedule" && scheduledHours !== null;
+
   return (
     <>
       {/* Header: title + the mode toggle share the top line; the hours readout gets
@@ -411,38 +450,69 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           </p>
         )}
         <div style={badge} aria-live="polite">
-          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: accent }}>
-            {showAutoRange ? (
-              <>
-                {fmtNum(hours)}
-                <span
-                  style={{ color: "var(--color-text-auto)" }}
-                  title={`Includes the auto-assigned weekend shift: ${autoWeekend
-                    .map((s) => describeCell(s, props.blocks))
-                    .join(", ")}`}
+          {scheduleIsBig ? (
+            <>
+              <div style={readoutGroup}>
+                <div style={{ ...bigFigure, color: scheduledAccent }}>
+                  {fmtHours(scheduledHours!)}
+                </div>
+                <div
+                  style={{
+                    ...statusLine,
+                    color: scheduledOverCap ? scheduledAccent : "var(--color-text-secondary)",
+                  }}
                 >
-                  –{fmtHours(hoursWithAuto)}
-                </span>
-              </>
-            ) : (
-              fmtHours(hours)
-            )}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              whiteSpace: "nowrap",
-              color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
-            }}
-          >
-            {statusText}
-            {mock.size > 0 && !belowFloor && !overCap && (
-              <span style={{ color: "var(--color-text-tertiary)" }}>
-                {" "}
-                · {dayCount} day{dayCount === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
+                  {scheduledStatus}
+                </div>
+              </div>
+              <div style={miniReadout}>{preferredMini}</div>
+            </>
+          ) : (
+            <>
+              <div style={readoutGroup}>
+                <div style={{ ...bigFigure, color: accent }}>
+                  {showAutoRange ? (
+                    <>
+                      {fmtNum(hours)}
+                      <span
+                        style={{ color: "var(--color-text-auto)" }}
+                        title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                          .map((s) => describeCell(s, props.blocks))
+                          .join(", ")}`}
+                      >
+                        –{fmtHours(hoursWithAuto)}
+                      </span>
+                    </>
+                  ) : (
+                    fmtHours(hours)
+                  )}
+                </div>
+                <div
+                  style={{
+                    ...statusLine,
+                    color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
+                  }}
+                >
+                  {statusText}
+                  {mock.size > 0 && !belowFloor && !overCap && (
+                    <span style={{ color: "var(--color-text-tertiary)" }}>
+                      {" "}
+                      · {dayCount} day{dayCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {scheduledHours !== null && (
+                <div
+                  style={
+                    scheduledOverCap ? { ...miniReadout, color: scheduledAccent } : miniReadout
+                  }
+                >
+                  {fmtHours(scheduledHours)} scheduled
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -963,12 +1033,43 @@ const sectionLabel: React.CSSProperties = {
   fontWeight: 700,
   color: "var(--color-text-primary)",
 };
-/** Hours and status sit side by side on the readout line, hard against the title. */
+/**
+ * The readout line, hard against the title: the mode's own figure first, the
+ * other one as a miniature after it. The wider gap between the two readouts
+ * than inside either keeps them reading as two things and not one long number.
+ */
 const badge: React.CSSProperties = {
   display: "flex",
   alignItems: "baseline",
-  gap: 6,
+  gap: 14,
   marginTop: 2,
+  flexWrap: "wrap",
+};
+/** One readout: its figure and its status line, side by side. */
+const readoutGroup: React.CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: 6,
+};
+const bigFigure: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 700,
+  lineHeight: 1,
+};
+const statusLine: React.CSSProperties = {
+  fontSize: 11,
+  whiteSpace: "nowrap",
+};
+/**
+ * The figure the current mode is NOT about. Small, quiet, and always carrying
+ * its own noun ("scheduled", "preferred"), since the only thing worse than two
+ * hour figures is two hour figures nobody can tell apart.
+ */
+const miniReadout: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  color: "var(--color-text-secondary)",
 };
 /** The two-mode switch; the active mode reads as the pressed segment. */
 const modeGroup: React.CSSProperties = {
