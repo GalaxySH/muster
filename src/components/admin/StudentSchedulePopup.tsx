@@ -7,7 +7,7 @@
  * in a coverage cell's dialog shows it as a floating card. Fetched on demand
  * and kept, like the cell dialog itself.
  */
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { fetchStudentSchedule } from "@/lib/schedule/student-schedule-actions";
@@ -74,9 +74,9 @@ export function StudentScheduleModalLink({
   );
 }
 
-/** The card's width bound and a height estimate for the above/below flip. */
+/** The card's width bound; kept clear of the viewport edge by this margin. */
 const HOVER_WIDTH = 360;
-const HOVER_HEIGHT_ESTIMATE = 400;
+const HOVER_MARGIN = 8;
 
 /**
  * A name-hover trigger: hovering (or focusing) the wrapped name floats the
@@ -86,6 +86,11 @@ const HOVER_HEIGHT_ESTIMATE = 400;
  * table's overflow wrapper) clip absolutely-positioned children, and a fixed
  * element escapes any overflow ancestor. The price is that scrolling would
  * detach it from its anchor, so any scroll or resize simply closes it.
+ *
+ * Placement is measured, not guessed: the card renders hidden, a layout
+ * effect reads its real size, and the position clamps fully inside the
+ * viewport (flush below the name, else flush above, else pinned within),
+ * re-clamping when the loading line swaps for the grid and the height jumps.
  */
 export function StudentScheduleHover({
   email,
@@ -94,27 +99,33 @@ export function StudentScheduleHover({
   email: string;
   children: React.ReactNode;
 }) {
-  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; bottom: number; left: number } | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const wrap = useRef<HTMLSpanElement | null>(null);
+  const card = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<number | null>(null);
   const state = useStudentSchedule(email);
 
   const hide = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
-    setPos(null);
+    setAnchor(null);
+    setPlace(null);
   };
 
   useEffect(() => {
-    if (!pos) return;
-    const close = () => setPos(null);
+    if (!anchor) return;
+    const close = () => {
+      setAnchor(null);
+      setPlace(null);
+    };
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
     };
-  }, [pos]);
+  }, [anchor]);
 
   useEffect(
     () => () => {
@@ -123,6 +134,25 @@ export function StudentScheduleHover({
     [],
   );
 
+  useLayoutEffect(() => {
+    const el = card.current;
+    if (!el || !anchor) return;
+    const h = el.offsetHeight;
+    const w = el.offsetWidth;
+    // Flush against the anchor when it fits, so mousing down into the card
+    // never crosses a gap that would fire the wrapper's mouseleave; otherwise
+    // flush above; a viewport with room for neither pins it fully inside.
+    let top = anchor.bottom;
+    if (top + h > window.innerHeight - HOVER_MARGIN) top = anchor.top - h;
+    top = Math.max(HOVER_MARGIN, Math.min(top, window.innerHeight - HOVER_MARGIN - h));
+    const left = Math.max(
+      HOVER_MARGIN,
+      Math.min(anchor.left, window.innerWidth - HOVER_MARGIN - w),
+    );
+    setPlace({ left, top });
+    // Re-clamp when the content swaps (Loading to grid) and the height jumps.
+  }, [anchor, state.view, state.error]);
+
   const enter = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     state.load();
@@ -130,16 +160,7 @@ export function StudentScheduleHover({
     timer.current = window.setTimeout(() => {
       const rect = wrap.current?.getBoundingClientRect();
       if (!rect) return;
-      const fitsBelow =
-        rect.bottom + HOVER_HEIGHT_ESTIMATE <= window.innerHeight ||
-        rect.top - HOVER_HEIGHT_ESTIMATE < 0;
-      setPos({
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - HOVER_WIDTH - 8)),
-        // Flush against the anchor, so mousing down into the card never
-        // crosses a gap that would fire the wrapper's mouseleave.
-        top: fitsBelow ? rect.bottom : rect.top,
-        above: !fitsBelow,
-      });
+      setAnchor({ top: rect.top, bottom: rect.bottom, left: rect.left });
     }, 150);
   };
 
@@ -153,14 +174,15 @@ export function StudentScheduleHover({
       onBlur={hide}
     >
       {children}
-      {pos && (
+      {anchor && (
         <span
+          ref={card}
           role="tooltip"
           style={{
             ...hoverPanel,
-            left: pos.left,
-            top: pos.top,
-            transform: pos.above ? "translateY(-100%)" : undefined,
+            left: place?.left ?? anchor.left,
+            top: place?.top ?? anchor.bottom,
+            visibility: place ? undefined : "hidden",
           }}
         >
           <PopupBody {...state} />
@@ -280,6 +302,10 @@ const hoverPanel: React.CSSProperties = {
   padding: 10,
   width: "max-content",
   maxWidth: HOVER_WIDTH,
+  // A viewport shorter than the card: the clamp pins it inside and the card
+  // itself scrolls rather than running off the page.
+  maxHeight: `calc(100vh - ${HOVER_MARGIN * 2}px)`,
+  overflowY: "auto",
   background: "var(--color-background-primary)",
   border: "1px solid var(--color-border-secondary)",
   borderRadius: 8,

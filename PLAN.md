@@ -1482,8 +1482,12 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   anchor's viewport rect, because both of its hosts, the cell dialog's
   scrolling panel and the students table's overflow wrapper, clip
   absolutely-positioned children; a scroll or resize closes it rather than
-  letting it drift off its anchor, and it sits flush against the name so the
-  pointer can travel into it. Hovering a name in the students table now
+  letting it drift off its anchor. Its placement is measured, not guessed:
+  the card's real size is read after render and the position clamps fully
+  inside the viewport, flush below the name when it fits (so the pointer can
+  travel into it), else flush above, else pinned within and scrolling
+  itself, so no edge of it can leave the page. Hovering a name in the
+  students table now
   floats the same card the cell dialog shows. And the two widest admin
   lists, the schedule students table and the response list, take alternate
   row shading (`.zebra-table`) so a row can be followed across its columns.
