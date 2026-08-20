@@ -154,6 +154,20 @@ export interface EngineReport {
     unknownHireDate: number;
   };
   /**
+   * What the annealing pass (./anneal.ts) did, absent when it was switched off
+   * and on every run generated before it existed. The seed and the iteration
+   * count are recorded because together they are what makes the run
+   * reproducible: same inputs, same knobs, same schedule.
+   */
+  anneal?: {
+    seed: number;
+    iterations: number;
+    /** Graded targeted seats the pass added over the greedy result. */
+    gainedSeats: number;
+    /** Students whose hours it trimmed back toward target to free seats. */
+    trimmedStudents: number;
+  };
+  /**
    * Students whose hire date falls after their position went back to work, so
    * the template's earliest shifts cannot be theirs. Stamped by the caller, not
    * the engine, which has no clock and no dates (see `returners`). Absent on

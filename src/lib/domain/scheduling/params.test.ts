@@ -37,7 +37,7 @@ describe("validateSchedulingParams", () => {
     ).not.toBeNull();
   });
 
-  it("ships the documented defaults, all ten pinned", () => {
+  it("ships the documented defaults, all twelve pinned", () => {
     expect(DEFAULT_SCHEDULING_PARAMS).toEqual({
       dayCapHours: 8,
       nightPriority: 50,
@@ -49,6 +49,12 @@ describe("validateSchedulingParams", () => {
       maxConsecutiveDays: 5,
       maxDaysPerWeek: 6,
       preferredDaysPerWeek: 5,
+      // The annealing pass ships dark: 0 rounds is off, and every stored
+      // params value written before it existed backfills to exactly this.
+      annealIterations: 0,
+      // Best of a close field on the 2026-08-20 snapshot; every seed swept
+      // landed within three seats of it.
+      annealSeed: 3,
       coveragePoolPositionIds: ["culinary-assistant", "cashier"],
     });
   });
@@ -65,6 +71,8 @@ describe("validateSchedulingParams", () => {
         maxConsecutiveDays: 14,
         maxDaysPerWeek: 7,
         preferredDaysPerWeek: 7,
+        annealIterations: 5_000_000,
+        annealSeed: 2_147_483_647,
         coveragePoolPositionIds: [],
       }),
     ).toBeNull();
@@ -79,6 +87,8 @@ describe("validateSchedulingParams", () => {
         maxConsecutiveDays: 1,
         maxDaysPerWeek: 1,
         preferredDaysPerWeek: 1,
+        annealIterations: 0,
+        annealSeed: 1,
         coveragePoolPositionIds: ["a", "b", "c"],
       }),
     ).toBeNull();
@@ -259,6 +269,8 @@ describe("parseSchedulingParams", () => {
       maxConsecutiveDays: 6,
       maxDaysPerWeek: 5,
       preferredDaysPerWeek: 4,
+      annealIterations: 250_000,
+      annealSeed: 42,
       coveragePoolPositionIds: ["barista", "stocker"],
     };
     expect(parseSchedulingParams(JSON.stringify(params))).toEqual(params);

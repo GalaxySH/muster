@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.19
+- **Version:** 1.20
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1475,6 +1475,40 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.20 (2026-08-20)** — **An optimizer that trades seats between students,
+  shipped switched off.** The greedy engine places students one at a time and
+  never revisits a placement, so a seat taken early by somebody who did not need
+  it stays taken; no amount of reordering who goes first fixes that (measured:
+  every ordering heuristic tried, and 40 random restarts, plateau near 67% of
+  target seats). `domain/scheduling/anneal.ts` adds a third pass that can move
+  one student off a cell so another can take it, running after the improvement
+  pass and before fill-ins. On the 2026-08-20 production snapshot it took graded
+  fill from **704 of 1094 target seats to 823** (64.35% to 75.23%) while cutting
+  students left under their position's hour floor from **34 to 21**, students
+  short of target from 69 to 59, and unworked shift instances from 52 to 45,
+  with zero hard labor violations either way and 1.6s of wall time.
+
+  **What early responders keep.** FCFS no longer decides which cells someone
+  holds. It decides that they are served first and therefore reach their hours:
+  the pass may never drop anyone below `min(the hours greedy secured them, their
+  target)`, and every cell still comes from the student's own selections. Since
+  greedy serves earlier responders first, their hours are protected by
+  construction, which is what keeps them off the scheduler's manual-fixup list.
+  Where only one of two short students can be lifted toward target, an FCFS
+  weight in the objective lifts the earlier one.
+
+  **Determinism is unchanged.** A seeded PRNG runs a fixed iteration count,
+  never a time budget, and the seed is snapshotted per run beside the other
+  knobs, so the diff view, restore, and the tuning harness all keep their footing.
+  **It ships dark**: `annealIterations` defaults to 0, a run made with it off is
+  byte-identical to one generated before it existed, and returning the knob to 0
+  is the kill switch. The feasibility oracle is the engine-side `labor.ts`, never
+  the independent `validate.ts`, which keeps judging the pass's output at read
+  time as a genuine cross-check. `targetMinutes` and the graded-fill measure moved
+  into `seats.ts` (`SeatLedger.gradedFill`, sharing `assignedCellCount`) so the
+  pass optimizes exactly the number `stats.ts` reports rather than a private
+  approximation. Design record and the measured acceptance run:
+  `docs/generator-anneal-plan.md`.
 - **1.19 (2026-08-20)** — **Pinnable runs and manual snapshots.** Run history
   on `/admin/schedule` gained two admin controls. **Pin** (`schedule_runs.pinned`,
   migration 0030) excludes a run from the 10-run retention count entirely, so

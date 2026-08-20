@@ -2,6 +2,10 @@
 
 import { useState, useTransition } from "react";
 import {
+  ANNEAL_ITERATIONS_MAX,
+  ANNEAL_ITERATIONS_MIN,
+  ANNEAL_SEED_MAX,
+  ANNEAL_SEED_MIN,
   DAY_CAP_HOURS_MAX,
   DAY_CAP_HOURS_MIN,
   MAX_CONSECUTIVE_DAYS_MAX,
@@ -39,6 +43,8 @@ export function ScheduleParamsForm({
   const [maxRun, setMaxRun] = useState(String(initial.maxConsecutiveDays));
   const [maxDays, setMaxDays] = useState(String(initial.maxDaysPerWeek));
   const [preferredDays, setPreferredDays] = useState(String(initial.preferredDaysPerWeek));
+  const [annealRounds, setAnnealRounds] = useState(String(initial.annealIterations));
+  const [annealSeed, setAnnealSeed] = useState(String(initial.annealSeed));
   const [pool, setPool] = useState<string[]>(initial.coveragePoolPositionIds);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -58,6 +64,8 @@ export function ScheduleParamsForm({
         maxConsecutiveDays: Number(maxRun),
         maxDaysPerWeek: Number(maxDays),
         preferredDaysPerWeek: Number(preferredDays),
+        annealIterations: Number(annealRounds),
+        annealSeed: Number(annealSeed),
         // Ordered by the position list, so the saved value does not depend on
         // the order the admin clicked the boxes. Saved ids the list does not
         // offer are carried through rather than dropped: deactivating a
@@ -152,6 +160,22 @@ export function ScheduleParamsForm({
           onChange={setPreferredDays}
           min={PREFERRED_DAYS_PER_WEEK_MIN}
           max={MAX_DAYS_PER_WEEK_MAX}
+        />
+        <Field
+          label="Optimizer rounds"
+          help="0 turns the optimizer off. Higher numbers search longer for better coverage."
+          value={annealRounds}
+          onChange={setAnnealRounds}
+          min={ANNEAL_ITERATIONS_MIN}
+          max={ANNEAL_ITERATIONS_MAX}
+        />
+        <Field
+          label="Optimizer seed"
+          help="The same seed always builds the same schedule. Change it to try a different search."
+          value={annealSeed}
+          onChange={setAnnealSeed}
+          min={ANNEAL_SEED_MIN}
+          max={ANNEAL_SEED_MAX}
         />
         <fieldset style={fieldsetStyle}>
           <legend style={{ fontWeight: 600, fontSize: 13, padding: 0 }}>
