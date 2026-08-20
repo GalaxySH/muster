@@ -30,6 +30,13 @@ both new submissions and post-submit edits (`submittedAt` is write-once, so
 after generate and restore (forced, like the other sheets' bulk-op syncs) with
 a manual rebuild, reusing a shared row-per-assignment matrix builder with the
 CSV route.
+**Extended again in v1.19**: run history gained a per-run **pin** (excludes a
+run from the retention count entirely, `schedule_runs.pinned`, migration
+0030) and **Save run** (copies the current run into a new, non-current run
+row without invoking the generator, so hand edits on the live schedule can be
+checkpointed on demand). Both are admin controls on `/admin/schedule`; see
+`docs/architecture.md`'s "Pinning and manual snapshots" note for the seams.
+
 PLAN.md stays authoritative for current behavior; sections below are updated to
 what shipped where the build diverged from the original proposal. The largest
 divergence: **`submissions.scheduled` is the freeze unit** — a scheduled

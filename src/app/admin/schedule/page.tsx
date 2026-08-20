@@ -17,7 +17,9 @@ import {
 } from "@/components/admin/ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
 import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
+import { PinRunButton } from "@/components/admin/PinRunButton";
 import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
+import { SaveRunButton } from "@/components/admin/SaveRunButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
@@ -398,7 +400,10 @@ function SchedulePanel({
       />
       <LaborFindings findings={schedule.laborFindings} />
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
+        <SaveRunButton />
+      </div>
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}
@@ -624,7 +629,7 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
       <SectionLabel>Run history</SectionLabel>
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
-        replaced run stays here.
+        replaced run stays here. Pinned runs are kept regardless of age.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
@@ -637,6 +642,7 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
               <th style={cellTh}>Short of hours</th>
               <th style={cellTh}>Below min</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Restored</th>
+              <th style={{ ...cellTh, textAlign: "left" }}>Pinned</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Status</th>
             </tr>
           </thead>
@@ -654,6 +660,9 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
                 <td style={cellTd}>{r.belowMinHours ?? "-"}</td>
                 <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
                   {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
+                </td>
+                <td style={{ ...cellTd, textAlign: "left" }}>
+                  <PinRunButton runId={r.id} pinned={r.pinned} />
                 </td>
                 <td style={{ ...cellTd, textAlign: "left" }}>
                   {r.status === "current" ? (

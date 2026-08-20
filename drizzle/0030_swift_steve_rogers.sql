@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_runs` ADD `pinned` boolean DEFAULT false NOT NULL;

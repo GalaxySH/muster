@@ -600,6 +600,7 @@ export interface ScheduleRunListItem {
   generatedAt: Date;
   generatedBy: string;
   status: "current" | "superseded";
+  pinned: boolean;
   restoredAt: Date | null;
   restoredBy: string | null;
   assignments: number;
@@ -628,6 +629,7 @@ export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
       generatedAt: r.generatedAt,
       generatedBy: r.generatedBy,
       status: r.status,
+      pinned: r.pinned,
       restoredAt: r.restoredAt,
       restoredBy: r.restoredBy,
       assignments: countByRun.get(r.id) ?? 0,
