@@ -19,7 +19,13 @@ export interface SchedulingParams {
   nightPriority: number;
   /** Same scale for evening cells; usually about half the night value. */
   eveningPriority: number;
-  /** 0 ignores repeats; 100 pushes hardest against the same start time again. */
+  /**
+   * 0 ignores repeats; 100 pushes hardest against the same start time again.
+   * Tuned to 20 against a production availability snapshot (P5 of
+   * docs/generator-constraints-fairness-plan.md): it was the smallest value on
+   * the sweep that broke up lockstep pairs and tightened the hours spread
+   * without costing seats.
+   */
   repeatStartPenalty: number;
   /** Hours below this between a day's close and the next open are a clopen (hard). */
   minRestHours: number;
@@ -52,7 +58,7 @@ export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = Object.freeze({
   dayCapHours: 8,
   nightPriority: 50,
   eveningPriority: 25,
-  repeatStartPenalty: 0,
+  repeatStartPenalty: 20,
   minRestHours: 8,
   preferredRestHours: 10,
   maxConsecutiveDays: 5,

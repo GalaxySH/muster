@@ -197,7 +197,22 @@ all targeted cells evenly, and the default 50 keeps night cells running about
 half a target ahead while mornings still get coverage — the original absolute
 ordering starved mornings entirely under contention. Untargeted cells rank
 after every targeted one (they claim no need), ordered by tier bonus alone.
-Deterministic tie-breaks (day, block id). The knobs are admin-edited on
+Deterministic tie-breaks (day, block id).
+
+**Repeat-start penalty (v1.15, default 20).** A candidate's pull is reduced by
+`(repeatStartPenalty / 100) x the count of cells this student already holds at
+that start time`, tracked on the active state and updated as each cell is
+assigned. Without it the deterministic tie-breaks make five identical 8am shifts
+the cheapest schedule to build, which reads as a machine welding someone to one
+time slot. At 0 the knob is a no-op and the block-id tie-break decides; at 100 a
+start time is essentially spent after one use. The shipped 20 was chosen by
+sweeping a production availability snapshot, and the table plus the decision rule
+that picked it are in `docs/generator-constraints-fairness-plan.md` §9.1. It is a
+tie-breaker, not a leveling mechanism: it never overrides the targeted-before-
+untargeted ordering, so a penalized targeted cell still outranks an untargeted
+one.
+
+The knobs are admin-edited on
 `/admin/schedule` (one JSON `app_settings` row, `schedule_params`), applied at
 the next update, and snapshotted into each run's stored report.
 

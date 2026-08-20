@@ -1516,6 +1516,42 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   Runs generated before this release still parse and simply render without the new
   sections; every added report field is optional. **No migration:** the run report
   is one JSON column and the knobs are one `app_settings` row.
+  **The repeat-start penalty now ships at 20, up from 0.** It subtracts
+  `(penalty/100) x the number of cells the student already holds at this start
+  time` from a candidate cell's pull, so a schedule of five identical 8am shifts
+  stops being the cheapest thing for the engine to build. The value was chosen by
+  sweeping `npm run dev:tune-params` against a read-only production availability
+  snapshot (2026-08-19: 172 eligible students, 69 live blocks, 7 positions, 3
+  internal copies, nobody frozen). Every penalty ran twice and both runs matched
+  exactly, so the table is reproducible rather than merely observed. `spread` is
+  the gap in weekly minutes between the best and worst off; `lockPpl` counts
+  people whose entire set of shifts is shared with somebody else:
+
+  ```
+  penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+  -------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+        0     832      69        34      0.5159       5        1        2   1755.0    282.7      23
+        2     834      66        31      0.5196       4        1        2   1755.0    283.5      20
+        5     830      66        33      0.5194       5        1        2   1867.5    284.2      19
+       10     834      67        34      0.5118       5        0        0   1800.0    279.7      21
+       20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
+  ```
+
+  The rule applied was fixed before the numbers were read: take the **smallest**
+  penalty improving at least two of {modal-start share, welded, lockstep people,
+  spread} by more than 2% relative (or by more than one person where the metric
+  counts people), provided seats filled drop by no more than 0.5% and neither
+  shortfall counter rises. Only **20** qualifies. It clears two metrics outright
+  (lockstep people 2 to 0, spread 1755 to 1695, a 3.4% tightening) and costs
+  nothing anywhere else: seats went **up**, 832 to 837, and students short of
+  target fell from 69 to 67. Penalty 2 improves only `welded`; 5 improves nothing
+  and widens the spread; 10 clears only lockstep. Nothing here is a large effect
+  at this roster size, which is the honest reading: the penalty is a tie-breaker
+  that stops the engine defaulting to identical days, not a leveling mechanism.
+  The synthetic 400-student population (`npm run dev:tune-params` with no
+  snapshot, the CI-safe path) agrees that 20 qualifies and shows the effect more
+  strongly, since a larger population produces far more welding to break up:
+  modal-start share 0.516 to 0.443 and welded 22 to 8.
   Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
   A freshman event that removes every first-year student for part of one specific
   day cannot constrain a dateless weekly template, and deciding how a dated

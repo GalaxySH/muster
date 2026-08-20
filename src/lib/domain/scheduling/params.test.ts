@@ -42,7 +42,8 @@ describe("validateSchedulingParams", () => {
       dayCapHours: 8,
       nightPriority: 50,
       eveningPriority: 25,
-      repeatStartPenalty: 0,
+      // Was 0. P5 tuning flipped the shipped repeat-start penalty to 20.
+      repeatStartPenalty: 20,
       minRestHours: 8,
       preferredRestHours: 10,
       maxConsecutiveDays: 5,

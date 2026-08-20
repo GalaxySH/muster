@@ -1020,14 +1020,32 @@ describe("generateAssignments", () => {
     ];
     const selection = [sel("s1", "mon"), sel("s2", "mon"), sel("s1", "tue"), sel("s2", "tue")];
 
-    it("is a no-op at the default 0: the block-id tie-break welds both days", () => {
-      const r = run([student("b@w", { positionId: "barista", selection })], blocks);
+    // Was run at the shipped default, which P5 tuning moved from 0 to 20; the
+    // rule under test is "penalty 0 is a no-op", so 0 is now pinned explicitly.
+    it("is a no-op at penalty 0: the block-id tie-break welds both days", () => {
+      const r = generateAssignments({
+        students: [student("b@w", { positionId: "barista", selection })],
+        positions: POSITIONS,
+        blocks,
+        previous: [],
+        params: { ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty: 0 },
+      });
       const byDay = (day: string) =>
         rowsOf(r, "b@w")
           .filter((a) => a.day === day)
           .map((a) => a.blockId);
       expect(byDay("mon")).toEqual(["s1"]);
       expect(byDay("tue")).toEqual(["s1"]);
+    });
+
+    it("splits the same two days at the shipped default, which is no longer 0", () => {
+      const r = run([student("b@w", { positionId: "barista", selection })], blocks);
+      const byDay = (day: string) =>
+        rowsOf(r, "b@w")
+          .filter((a) => a.day === day)
+          .map((a) => a.blockId);
+      expect(byDay("mon")).toEqual(["s1"]);
+      expect(byDay("tue")).toEqual(["s2"]);
     });
 
     it("diversifies start times at a positive penalty", () => {

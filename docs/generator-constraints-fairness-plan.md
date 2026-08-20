@@ -146,7 +146,7 @@ student the ladder cannot seed or fill lands in the warnings
 
 New `SchedulingParams` fields (admin-edited, snapshotted per run; the
 existing spread-over-defaults parse backfills old stored JSON):
-`repeatStartPenalty` (0–100, default 0 until P5 tunes it),
+`repeatStartPenalty` (0–100; shipped at 0 through P4, **tuned to 20 in P5**, §9.1),
 `minRestHours` (8), `preferredRestHours` (10, ≥ min), `maxConsecutiveDays`
 (5), `maxDaysPerWeek` (6), `preferredDaysPerWeek` (5, ≤ max),
 `coveragePoolPositionIds` (stats-only). The 40h week cap is a constant, not a
@@ -257,8 +257,52 @@ Every penalty runs **twice** and the two runs are compared before either is
 reported, so determinism is checked rather than assumed. Metrics come from
 `computeRunStats`, not from a reimplementation.
 
-The table and the chosen default are recorded in the PLAN changelog entry for
-1.15, alongside the flip itself.
+**Production snapshot, 2026-08-19** (172 eligible students, 69 live blocks, 7
+positions, 3 internal copies, nobody frozen). Every penalty ran twice; both runs
+matched exactly.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0     832      69        34      0.5159       5        1        2   1755.0    282.7      23
+      2     834      66        31      0.5196       4        1        2   1755.0    283.5      20
+      5     830      66        33      0.5194       5        1        2   1867.5    284.2      19
+     10     834      67        34      0.5118       5        0        0   1800.0    279.7      21
+     20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
+```
+
+**Synthetic fallback** (400 students, seed 42, fill 0.8, the CI-safe path, over
+the repo's initial block config at a derived target of 8 per cell). Also
+deterministic across both runs of every penalty.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0    2208     180        95      0.5160      22        3        7   1680.0    346.3     114
+      2    2214     179        96      0.4667      15        2        4   1665.0    344.6      90
+      5    2214     180        91      0.4643      14        2        4   1665.0    340.7      85
+     10    2203     172        95      0.4692      14        2        4   1665.0    338.6      81
+     20    2211     179        91      0.4426       8        3        6   1725.0    342.8      80
+```
+
+**Decision, applied mechanically.** Take the smallest penalty improving at least
+two of {modal-start share, welded, lockstep people, spread} by more than 2%
+relative (or by more than one person where the metric counts people), provided
+seats filled drop by no more than 0.5% relative and neither `shortOfTarget` nor
+`belowMinHours` rises. On the production snapshot: penalty 2 improves only
+`welded`; 5 improves nothing and widens the spread by 6.4%; 10 improves only
+lockstep people; **20 improves two** (lockstep people 2 to 0, spread 1755 to
+1695, 3.4% tighter) and violates no guard, since seats rose from 832 to 837 and
+`shortOfTarget` fell from 69 to 67. **`repeatStartPenalty` therefore ships at
+20.** The synthetic population independently agrees that 20 qualifies, and shows
+the effect far more strongly (modal-start share 0.516 to 0.443, welded 22 to 8),
+because a 400-person roster gives the engine much more to weld in the first
+place.
+
+The honest caveat: on a 172-student roster, `welded` and `lockstep` are single
+digits, so the rule is deciding on small counts. The penalty is a tie-breaker
+that stops the engine defaulting to identical days, not a leveling mechanism, and
+the table should be re-run whenever the roster changes size materially.
 
 ### 9.2 Known deferred items
 
