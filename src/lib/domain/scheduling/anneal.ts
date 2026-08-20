@@ -21,6 +21,14 @@
  * manual-fixup list. Where the pass can only lift one of two students toward
  * target, the FCFS weight in the objective lifts the earlier one.
  *
+ * Weekend rotations. Students arrive on the A week, the B week, on both (the
+ * every-weekend opt-in), or on neither, which is where greedy leaves anyone it
+ * never put on a weekend. Those students could not take a weekend cell at all,
+ * so this pass gives them a rotation the first time it puts them on one, always
+ * the emptier week of that cell since a weekend cell is graded on its needier
+ * week. A student greedy already placed on a weekend keeps the rotation greedy
+ * chose; re-rotating those is docs/generator-anneal-plan.md §8.
+ *
  * Determinism is preserved. A seeded PRNG runs a FIXED iteration count, never
  * a time budget: wall time may vary with the machine, the schedule may not, or
  * the diff view, restore, and the tuning harness all lose their footing. The
@@ -121,7 +129,10 @@ interface AnnealState {
    * asymmetry the rules ask for: never newly taken, free to vacate.
    */
   options: Cell[];
-  /** Weekend rotation, fixed for the whole search (see the header note). */
+  /**
+   * Weekend rotation, or null for a student on neither week. See the header
+   * note: null is a starting point the search may fill in, not a verdict.
+   */
   cohort: Exclude<Cohort, "weekday"> | null;
   minutes: number;
   target: number;
@@ -136,9 +147,15 @@ interface AnnealState {
   fcfsWeight: number;
 }
 
-/** The cohort an assignment row carries for this student on this block. */
-function rowCohort(state: AnnealState, block: ShiftBlock): Cohort | null {
-  return block.dayType === "weekend" ? state.cohort : "weekday";
+/** The cohort a row carries on this block for a student on `cohort`. */
+function rowCohort(cohort: Exclude<Cohort, "weekday"> | null, block: ShiftBlock): Cohort | null {
+  return block.dayType === "weekend" ? cohort : "weekday";
+}
+
+/** Does this set of cells put the student on a weekend at all? */
+function holdsWeekend(held: ReadonlyMap<string, Cell>): boolean {
+  for (const cell of held.values()) if (cell.block.dayType === "weekend") return true;
+  return false;
 }
 
 /** The student's day-by-day coverage if they held exactly `held`. */
@@ -174,6 +191,7 @@ function countHard(violations: readonly { severity: "hard" | "soft" }[]): number
 function legalMinutes(
   state: AnnealState,
   held: ReadonlyMap<string, Cell>,
+  cohort: Exclude<Cohort, "weekday"> | null,
   limits: LaborLimits,
 ): number | null {
   const ranges = rangesOf(held);
@@ -188,18 +206,9 @@ function legalMinutes(
   if (isOverMaxHours(minutes, state.student.international)) return null;
   if (minutes + EPSILON_MINUTES < state.floorMinutes) return null;
   if (ranges.size < state.floorDays) return null;
-  if (state.mustKeepWeekend) {
-    let weekend = false;
-    for (const cell of held.values()) {
-      if (cell.block.dayType === "weekend") {
-        weekend = true;
-        break;
-      }
-    }
-    if (!weekend) return null;
-  }
+  if (state.mustKeepWeekend && !holdsWeekend(held)) return null;
 
-  const violations = laborViolations(ranges, state.cohort, limits);
+  const violations = laborViolations(ranges, cohort, limits);
   const hard = countHard(violations);
   if (hard > state.baselineHard) return null;
   if (violations.length - hard > state.baselineSoft) return null;
@@ -304,8 +313,8 @@ export function annealAssignments(
 
     // The rotation the seed put them on: any weekend row's cohort, else
     // "every" for opt-ins, else none (weekday-only, or nobody placed them on a
-    // weekend). A student with no rotation takes no weekend cells here; see
-    // the deferred cohort work in the plan.
+    // weekend). None is a starting point, not a verdict; the search fills it in
+    // the first time it puts them on a weekend.
     const weekendRow = rows.find((r) => r.cohort !== "weekday");
     const cohort = (weekendRow?.cohort ?? (student.everyWeekendOptIn ? "every" : null)) as Exclude<
       Cohort,
@@ -330,7 +339,7 @@ export function annealAssignments(
       // never asked to hold more than their target just to keep a floor.
       floorMinutes: Math.min(minutes, target),
       floorDays: Math.min(ranges.size, position.minDays),
-      mustKeepWeekend: [...held.values()].some((c) => c.block.dayType === "weekend"),
+      mustKeepWeekend: holdsWeekend(held),
       baselineHard: seedHard,
       baselineSoft: seedViolations.length - seedHard,
       seedMinutes: minutes,
@@ -364,6 +373,7 @@ export function annealAssignments(
   let bestFilled = filled;
   let bestSecondary = secondary;
   let bestHeld = states.map((s) => [...s.held.keys()]);
+  let bestCohort = states.map((s) => s.cohort);
   let accepted = 0;
 
   const rng = mulberry32(params.annealSeed);
@@ -389,8 +399,6 @@ export function annealAssignments(
       const free = state.options.filter((o) => !state.held.has(o.key));
       if (free.length === 0) continue;
       addCell = free[Math.floor(rng() * free.length)]!;
-      // No rotation means no weekend slot to place them in.
-      if (addCell.block.dayType === "weekend" && state.cohort === null) continue;
     }
     if (!removeCell && !addCell) continue;
 
@@ -398,12 +406,24 @@ export function annealAssignments(
     if (removeCell) candidate.delete(removeCell.key);
     if (addCell) candidate.set(addCell.key, addCell);
 
+    // The rotation this move leaves them on. Off the weekend entirely means no
+    // rotation again, so a student the search rotated can drop it and pick up
+    // the other week later. One who has none and is taking a weekend cell joins
+    // the emptier week of that cell.
+    let moveCohort = state.cohort;
+    if (!holdsWeekend(candidate)) {
+      moveCohort = null;
+    } else if (moveCohort === null) {
+      if (addCell === null || addCell.block.dayType !== "weekend") continue;
+      moveCohort = ledger.emptierWeek(addCell.block.id, addCell.day);
+    }
+
     // Legality first: it never touches the ledger, so a rejected move here
     // costs nothing to undo.
-    const newMinutes = legalMinutes(state, candidate, limits);
+    const newMinutes = legalMinutes(state, candidate, moveCohort, limits);
     if (newMinutes === null) continue;
 
-    const addCohort = addCell ? rowCohort(state, addCell.block) : null;
+    const addCohort = addCell ? rowCohort(moveCohort, addCell.block) : null;
     if (addCell) {
       if (addCohort === null) continue;
       if (!ledger.fits(addCell.block, addCell.day, addCohort)) continue;
@@ -412,7 +432,8 @@ export function annealAssignments(
     // Seat deltas need the ledger actually changed, since a weekend cell is
     // graded on its needier week. Applied tentatively, reverted on reject.
     let filledDelta = 0;
-    const removeCohort = removeCell ? rowCohort(state, removeCell.block) : null;
+    // Priced at the rotation they were on when they took the seat.
+    const removeCohort = removeCell ? rowCohort(state.cohort, removeCell.block) : null;
     if (removeCell && removeCohort !== null) {
       filledDelta += applySeat(ledger, removeCell, removeCohort, -1);
     }
@@ -430,6 +451,7 @@ export function annealAssignments(
     }
 
     state.held = candidate;
+    state.cohort = moveCohort;
     state.minutes = newMinutes;
     filled += filledDelta;
     secondary += secondaryDelta;
@@ -444,6 +466,7 @@ export function annealAssignments(
       bestFilled = filled;
       bestSecondary = secondary;
       bestHeld = states.map((s) => [...s.held.keys()]);
+      bestCohort = states.map((s) => s.cohort);
     }
   }
 
@@ -463,8 +486,11 @@ export function annealAssignments(
     const cells = [...held.values()].sort(
       (a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || byEmail(a.block.id, b.block.id),
     );
+    // The rotation as of the best state, not wherever the walk ended: the two
+    // differ now that the search can change it.
+    const finalCohort = bestCohort[index]!;
     for (const cell of cells) {
-      const cohort = rowCohort(state, cell.block);
+      const cohort = rowCohort(finalCohort, cell.block);
       if (cohort === null) continue;
       out.push({
         studentEmail: state.student.email,

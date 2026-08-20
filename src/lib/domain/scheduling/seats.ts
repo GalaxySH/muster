@@ -147,6 +147,18 @@ export class SeatLedger {
     return Math.min(assignedCellCount(block.dayType, this.cell(block.id, day)), cap);
   }
 
+  /**
+   * The rotation week carrying fewer people on this cell; ties go to "a".
+   * A weekend cell is graded on its needier week, so a student joining the
+   * fuller one adds nothing to the run. Which week they join never changes
+   * what the labor rules say (labor.ts symmetry lemma), so this is purely a
+   * capacity choice.
+   */
+  emptierWeek(blockId: string, day: Day): "a" | "b" {
+    const c = this.cell(blockId, day);
+    return c.b < c.a ? "b" : "a";
+  }
+
   /** Which rotation weeks still have room in this cell. */
   openCohorts(block: ShiftBlock, day: Day): { a: boolean; b: boolean } {
     const cap = block.desiredCapacity ?? Infinity;

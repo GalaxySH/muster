@@ -229,11 +229,14 @@ export function generateAssignments(input: EngineInput): EngineResult {
   }
   const finalAssignments = [...annealed.assignments, ...fillInRows];
 
-  // Rebuild per-student coverage from the final rows so reports reflect any
-  // relocations the improvement pass made.
+  // Rebuild per-student coverage and rotation from the final rows, so reports
+  // reflect the relocations the improvement pass made and the rotation the
+  // annealing pass hands a student greedy left off the weekend.
   const finalRanges = new Map<string, Map<Day, TimeRange[]>>();
+  const finalCohorts = new Map<string, Exclude<Cohort, "weekday">>();
   for (const row of finalAssignments) {
     const block = blockById.get(row.blockId)!;
+    if (row.cohort !== "weekday") finalCohorts.set(row.studentEmail, row.cohort);
     let byDay = finalRanges.get(row.studentEmail);
     if (!byDay) {
       byDay = new Map();
@@ -264,7 +267,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       targetMinutes: state.target,
       assignedMinutes: assigned,
       daysUsed: ranges.size,
-      cohort: state.cohort,
+      cohort: finalCohorts.get(state.student.email) ?? null,
       frozen: false,
       fillIn: state.student.fillIn === true,
     });

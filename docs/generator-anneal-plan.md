@@ -15,20 +15,33 @@ the same run with it switched off:
 
 | | off | on |
 |---|---:|---:|
-| graded targeted fill | 704 of 1094 (64.35%) | **823 (75.23%)** |
-| students below their position's hour floor | 34 | **21** |
-| students short of target | 69 | **59** |
-| students below their minimum day span | 9 | **6** |
-| shift instances nobody works | 52 of 318 | **45** |
+| graded targeted fill | 704 of 1094 (64.35%) | **824 (75.32%)** |
+| students below their position's hour floor | 34 | **22** |
+| students short of target | 69 | **58** |
+| students below their minimum day span | 9 | **5** |
+| students with no weekend day at all | 11 | **6** |
+| shift instances nobody works | 52 of 318 | **46** |
 | hard labor violations (independent validator) | 0 | **0** |
-| soft labor violations | 3 | 3 |
-| wall time | 0.1 s | 1.6 s |
+| soft labor violations | 3 | **2** |
+| wall time | 0.1 s | 0.8 s |
 
 Every invariant in §2 was audited on that run and came back zero: nobody below
 `min(seed hours, target)`, nobody below their day floor, no row outside the
 student's own selections, nobody who lost their weekend day, nobody over their
 hour cap, no redundant same-day shift, no cell over capacity. Two runs with the
 same seed were byte-identical.
+
+**The rotation half, measured on its own** (the same harness run against the
+code with and without it, six seeds each). Letting the pass rotate students
+greedy left off the weekend moved the seat count not at all: 823.5 mean before,
+823.7 after, inside the seed band either way. It was never going to. Adding one
+person to a weekend cell rarely raises that cell's needier week, which is what
+graded fill counts. What it moved, on every seed, is who has no weekend at all
+(9.2 mean down to 5.2) and who is under their position's hour floor (23.8 down
+to 21.8). Both are manual-fixup work for the scheduler, which is the thing this
+pass exists to shrink, so the seat number being flat is not the measure to read
+here. Only 11 of the 172 students reach the pass unrotated, which caps how much
+this half could ever be worth; the 18 seats sit in the other half (section 8).
 
 **Why (measured, 2026-08-20).** Against the production snapshot of that morning
 (172 eligible students, 69 live blocks, current run = 704 of 1094 target seats,
@@ -83,8 +96,12 @@ result.
   (never below) to free seats for others. On the snapshot this is part of how
   coverage rises while mean hours still go up and below-minimum counts fall.
   Policy: no student ends below `min(their greedy-seed hours, their target)`.
-- **Weekend cohorts stay fixed** to the seed's A/B/every choice for now.
-  Cohort-flip moves are a known further gain, deferred (§8).
+- **Weekend rotations, half open.** A student greedy already placed on a
+  weekend keeps that rotation for the whole search. A student greedy left off
+  the weekend has no rotation at all and so could take no weekend cell; the
+  pass now hands them one the first time it places them on a weekend, always
+  the emptier week of that cell. Re-rotating the already-placed is the
+  deferred half (§8).
 
 ---
 
@@ -128,6 +145,8 @@ Every accepted move must leave the touched student satisfying all of:
 | averaged minutes ≥ `min(seed minutes, target)` | pass invariant (the FCFS floor) |
 | days used ≥ `min(seed days, position minDays)` | pass invariant |
 | keeps ≥ 1 weekend cell if the seed had one | pass invariant |
+| one rotation per student, never a mixed A and B fortnight | pass invariant |
+| a rotation is only ever assigned to a student the seed left off the weekend | pass invariant |
 | cell capacity per rotation week stays hard | ledger |
 | deferred cells (SL weekend close) never newly added; vacating one is fine | move generation |
 | frozen students untouched entirely | excluded from selection |
@@ -203,11 +222,30 @@ beat what the prototype demonstrated, from the same FCFS seed:
 
 ## 8. Deferred, recorded so nobody rediscovers them
 
-1. **Cohort-flip moves** (re-choosing a student's A/B rotation during search).
-   The needier-week grading means weekend imbalance is where much of the
-   remaining 834 → ≤921 gap lives; some of that is reachable by rebalancing
-   rotations, the rest is genuinely missing second-week supply (a recruiting
-   or every-weekend-opt-in lever, not a solver lever).
+1. **Cohort-flip moves for students greedy already placed.** Half of the
+   rotation work shipped: a student greedy left off the weekend now gets a
+   rotation from the search (section 2). This is the other half, re-rotating
+   someone greedy already put on a week, and it is where the measurable seats
+   turned out to be.
+
+   Every weekend cell is graded on its needier rotation week, so a cell with
+   four A students and no B students scores one seat, not five. Measured on the
+   current production run, weekend cells grade 150 seats and would grade 168 if
+   A and B were rebalanced inside each cell without moving anyone to a different
+   shift. 18 seats, over 15 of the 54 weekend cells; the worst is dishwasher
+   Sat 2p-5p, capacity 5, holding 4 on A and 1 every-weekend, which scores 1 and
+   would score 3 split evenly.
+
+   That 18 is a loose upper bound. It ignores labor feasibility, and it prices
+   each cell alone when a flip moves a whole weekend at once, so cells
+   holding the same person are coupled. Real yield is some fraction of 18
+   against the 120 the pass already banks: an increment, not a second act.
+
+   The half that shipped is the standing warning against sizing this by
+   intuition. It was guessed here to be worth more than rebalancing, and
+   measured at zero seats. Whatever a flip cannot reach is genuinely missing
+   second-week supply, a recruiting or every-weekend-opt-in lever rather than a
+   solver one.
 2. **Multi-seed best-of chains.** An MRV-seeded chain beat the FCFS-seeded one
    by ~10 seats (834 vs 824), but its seed does not honor the FCFS hour
    entitlement by construction; taking it requires an explicit

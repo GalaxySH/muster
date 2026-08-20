@@ -560,3 +560,94 @@ describe("annealAssignments: deferred cells", () => {
     expect(afterLate).toBeLessThanOrEqual(seedLate);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Weekend rotations. Seeds are built by hand here rather than run through the
+// engine, so each case pins one starting state exactly: a student off the
+// weekend with no rotation, or one greedy already placed.
+// ---------------------------------------------------------------------------
+
+const row = (
+  studentEmail: string,
+  blockId: string,
+  day: Day,
+  cohort: Cohort = "weekday",
+): ScheduleAssignment => ({ studentEmail, blockId, day, cohort });
+
+describe("annealAssignments: students greedy left off the weekend", () => {
+  // Both reached their hours on weekdays, so neither is on a weekend and
+  // neither has a rotation. The weekend cell needs people on BOTH weeks to
+  // score anything, since it is graded on its needier week: one student on the
+  // A week leaves it at zero.
+  const blocks = [
+    block("wd", "ca", "weekday", "8a", "4p", 5),
+    block("we", "ca", "weekend", "8a", "12p", 1),
+  ];
+  const picks = [sel("wd", "mon"), sel("wd", "tue"), sel("we", "sat")];
+  const students = [
+    student("a@w", { submittedAt: at(0), desiredHours: 10, selection: picks }),
+    student("b@w", { submittedAt: at(1), desiredHours: 10, selection: picks }),
+  ];
+  const seed = students.flatMap((s) => [row(s.email, "wd", "mon"), row(s.email, "wd", "tue")]);
+  const result = annealAssignments(seed, students, POSITIONS, blocks, withAnneal());
+  const weekendRows = (rows: readonly ScheduleAssignment[]) =>
+    rows.filter((r) => r.blockId === "we");
+
+  it("puts them on the weekend at all, which no rotation would have allowed", () => {
+    expect(weekendRows(seed)).toHaveLength(0);
+    expect(weekendRows(result.assignments)).toHaveLength(2);
+  });
+
+  it("splits them across the two weeks, so the cell actually fills", () => {
+    expect(new Set(weekendRows(result.assignments).map((r) => r.cohort))).toEqual(
+      new Set<Cohort>(["a", "b"]),
+    );
+    expect(filledOfTarget(seed, blocks)).toBe(4);
+    expect(filledOfTarget(result.assignments, blocks)).toBe(5);
+    expect(result.gainedSeats).toBe(1);
+  });
+
+  it("adds no labor violation the independent validator can find", () => {
+    expect(validate(result.assignments, blocks).hard).toBe(0);
+  });
+
+  it("carries the rotation it handed out into the run report", () => {
+    const run = generateAssignments({
+      students,
+      positions: POSITIONS,
+      blocks,
+      previous: [],
+      params: withAnneal(),
+    });
+    const rotated = run.report.students.filter((s) => s.cohort !== null);
+    expect(rotated.map((s) => s.email).sort()).toEqual(["a@w", "b@w"]);
+  });
+});
+
+describe("annealAssignments: rotations greedy already chose", () => {
+  // Two students on the same week of a two-seat cell, so it grades zero and
+  // moving either one to the other week would be worth a seat. The pass leaves
+  // them alone: re-rotating a student greedy placed is deferred work
+  // (docs/generator-anneal-plan.md section 8). This pins the boundary.
+  const blocks = [
+    block("wd", "ca", "weekday", "8a", "4p", 5),
+    block("we", "ca", "weekend", "8a", "12p", 2),
+  ];
+  const picks = [sel("wd", "mon"), sel("wd", "tue"), sel("we", "sat")];
+  const students = [
+    student("a@w", { submittedAt: at(0), desiredHours: 10, selection: picks }),
+    student("b@w", { submittedAt: at(1), desiredHours: 10, selection: picks }),
+  ];
+  const seed = students.flatMap((s) => [
+    row(s.email, "wd", "mon"),
+    row(s.email, "wd", "tue"),
+    row(s.email, "we", "sat", "a"),
+  ]);
+
+  it("leaves both on the week they were placed on", () => {
+    const result = annealAssignments(seed, students, POSITIONS, blocks, withAnneal());
+    const cohorts = result.assignments.filter((r) => r.blockId === "we").map((r) => r.cohort);
+    expect(cohorts).toEqual(["a", "a"]);
+    expect(filledOfTarget(result.assignments, blocks)).toBe(filledOfTarget(seed, blocks));
+  });
+});

@@ -1598,9 +1598,21 @@ and setting the knob back to 0 is the kill switch.
   (`mulberry32`, seed and rounds both snapshotted into `report.anneal`). Wall
   time may vary by machine; the schedule may not, or the diff view, restore, and
   the tuning harness lose their footing.
-- **Cohorts are fixed** to the seed's rotation for the whole search, so a student
-  with no weekend row takes no weekend cell. Cohort-flip moves are the known next
-  gain and are deferred in the plan's §8.
+- **Rotations are half open.** A student greedy already placed on a weekend keeps
+  that rotation for the whole search. A student greedy left off the weekend has
+  no rotation, and so could take no weekend cell at all; the pass hands those
+  students one the first time it places them on a weekend, always the emptier
+  week of that cell (`SeatLedger.emptierWeek`). Which week never changes what
+  `labor.ts` says, by its own symmetry lemma, so the choice is purely about
+  capacity. The best-seen snapshot carries each student's rotation alongside
+  their cells, since the two can now disagree with wherever the walk ended.
+  Re-rotating a student greedy already placed is the deferred half (plan §8);
+  it holds an 18-seat upper bound on the current run, where the half that
+  shipped measured at zero seats and instead cut the students with no weekend
+  at all from 9.2 to 5.2.
+- **The run report's per-student rotation is read off the final rows**, not the
+  greedy pass's own state, which the pass can now leave stale. Same reason the
+  report already rebuilds per-student coverage from the final rows.
 - **`targetMinutes` moved from `engine.ts` to `seats.ts`** (re-exported, so
   callers are unchanged): the passes that run after placement need a student's
   target without importing the engine that calls them.

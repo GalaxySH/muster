@@ -1483,10 +1483,23 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   target seats). `domain/scheduling/anneal.ts` adds a third pass that can move
   one student off a cell so another can take it, running after the improvement
   pass and before fill-ins. On the 2026-08-20 production snapshot it took graded
-  fill from **704 of 1094 target seats to 823** (64.35% to 75.23%) while cutting
-  students left under their position's hour floor from **34 to 21**, students
-  short of target from 69 to 59, and unworked shift instances from 52 to 45,
-  with zero hard labor violations either way and 1.6s of wall time.
+  fill from **704 of 1094 target seats to 824** (64.35% to 75.32%) while cutting
+  students left under their position's hour floor from **34 to 22**, students
+  short of target from 69 to 58, students with no weekend day at all from 11 to
+  6, and unworked shift instances from 52 to 46, with zero hard labor violations
+  either way and under a second of wall time.
+
+  **Weekend rotations, half opened.** A student the greedy pass never puts on a
+  weekend has no A/B rotation, and without one could take no weekend cell at
+  all, so the optimizer now hands those students a rotation the first time it
+  places them on a weekend, always the emptier of the two weeks. A student
+  greedy already placed keeps the rotation greedy chose. Measured on its own
+  across six seeds this moves the seat count not at all (a weekend cell is
+  graded on its needier week, so one added person rarely raises it) but cuts
+  the students with no weekend from 9.2 to 5.2 on average and those under their
+  hour floor from 23.8 to 21.8, on every seed. The run report's per-student
+  rotation is now read off the final rows rather than the greedy pass's own
+  state, so `/admin/schedule` shows the rotation a student actually ended on.
 
   **What early responders keep.** FCFS no longer decides which cells someone
   holds. It decides that they are served first and therefore reach their hours:
