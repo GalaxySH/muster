@@ -9,9 +9,10 @@
  * generation can be restored later and nothing is ever lost.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import type { Database } from "@/lib/db/client";
 import {
   positions,
   scheduleAssignments,
@@ -36,6 +37,7 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import { staleRunIds } from "@/lib/domain/scheduling/retention";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
 import {
@@ -63,8 +65,36 @@ import {
 } from "./data";
 import { lateStartWarnings } from "./run-warnings";
 
-/** Superseded runs kept for restore before pruning. */
+/** A drizzle transaction handle. */
+type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/** Superseded runs kept for restore before pruning; pinned runs bypass this entirely. */
 const RUN_RETENTION = 10;
+
+/**
+ * Deletes runs `staleRunIds` (domain/scheduling/retention.ts) marks stale:
+ * beyond the retention count on the restore-or-generate clock, excluding the
+ * current run and any pinned run. Shared by generation and by saving a
+ * snapshot, since both add a row that can push an old one out of the window.
+ */
+async function pruneStaleRuns(tx: DbTx): Promise<void> {
+  const allRuns = await tx
+    .select({
+      id: scheduleRuns.id,
+      status: scheduleRuns.status,
+      pinned: scheduleRuns.pinned,
+      generatedAt: scheduleRuns.generatedAt,
+      restoredAt: scheduleRuns.restoredAt,
+    })
+    .from(scheduleRuns);
+  const stale = staleRunIds(
+    allRuns.map((r) => ({ ...r, rankedAt: r.restoredAt ?? r.generatedAt })),
+    RUN_RETENTION,
+  );
+  if (stale.length > 0) {
+    await tx.delete(scheduleRuns).where(inArray(scheduleRuns.id, stale));
+  }
+}
 
 /**
  * The fall 2026 semester start, and the late-start threshold for a position
@@ -467,24 +497,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     for (let i = 0; i < rows.length; i += 500) {
       await tx.insert(scheduleAssignments).values(rows.slice(i, i + 500));
     }
-    // Retention ranks by restore-or-generate time, so a restored run moves to
-    // the front of the queue; the current run is never pruned regardless.
-    const allRuns = await tx
-      .select({ id: scheduleRuns.id, status: scheduleRuns.status })
-      .from(scheduleRuns)
-      .orderBy(
-        desc(sql`coalesce(${scheduleRuns.restoredAt}, ${scheduleRuns.generatedAt})`),
-        desc(scheduleRuns.id),
-      );
-    const stale = allRuns.slice(RUN_RETENTION).filter((r) => r.status !== "current");
-    if (stale.length > 0) {
-      await tx.delete(scheduleRuns).where(
-        inArray(
-          scheduleRuns.id,
-          stale.map((r) => r.id),
-        ),
-      );
-    }
+    await pruneStaleRuns(tx);
   });
 
   revalidatePath("/admin/schedule");
@@ -545,6 +558,82 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
   revalidatePath("/admin");
   await trySyncSheet(SCHEDULE_SHEET, 0);
   return { ok: true };
+}
+
+export interface SetPinnedResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Pin or unpin a run from the run history table. Pinning takes it out of the
+ * retention count entirely (`staleRunIds`), so it survives generations and
+ * saves indefinitely until unpinned; it never disturbs which run is current.
+ */
+export async function setRunPinned(runId: string, pinned: boolean): Promise<SetPinnedResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const [result] = await db.update(scheduleRuns).set({ pinned }).where(eq(scheduleRuns.id, runId));
+  if (result.affectedRows === 0) return { ok: false, error: "That run no longer exists." };
+
+  revalidatePath("/admin/schedule");
+  return { ok: true };
+}
+
+export interface SaveSnapshotResult {
+  ok: boolean;
+  error?: string;
+  assignments?: number;
+}
+
+/**
+ * Copy the current run into a new, superseded run row without regenerating:
+ * a manual checkpoint of the schedule exactly as it stands, hand edits
+ * included, since manual edits already mutate the current run's rows in
+ * place. The live current run and its id are never touched, so this cannot
+ * disturb what is on screen or in the Muster Schedule sheet.
+ */
+export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  const current = await loadCurrentRunRow();
+  if (!current) return { ok: false, error: "No schedule has been generated yet." };
+
+  const runId = randomUUID();
+  let count = 0;
+  await db.transaction(async (tx) => {
+    await tx.insert(scheduleRuns).values({
+      id: runId,
+      generatedBy: gate.email,
+      status: "superseded",
+      scopeJson: current.scopeJson,
+      summaryJson: current.summaryJson,
+    });
+    const rows = await tx
+      .select({
+        studentEmail: scheduleAssignments.studentEmail,
+        shiftBlockId: scheduleAssignments.shiftBlockId,
+        day: scheduleAssignments.day,
+        cohort: scheduleAssignments.cohort,
+        source: scheduleAssignments.source,
+      })
+      .from(scheduleAssignments)
+      .where(eq(scheduleAssignments.runId, current.id));
+    count = rows.length;
+    for (let i = 0; i < rows.length; i += 500) {
+      await tx
+        .insert(scheduleAssignments)
+        .values(rows.slice(i, i + 500).map((r) => ({ ...r, runId })));
+    }
+    await pruneStaleRuns(tx);
+  });
+
+  revalidatePath("/admin/schedule");
+  return { ok: true, assignments: count };
 }
 
 export interface RebuildScheduleSheetResult {

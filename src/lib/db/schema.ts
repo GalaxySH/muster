@@ -457,6 +457,8 @@ export const scheduleRuns = mysqlTable("schedule_runs", {
    * marked scheduled without the engine knowing scoping exists.
    */
   scopeJson: varchar("scope_json", { length: 1024 }),
+  /** Never counts against retention (see domain/scheduling/retention.ts). */
+  pinned: boolean("pinned").notNull().default(false),
 });
 
 /**

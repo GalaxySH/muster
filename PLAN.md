@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.18
+- **Version:** 1.19
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1475,6 +1475,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.19 (2026-08-20)** — **Pinnable runs and manual snapshots.** Run history
+  on `/admin/schedule` gained two admin controls. **Pin** (`schedule_runs.pinned`,
+  migration 0030) excludes a run from the 10-run retention count entirely, so
+  a run worth keeping forever (a scoped whole-roster generation, a run that
+  matched what actually got written into W2W) survives being superseded and
+  aged out; unpinning returns it to the normal count on the next prune. **Save
+  run** copies the current run's rows, hand edits included, into a new
+  non-current history entry without invoking the generator, so an admin can
+  checkpoint progress on the live schedule at any point without disturbing
+  it. The shared ranking/pin/current-exclusion logic
+  (`domain/scheduling/retention.ts`, `staleRunIds`) is now the single source
+  both generation and saving prune against.
 - **1.18 (2026-08-20)** — **Popup polish and zebra tables.** The student
   schedule popup's grids shrink-wrap again: as flex items (in the card and
   again in the modal panel) they were being stretched across the full width,

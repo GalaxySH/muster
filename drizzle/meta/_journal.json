@@ -211,6 +211,13 @@
       "when": 1786385139894,
       "tag": "0029_lethal_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1787248741895,
+      "tag": "0030_swift_steve_rogers",
+      "breakpoints": true
     }
   ]
 }

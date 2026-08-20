@@ -1337,6 +1337,32 @@ The generator itself, layered exactly like the rest of the app:
   GET form defaulting current vs previous, per-student `<details>` roll-ups,
   the mismatch list — rendered standalone when only one run exists).
 
+**Pinning and manual snapshots (v1.19).** Migration 0030 adds
+`schedule_runs.pinned` (boolean, default false). `domain/scheduling/retention.ts`
+(`staleRunIds`, pure, TDD) is the ranking logic: newest first by
+`coalesce(restoredAt, generatedAt)`, tied by id descending, with the current
+run always excluded and any pinned run excluded from the ranking pool
+entirely (a pin removes a run from competition for a retention slot rather
+than granting it a protected one, so pinning can never displace an unpinned
+run's spot). `schedule/actions.ts`'s local `pruneStaleRuns(tx)` wraps the
+select/delete plumbing around it and is called from both `generateSchedule`
+and the new `saveScheduleRunSnapshot`, so the two never disagree about what's
+stale. `setRunPinned(runId, pinned)` is a plain status-independent toggle
+(allowed on the current run too, so an admin can pin the moment it's
+generated). `saveScheduleRunSnapshot()` copies the current run's row and its
+`schedule_assignments` (source and cohort included, so manual edits keep
+their `manual` tag) into a new `status: "superseded"` run, `summaryJson`/
+`scopeJson` copied verbatim from the current row (same staleness contract the
+current run's own report already has relative to hand edits, see 1.17
+above) — it never touches the current run's id, so it cannot disturb what's
+on screen or synced to the `Muster Schedule` sheet, and needs no `revalidatePath("/admin")`
+or `trySyncSheet` call for that reason. `PinRunButton` (run history's new
+Pinned column, every row including current) and `SaveRunButton` (next to
+`GenerateScheduleButton` on the schedule panel) are the two new controls,
+styled after `RestoreRunButton` and `GenerateScheduleButton` respectively —
+neither needs a confirm step, since both actions are purely additive/
+reversible and never touch the live current run.
+
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
 *persisted* protection concept. Frozen students' rows carry forward verbatim
 through every run and consume capacity first; marking scheduled still never
