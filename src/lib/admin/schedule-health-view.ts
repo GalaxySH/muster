@@ -9,7 +9,10 @@
  *
  * Tones are the alarm rules the plan settled on: a floor running over a fifth
  * of its staffed time with no returner is danger, over a tenth is a warning,
- * and ANY minute of a new shift lead alone is danger whatever its share.
+ * and ANY minute of a new shift lead alone is danger whatever its share. A
+ * cover row therefore carries two different figures: total coverage, which the
+ * bar draws and which is never an alarm on its own, and the returner share
+ * beside it, which is what the tone and the pill read.
  */
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { formatTime } from "@/lib/domain/time";
@@ -67,9 +70,11 @@ export interface HealthPositionRow {
 export interface HealthFragilityRow {
   key: string;
   label: string;
-  share: string;
-  /** Whole percent for the bar, or null when the floor never runs. */
-  sharePercent: number | null;
+  /** Staffed share of the floor's scheduled open time: the figure and the bar. */
+  coverage: string;
+  /** Whole percent for the bar, or null when nothing is scheduled to run. */
+  coveragePercent: number | null;
+  /** The returner statistic beside it, which is what the tone reads. */
   detail: string;
   tone: HealthTone;
   /** One word beside the row. */
@@ -121,7 +126,7 @@ export function buildScheduleHealthView(
   stats: RunStats,
   positionNames: ReadonlyMap<string, string>,
 ): ScheduleHealthView {
-  const { fairness, stretch, fragility } = stats;
+  const { fairness, stretch, fragility, shifts } = stats;
   const nameOf = (id: string) => positionNames.get(id) ?? id;
   const groupLabel = (group: FragilityGroup) =>
     group.positionIds.length === 0 ? "No position" : group.positionIds.map(nameOf).join(" + ");
@@ -186,6 +191,17 @@ export function buildScheduleHealthView(
             ? "of lead time with no veteran on"
             : "a veteran lead always overlaps",
       tone: leadShare !== null && leadShare > 0 ? "danger" : null,
+    },
+    {
+      label: "Uncovered shifts",
+      value: shifts.uncoveredShare === null ? "n/a" : percentText(shifts.uncoveredShare),
+      sub:
+        shifts.total === 0
+          ? "no shifts are set up"
+          : `${shifts.uncovered} of ${plural(shifts.total, "shift", "shifts")} ${shifts.uncovered === 1 ? "has" : "have"} nobody on`,
+      // Informational on purpose: the target-based warnings on the coverage
+      // grids own the alarm about seats nobody filled.
+      tone: null,
     },
   ];
 
@@ -290,6 +306,12 @@ export function buildScheduleHealthView(
   };
 }
 
+/**
+ * The figure and the bar are total coverage: how much of the floor's scheduled
+ * open time has anybody on it. The returner statistic moves to the detail
+ * column, and it alone decides the tone, so a fully staffed floor with nobody
+ * experienced on it still reads as fragile.
+ */
 function fragilityRow(group: FragilityGroup, label: string, isLead = false): HealthFragilityRow {
   // Any lead minute without a veteran is an alarm, however small the share.
   const tone: HealthTone =
@@ -297,13 +319,17 @@ function fragilityRow(group: FragilityGroup, label: string, isLead = false): Hea
   return {
     key: group.key,
     label,
-    share: group.soloShare === null ? "n/a" : percentText(group.soloShare),
-    sharePercent: group.soloShare === null ? null : Math.round(group.soloShare * 100),
+    coverage: group.coverageShare === null ? "n/a" : percentText(group.coverageShare),
+    coveragePercent: group.coverageShare === null ? null : Math.round(group.coverageShare * 100),
     // A share, never an hour count: the timelines behind these are one picture
     // per distinct staffing day, so a weekday floor is measured once while the
     // people on it work it twice. "4h of 4h" would read as a calendar total.
     detail:
-      group.soloShare === null ? "nobody is on" : `${percentText(group.soloShare)} of staffed time`,
+      group.soloShare === null
+        ? "nobody is on"
+        : isLead
+          ? `${percentText(group.soloShare)} of lead time with no veteran on`
+          : `${percentText(group.soloShare)} of staffed time with no returner`,
     tone,
     pill: group.operatingMinutes === 0 ? "" : PILL[tone ?? "ok"],
   };

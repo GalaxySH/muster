@@ -1581,6 +1581,29 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
   It now reads the day with local getters, the same shape as the late-start fix
   above and the `localDay` fix in `run-warnings.ts`.
+  **Three follow-ups on the schedule surfaces shipped with it.** (1) The Cover
+  table's **bars now draw total coverage**, the staffed share of each floor's
+  scheduled open time, with the no-returner share beside them as the right-hand
+  column: a bar whose width means "alarm" cannot also mean "staffed", and the
+  first question about a floor is whether anybody is on it at all. The tones and
+  pills still read the returner share alone, so none of the alarm rules moved.
+  `FragilityGroup` gained `openMinutes` and `coverageShare`, and
+  `RUN_STATS_VERSION` is now **2**: runs stamped under 1 show the quiet "update
+  the schedule" line until they are regenerated, which is exactly what the
+  version gate is for. A new **Uncovered shifts** tile counts shift instances
+  nobody works (a weekday block is five, a weekend block is four, one per weekend
+  day per rotation week), which is the measure the fragility shares structurally
+  cannot express: a floor nobody is on has no operating time to take a share of.
+  (2) The coverage grid's two data modes are now an explicit **Scheduled /
+  Availability switch** on the legend line (`?grid=`) instead of being chosen for
+  the reader by whether a run exists. Scheduled stays the default once one does,
+  availability is all there is before, and the two grid tiles follow the switch
+  while "Responses in" does not. (3) An **over maximum** flag mirrors
+  below-minimum for students scheduled past their weekly hour cap (20h
+  international, 30h otherwise). The cap is a policy target and not a labor rule,
+  so the engine may overshoot it and a hand edit certainly can; unlike every
+  other problem group this one **includes frozen students**, because an edit to a
+  kept row is the likeliest way somebody lands over it.
   Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
   A freshman event that removes every first-year student for part of one specific
   day cannot constrain a dateless weekly template, and deciding how a dated

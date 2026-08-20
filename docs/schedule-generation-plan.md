@@ -343,7 +343,12 @@ and people sharing an
 identical set of (day, block, rotation) cells; the alphabetical-rank against
 hours correlation); *stretch* (cyclic consecutive-days histogram, per-cohort
 split, days-per-fortnight histogram); *per-position* staffing, targeted-cell
-fill, and span and load figures; *perDay* over all 14 slots; and *fragility*.
+fill, and span and load figures; *perDay* over all 14 slots; *fragility*; and
+*shifts*, which counts shift **instances** rather than minutes (one per weekday
+block per weekday, four per weekend block, one for each weekend day in each
+rotation week) and reports how many of them nobody works at all. That last one
+exists because a floor with nobody on it has no operating minutes for a
+fragility share to be a share of.
 
 Two denominators run through the module and they differ on purpose. Anything
 counted per day runs over all **fourteen** slots, so a weekday row counts in both
@@ -352,7 +357,10 @@ halves exactly as the calendar works. The fragility timelines run over the
 identical row, plus one per weekend day per rotation week, which really are
 different people. Counting a weekday twice would only scale a share by a
 constant; counting each distinct picture once is what "share of operating time"
-means.
+means. A group's `openMinutes` are measured over those same nine pictures but
+off the **block spans** rather than the seats, as a union so two overlapping
+blocks open the floor once, which makes `coverageShare` (operating over open)
+the staffed share of the time the shifts were scheduled to run.
 
 **Fragility pool semantics.** A fragility group measures the share of a floor's
 operating minutes covered only by new people with no returner overlapping.
@@ -374,8 +382,12 @@ nothing else: bar widths arrive as whole percents and every figure as the string
 that goes on screen. Tones are the alarm rules: a floor over
 `SOLO_SHARE_DANGER` (20%) of its staffed time with no returner is danger, over
 `SOLO_SHARE_WARNING` (10%) is a warning, and any `newLeadSolo` at all is danger.
-Bars are hand-rolled divs; no chart library. A run stamped under a different
-`RUN_STATS_VERSION`, or a run generated before stats existed, is passed over
+A Cover row separates the two things it knows: the bold figure and the bar are
+`coverageShare`, drawn in the neutral color because a width that means coverage
+cannot also mean alarm, and the returner share sits beside them as the detail
+the tone and pill are read from. Bars are hand-rolled divs; no chart library. A
+run stamped under a different `RUN_STATS_VERSION` (now **2**, since the cover
+figures grew), or a run generated before stats existed, is passed over
 rather than parsed hopefully, and the section hides behind a short note: a
 rolled-back deploy meeting a newer run must cost the health section, not the
 whole page.

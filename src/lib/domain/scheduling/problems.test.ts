@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import { parseTime } from "../time";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { generateAssignments } from "./engine";
-import { isBelowMinHours, problemGroups, type ProblemKind, type ProblemLookup } from "./problems";
+import {
+  isBelowMinHours,
+  isOverMaxHours,
+  problemGroups,
+  type ProblemKind,
+  type ProblemLookup,
+} from "./problems";
 import { EPSILON_MINUTES } from "./seats";
 import type {
   EngineReport,
@@ -74,8 +80,14 @@ function lookup(
   names: Record<string, string> = {},
   minDays: (email: string) => number | null = () => 2,
   minHours: (email: string) => number | null = () => CA.minHours,
+  international: (email: string) => boolean = () => false,
 ): ProblemLookup {
-  return { nameOf: (e) => names[e] ?? e, minDaysOf: minDays, minHoursOf: minHours };
+  return {
+    nameOf: (e) => names[e] ?? e,
+    minDaysOf: minDays,
+    minHoursOf: minHours,
+    internationalOf: international,
+  };
 }
 
 const sizeOf = (groups: ReturnType<typeof problemGroups>, kind: ProblemKind) =>
@@ -92,6 +104,34 @@ describe("isBelowMinHours", () => {
 
   it("never flags a student whose position is unknown", () => {
     expect(isBelowMinHours(0, null)).toBe(false);
+  });
+});
+
+describe("isOverMaxHours", () => {
+  // 30h domestic and 20h international, in minutes.
+  const DOMESTIC = 30 * 60;
+  const INTERNATIONAL = 20 * 60;
+
+  it("leaves a student sitting exactly on their cap alone", () => {
+    expect(isOverMaxHours(DOMESTIC, false)).toBe(false);
+    expect(isOverMaxHours(INTERNATIONAL, true)).toBe(false);
+  });
+
+  it("compares against the cap with the same rounding tolerance", () => {
+    // The mirror of the floor rule: a hair over the cap is the cap.
+    expect(isOverMaxHours(DOMESTIC + EPSILON_MINUTES / 2, false)).toBe(false);
+    expect(isOverMaxHours(DOMESTIC + 2 * EPSILON_MINUTES, false)).toBe(true);
+  });
+
+  it("flags a real overshoot", () => {
+    expect(isOverMaxHours(DOMESTIC + 60, false)).toBe(true);
+    expect(isOverMaxHours(DOMESTIC - 60, false)).toBe(false);
+  });
+
+  it("holds an international student to the lower cap", () => {
+    // 25h is over the 20h international cap and well under the 30h one.
+    expect(isOverMaxHours(25 * 60, true)).toBe(true);
+    expect(isOverMaxHours(25 * 60, false)).toBe(false);
   });
 });
 
@@ -227,5 +267,60 @@ describe("problemGroups", () => {
 
   it("omits every group on a clean report", () => {
     expect(problemGroups(report({ students: [row("ok@w")] }), lookup())).toEqual([]);
+  });
+});
+
+describe("the over-max-hours group", () => {
+  it("takes the student past their cap and leaves the one sitting on it", () => {
+    const rep = report({
+      students: [
+        row("over@w", { assignedMinutes: 31 * 60 }),
+        row("at@w", { assignedMinutes: 1800 }),
+      ],
+    });
+    const group = problemGroups(rep, lookup()).find((g) => g.kind === "over-max-hours")!;
+    expect(group.students).toEqual([{ email: "over@w", name: "over@w" }]);
+    expect(group.label).toBe("1 student is over their weekly hour maximum");
+  });
+
+  it("holds an international student to the lower cap", () => {
+    const rep = report({ students: [row("intl@w", { assignedMinutes: 25 * 60 })] });
+    const intl = lookup(
+      {},
+      () => 2,
+      () => 10,
+      () => true,
+    );
+    expect(sizeOf(problemGroups(rep, intl), "over-max-hours")).toBe(1);
+    expect(sizeOf(problemGroups(rep, lookup()), "over-max-hours")).toBe(0);
+  });
+
+  it("includes frozen students, unlike every other group here", () => {
+    // The deliberate asymmetry: a hand edit on a kept row is the likeliest way
+    // somebody lands over the cap, so the one group that would go quiet on that
+    // case does not. Compare the frozen student above, who is in no group.
+    const rep = report({ students: [row("kept@w", { assignedMinutes: 40 * 60, frozen: true })] });
+    const groups = problemGroups(rep, lookup());
+    expect(groups.map((g) => g.kind)).toEqual(["over-max-hours"]);
+    expect(groups[0]!.students).toEqual([{ email: "kept@w", name: "kept@w" }]);
+  });
+
+  it("sits between the two minimum groups in the fixed order", () => {
+    const rep = report({
+      students: [
+        row("zed@w", { assignedMinutes: 0, daysUsed: 0 }),
+        row("over@w", { assignedMinutes: 31 * 60 }),
+      ],
+      droppedStudents: ["gone@w"],
+      skippedNoPosition: ["skip@w"],
+    });
+    expect(problemGroups(rep, lookup()).map((g) => g.kind)).toEqual([
+      "dropped",
+      "no-position",
+      "short-of-hours",
+      "below-min-hours",
+      "over-max-hours",
+      "below-min-days",
+    ]);
   });
 });

@@ -38,6 +38,7 @@ import {
 } from "@/lib/domain/scheduling/diff";
 import {
   isBelowMinHours,
+  isOverMaxHours,
   problemGroups,
   type ProblemGroup,
 } from "@/lib/domain/scheduling/problems";
@@ -277,6 +278,8 @@ export interface ScheduleStudentRow extends StudentScheduleReport {
   frozenReason: FrozenReason | null;
   /** Assigned under their position's hour floor, so the run needs hand filling. */
   belowMinHours: boolean;
+  /** Assigned over their own weekly hour cap: 20h international, 30h otherwise. */
+  overMaxHours: boolean;
   /** Set when they were hired after their position's shifts resume. */
   lateStart: { expectedStart: string } | null;
   cells: AssignedCell[];
@@ -425,6 +428,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       positionName: string | null;
       minDays: number | null;
       minHours: number | null;
+      international: boolean;
       scheduled: boolean;
     }
   >();
@@ -437,6 +441,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionName: positions.name,
         minDays: positions.minDays,
         minHours: positions.minHours,
+        international: students.international,
         scheduled: submissions.scheduled,
       })
       .from(students)
@@ -450,6 +455,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         positionName: r.positionName,
         minDays: r.minDays,
         minHours: r.minHours,
+        international: r.international,
         scheduled: r.scheduled ?? false,
       });
     }
@@ -480,6 +486,9 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       // Same predicate as the below-min-hours problem group, so the pills and
       // the warning line always count the same people.
       belowMinHours: !s.frozen && isBelowMinHours(s.assignedMinutes, minHours),
+      // Frozen rows count here, unlike belowMinHours above: a hand edit on a
+      // kept row is the likeliest way somebody ends up over their cap.
+      overMaxHours: isOverMaxHours(s.assignedMinutes, info?.international ?? false),
       lateStart: lateStart ? { expectedStart: lateStart.expectedStart } : null,
       cells: cellsByStudent.get(s.email) ?? [],
     };
@@ -502,6 +511,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
       minDaysOf: (email) => infoByEmail.get(email)?.minDays ?? null,
       minHoursOf: (email) => infoByEmail.get(email)?.minHours ?? null,
+      internationalOf: (email) => infoByEmail.get(email)?.international ?? false,
     }),
     // Read time, not generation time: the rules are re-checked against the
     // run's own params every load, so hand edits made since are judged too.

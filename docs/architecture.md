@@ -1242,7 +1242,9 @@ The generator itself, layered exactly like the rest of the app:
   split A/B, and per-student rows joining live names/positions/scheduled onto
   the run report). `domain/coverage.ts` grew `assignedCellCount` (weekend cells
   grade on the needier week) and `summarizeAssignedCoverage` so the page's
-  totals switch from selection supply to assigned seats once a run exists.
+  totals switch from selection supply to assigned seats once a run exists
+  (since 1.15 the `?grid=` switch can put the grids and those two totals back on
+  supply; everything else on the page keeps reading the run).
 - **UI** `/admin/schedule`: the run panel (`GenerateScheduleButton`, a small
   client island with a two-step confirm), the coverage grid re-used with
   assigned counts (weekend `A·B`, supply in the tooltip), the per-student
@@ -1435,11 +1437,15 @@ version; this is the seam map.
   maxima, over-cap counts, modal-start share and `welded`, `lockstep`,
   alphabetical-rank against hours correlation), stretch (cyclic consecutive-days
   and days-per-fortnight histograms, per-cohort split), per-position load, 14
-  `perDay` entries, and coverage fragility. It imports `slotIndices` rather than
-  mapping the fortnight a third time; the validator is the one sanctioned
-  duplicate. Two denominators differ on purpose: per-day figures run over all 14
-  slots, fragility over the 9 distinct staffing pictures (one per weekday, one
-  per weekend day per rotation week). Everything is a count, share, or
+  `perDay` entries, coverage fragility, and `shifts` (instances nobody works at
+  all: one per weekday block per weekday, four per weekend block). It imports
+  `slotIndices` rather than mapping the fortnight a third time; the validator is
+  the one sanctioned duplicate. Two denominators differ on purpose: per-day
+  figures run over all 14 slots, fragility over the 9 distinct staffing pictures
+  (one per weekday, one per weekend day per rotation week). Each fragility group
+  measures `openMinutes` over those same pictures off its blocks' spans, so its
+  `coverageShare` is the staffed share of scheduled open time. Everything is a
+  count, share, or
   distribution except `stretch.overLimit`, which is judged against the run's own
   `maxConsecutiveDays` and stores it as `overLimitAt`.
 - **`schedule/run-warnings.ts`** is the pure seam between the stored run and its
@@ -1458,7 +1464,10 @@ version; this is the seam map.
   `RUN_STATS_VERSION`, so an older or newer snapshot costs the section and not
   the page. Tones: a floor over `SOLO_SHARE_DANGER` (20%) of its staffed time
   with no returner is danger, over `SOLO_SHARE_WARNING` (10%) is a warning, and
-  any `newLeadSolo` minute at all is danger. Hand-rolled div bars, no chart
+  any `newLeadSolo` minute at all is danger. A Cover row shows `coverageShare` as
+  its figure and bar, always in the neutral color since a bar whose width means
+  coverage cannot also mean alarm, and carries the returner share beside it as
+  the detail the tone and pill are read from. Hand-rolled div bars, no chart
   library.
 
 Wiring: `engine.ts` filters candidates through `candidateAllowed` and climbs the
@@ -1468,9 +1477,12 @@ double pass (deferred exclusion stays outermost), applies the
 final ties by `byHashedEmail`; `improve.ts` uses the same predicate as a filter
 and never as a score; `schedule/manual.ts` warns and never blocks;
 `domain/scheduling/problems.ts` gained a `below-min-hours` group mirroring the
-engine counter; `data.ts` `loadScheduleForRun` runs the validator against the
-run's snapshotted params and extends `ScheduleStudentRow` with `belowMinHours`
-and `lateStart`; `components/admin/ScheduleHealth.tsx` renders the view model.
+engine counter, and an `over-max-hours` group with no counter behind it that
+deliberately includes frozen students, since a hand edit to a kept row is the
+likeliest way somebody passes their hour cap; `data.ts` `loadScheduleForRun` runs
+the validator against the run's snapshotted params and extends
+`ScheduleStudentRow` with `belowMinHours`, `overMaxHours` and `lateStart`;
+`components/admin/ScheduleHealth.tsx` renders the view model.
 Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
 ## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)

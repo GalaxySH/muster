@@ -23,6 +23,11 @@
  *   plus one per weekend day per rotation week (those really are different
  *   people). Counting a weekday twice would only scale a share by a constant;
  *   counting each distinct picture once is what "share of operating time" means.
+ *   A group's OPEN minutes are measured over those same nine pictures, off the
+ *   block spans rather than the seats, so `coverageShare` compares staffed time
+ *   against the time the shifts were scheduled to run. `shifts` counts the same
+ *   pictures as whole instances instead of minutes: one per (block, weekday) and
+ *   four per weekend block, which is a shift as a scheduler counts one.
  *
  * The distributions and histograms are parameter-free: run lengths are counted
  * as they fall, so the shape of a run reads the same whatever the knobs were.
@@ -55,8 +60,12 @@ import type { Cohort, ScheduleAssignment } from "./types";
 const FORTNIGHT_SLOTS = 14;
 const MINUTES_PER_DAY = 24 * 60;
 
-/** Bump when a field's meaning changes, so a stored snapshot stays readable. */
-export const RUN_STATS_VERSION = 1;
+/**
+ * Bump when a field's meaning changes, so a stored snapshot stays readable.
+ * Version 2 grew the cover figures: every `FragilityGroup` now carries
+ * `openMinutes` and `coverageShare`, and `shifts` counts covered instances.
+ */
+export const RUN_STATS_VERSION = 2;
 
 /** One student as the statistics see them: flags only, no availability. */
 export interface StatsStudent {
@@ -213,17 +222,45 @@ export interface PerDayStats {
   minutes: number;
 }
 
-/** One floor's cover: how much of its operating time has no returner on it. */
+/**
+ * One floor's cover: how much of its scheduled open time is staffed at all, and
+ * how much of that staffed time has no returner on it.
+ */
 export interface FragilityGroup {
   /** Pooled positions join with "+", e.g. "cashier+culinary-assistant". */
   key: string;
   positionIds: string[];
+  /**
+   * Minutes the floor's BLOCKS are scheduled to run, across the same nine
+   * staffing pictures, counted as the union of their spans so two overlapping
+   * blocks open the floor once rather than twice.
+   */
+  openMinutes: number;
   /** Minutes with at least one person on, across the nine staffing pictures. */
   operatingMinutes: number;
-  /** Of those, minutes with only new people on and no returner overlapping. */
+  /**
+   * operatingMinutes / openMinutes, or null when nothing is scheduled to run.
+   * Staffing comes off block spans, so this cannot exceed 1; a group with
+   * seats but no open minutes would mean rows carried on retired blocks, and
+   * reads as null rather than being clamped into a number that looks measured.
+   */
+  coverageShare: number | null;
+  /** Of the operating minutes, those with only new people on and no returner overlapping. */
   soloMinutes: number;
   /** soloMinutes / operatingMinutes, or null when nothing operates. */
   soloShare: number | null;
+}
+
+/**
+ * Shifts as a scheduler counts them, not as minutes: one instance per (weekday
+ * block × its five weekdays), four per weekend block (each weekend day in each
+ * rotation week). An instance is covered when anybody at all is on it.
+ */
+export interface ShiftCoverageStats {
+  total: number;
+  uncovered: number;
+  /** uncovered / total, or null when no shifts are scheduled at all. */
+  uncoveredShare: number | null;
 }
 
 export interface FragilityStats {
@@ -247,6 +284,11 @@ export interface RunStats {
    *  shape beats a special case for the reader and the renderer alike. */
   perDay: PerDayStats[];
   fragility: FragilityStats;
+  /**
+   * Sits beside `fragility` rather than inside it: fragility is about who is on
+   * a floor, this is about whether anybody is on a shift at all.
+   */
+  shifts: ShiftCoverageStats;
 }
 
 /** Fixed precision: keeps the stored JSON small and the numbers stable. */
@@ -378,6 +420,17 @@ function pictureKeys(seat: Seat): number[] {
   return dayTypeOf(seat.day) === "weekday" ? [slots[0]!] : slots;
 }
 
+/**
+ * The distinct staffing pictures a BLOCK runs in, whoever is on it: a weekday
+ * block runs in each of the five weekday pictures, a weekend block in all four
+ * weekend ones (both days, both rotation weeks). Read through the same
+ * `slotIndices` mapping the seats use, so the two sides always agree.
+ */
+function blockPictureKeys(block: ShiftBlock): number[] {
+  if (block.dayType === "weekday") return WEEKDAY_DAYS.map((d) => slotIndices(d, "weekday")[0]!);
+  return WEEKEND_DAYS.flatMap((d) => slotIndices(d, "every"));
+}
+
 /** The time ranges of a set of seats, as `intervals.ts` wants them. */
 const toRanges = (seats: readonly Seat[]): TimeRange[] =>
   seats.map((s) => ({ start: s.start, end: s.end }));
@@ -437,28 +490,58 @@ function slotMinutes(seats: readonly Seat[]): number[] {
 const NEW_BIT = 1;
 const RETURNER_BIT = 2;
 
+const OPEN_BIT = 1;
+
+/** Flag a span across every picture it belongs to, allocating lines as needed. */
+function paint(
+  timelines: Map<number, Uint8Array>,
+  pictures: readonly number[],
+  start: number,
+  end: number,
+  bit: number,
+): void {
+  for (const picture of pictures) {
+    let line = timelines.get(picture);
+    if (!line) {
+      line = new Uint8Array(MINUTES_PER_DAY);
+      timelines.set(picture, line);
+    }
+    for (let m = start; m < end; m++) line[m] = line[m]! | bit;
+  }
+}
+
 /**
- * One floor's operating and no-fallback minutes. A minute is operating when
- * anyone is on it, and solo when the only people on it are new: the share of
- * time with no returner to fall back on. Timelines are 1440 flags per staffing
+ * One floor's open, operating and no-fallback minutes. A minute is open when
+ * one of the floor's blocks runs in it, operating when anyone is on it, and
+ * solo when the only people on it are new: the share of time with no returner
+ * to fall back on. Open minutes come off the blocks and not the seats, so two
+ * overlapping blocks open the floor once. Timelines are 1440 flags per staffing
  * picture and never leave this module.
  */
 function fragilityOf(
   key: string,
   positionIds: readonly string[],
   seats: readonly Seat[],
+  blocks: readonly ShiftBlock[],
 ): FragilityGroup {
   const timelines = new Map<number, Uint8Array>();
   for (const seat of seats) {
-    const bit = seat.returner ? RETURNER_BIT : NEW_BIT;
-    for (const picture of pictureKeys(seat)) {
-      let line = timelines.get(picture);
-      if (!line) {
-        line = new Uint8Array(MINUTES_PER_DAY);
-        timelines.set(picture, line);
-      }
-      for (let m = seat.start; m < seat.end; m++) line[m] = line[m]! | bit;
-    }
+    paint(
+      timelines,
+      pictureKeys(seat),
+      seat.start,
+      seat.end,
+      seat.returner ? RETURNER_BIT : NEW_BIT,
+    );
+  }
+  const openLines = new Map<number, Uint8Array>();
+  for (const block of blocks) {
+    paint(openLines, blockPictureKeys(block), block.start, block.end, OPEN_BIT);
+  }
+
+  let openMinutes = 0;
+  for (const line of openLines.values()) {
+    for (let m = 0; m < MINUTES_PER_DAY; m++) if (line[m]! !== 0) openMinutes += 1;
   }
   let operatingMinutes = 0;
   let soloMinutes = 0;
@@ -473,7 +556,9 @@ function fragilityOf(
   return {
     key,
     positionIds: [...positionIds].sort(),
+    openMinutes,
     operatingMinutes,
+    coverageShare: openMinutes === 0 ? null : round(operatingMinutes / openMinutes, 4),
     soloMinutes,
     soloShare: operatingMinutes === 0 ? null : round(soloMinutes / operatingMinutes, 4),
   };
@@ -481,15 +566,41 @@ function fragilityOf(
 
 /** Add up several floors measured separately: fragility with no cross-cover. */
 function sumFragility(key: string, groups: readonly FragilityGroup[]): FragilityGroup {
+  const openMinutes = groups.reduce((n, g) => n + g.openMinutes, 0);
   const operatingMinutes = groups.reduce((n, g) => n + g.operatingMinutes, 0);
   const soloMinutes = groups.reduce((n, g) => n + g.soloMinutes, 0);
   return {
     key,
     positionIds: [...new Set(groups.flatMap((g) => g.positionIds))].sort(),
+    openMinutes,
     operatingMinutes,
+    coverageShare: openMinutes === 0 ? null : round(operatingMinutes / openMinutes, 4),
     soloMinutes,
     soloShare: operatingMinutes === 0 ? null : round(soloMinutes / operatingMinutes, 4),
   };
+}
+
+/**
+ * Shift instances and how many of them nobody works. The instance key is the
+ * same (block, picture) pair the fragility timelines are built on, so a weekday
+ * block counts its five days once each and a weekend block counts each rotation
+ * week of each weekend day. Instances are enumerated from the BLOCKS, so a row
+ * pointing at a day its block does not run cannot invent a covered shift.
+ */
+function shiftStats(blocks: readonly ShiftBlock[], seats: readonly Seat[]): ShiftCoverageStats {
+  const staffed = new Set<string>();
+  for (const seat of seats) {
+    for (const picture of pictureKeys(seat)) staffed.add(`${seat.blockId}|${picture}`);
+  }
+  let total = 0;
+  let uncovered = 0;
+  for (const block of blocks) {
+    for (const picture of blockPictureKeys(block)) {
+      total += 1;
+      if (!staffed.has(`${block.id}|${picture}`)) uncovered += 1;
+    }
+  }
+  return { total, uncovered, uncoveredShare: total === 0 ? null : round(uncovered / total, 4) };
 }
 
 export function computeRunStats(input: RunStatsInput): RunStats {
@@ -527,6 +638,7 @@ export function computeRunStats(input: RunStatsInput): RunStats {
     positions: positionStats(input, seats, studentByEmail),
     perDay: perDayStats(seats),
     fragility: fragilityStats(input, seats),
+    shifts: shiftStats(input.blocks, seats),
   };
 }
 
@@ -786,22 +898,54 @@ function fragilityStats(input: RunStatsInput, seats: readonly Seat[]): Fragility
   const poolKey = [...pool].sort().join("+");
   const inPool = new Set(pool);
 
+  // Each floor's open time is its own blocks': the shifts scheduled for the
+  // positions on it, whether or not the run put anybody in them.
+  const blocksByPosition = groupBy(input.blocks, (b) => b.positionId);
+
   const groups: FragilityGroup[] = [];
   const others = groupBy(
     nonLead.filter((s) => !inPool.has(s.positionId)),
     (s) => s.positionId,
   );
   for (const positionId of [...others.keys()].sort()) {
-    groups.push(fragilityOf(positionId, [positionId], others.get(positionId)!));
+    groups.push(
+      fragilityOf(
+        positionId,
+        [positionId],
+        others.get(positionId)!,
+        blocksByPosition.get(positionId) ?? [],
+      ),
+    );
   }
   const pooledSeats = nonLead.filter((s) => inPool.has(s.positionId));
-  if (pooledSeats.length > 0) groups.push(fragilityOf(poolKey, pool, pooledSeats));
+  if (pooledSeats.length > 0) {
+    groups.push(
+      fragilityOf(
+        poolKey,
+        pool,
+        pooledSeats,
+        input.blocks.filter((b) => inPool.has(b.positionId)),
+      ),
+    );
+  }
   groups.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
   return {
     perPosition: groups,
     overallNonLead: sumFragility("non-lead", groups),
-    buildingWide: fragilityOf("building", [...new Set(nonLead.map((s) => s.positionId))], nonLead),
-    newLeadSolo: fragilityOf(input.leadPositionId, [input.leadPositionId], leadSeats),
+    // One merged timeline on both sides: every non-lead seat against every hour
+    // the building is scheduled to be open, the lead's blocks included.
+    buildingWide: fragilityOf(
+      "building",
+      [...new Set(nonLead.map((s) => s.positionId))],
+      nonLead,
+      input.blocks,
+    ),
+    newLeadSolo: fragilityOf(
+      input.leadPositionId,
+      [input.leadPositionId],
+      leadSeats,
+      blocksByPosition.get(input.leadPositionId) ?? [],
+    ),
   };
 }

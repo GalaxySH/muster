@@ -428,13 +428,15 @@ describe("a pre-overhaul stored run", () => {
       nameOf: (e) => e,
       minDaysOf: () => 2,
       minHoursOf: () => 10,
+      internationalOf: () => false,
     });
     expect(groups.map((g) => g.kind)).toEqual([
       "short-of-hours",
       "below-min-hours",
       "below-min-days",
     ]);
-    // The frozen student is never in a group, old run or new.
+    // The frozen student stays out of every group here. over-max-hours does read
+    // frozen rows, but their 15h is nowhere near the 30h cap.
     for (const group of groups) {
       expect(group.students.map((s) => s.email)).toEqual(["a@w"]);
     }

@@ -109,8 +109,10 @@ describe("buildScheduleHealthView on an empty run", () => {
       "New shift leads",
     ]);
     for (const row of view.fragility) {
-      expect(row.share).toBe("n/a");
-      expect(row.sharePercent).toBeNull();
+      // The figure and the bar are total coverage now, so with no blocks at all
+      // there is no open time to measure and the row reads n/a on both counts.
+      expect(row.coverage).toBe("n/a");
+      expect(row.coveragePercent).toBeNull();
       expect(row.detail).toBe("nobody is on");
       expect(row.pill).toBe("");
     }
@@ -260,18 +262,34 @@ describe("the fragility table", () => {
     );
     const byLabel = Object.fromEntries(view.fragility.map((r) => [r.label, r]));
     expect(byLabel["Barista"]).toMatchObject({
-      share: "100%",
-      sharePercent: 100,
-      // Detail is a share now, not "4h of 4h staffed": these are picture-minutes,
-      // one per distinct staffing day, so they are not calendar hours.
-      detail: "100% of staffed time",
+      // The bar is total coverage now: one Monday staffed out of a block that
+      // runs all five weekdays. The returner figure moved to the detail column,
+      // and it alone still decides the tone and the pill.
+      coverage: "20%",
+      coveragePercent: 20,
+      // A share, not "4h of 4h staffed": these are picture-minutes, one per
+      // distinct staffing day, so they are not calendar hours.
+      detail: "100% of staffed time with no returner",
       tone: "danger",
       pill: "fragile",
     });
-    expect(byLabel["Cashier"]).toMatchObject({ share: "0%", tone: null, pill: "covered" });
-    expect(byLabel["All positions"]!.share).toBe("50%");
-    // One shared timeline: the returner overlaps the new person everywhere.
-    expect(byLabel["Anyone in the building"]).toMatchObject({ share: "0%", pill: "covered" });
+    expect(byLabel["Cashier"]).toMatchObject({
+      coverage: "20%",
+      detail: "0% of staffed time with no returner",
+      tone: null,
+      pill: "covered",
+    });
+    expect(byLabel["All positions"]).toMatchObject({
+      coverage: "20%",
+      detail: "50% of staffed time with no returner",
+    });
+    // One shared timeline on both sides: every block in the building opens the
+    // same 8a to 12p, and the returner overlaps the new person everywhere in it.
+    expect(byLabel["Anyone in the building"]).toMatchObject({
+      coverage: "20%",
+      detail: "0% of staffed time with no returner",
+      pill: "covered",
+    });
   });
 
   it("names a pooled floor by both its positions", () => {
@@ -305,7 +323,10 @@ describe("the fragility table", () => {
       NAMES,
     );
     const lead = view.fragility.find((r) => r.label === "New shift leads")!;
-    expect(lead.share).toBe("4%");
+    // The lead row keeps its own vocabulary in the detail column, which is where
+    // the returner figure lives now; the bold figure beside it is coverage.
+    expect(lead.detail).toBe("4% of lead time with no veteran on");
+    expect(lead.coverage).toBe("20%");
     expect(lead.tone).toBe("danger");
     expect(lead.pill).toBe("fragile");
     const tile = view.tiles.find((t) => t.label === "New leads alone")!;
@@ -327,7 +348,12 @@ describe("the fragility table", () => {
       NAMES,
     );
     const lead = view.fragility.find((r) => r.label === "New shift leads")!;
-    expect(lead).toMatchObject({ share: "0%", tone: null, pill: "covered" });
+    // Same move: the no-veteran figure reads out of the detail column now.
+    expect(lead).toMatchObject({
+      detail: "0% of lead time with no veteran on",
+      tone: null,
+      pill: "covered",
+    });
     expect(view.tiles.find((t) => t.label === "New leads alone")!.sub).toBe(
       "a veteran lead always overlaps",
     );
@@ -346,7 +372,12 @@ describe("the fragility table", () => {
       }),
       NAMES,
     );
-    expect(view.fragility[0]).toMatchObject({ share: "13%", tone: "warning", pill: "thin" });
+    // The returner share is what the tone reads, and it reads it from the detail.
+    expect(view.fragility[0]).toMatchObject({
+      detail: "13% of staffed time with no returner",
+      tone: "warning",
+      pill: "thin",
+    });
   });
 
   /** One barista on 8a-12p with a returner covering from `coverFrom` on. */
@@ -365,9 +396,10 @@ describe("the fragility table", () => {
 
   it("keeps exactly a fifth on the warning side of danger", () => {
     // 48 solo minutes of 240: 0.20 on the nose. The rule is "over a fifth", so
-    // the boundary itself is a warning and nothing worse.
+    // the boundary itself is a warning and nothing worse. Read off the detail
+    // column, which is where the returner share moved.
     const row = soloShareOf(528);
-    expect(row.share).toBe("20%");
+    expect(row.detail).toBe("20% of staffed time with no returner");
     expect(row.tone).toBe("warning");
     expect(row.pill).toBe("thin");
   });
@@ -375,9 +407,84 @@ describe("the fragility table", () => {
   it("keeps exactly a tenth clear of the warning", () => {
     // 24 solo minutes of 240: 0.10 on the nose, and the rule is "over a tenth".
     const row = soloShareOf(504);
-    expect(row.share).toBe("10%");
+    expect(row.detail).toBe("10% of staffed time with no returner");
     expect(row.tone).toBeNull();
     expect(row.pill).toBe("covered");
+  });
+});
+
+describe("the cover bars against the returner figures", () => {
+  it("keeps the coverage figure clear of the tone the returner share sets", () => {
+    // Two floors staffed identically, one Monday out of a five-weekday block:
+    // both read 20% coverage, and only the returner column tells them apart.
+    const view = buildScheduleHealthView(
+      statsFor({
+        blocks: [block("ba", "barista"), block("ck", "cashier")],
+        assignments: [cell("new@w", "ba", "mon"), cell("old@w", "ck", "mon")],
+        students: [
+          student("new@w", { positionId: "barista" }),
+          student("old@w", { returner: true }),
+        ],
+      }),
+      NAMES,
+    );
+    const byLabel = Object.fromEntries(view.fragility.map((r) => [r.label, r]));
+    expect(byLabel["Barista"]!.coveragePercent).toBe(20);
+    expect(byLabel["Cashier"]!.coveragePercent).toBe(20);
+    expect(byLabel["Barista"]!.tone).toBe("danger");
+    expect(byLabel["Cashier"]!.tone).toBeNull();
+  });
+
+  it("draws no bar for a floor that is never scheduled to run", () => {
+    // Nobody holds the Shift Lead position and no lead block exists, so the row
+    // has no open time behind it: "n/a" and no bar, rather than an empty 0%.
+    const view = buildScheduleHealthView(
+      statsFor({
+        blocks: [block("ck", "cashier")],
+        assignments: [cell("a@w", "ck", "mon")],
+        students: [student("a@w")],
+      }),
+      NAMES,
+    );
+    const lead = view.fragility.find((r) => r.label === "New shift leads")!;
+    expect(lead.coverage).toBe("n/a");
+    expect(lead.coveragePercent).toBeNull();
+    expect(lead.detail).toBe("nobody is on");
+  });
+});
+
+describe("the uncovered-shifts tile", () => {
+  const tileFor = (input: Parameters<typeof statsFor>[0]) =>
+    buildScheduleHealthView(statsFor(input), NAMES).tiles.find(
+      (t) => t.label === "Uncovered shifts",
+    )!;
+
+  it("counts the shift instances nobody is on", () => {
+    // One weekday block covered on Monday only: 5 instances, 4 empty.
+    const tile = tileFor({
+      blocks: [block("ck", "cashier")],
+      assignments: [cell("a@w", "ck", "mon")],
+      students: [student("a@w")],
+    });
+    expect(tile.value).toBe("80%");
+    expect(tile.sub).toBe("4 of 5 shifts have nobody on");
+    // Informational: the coverage grids own the target-based alarms.
+    expect(tile.tone).toBeNull();
+  });
+
+  it("says has, not have, for a single empty shift", () => {
+    const tile = tileFor({
+      blocks: [block("ck", "cashier")],
+      assignments: WEEKDAYS.slice(0, 4).map((d) => cell("a@w", "ck", d)),
+      students: [student("a@w")],
+    });
+    expect(tile.sub).toBe("1 of 5 shifts has nobody on");
+  });
+
+  it("has nothing to measure when no shifts are set up", () => {
+    const tile = emptyView().tiles.find((t) => t.label === "Uncovered shifts")!;
+    expect(tile.value).toBe("n/a");
+    expect(tile.sub).toBe("no shifts are set up");
   });
 });
 
@@ -399,7 +506,8 @@ describe("the dateless-roster caveat", () => {
       tone: "warning",
     });
     // The caveat is earning its place: every row really does read as fragile.
-    expect(view.fragility.every((r) => r.share === "100%")).toBe(true);
+    // The share it speaks of is the detail column's now, not the bold figure.
+    expect(view.fragility.every((r) => r.detail.startsWith("100% of"))).toBe(true);
   });
 
   it("says nothing once even one returner is placed", () => {
@@ -530,7 +638,8 @@ describe("the copy rules on a populated view", () => {
 
   it("fills every section, so the walk below has something to read", () => {
     const view = viewFor(false);
-    expect(view.tiles).toHaveLength(6);
+    // Seven since the uncovered-shifts tile joined the row.
+    expect(view.tiles).toHaveLength(7);
     expect(view.hours).toHaveLength(5);
     expect(view.consecutiveDays.length).toBeGreaterThan(0);
     expect(view.positions.length).toBeGreaterThan(0);

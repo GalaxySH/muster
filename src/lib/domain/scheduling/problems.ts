@@ -3,13 +3,16 @@
  *
  * Each aggregate warning on /admin/schedule expands to the students behind it,
  * so the derivations here must mirror the engine's counters (engine.ts)
- * exactly: every counter looks at non-frozen students only, hours compare with
- * the EPSILON_MINUTES tolerance, and day spans compare against the position
- * minimum. A fill-in the run found no room for is left out of report.students
+ * exactly: every counter mirroring one looks at non-frozen students only, hours
+ * compare with the EPSILON_MINUTES tolerance, and day spans compare against the
+ * position minimum. `over-max-hours` is the one group with no engine counter
+ * behind it, and it deliberately includes frozen students; see it for why.
+ * A fill-in the run found no room for is left out of report.students
  * altogether, which is how that exemption carries over here. droppedBlockGone
  * has no group because the report keeps only a count for it, not who was
  * affected.
  */
+import { hourCap } from "../caps";
 import { EPSILON_MINUTES } from "./seats";
 import type { EngineReport } from "./types";
 
@@ -18,6 +21,7 @@ export type ProblemKind =
   | "no-position"
   | "short-of-hours"
   | "below-min-hours"
+  | "over-max-hours"
   | "below-min-days";
 
 /** One affected student in a warning's expandable list. */
@@ -43,6 +47,19 @@ export function isBelowMinHours(assignedMinutes: number, minHours: number | null
   return minHours !== null && assignedMinutes + EPSILON_MINUTES < minHours * 60;
 }
 
+/**
+ * Assigned over the student's own weekly hour cap: 20h international, 30h
+ * otherwise (`domain/caps.ts`). The mirror image of `isBelowMinHours`, epsilon
+ * discipline included, so sitting exactly on the cap is never over it.
+ *
+ * The cap is a policy target and not a labor rule: the engine may overshoot it,
+ * and a hand edit certainly can, so this exists to make that visible at read
+ * time rather than to stop anything.
+ */
+export function isOverMaxHours(assignedMinutes: number, international: boolean): boolean {
+  return assignedMinutes - EPSILON_MINUTES > hourCap(international) * 60;
+}
+
 export interface ProblemLookup {
   /** Display name for an email; return the email itself when unknown. */
   nameOf: (email: string) => string;
@@ -50,6 +67,8 @@ export interface ProblemLookup {
   minDaysOf: (email: string) => number | null;
   /** The minimum weekly hours of the student's position, or null when unknown. */
   minHoursOf: (email: string) => number | null;
+  /** Whether the student is international, which halves their hour cap. */
+  internationalOf: (email: string) => boolean;
 }
 
 /**
@@ -63,6 +82,13 @@ export function problemGroups(report: EngineReport, lookup: ProblemLookup): Prob
   const short = active.filter((s) => s.assignedMinutes + EPSILON_MINUTES < s.targetMinutes);
   const belowMinHours = active.filter((s) =>
     isBelowMinHours(s.assignedMinutes, lookup.minHoursOf(s.email)),
+  );
+  // DELIBERATE ASYMMETRY against every other group here: the over-cap list
+  // includes FROZEN students. Hand edits on kept rows are the likeliest way
+  // someone lands over the cap, and a group that skipped them would go quiet on
+  // exactly the case it exists to catch.
+  const overMaxHours = report.students.filter((s) =>
+    isOverMaxHours(s.assignedMinutes, lookup.internationalOf(s.email)),
   );
   const belowMinDays = active.filter((s) => {
     const minDays = lookup.minDaysOf(s.email);
@@ -85,6 +111,11 @@ export function problemGroups(report: EngineReport, lookup: ProblemLookup): Prob
       "below-min-hours",
       belowMinHours.map((s) => s.email),
       (n) => `${n} ${n === 1 ? "student is" : "students are"} below their position's minimum hours`,
+    ],
+    [
+      "over-max-hours",
+      overMaxHours.map((s) => s.email),
+      (n) => `${n} ${n === 1 ? "student is" : "students are"} over their weekly hour maximum`,
     ],
     [
       "below-min-days",

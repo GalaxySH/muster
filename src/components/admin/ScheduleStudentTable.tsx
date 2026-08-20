@@ -117,6 +117,9 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
       >
         {hoursLabel(s.assignedMinutes)} of {hoursLabel(s.targetMinutes)}h
         {s.belowMinHours && <span style={dangerTag}>below minimum</span>}
+        {/* The cap is a policy target, not a labor rule, so this can appear on a
+            kept row the engine never touched. Both pills need a hand fix. */}
+        {s.overMaxHours && <span style={dangerTag}>over maximum</span>}
       </td>
       <td style={tdStyle}>{s.daysUsed}</td>
       <td style={tdStyle}>{s.cohort ? ROTATION_LABEL[s.cohort] : "-"}</td>

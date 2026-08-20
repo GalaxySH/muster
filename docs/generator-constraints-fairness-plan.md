@@ -133,11 +133,22 @@ student the ladder cannot seed or fill lands in the warnings
     `!isReturningStudent(hiredOn)` — the roster Start Date column, per the
     W2W-Hire-Date lesson. The cross-coverage pool defaults to
     `["culinary-assistant", "cashier"]` (the CA+R&C analog) and is
-    configurable via params.
+    configurable via params. Since **version 2** each group also carries
+    `openMinutes` (the union of its blocks' spans over the same nine pictures,
+    so overlapping blocks open the floor once) and `coverageShare`
+    (`operatingMinutes / openMinutes`, null when nothing is scheduled to run),
+    which is what the Cover bars draw.
+  - *shifts*: `{ total, uncovered, uncoveredShare }` over shift **instances**
+    rather than minutes — one per (weekday block × weekday), four per weekend
+    block (each weekend day × each rotation week) — covered when anybody at
+    all is on them. A floor nobody works has no operating minutes for a
+    fragility share to speak about, and this is the measure that does.
 - **`src/lib/admin/schedule-health-view.ts`** — pure view builder per the
   `analytics-view.ts` precedent; tones (solo share >20% danger, >10% warning;
   `newLeadSolo` >0 danger; lockstep >0 warning); hand-rolled div bars, no
-  chart libraries.
+  chart libraries. A Cover row shows `coverageShare` as its figure and bar,
+  always in the neutral color since a width that means coverage cannot also
+  mean alarm, and carries the returner share as the toned detail beside it.
 - **`seats.ts` addition** — `orderHash` (FNV-1a 32-bit of the email) and
   `byHashedEmail` (falls back to `byEmail` on collision, keeping the order
   total). FNV-1a rather than sha256 deliberately: the requirement is

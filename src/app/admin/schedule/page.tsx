@@ -70,16 +70,19 @@ export const dynamic = "force-dynamic";
 
 /**
  * Admin: schedule coverage and the recommended schedule (roadmap 5.1;
- * docs/schedule-generation-plan.md Phases A to C). Before a run exists the
- * grid shows selection supply per (block × day) cell; once one is generated it
- * grades the run's assigned seats against the targets, with supply in the cell
- * tooltip, and lists every student's recommended shifts below, plus the run
- * history with restore, the run diff picker, and the Muster Schedule sheet.
+ * docs/schedule-generation-plan.md Phases A to C). The coverage grid has two
+ * modes: availability counts the submitted students who could work each (block
+ * × day) cell, scheduled counts the seats the current run put in it, graded
+ * against the targets with supply in the cell tooltip. Before any run exists
+ * only availability is possible; afterwards `?grid=` switches between them and
+ * scheduled is the default. Below the grids: every student's recommended
+ * shifts, the run history with restore, the run diff picker, and the Muster
+ * Schedule sheet.
  */
 export default async function AdminSchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ before?: string; after?: string }>;
+  searchParams: Promise<{ before?: string; after?: string; grid?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
@@ -112,8 +115,20 @@ export default async function AdminSchedulePage({
   const beforeId = sp.before && runIds.has(sp.before) ? sp.before : defaultBefore;
   const diffData =
     beforeId && afterId && beforeId !== afterId ? await loadRunDiff(beforeId, afterId) : null;
+  // Which grid the reader asked for. With no run there is nothing to show but
+  // availability, so the param is ignored rather than offering an empty grid;
+  // with one, scheduled stays the default the way it was before the toggle.
+  const gridMode: GridMode = !schedule
+    ? "availability"
+    : sp.grid === "availability"
+      ? "availability"
+      : "scheduled";
+  // The grids and their two tiles read THIS, so availability mode falls into the
+  // same null branches the page took before any run existed. Everything else on
+  // the page keeps the real run.
+  const gridSchedule = gridMode === "scheduled" ? schedule : null;
   const summaryOf = (p: PositionCoverage): CoverageSummary =>
-    schedule ? summarizeAssignedCoverage(p.rows, schedule.assignedCells) : p.summary;
+    gridSchedule ? summarizeAssignedCoverage(p.rows, gridSchedule.assignedCells) : p.summary;
   const totals = coverage.reduce(
     (acc, p) => {
       const s = summaryOf(p);
@@ -135,7 +150,7 @@ export default async function AdminSchedulePage({
       </AppHeader>
       <h1>Schedule</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        {schedule
+        {gridMode === "scheduled"
           ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Click a cell to see everyone who could work it. Weekend cells show both rotation weeks as A·B."
           : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Click a cell to see who they are. Set targets per block on the Positions and shift blocks page."}
       </p>
@@ -188,6 +203,19 @@ export default async function AdminSchedulePage({
       </div>
 
       <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+        {/* Only worth offering once a run exists: before that there is one grid.
+            The four status chips below apply to both modes and never move. */}
+        {schedule && (
+          <span style={{ marginRight: 10 }}>
+            <GridModeLink mode="scheduled" active={gridMode} before={sp.before} after={sp.after} />{" "}
+            <GridModeLink
+              mode="availability"
+              active={gridMode}
+              before={sp.before}
+              after={sp.after}
+            />
+          </span>
+        )}
         <span style={{ ...legendChip, ...statusStyles.ok }}>meets target</span>{" "}
         <span style={{ ...legendChip, ...statusStyles.short }}>short</span>{" "}
         <span style={{ ...legendChip, ...statusStyles.severe }}>under half</span>{" "}
@@ -198,7 +226,7 @@ export default async function AdminSchedulePage({
         <PositionSection
           key={p.positionId}
           coverage={p}
-          schedule={schedule}
+          schedule={gridSchedule}
           summary={summaryOf(p)}
         />
       ))}
@@ -223,6 +251,43 @@ export default async function AdminSchedulePage({
         )
       )}
     </Page>
+  );
+}
+
+/** Which numbers the coverage grids show: the run's seats, or who could work. */
+type GridMode = "scheduled" | "availability";
+
+const GRID_MODE_LABEL: Record<GridMode, string> = {
+  scheduled: "Scheduled",
+  availability: "Availability",
+};
+
+/**
+ * One half of the grid switch. The diff picker's own params ride along, so
+ * switching grids does not throw away the pair of runs being compared.
+ */
+function GridModeLink({
+  mode,
+  active,
+  before,
+  after,
+}: {
+  mode: GridMode;
+  active: GridMode;
+  before?: string;
+  after?: string;
+}) {
+  const params = new URLSearchParams();
+  if (before) params.set("before", before);
+  if (after) params.set("after", after);
+  params.set("grid", mode);
+  return (
+    <Link
+      href={`/admin/schedule?${params.toString()}`}
+      style={mode === active ? activeLegendChip : legendChip}
+    >
+      {GRID_MODE_LABEL[mode]}
+    </Link>
   );
 }
 
@@ -951,4 +1016,14 @@ const legendChip: React.CSSProperties = {
   padding: "1px 8px",
   fontSize: 12,
   background: "var(--color-background-secondary)",
+  color: "inherit",
+  textDecoration: "none",
+};
+
+/** The grid mode currently on screen: filled, so the pair reads as one switch. */
+const activeLegendChip: React.CSSProperties = {
+  ...legendChip,
+  background: "var(--color-background-info)",
+  color: "var(--color-text-info)",
+  fontWeight: 600,
 };

@@ -117,7 +117,12 @@ export function ScheduleHealth({
 
           <div style={{ marginTop: 14 }}>
             <SectionLabel
-              action={<span style={hintStyle}>share of staffed time with no returner on</span>}
+              action={
+                <span style={hintStyle}>
+                  bars show staffed share of scheduled open time; the right column is time with no
+                  returner on
+                </span>
+              }
             >
               Cover
             </SectionLabel>
@@ -138,24 +143,31 @@ export function ScheduleHealth({
                   {view.fragility.map((row) => (
                     <tr key={row.key}>
                       <td style={td}>{row.label}</td>
-                      <td style={{ ...td, fontWeight: 600, color: toneColor(row.tone) }}>
-                        {row.share}
-                      </td>
+                      {/* Coverage is a measurement, not a verdict, so it stays
+                          neutral: the tone lives on the returner column. */}
+                      <td style={{ ...td, fontWeight: 600 }}>{row.coverage}</td>
                       <td style={{ ...td, width: "40%" }}>
-                        {row.sharePercent !== null && (
+                        {row.coveragePercent !== null && (
                           <div style={barTrackStyle}>
                             <div
                               style={{
-                                width: `${row.sharePercent}%`,
+                                width: `${row.coveragePercent}%`,
                                 height: "100%",
                                 borderRadius: 3,
-                                background: barColor(row.tone),
+                                background: barColor(null),
                               }}
                             />
                           </div>
                         )}
                       </td>
-                      <td style={{ ...td, color: "var(--color-text-secondary)" }}>{row.detail}</td>
+                      <td
+                        style={{
+                          ...td,
+                          color: row.tone ? toneColor(row.tone) : "var(--color-text-secondary)",
+                        }}
+                      >
+                        {row.detail}
+                      </td>
                       <td style={td}>
                         {row.pill && <span style={pillStyle(row.tone)}>{row.pill}</span>}
                       </td>

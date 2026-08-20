@@ -60,7 +60,8 @@ describe("computeRunStats on an empty run", () => {
   const stats = run({});
 
   it("stamps the version", () => {
-    expect(stats.version).toBe(1);
+    // 2 since the cover figures grew openMinutes, coverageShare and shifts.
+    expect(stats.version).toBe(2);
   });
 
   it("reports zeroed distributions rather than making the caller branch", () => {
@@ -92,6 +93,13 @@ describe("computeRunStats on an empty run", () => {
     expect(stats.fragility.overallNonLead.soloShare).toBeNull();
     expect(stats.fragility.buildingWide.soloShare).toBeNull();
     expect(stats.fragility.newLeadSolo.soloShare).toBeNull();
+  });
+
+  it("has no open time and no shifts to be uncovered", () => {
+    expect(stats.fragility.overallNonLead.openMinutes).toBe(0);
+    expect(stats.fragility.overallNonLead.coverageShare).toBeNull();
+    expect(stats.fragility.buildingWide.coverageShare).toBeNull();
+    expect(stats.shifts).toEqual({ total: 0, uncovered: 0, uncoveredShare: null });
   });
 });
 
@@ -666,6 +674,155 @@ describe("coverage fragility", () => {
     // Saturday, not the B one.
     expect(stats.fragility.perPosition[0]!.operatingMinutes).toBe(720);
     expect(stats.fragility.perPosition[0]!.soloMinutes).toBe(480);
+  });
+});
+
+describe("open time and total coverage", () => {
+  it("opens a weekday block in each of the five weekday pictures", () => {
+    const stats = run({
+      blocks: [block("wd", "cashier", "weekday")],
+      assignments: [cell("a@w", "wd", "mon"), cell("a@w", "wd", "tue")],
+      students: [student("a@w")],
+      poolPositionIds: [],
+    });
+    const group = stats.fragility.perPosition[0]!;
+    // A 4h block that runs Monday to Friday: 5 pictures of 240 minutes each.
+    expect(group.openMinutes).toBe(1200);
+    expect(group.operatingMinutes).toBe(480);
+    expect(group.coverageShare).toBe(0.4);
+  });
+
+  it("opens a weekend block in all four weekend pictures", () => {
+    const stats = run({
+      blocks: [block("we", "cashier", "weekend")],
+      assignments: [cell("a@w", "we", "sat", "a")],
+      students: [student("a@w")],
+      poolPositionIds: [],
+    });
+    const group = stats.fragility.perPosition[0]!;
+    // Saturday and Sunday, each in both rotation weeks: 4 x 240.
+    expect(group.openMinutes).toBe(960);
+    expect(group.operatingMinutes).toBe(240);
+    expect(group.coverageShare).toBe(0.25);
+  });
+
+  it("counts two overlapping blocks as one span of open time", () => {
+    const stats = run({
+      blocks: [
+        block("early", "cashier", "weekday", { start: 480, end: 720 }),
+        block("late", "cashier", "weekday", { start: 600, end: 960 }),
+      ],
+      assignments: [cell("a@w", "early", "mon")],
+      students: [student("a@w")],
+      poolPositionIds: [],
+    });
+    // 8a-12p union 10a-4p is 8a-4p: the floor is open 480 minutes a weekday,
+    // not the 600 the two spans add up to.
+    expect(stats.fragility.perPosition[0]!.openMinutes).toBe(2400);
+    expect(stats.fragility.perPosition[0]!.coverageShare).toBe(0.1);
+  });
+
+  it("gives the pooled, summed and building-wide groups their own open time", () => {
+    const stats = run({
+      blocks: [
+        block("ca", "culinary-assistant", "weekday", MORNING),
+        block("ck", "cashier", "weekday", AFTERNOON),
+        block("sl", LEAD, "weekday", { start: 480, end: 960 }),
+      ],
+      assignments: [cell("new@w", "ca", "mon"), cell("lead@w", "sl", "mon")],
+      students: [
+        student("new@w", { positionId: "culinary-assistant" }),
+        student("lead@w", { positionId: LEAD }),
+      ],
+      poolPositionIds: POOL,
+    });
+
+    // The pooled floor opens on both its positions' blocks: 8a-12p and 12p-4p.
+    const pooled = stats.fragility.perPosition[0]!;
+    expect(pooled.key).toBe("cashier+culinary-assistant");
+    expect(pooled.openMinutes).toBe(2400);
+    expect(pooled.coverageShare).toBe(0.1);
+    // One floor, so the sum is that floor.
+    expect(stats.fragility.overallNonLead.openMinutes).toBe(2400);
+    // Building-wide is one merged timeline on both sides: every live block,
+    // the lead's included, against every non-lead seat. 8a-4p on 5 weekdays.
+    expect(stats.fragility.buildingWide.openMinutes).toBe(2400);
+    expect(stats.fragility.buildingWide.operatingMinutes).toBe(240);
+    // The lead row is measured against the lead's own blocks only: its one
+    // 8h Monday out of 8a-4p on five weekdays.
+    expect(stats.fragility.newLeadSolo.openMinutes).toBe(2400);
+    expect(stats.fragility.newLeadSolo.coverageShare).toBe(0.2);
+  });
+
+  it("reports no coverage share where nothing is scheduled to run", () => {
+    const stats = run({
+      blocks: [block("wd", "cashier", "weekday")],
+      assignments: [cell("a@w", "wd", "mon")],
+      students: [student("a@w")],
+      poolPositionIds: [],
+    });
+    // No Shift Lead block exists, so its row has no open time to measure and
+    // says so rather than dividing by nothing.
+    expect(stats.fragility.newLeadSolo.openMinutes).toBe(0);
+    expect(stats.fragility.newLeadSolo.coverageShare).toBeNull();
+  });
+});
+
+describe("uncovered shifts", () => {
+  const stats = run({
+    blocks: [
+      block("wd", "cashier", "weekday"),
+      block("we", "cashier", "weekend"),
+      block("idle", "barista", "weekday"),
+    ],
+    assignments: [
+      ...WEEKDAYS.map((d) => cell("a@w", "wd", d)),
+      // Rotation A only: Sat1 and Sun2 are worked, Sat2 and Sun1 are not.
+      cell("a@w", "we", "sat", "a"),
+      cell("b@w", "we", "sun", "a"),
+    ],
+    students: [student("a@w"), student("b@w")],
+  });
+
+  it("counts a weekday block as five shifts and a weekend block as four", () => {
+    // 5 weekday + 4 weekend + 5 for the block nobody works.
+    expect(stats.shifts.total).toBe(14);
+  });
+
+  it("leaves the rotation week nobody works uncovered", () => {
+    // Sat2 and Sun1 from the weekend block, plus all five of the idle block.
+    expect(stats.shifts.uncovered).toBe(7);
+    expect(stats.shifts.uncoveredShare).toBe(0.5);
+  });
+
+  it("covers a weekday shift in both fortnight halves at once", () => {
+    const weekday = run({
+      blocks: [block("wd", "cashier", "weekday")],
+      assignments: [cell("a@w", "wd", "mon")],
+      students: [student("a@w")],
+    });
+    // One Monday row covers the Monday shift, which is the same shift in both
+    // halves: 5 instances, 4 of them still empty.
+    expect(weekday.shifts).toEqual({ total: 5, uncovered: 4, uncoveredShare: 0.8 });
+  });
+
+  it("covers both rotation weeks with an every-weekend row", () => {
+    const every = run({
+      blocks: [block("we", "cashier", "weekend")],
+      assignments: [cell("a@w", "we", "sat", "every"), cell("a@w", "we", "sun", "every")],
+      students: [student("a@w")],
+    });
+    expect(every.shifts).toEqual({ total: 4, uncovered: 0, uncoveredShare: 0 });
+  });
+
+  it("counts a rotation B weekend row against the other week", () => {
+    const rotationB = run({
+      blocks: [block("we", "cashier", "weekend")],
+      assignments: [cell("a@w", "we", "sat", "b")],
+      students: [student("a@w")],
+    });
+    // Sat2 is worked; Sat1, Sun1 and Sun2 are not.
+    expect(rotationB.shifts).toEqual({ total: 4, uncovered: 3, uncoveredShare: 0.75 });
   });
 });
 
