@@ -178,6 +178,8 @@ export interface CellPerson {
   autoAssigned: boolean;
   /** Already holds this cell in the current run. */
   assignedHere: boolean;
+  /** The live "mark scheduled" toggle (PLAN §10a: W2W-entry progress). */
+  scheduled: boolean;
 }
 
 export interface CellAvailability {
@@ -207,6 +209,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
         displayName: students.displayName,
         positionName: positions.name,
         autoAssigned: eff.autoAssigned,
+        scheduled: submissions.scheduled,
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
@@ -239,6 +242,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       positionName: row.positionName,
       autoAssigned: row.autoAssigned,
       assignedHere: assigned.has(row.email),
+      scheduled: row.scheduled ?? false,
     });
   }
 

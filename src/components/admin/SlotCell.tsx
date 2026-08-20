@@ -105,7 +105,10 @@ export function SlotCell({
                         <span style={{ color: "var(--color-text-auto)" }}>auto weekend</span>
                       )}
                       {p.assignedHere && (
-                        <span style={{ color: "var(--color-text-success)" }}>scheduled</span>
+                        <span style={{ color: "var(--color-text-success)" }}>on this shift</span>
+                      )}
+                      {p.scheduled && (
+                        <span style={{ color: "var(--color-text-success)" }}>✓ scheduled</span>
                       )}
                     </span>
                   </li>
