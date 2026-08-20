@@ -88,8 +88,18 @@ describe("buildScheduleHealthView on an empty run", () => {
   it("reports nobody and leaves the charts empty", () => {
     expect(view.people).toBe(0);
     expect(view.consecutiveDays).toEqual([]);
+    expect(view.daysWorked).toEqual([]);
+    expect(view.cohortLines).toEqual([]);
     expect(view.positions).toEqual([]);
     expect(view.notes).toEqual([]);
+  });
+
+  it("still lays out the whole fortnight, every cell quiet", () => {
+    // The table keeps its shape with nobody in it: the section above it is what
+    // says the run placed nobody, not a table that silently shrinks.
+    expect(view.perDay.days).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    expect(view.perDay.rows.map((r) => r.week)).toEqual(["Week 1", "Week 2"]);
+    for (const row of view.perDay.rows) expect(row.cells).toEqual(Array(7).fill("-"));
   });
 
   it("says a share cannot be measured rather than showing a zero", () => {
@@ -236,6 +246,92 @@ describe("the consecutive-days bars", () => {
       tone: "warning",
     });
     expect(tight.consecutiveDays[0]!.tone).toBe("warning");
+  });
+});
+
+// A fortnight with all four rotations on it, so the days-worked bars, the
+// rotation lines and the day-by-day table all have something asymmetric to say.
+describe("days worked, rotations, and the fortnight day by day", () => {
+  const weekendBlock = (id: string, positionId: string): ShiftBlock => ({
+    id,
+    positionId,
+    dayType: "weekend",
+    start: 480,
+    end: 720,
+    desiredCapacity: null,
+  });
+  const weCell = (
+    studentEmail: string,
+    day: Day,
+    cohort: ScheduleAssignment["cohort"],
+  ): ScheduleAssignment => ({ studentEmail, blockId: "we", day, cohort });
+
+  const view = buildScheduleHealthView(
+    statsFor({
+      blocks: [block("wd", "cashier"), weekendBlock("we", "cashier")],
+      assignments: [
+        // Weekday only: ten of the fourteen slots, five in a row.
+        ...WEEKDAYS.map((d) => cell("wk@w", "wd", d)),
+        // One Monday each, plus a weekend day on their own rotation.
+        cell("a@w", "wd", "mon"),
+        weCell("a@w", "sat", "a"),
+        cell("b@w", "wd", "mon"),
+        weCell("b@w", "sun", "b"),
+        // Every weekend: both weekend days in both rotation weeks.
+        weCell("ev@w", "sat", "every"),
+        weCell("ev@w", "sun", "every"),
+      ],
+      students: ["wk@w", "a@w", "b@w", "ev@w"].map((e) => student(e)),
+    }),
+    NAMES,
+  );
+
+  it("bars the days-worked histogram shortest first, with no tone on it", () => {
+    // Days out of fourteen: 10, 3, 3, 4. Nothing here is a rule anyone can
+    // break, so unlike the days-in-a-row column nothing is toned.
+    expect(view.daysWorked).toEqual([
+      { label: "3 days", percent: 100, caption: "2 · 50%", tone: null },
+      { label: "4 days", percent: 50, caption: "1 · 25%", tone: null },
+      { label: "10 days", percent: 50, caption: "1 · 25%", tone: null },
+    ]);
+  });
+
+  it("summarises each rotation present in one line", () => {
+    expect(view.cohortLines).toEqual([
+      "Weekdays only: 1 person, longest 5 days",
+      "A rotation: 1 person, longest 1 day",
+      "B rotation: 1 person, longest 2 days",
+      "Every weekend: 1 person, longest 2 days",
+    ]);
+  });
+
+  it("leaves out a rotation nobody is on", () => {
+    const weekdaysOnly = buildScheduleHealthView(
+      statsFor({
+        blocks: [block("wd", "cashier")],
+        assignments: [cell("a@w", "wd", "mon")],
+        students: [student("a@w")],
+      }),
+      NAMES,
+    );
+    expect(weekdaysOnly.cohortLines).toEqual(["Weekdays only: 1 person, longest 1 day"]);
+  });
+
+  it("reads the fortnight table by slot, so the two weeks stay apart", () => {
+    // Only the weekend rows can tell the halves apart: a weekday row is the
+    // same shift in both. Sunday of week 1 holds the B rotation and the
+    // every-weekend person, Sunday of week 2 only the latter.
+    expect(view.perDay.days).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    expect(view.perDay.rows).toEqual([
+      {
+        week: "Week 1",
+        cells: ["2 · 8h", "3 · 12h", "1 · 4h", "1 · 4h", "1 · 4h", "1 · 4h", "2 · 8h"],
+      },
+      {
+        week: "Week 2",
+        cells: ["1 · 4h", "3 · 12h", "1 · 4h", "1 · 4h", "1 · 4h", "1 · 4h", "1 · 4h"],
+      },
+    ]);
   });
 });
 
@@ -566,6 +662,9 @@ describe("the per-position table", () => {
         // 5 Monday-to-Friday cells asking for 2 each; Monday fills both and
         // Tuesday one, so 3 of 10 seats.
         fill: "30%",
+        // Per-position shift instances, new in RunStats 3: two weekday blocks
+        // are 10 instances, and only ck's Monday and Tuesday are worked.
+        emptyShifts: "8 of 10",
         hours: "4h to 8h, median 6h",
         perDay: "4h to 4h",
         span: "8a to 8p",
@@ -585,6 +684,34 @@ describe("the per-position table", () => {
       NAMES,
     );
     expect(noTargets.positions[0]!.fill).toBe("no targets");
+  });
+
+  it("says none rather than a zero when every shift on a floor is worked", () => {
+    const full = buildScheduleHealthView(
+      statsFor({
+        blocks: [block("ba", "barista")],
+        assignments: WEEKDAYS.map((d) => cell("z@w", "ba", d)),
+        students: [student("z@w", { positionId: "barista" })],
+      }),
+      NAMES,
+    );
+    expect(full.positions[0]!.emptyShifts).toBe("none");
+  });
+
+  it("counts every shift on a floor nobody is on at all", () => {
+    // The row the column exists for: no seats means no operating minutes, so
+    // the cover table has nothing to say about this floor and this does.
+    const idle = buildScheduleHealthView(
+      statsFor({
+        blocks: [block("ba", "barista"), block("ck", "cashier")],
+        assignments: [cell("z@w", "ck", "mon")],
+        students: [student("z@w")],
+      }),
+      NAMES,
+    );
+    const byName = Object.fromEntries(idle.positions.map((p) => [p.name, p]));
+    expect(byName["Barista"]!.emptyShifts).toBe("5 of 5");
+    expect(byName["Cashier"]!.emptyShifts).toBe("4 of 5");
   });
 
   it("falls back to the position id when no name is known", () => {
@@ -642,6 +769,9 @@ describe("the copy rules on a populated view", () => {
     expect(view.tiles).toHaveLength(7);
     expect(view.hours).toHaveLength(5);
     expect(view.consecutiveDays.length).toBeGreaterThan(0);
+    expect(view.daysWorked.length).toBeGreaterThan(0);
+    expect(view.cohortLines.length).toBeGreaterThan(0);
+    expect(view.perDay.rows).toHaveLength(2);
     expect(view.positions.length).toBeGreaterThan(0);
     expect(view.fragility.length).toBeGreaterThan(0);
     expect(view.notes.length).toBeGreaterThan(0);

@@ -1581,16 +1581,17 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
   It now reads the day with local getters, the same shape as the late-start fix
   above and the `localDay` fix in `run-warnings.ts`.
-  **Four follow-ups on the schedule surfaces shipped with it.** (1) The Cover
+  **Five follow-ups on the schedule surfaces shipped with it.** (1) The Cover
   table's **bars now draw total coverage**, the staffed share of each floor's
   scheduled open time, with the no-returner share beside them as the right-hand
   column: a bar whose width means "alarm" cannot also mean "staffed", and the
   first question about a floor is whether anybody is on it at all. The tones and
   pills still read the returner share alone, so none of the alarm rules moved.
-  `FragilityGroup` gained `openMinutes` and `coverageShare`, and
-  `RUN_STATS_VERSION` is now **2**: runs stamped under 1 show the quiet "update
-  the schedule" line until they are regenerated, which is exactly what the
-  version gate is for. A new **Uncovered shifts** tile counts shift instances
+  `FragilityGroup` gained `openMinutes` and `coverageShare`, which took
+  `RUN_STATS_VERSION` to 2 (item 5 below takes it to its shipped **3**): a run
+  stamped under an older number shows the quiet "update the schedule" line until
+  it is regenerated, which is exactly what the version gate is for.
+  A new **Uncovered shifts** tile counts shift instances
   nobody works (a weekday block is five, a weekend block is four, one per weekend
   day per rotation week), which is the measure the fragility shares structurally
   cannot express: a floor nobody is on has no operating time to take a share of.
@@ -1613,7 +1614,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   student table reads, off the run's own rows rather than the grid cells, so a row
   carried on a retired shift still counts and every refresh after a schedule edit
   moves it. Its status line reads "scheduled", "nothing scheduled" at zero, or
-  "over Nh cap" in the danger accent.
+  "over Nh cap" in the danger accent. (5) **Schedule health renders the three
+  figures it had been computing and storing without showing anybody**, and gains
+  a fourth. `stretch.daysPerFortnight` becomes a third bars column, **Days
+  worked**, beside Days in a row and Weekly hours, untoned because working nine
+  days out of fourteen breaks no rule. `perDay` becomes a **Day by day** table,
+  seven columns and two rows, each cell "N · Xh" with a quiet dash where nobody
+  is on, read by fortnight slot so the two rotation weeks cannot transpose.
+  `stretch.byCohort` becomes one short line per rotation anyone is on ("A
+  rotation: 41 people, longest 6 days"), which answers whether the two rotation
+  weeks carry comparable loads without four more histograms. The new figure is
+  per-position **Empty shifts** in the By position table ("12 of 48", or
+  "none"): the Uncovered shifts tile counts the run, and this says which floor.
+  It uses the same instance definition, and there is still only one enumeration
+  of it, since a block belongs to exactly one position and the run-wide figure
+  is now the sum of the rows. `RUN_STATS_VERSION` is **3** accordingly.
   **The 20h/30h weekly hour cap is now a hard generation rule** (§5 #3). It was
   only ever a clamp on the target the engine aimed for, which stopped the fill
   loop *aiming* past a student's cap but let it overshoot by a whole block, and

@@ -60,8 +60,10 @@ describe("computeRunStats on an empty run", () => {
   const stats = run({});
 
   it("stamps the version", () => {
-    // 2 since the cover figures grew openMinutes, coverageShare and shifts.
-    expect(stats.version).toBe(2);
+    // 3 since `shifts` moved down into the per-position rows and the top-level
+    // figure became their sum (2 was the cover figures growing openMinutes,
+    // coverageShare and the run-wide shifts count).
+    expect(stats.version).toBe(3);
   });
 
   it("reports zeroed distributions rather than making the caller branch", () => {
@@ -823,6 +825,36 @@ describe("uncovered shifts", () => {
     });
     // Sat2 is worked; Sat1, Sun1 and Sun2 are not.
     expect(rotationB.shifts).toEqual({ total: 4, uncovered: 3, uncoveredShare: 0.75 });
+  });
+
+  it("splits the same instances across the positions that own the blocks", () => {
+    const byId = Object.fromEntries(stats.positions.map((p) => [p.positionId, p]));
+    // Cashier holds the weekday block (5, one worked day) and the weekend one
+    // (4, with Sat2 and Sun1 unworked); barista holds only the idle block.
+    expect(byId["cashier"]!.shifts).toEqual({ total: 9, uncovered: 2 });
+    expect(byId["barista"]!.shifts).toEqual({ total: 5, uncovered: 5 });
+  });
+
+  it("makes the run-wide figure the sum of the position rows, not a second count", () => {
+    // The two must agree by construction: a block belongs to one position, so
+    // the rows partition the instances. Asserted so a future second enumeration
+    // cannot drift from this one unnoticed.
+    const sum = (pick: (p: (typeof stats.positions)[number]) => number) =>
+      stats.positions.reduce((n, p) => n + pick(p), 0);
+    expect(sum((p) => p.shifts.total)).toBe(stats.shifts.total);
+    expect(sum((p) => p.shifts.uncovered)).toBe(stats.shifts.uncovered);
+  });
+
+  it("gives a position with blocks but no rows a full count of empty shifts", () => {
+    // The case the per-position column exists for: a floor nobody is on has no
+    // operating minutes for a fragility share to speak about, but it does have
+    // five empty Monday-to-Friday shifts.
+    const idle = run({
+      blocks: [block("ba", "barista", "weekday")],
+      assignments: [],
+      students: [student("z@w", { positionId: "barista" })],
+    });
+    expect(idle.positions[0]!.shifts).toEqual({ total: 5, uncovered: 5 });
   });
 });
 

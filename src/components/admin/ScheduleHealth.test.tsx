@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { computeRunStats, type StatsStudent } from "@/lib/domain/scheduling/stats";
 import type { ScheduleAssignment } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
@@ -82,5 +82,42 @@ describe("the Cover table's bars", () => {
       "20%",
       "20%",
     ]);
+  });
+});
+
+describe("the stretch and fortnight sections", () => {
+  it("renders the empty-shifts column beside the target fill", () => {
+    render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
+    expect(screen.getByText("Empty shifts")).toBeInTheDocument();
+    // Both floors run five weekdays and are staffed for one Monday.
+    expect(screen.getAllByText("4 of 5")).toHaveLength(2);
+  });
+
+  it("gives days worked its own bars column beside the other two", () => {
+    render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
+    expect(screen.getByText("Days in a row")).toBeInTheDocument();
+    expect(screen.getByText("Days worked")).toBeInTheDocument();
+    // "Weekly hours" is also a By position column header, hence both.
+    expect(screen.getAllByText("Weekly hours")).toHaveLength(2);
+    // The two stretch columns say different things about the same people: one
+    // Monday is a run of one day, and it falls in both halves of the fortnight.
+    expect(screen.getByText("1 day")).toBeInTheDocument();
+    expect(screen.getByText("2 days")).toBeInTheDocument();
+  });
+
+  it("lays the fortnight out day by day, quiet where nobody is on", () => {
+    render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
+    expect(screen.getByText("Day by day")).toBeInTheDocument();
+    expect(screen.getByText("Week 1")).toBeInTheDocument();
+    expect(screen.getByText("Week 2")).toBeInTheDocument();
+    // Both people work the one Monday, which is the same Monday in both halves.
+    expect(screen.getAllByText("2 · 8h")).toHaveLength(2);
+    // Twelve quiet cells, one per slot nobody is on.
+    expect(screen.getAllByText("-")).toHaveLength(12);
+  });
+
+  it("summarises the rotations under the days-in-a-row bars", () => {
+    render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
+    expect(screen.getByText("Weekdays only: 2 people, longest 1 day")).toBeInTheDocument();
   });
 });

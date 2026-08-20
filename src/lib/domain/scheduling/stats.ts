@@ -27,7 +27,9 @@
  *   block spans rather than the seats, so `coverageShare` compares staffed time
  *   against the time the shifts were scheduled to run. `shifts` counts the same
  *   pictures as whole instances instead of minutes: one per (block, weekday) and
- *   four per weekend block, which is a shift as a scheduler counts one.
+ *   four per weekend block, which is a shift as a scheduler counts one. That
+ *   enumeration happens once, per position, and the run-wide `shifts` figure is
+ *   the sum of those rows rather than a second pass over the blocks.
  *
  * The distributions and histograms are parameter-free: run lengths are counted
  * as they fall, so the shape of a run reads the same whatever the knobs were.
@@ -62,10 +64,12 @@ const MINUTES_PER_DAY = 24 * 60;
 
 /**
  * Bump when a field's meaning changes, so a stored snapshot stays readable.
- * Version 2 grew the cover figures: every `FragilityGroup` now carries
+ * Version 2 grew the cover figures: every `FragilityGroup` gained
  * `openMinutes` and `coverageShare`, and `shifts` counts covered instances.
+ * Version 3 pushed `shifts` down into the per-position rows as well, and the
+ * top-level figure is now their sum rather than its own enumeration.
  */
-export const RUN_STATS_VERSION = 2;
+export const RUN_STATS_VERSION = 3;
 
 /** One student as the statistics see them: flags only, no availability. */
 export interface StatsStudent {
@@ -216,6 +220,13 @@ export interface PositionStats {
   /** Assignments and distinct people per fortnight slot, empty slots included. */
   shiftsPerDay: NumberSummary;
   peoplePerDay: NumberSummary;
+  /**
+   * This position's own shift instances and how many nobody works, on exactly
+   * the definition the top-level `shifts` measure uses. A block belongs to one
+   * position, so these rows partition the run's instances and the top-level
+   * figure is their sum.
+   */
+  shifts: ShiftInstances;
 }
 
 export interface PerDayStats {
@@ -263,9 +274,12 @@ export interface FragilityGroup {
  * block × its five weekdays), four per weekend block (each weekend day in each
  * rotation week). An instance is covered when anybody at all is on it.
  */
-export interface ShiftCoverageStats {
+export interface ShiftInstances {
   total: number;
   uncovered: number;
+}
+
+export interface ShiftCoverageStats extends ShiftInstances {
   /** uncovered / total, or null when no shifts are scheduled at all. */
   uncoveredShare: number | null;
 }
@@ -593,8 +607,11 @@ function sumFragility(key: string, groups: readonly FragilityGroup[]): Fragility
  * block counts its five days once each and a weekend block counts each rotation
  * week of each weekend day. Instances are enumerated from the BLOCKS, so a row
  * pointing at a day its block does not run cannot invent a covered shift.
+ *
+ * The ONE enumeration: it runs per position inside `positionStats`, and the
+ * run-wide figure adds those rows up (`totalShifts`).
  */
-function shiftStats(blocks: readonly ShiftBlock[], seats: readonly Seat[]): ShiftCoverageStats {
+function shiftInstances(blocks: readonly ShiftBlock[], seats: readonly Seat[]): ShiftInstances {
   const staffed = new Set<string>();
   for (const seat of seats) {
     for (const picture of pictureKeys(seat)) staffed.add(`${seat.blockId}|${picture}`);
@@ -606,6 +623,22 @@ function shiftStats(blocks: readonly ShiftBlock[], seats: readonly Seat[]): Shif
       total += 1;
       if (!staffed.has(`${block.id}|${picture}`)) uncovered += 1;
     }
+  }
+  return { total, uncovered };
+}
+
+/**
+ * The run-wide shift coverage, summed from the per-position rows rather than
+ * enumerated a second time. Every block carries exactly one `positionId` and
+ * every position with blocks gets a row, so the rows partition the instances
+ * and the sum IS the same enumeration, with no second definition to drift.
+ */
+function totalShifts(positions: readonly PositionStats[]): ShiftCoverageStats {
+  let total = 0;
+  let uncovered = 0;
+  for (const p of positions) {
+    total += p.shifts.total;
+    uncovered += p.shifts.uncovered;
   }
   return { total, uncovered, uncoveredShare: total === 0 ? null : round(uncovered / total, 4) };
 }
@@ -637,15 +670,16 @@ export function computeRunStats(input: RunStatsInput): RunStats {
 
   const byEmail = groupBy(seats, (s) => s.email);
   const emails = [...byEmail.keys()].sort();
+  const positions = positionStats(input, seats, studentByEmail);
 
   return {
     version: RUN_STATS_VERSION,
     fairness: fairnessStats(emails, byEmail, studentByEmail),
     stretch: stretchStats(emails, byEmail, input.maxConsecutiveDays),
-    positions: positionStats(input, seats, studentByEmail),
+    positions,
     perDay: perDayStats(seats),
     fragility: fragilityStats(input, seats),
-    shifts: shiftStats(input.blocks, seats),
+    shifts: totalShifts(positions),
   };
 }
 
@@ -798,12 +832,13 @@ function positionStats(
     }
 
     // Load per fortnight slot, empty slots included: a position that never runs
-    // on Sundays should show that in its minimum, not hide it.
-    const shifts = new Array<number>(FORTNIGHT_SLOTS).fill(0);
+    // on Sundays should show that in its minimum, not hide it. Rows per slot,
+    // which is a different question from the `shifts` instance count below.
+    const rowsPerSlot = new Array<number>(FORTNIGHT_SLOTS).fill(0);
     const peopleOn = Array.from({ length: FORTNIGHT_SLOTS }, () => new Set<string>());
     for (const seat of own) {
       for (const slot of seatSlots(seat)) {
-        shifts[slot] = shifts[slot]! + 1;
+        rowsPerSlot[slot] = rowsPerSlot[slot]! + 1;
         peopleOn[slot]!.add(seat.email);
       }
     }
@@ -823,8 +858,9 @@ function positionStats(
               open: Math.min(...blocks.map((b) => b.start)),
               close: Math.max(...blocks.map((b) => b.end)),
             },
-      shiftsPerDay: summary(shifts),
+      shiftsPerDay: summary(rowsPerSlot),
       peoplePerDay: summary(peopleOn.map((set) => set.size)),
+      shifts: shiftInstances(blocks, own),
     };
   });
 }

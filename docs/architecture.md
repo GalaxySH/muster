@@ -1447,7 +1447,10 @@ version; this is the seam map.
   alphabetical-rank against hours correlation), stretch (cyclic consecutive-days
   and days-per-fortnight histograms, per-cohort split), per-position load, 14
   `perDay` entries, coverage fragility, and `shifts` (instances nobody works at
-  all: one per weekday block per weekday, four per weekend block). It imports
+  all: one per weekday block per weekday, four per weekend block). Since
+  version 3 `shifts` also sits on each per-position row, and that IS the
+  enumeration: a block carries one `positionId`, so the rows partition the
+  instances and the run-wide figure is their sum. It imports
   `slotIndices` rather than mapping the fortnight a third time; the validator is
   the one sanctioned duplicate. Two denominators differ on purpose: per-day
   figures run over all 14 slots, fragility over the 9 distinct staffing pictures
@@ -1477,7 +1480,14 @@ version; this is the seam map.
   its figure and bar, always in the neutral color since a bar whose width means
   coverage cannot also mean alarm, and carries the returner share beside it as
   the detail the tone and pill are read from. Hand-rolled div bars, no chart
-  library.
+  library. Three of them: days-in-a-row, days-worked and weekly hours, the first
+  two through one `histogramBars` helper differing only in tone. Below them the
+  `perDay` fortnight reads as a seven-column, two-row **Day by day** table
+  ("N · Xh" a cell, a dash where nobody is on), keyed by slot so the rotation
+  weeks cannot transpose, and `stretch.byCohort` as one line per rotation on the
+  run. The By position table's **Empty shifts** column is the per-floor form of
+  the Uncovered shifts tile, and the only figure that speaks about a floor
+  nobody is on at all.
 
 Wiring: `engine.ts` filters candidates through `candidateAllowed` and climbs the
 `strict` then `relax-rest` then `relax-days` ladder inside the existing deferred

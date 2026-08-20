@@ -124,7 +124,11 @@ student the ladder cannot seed or fill lands in the warnings
     per-cohort split; days-per-fortnight histogram.
   - *per-position*: staff, targeted-cell fill, weekly-minutes and
     minutes-per-day-worked stats, span/load (open, close, shifts/day,
-    people/day).
+    people/day), and since **version 3** `shifts: { total, uncovered }` on the
+    same instance definition as the top-level measure. That enumeration now
+    happens once, per position; the run-wide `shifts` figure is the sum of
+    those rows, since a block carries exactly one `positionId` and the rows
+    therefore partition the instances.
   - *perDay*: 14 entries (day × rotation week).
   - *fragility*: minute timelines per pooled-position × day × rotation week
     (confined to this module): share of operating minutes covered **only** by
@@ -143,13 +147,22 @@ student the ladder cannot seed or fill lands in the warnings
     rather than minutes — one per (weekday block × weekday), four per weekend
     block (each weekend day × each rotation week) — covered when anybody at
     all is on them. A floor nobody works has no operating minutes for a
-    fragility share to speak about, and this is the measure that does.
+    fragility share to speak about, and this is the measure that does. Summed
+    from the per-position rows above rather than enumerated a second time.
 - **`src/lib/admin/schedule-health-view.ts`** — pure view builder per the
   `analytics-view.ts` precedent; tones (solo share >20% danger, >10% warning;
   `newLeadSolo` >0 danger; lockstep >0 warning); hand-rolled div bars, no
   chart libraries. A Cover row shows `coverageShare` as its figure and bar,
   always in the neutral color since a width that means coverage cannot also
   mean alarm, and carries the returner share as the toned detail beside it.
+  The stretch histograms both render through one `histogramBars` helper and
+  differ only in their tone: days-in-a-row reads the run's own limit,
+  days-worked carries none, because how many days out of fourteen somebody
+  works is not a rule anything can break. `perDay` renders as a seven-column
+  fortnight table read **by slot** rather than by arrival order, and
+  `stretch.byCohort` as one short line per rotation anyone is on ("A rotation:
+  41 people, longest 6 days") rather than four more histograms: the question
+  those answer is whether the rotation weeks carry comparable loads.
 - **`seats.ts` addition** — `orderHash` (FNV-1a 32-bit of the email) and
   `byHashedEmail` (falls back to `byEmail` on collision, keeping the order
   total). FNV-1a rather than sha256 deliberately: the requirement is

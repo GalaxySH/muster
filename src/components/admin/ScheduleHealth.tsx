@@ -68,10 +68,23 @@ export function ScheduleHealth({
             </ul>
           )}
 
-          <div style={twoCol}>
+          <div style={barsGrid}>
             <div>
               <SectionLabel>Days in a row</SectionLabel>
               {view.consecutiveDays.map((bar) => (
+                <Bar key={bar.label} bar={bar} />
+              ))}
+              {view.cohortLines.length > 0 && (
+                <div style={cohortList}>
+                  {view.cohortLines.map((line) => (
+                    <div key={line}>{line}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <SectionLabel>Days worked</SectionLabel>
+              {view.daysWorked.map((bar) => (
                 <Bar key={bar.label} bar={bar} />
               ))}
             </div>
@@ -84,6 +97,40 @@ export function ScheduleHealth({
           </div>
 
           <div style={{ marginTop: 14 }}>
+            <SectionLabel
+              action={<span style={hintStyle}>people on, and the hours they cover</span>}
+            >
+              Day by day
+            </SectionLabel>
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={th} />
+                    {view.perDay.days.map((day) => (
+                      <th key={day} style={th}>
+                        {day}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.perDay.rows.map((row) => (
+                    <tr key={row.week}>
+                      <td style={{ ...td, color: "var(--color-text-secondary)" }}>{row.week}</td>
+                      {row.cells.map((cell, i) => (
+                        <td key={view.perDay.days[i]} style={td}>
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
             <SectionLabel>By position</SectionLabel>
             <div style={{ overflowX: "auto" }}>
               <table style={tableStyle}>
@@ -92,6 +139,7 @@ export function ScheduleHealth({
                     <th style={th}>Position</th>
                     <th style={th}>Placed</th>
                     <th style={th}>Target filled</th>
+                    <th style={th}>Empty shifts</th>
                     <th style={th}>Weekly hours</th>
                     <th style={th}>Hours a day</th>
                     <th style={th}>Open to close</th>
@@ -104,6 +152,7 @@ export function ScheduleHealth({
                       <td style={td}>{row.name}</td>
                       <td style={td}>{row.staff}</td>
                       <td style={td}>{row.fill}</td>
+                      <td style={td}>{row.emptyShifts}</td>
                       <td style={td}>{row.hours}</td>
                       <td style={td}>{row.perDay}</td>
                       <td style={td}>{row.span}</td>
@@ -188,11 +237,25 @@ const pillStyle = (tone: HealthTone): React.CSSProperties =>
 
 // --- styles ---
 
-const twoCol: React.CSSProperties = {
+/**
+ * The stretch and hours bar columns. Auto-fit, so the three drop to two and then
+ * to one as the window narrows rather than being pinned to a count.
+ */
+const barsGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
   gap: 14,
   marginTop: 14,
+};
+
+/** The per-rotation summary lines under the days-in-a-row bars. */
+const cohortList: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  marginTop: 8,
+  fontSize: 12,
+  color: "var(--color-text-secondary)",
 };
 
 const tableStyle: React.CSSProperties = {

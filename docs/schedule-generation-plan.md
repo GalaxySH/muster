@@ -349,12 +349,16 @@ and people sharing an
 identical set of (day, block, rotation) cells; the alphabetical-rank against
 hours correlation); *stretch* (cyclic consecutive-days histogram, per-cohort
 split, days-per-fortnight histogram); *per-position* staffing, targeted-cell
-fill, and span and load figures; *perDay* over all 14 slots; *fragility*; and
-*shifts*, which counts shift **instances** rather than minutes (one per weekday
-block per weekday, four per weekend block, one for each weekend day in each
-rotation week) and reports how many of them nobody works at all. That last one
-exists because a floor with nobody on it has no operating minutes for a
-fragility share to be a share of.
+fill, span and load figures, and that position's own shift instances; *perDay*
+over all 14 slots; *fragility*; and *shifts*, which counts shift **instances**
+rather than minutes (one per weekday block per weekday, four per weekend block,
+one for each weekend day in each rotation week) and reports how many of them
+nobody works at all. That last one exists because a floor with nobody on it has
+no operating minutes for a fragility share to be a share of. Since **version 3**
+the instance count also sits on each per-position row as
+`shifts: { total, uncovered }`, and there is only ONE enumeration: a block
+carries exactly one `positionId`, so the position rows partition the instances
+and the run-wide figure is their sum.
 
 Two denominators run through the module and they differ on purpose. Anything
 counted per day runs over all **fourteen** slots, so a weekday row counts in both
@@ -391,12 +395,21 @@ that goes on screen. Tones are the alarm rules: a floor over
 A Cover row separates the two things it knows: the bold figure and the bar are
 `coverageShare`, drawn in the neutral color because a width that means coverage
 cannot also mean alarm, and the returner share sits beside them as the detail
-the tone and pill are read from. Bars are hand-rolled divs; no chart library. A
-run stamped under a different `RUN_STATS_VERSION` (now **2**, since the cover
-figures grew), or a run generated before stats existed, is passed over
-rather than parsed hopefully, and the section hides behind a short note: a
-rolled-back deploy meeting a newer run must cost the health section, not the
-whole page.
+the tone and pill are read from. Bars are hand-rolled divs; no chart library.
+The stretch histograms share one bar builder and differ only in their tone:
+days-in-a-row reads the run's own limit, **Days worked** carries none, since
+working nine days out of fourteen breaks no rule. A **Day by day** table under
+the bars lays the fortnight out seven columns wide and two rows deep, each cell
+"N · Xh" and a quiet dash where nobody is on, read by fortnight slot so the two
+rotation weeks cannot transpose. `stretch.byCohort` renders as one short line
+per rotation anyone is on, under the days-in-a-row bars. The **By position**
+table carries an **Empty shifts** column ("12 of 48", or "none"), which is the
+per-floor form of the Uncovered shifts tile and the only thing that speaks about
+a floor nobody is on at all. A run stamped under a different `RUN_STATS_VERSION`
+(now **3**, since `shifts` moved down into the per-position rows), or a run
+generated before stats existed, is passed over rather than parsed hopefully, and
+the section hides behind a short note: a rolled-back deploy meeting a newer run
+must cost the health section, not the whole page.
 
 ## 4. Regeneration model (shipped, v0.84: one mode)
 

@@ -16,9 +16,12 @@
  */
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { formatTime } from "@/lib/domain/time";
+import { ALL_DAYS, DAY_LABEL } from "@/lib/domain/types";
 import {
   RUN_STATS_VERSION,
+  type CohortStretch,
   type FragilityGroup,
+  type Histogram,
   type RunStats,
 } from "@/lib/domain/scheduling/stats";
 
@@ -61,10 +64,25 @@ export interface HealthPositionRow {
   name: string;
   staff: string;
   fill: string;
+  /** Shift instances on this floor nobody works: "12 of 48", or "none". */
+  emptyShifts: string;
   hours: string;
   perDay: string;
   span: string;
   load: string;
+}
+
+/** One fortnight week of the Day by day table: seven cells, Sun to Sat. */
+export interface HealthDayRow {
+  week: string;
+  /** "N · Xh" per day, or a quiet dash where nobody is on. */
+  cells: string[];
+}
+
+/** The Day by day table: its column headings and its two week rows. */
+export interface HealthPerDay {
+  days: string[];
+  rows: HealthDayRow[];
 }
 
 export interface HealthFragilityRow {
@@ -91,7 +109,12 @@ export interface ScheduleHealthView {
   people: number;
   tiles: HealthTile[];
   consecutiveDays: HealthBar[];
+  /** One short line per weekend rotation anyone is on, under the bars above. */
+  cohortLines: string[];
+  /** Working days out of the fortnight's 14, as its own bars column. */
+  daysWorked: HealthBar[];
   hours: HealthBar[];
+  perDay: HealthPerDay;
   positions: HealthPositionRow[];
   fragility: HealthFragilityRow[];
   /** Caveat printed with the cover table when the run has no returners at all. */
@@ -208,19 +231,17 @@ export function buildScheduleHealthView(
   // Consecutive days: one bar per run length anyone actually hit, shortest
   // first. Bars are scaled to the busiest bucket, not to the headcount, so a
   // small tail of long runs still reads.
-  const runEntries = Object.entries(stretch.consecutiveDays.buckets)
-    .map(([value, count]) => ({ value: Number(value), count }))
-    .sort((a, b) => a.value - b.value);
-  const runMax = runEntries.reduce((n, e) => Math.max(n, e.count), 0);
-  const consecutiveDays: HealthBar[] = runEntries.map((e) => ({
-    label: e.value === 14 ? "Every day" : plural(e.value, "day", "days"),
-    percent: widthOf(e.count, runMax),
-    caption: `${e.count} · ${fairness.people === 0 ? 0 : Math.round((e.count / fairness.people) * 100)}%`,
-    // The run's own limit, the same one the labor validator judges these rows
-    // against on this page. Judging against the shipped default would have this
-    // section warning about stretches the validator calls fine.
-    tone: e.value > stretch.overLimitAt ? "warning" : null,
-  }));
+  //
+  // The run's own limit sets the tone, the same one the labor validator judges
+  // these rows against on this page. Judging against the shipped default would
+  // have this section warning about stretches the validator calls fine.
+  const consecutiveDays = histogramBars(stretch.consecutiveDays, fairness.people, (value) =>
+    value > stretch.overLimitAt ? "warning" : null,
+  );
+  // Days worked reads on exactly the same shape, and carries no tone: how many
+  // days out of fourteen somebody works is not a rule anything can break.
+  const daysWorked = histogramBars(stretch.daysPerFortnight, fairness.people);
+  const cohortLines = stretch.byCohort.filter((c) => c.people > 0).map(cohortLine);
 
   // The weekly-hours ladder: the run's own percentiles as bars against its top.
   const hourLadder: { label: string; minutes: number }[] = [
@@ -244,6 +265,10 @@ export function buildScheduleHealthView(
     // moves with the scope and the non-responders option, not the roster.
     staff: `${p.staffAssigned} of ${p.staff} in this run`,
     fill: p.fillPercent === null ? "no targets" : percentText(p.fillPercent),
+    // A count, not a share: the tile above already carries the run-wide
+    // percentage, and per floor the raw pair is what a scheduler acts on. A
+    // position with no shifts at all has no empty ones, so it reads "none" too.
+    emptyShifts: p.shifts.uncovered === 0 ? "none" : `${p.shifts.uncovered} of ${p.shifts.total}`,
     hours:
       p.staffAssigned === 0
         ? "none"
@@ -298,11 +323,77 @@ export function buildScheduleHealthView(
     people: fairness.people,
     tiles,
     consecutiveDays,
+    cohortLines,
+    daysWorked,
     hours: hoursBars,
+    perDay: perDayTable(stats),
     positions,
     fragility: fragilityRows,
     fragilityNote,
     notes,
+  };
+}
+
+/**
+ * One bar per whole-number bucket anyone actually hit, shortest first, scaled
+ * to the busiest bucket rather than to the headcount so a small tail still
+ * reads. Shared by the two stretch histograms, which differ only in their tone.
+ */
+function histogramBars(
+  hist: Histogram,
+  people: number,
+  toneOf: (value: number) => HealthTone = () => null,
+): HealthBar[] {
+  const entries = Object.entries(hist.buckets)
+    .map(([value, count]) => ({ value: Number(value), count }))
+    .sort((a, b) => a.value - b.value);
+  const busiest = entries.reduce((n, e) => Math.max(n, e.count), 0);
+  return entries.map((e) => ({
+    label: e.value === 14 ? "Every day" : plural(e.value, "day", "days"),
+    percent: widthOf(e.count, busiest),
+    caption: `${e.count} · ${people === 0 ? 0 : Math.round((e.count / people) * 100)}%`,
+    tone: toneOf(e.value),
+  }));
+}
+
+/** How a rotation reads in a sentence; "weekday" means no weekend work at all. */
+const COHORT_LABEL: Record<CohortStretch["cohort"], string> = {
+  weekday: "Weekdays only",
+  a: "A rotation",
+  b: "B rotation",
+  every: "Every weekend",
+};
+
+/**
+ * One rotation in one line, under the days-in-a-row bars. Deliberately not a
+ * histogram of its own: the question this answers is whether the two rotation
+ * weeks are carrying comparable loads, and a headcount plus the longest stretch
+ * on each answers it without four more charts.
+ */
+function cohortLine(group: CohortStretch): string {
+  const longest = group.consecutiveDays.max;
+  return `${COHORT_LABEL[group.cohort]}: ${plural(group.people, "person", "people")}, longest ${plural(longest, "day", "days")}`;
+}
+
+/**
+ * The fortnight day by day: seven columns Sunday to Saturday, one row per
+ * rotation week. Cells are read by fortnight SLOT rather than by the order the
+ * entries arrive in, so the table cannot silently transpose if that order ever
+ * changes. A slot nobody works reads as a dash rather than "0 · 0h", which
+ * would take up the same room to say less.
+ */
+function perDayTable(stats: RunStats): HealthPerDay {
+  const bySlot = new Map(stats.perDay.map((d) => [d.slot, d]));
+  return {
+    days: ALL_DAYS.map((d) => DAY_LABEL[d]),
+    rows: ([1, 2] as const).map((week) => ({
+      week: `Week ${week}`,
+      cells: ALL_DAYS.map((_, i) => {
+        const entry = bySlot.get((week - 1) * 7 + i);
+        if (!entry || entry.people === 0) return "-";
+        return `${entry.people} · ${hours(entry.minutes)}`;
+      }),
+    })),
   };
 }
 
