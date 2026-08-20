@@ -371,6 +371,12 @@ function SchedulePanel({
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.returners &&
           ` ${report.returners.count} returners were placed before new students.`}
+        {report.anneal &&
+          ` The optimizer filled ${report.anneal.gainedSeats} more seats, over ` +
+            `${report.anneal.iterations.toLocaleString("en-US")} rounds with seed ${report.anneal.seed}.`}
+        {report.anneal !== undefined &&
+          report.anneal.trimmedStudents > 0 &&
+          ` ${report.anneal.trimmedStudents} people had hours above their target trimmed back.`}
         {knobs &&
           ` Used max ${knobs.dayCapHours}h per day, night priority ${knobs.nightPriority}, evening ${knobs.eveningPriority}, rest ${knobs.minRestHours}h/${knobs.preferredRestHours}h, days ${knobs.preferredDaysPerWeek}/${knobs.maxDaysPerWeek}, run cap ${knobs.maxConsecutiveDays}.`}
       </p>
