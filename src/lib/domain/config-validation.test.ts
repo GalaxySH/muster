@@ -156,6 +156,24 @@ describe("blockSetWarnings", () => {
     expect(kinds(unreachable)).toContain("min_hours_unreachable");
   });
 
+  it("warns when the minimum is over the international weekly cap", () => {
+    // 25h floor vs the 20h international hard cap: no block set can fix it.
+    const warnings = blockSetWarnings(position({ minHours: 25, weekendExempt: true }), [
+      block("wd", "weekday", "8a", "6p"),
+    ]);
+    expect(kinds(warnings)).toContain("min_hours_over_intl_cap");
+    const warning = warnings.find((w) => w.kind === "min_hours_over_intl_cap")!;
+    expect(warning.message).toContain("25h");
+    expect(warning.message).toContain("20h");
+  });
+
+  it("leaves a minimum exactly at the international cap alone", () => {
+    const warnings = blockSetWarnings(position({ minHours: 20, weekendExempt: true }), [
+      block("wd", "weekday", "8a", "6p"),
+    ]);
+    expect(kinds(warnings)).not.toContain("min_hours_over_intl_cap");
+  });
+
   it("warns when a position has no weekday blocks", () => {
     const warnings = blockSetWarnings(position(), [block("we", "weekend", "9a", "7p")]);
     expect(kinds(warnings)).toContain("no_weekday_blocks");
@@ -196,8 +214,34 @@ describe("blockSetWarnings", () => {
     ]);
   });
 
+  it("warns about a block longer than the engine's day cap", () => {
+    const warnings = blockSetWarnings(
+      position(),
+      [block("wd", "weekday", "8a", "6p"), block("we", "weekend", "9a", "1p")],
+      8,
+    );
+    const over = warnings.filter((w) => w.kind === "block_over_day_cap");
+    expect(over).toHaveLength(1);
+    expect(over[0]!.message).toBe(
+      "The weekday 8a to 6p shift is 10h long, over the 8h day cap, so nobody can be scheduled on it.",
+    );
+  });
+
+  it("leaves a block exactly at the day cap alone", () => {
+    const warnings = blockSetWarnings(position(), [block("wd", "weekday", "8a", "4p")], 8);
+    expect(kinds(warnings)).not.toContain("block_over_day_cap");
+  });
+
+  it("skips the day-cap check when no cap is passed", () => {
+    const warnings = blockSetWarnings(position(), [block("wd", "weekday", "8a", "8p")]);
+    expect(kinds(warnings)).not.toContain("block_over_day_cap");
+  });
+
   it("writes plain messages without em dashes", () => {
-    for (const w of blockSetWarnings(position(), [])) {
+    for (const w of blockSetWarnings(position(), [], 8)) {
+      expect(w.message).not.toContain("—");
+    }
+    for (const w of blockSetWarnings(position(), [block("wd", "weekday", "6a", "8p")], 8)) {
       expect(w.message).not.toContain("—");
     }
   });

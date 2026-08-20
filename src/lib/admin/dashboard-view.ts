@@ -500,7 +500,10 @@ function buildAlerts(
   // blocks to pick, or a block set that can never reach the hour or day floor.
   // Only positions with on-roster students are checked (an unused position is
   // not costing anyone a submission), and the pure `blockSetWarnings` is the
-  // same check the positions editor shows.
+  // same check the positions editor shows. No day cap is passed, so the
+  // over-the-cap block warning stays on /admin/positions by design: that is
+  // where the block gets fixed, and the hub only carries what blocks a
+  // submission outright.
   for (const pc of s.positionConfigs) {
     const warnings = blockSetWarnings(pc.position, pc.blocks);
     if (warnings.length > 0) {

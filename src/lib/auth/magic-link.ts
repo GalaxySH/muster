@@ -9,8 +9,8 @@
  */
 import { randomBytes, createHash } from "node:crypto";
 
-/** Link lifetime (single-use, short; PLAN §11 "expires"). */
-export const MAGIC_LINK_TTL_MS = 30 * 60 * 1000;
+/** Link lifetime (single-use; PLAN §11 "expires"). */
+export const MAGIC_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 /** Minimum gap between link requests for the same email (anti-spam). */
 export const MAGIC_LINK_COOLDOWN_MS = 60 * 1000;
 

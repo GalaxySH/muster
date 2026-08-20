@@ -9,9 +9,9 @@
  * the spreadsheet without the app.
  */
 import { computeCapacity, distinctSelectedDays } from "@/lib/domain/capacity";
+import { hourCap } from "@/lib/domain/caps";
 import { formatTime } from "@/lib/domain/time";
 import { ALL_DAYS, DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
-import { hourCap } from "./summary";
 
 export interface ExportTravel {
   startDate: string;

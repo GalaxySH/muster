@@ -260,10 +260,12 @@ seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses`
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
 `ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the
 `listResponses` SQL): off-roster responders are hidden unless `roster=all`, and
-never-started students unless `all=1` (the "Show all students" switch, off by default so
-the dashboard is still a list of responses), each badged in the list.
-`getResponseNeighbors` re-lists with **both** switches on when the student being viewed
-isn't in the filtered list, so the open student is always part of the prev/next walk.
+never-started students unless the submission-state select asks for them (`status` =
+submitted|draft|missing|all, empty being the default view that keeps the dashboard a list
+of responses; the old `all=1` link still parses as an alias for `status=all`), each badged
+in the list. `getResponseNeighbors` re-lists with off-roster on when the student being
+viewed isn't in the filtered list, widening the submission state only when none was
+chosen, so a chosen state still governs the prev/next walk.
 The start-date filter (`started` = before|after|on + `startedDate`, applied only when
 both halves are valid) compares `students.hiredOn` by calendar day; rows with no hire
 date never match. The list itself (`ResponseList`) is a full-bleed
@@ -341,8 +343,32 @@ The layer is fed by `buildAdminGrid`'s optional assignments parameter (`AdminCel
 autoAssigned, assigned, assignmentSource}`, loaded via `loadStudentCurrentAssignments`
 in `schedule/data.ts`). An **Edit mode** toggle picks the click target: **Edit
 preferences** is the trial/save behavior above; **Edit schedule** (disabled with a
-generate-first note until a run exists) toggles per-cell manual overrides through
-`setManualAssignment`/`removeManualAssignment` (see the schedule generation section).
+generate-first note until a run exists) is the SAME trial/save shape since 1.15. Clicks
+build a local trial of the run's rows for this student and write nothing; Save sends the
+whole diff to `applyScheduleEdits` as one transaction (see the schedule generation
+section), and Reset drops it. There is no Clear in schedule mode: wiping a schedule
+should not be one click. A click that would break the unique-coverage rule is refused on
+the spot, in the sentence the server would use (`dayConflictMessage`, shared so the two
+cannot paraphrase each other); a removal is always allowed in a trial, since a later add
+in the same batch can make it legal and the save-time check on the final state is the
+truth. Pending cells carry the amber dashed ring the grid already uses for "deviates",
+with a matching legend entry, a pending add showing the manual violet in its schedule
+half and a pending removal showing that half empty.
+Since 1.15 the readout line carries **two** figures and the mode decides their sizes: the
+preferred hours above and the student's **scheduled** hours from the current run, whichever
+the mode is about at full size with the status line, the other as a labelled miniature
+("12.5h scheduled", "10h preferred") so the two can never be read as one number. The
+scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
+`averagedAssignedMinutes` the schedule page's student table uses and off the run's own
+rows, so a row carried on a retired shift still counts and every `router.refresh()` after
+a schedule edit moves it. While the schedule trial is dirty the figure follows it, as
+`scheduledMinutes` plus a **delta** between the trial's grid cells and the persisted ones
+(both `computeCapacity` under the student's effective rotation): a delta rather than a
+fresh total precisely so the retired-shift rows above stay counted. Its status line reads
+"scheduled", "trial schedule" while dirty, "nothing scheduled" at zero, or "over Nh cap"
+in the danger accent, matching the over-max pill on `/admin/schedule`; with the cap a hard
+generation rule since 1.15, the trial is where an over-cap composition should get loud,
+before it lands.
 Preference saves that fail hard rules warn and need an explicit Save anyway (see the
 availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
@@ -1160,8 +1186,12 @@ coverage view, no generator yet. Standard layering:
 The generator itself, layered exactly like the rest of the app:
 
 - **Pure domain** `domain/scheduling/` (TDD; no I/O): `params.ts` (the
-  admin-tunable `SchedulingParams` — max hours per day, night/evening priority
-  0..100 — with validation and a never-throwing parse), `types.ts` (engine
+  admin-tunable `SchedulingParams`: max hours per day, night/evening priority
+  0..100, the repeat-start penalty, the labor bounds that feed `labor.ts` (rest,
+  consecutive days, days per week), and the stats-only cross-coverage pool, with
+  cross-field validation and a never-throwing parse that backfills missing
+  fields from the defaults and falls back wholesale when the result is
+  incoherent), `types.ts` (engine
   input/output including the run report, which snapshots the params used),
   `seats.ts` (the shared `SeatLedger` counting seats per cell **per weekend
   rotation week** so capacity binds where it is worked, plus `need` = unmet
@@ -1170,8 +1200,12 @@ The generator itself, layered exactly like the rest of the app:
   (`generateAssignments`: FCFS by `submittedAt`, freeze carry-forward for
   students marked scheduled, weekend-first seeding to the position's minimum
   day span, open-days-first filling under the tunable day cap, targeted-first
-  cell choice ranked by pull = need + tier bonus so late cells run ahead
-  instead of soaking up every seat, cohort balancing by assigned weekend
+  cell choice ranked by pull = need + tier bonus for a targeted cell and the
+  tier bonus alone for an untargeted one, minus the repeat-start penalty
+  (`repeatStartPenalty`/100 times the cells the student already holds at that
+  start time), so late cells run ahead instead of soaking up every seat and a
+  week of identical start times stops being the cheapest thing to build;
+  cohort balancing by assigned weekend
   load), and `improve.ts` (bounded same-day relocation accepted when the
   destination's pull beats the vacated cell's, evaluated with the seat lifted
   out; never drops hours, never grows a day count, never touches frozen
@@ -1232,7 +1266,9 @@ The generator itself, layered exactly like the rest of the app:
   split A/B, and per-student rows joining live names/positions/scheduled onto
   the run report). `domain/coverage.ts` grew `assignedCellCount` (weekend cells
   grade on the needier week) and `summarizeAssignedCoverage` so the page's
-  totals switch from selection supply to assigned seats once a run exists.
+  totals switch from selection supply to assigned seats once a run exists
+  (since 1.15 the `?grid=` switch can put the grids and those two totals back on
+  supply; everything else on the page keeps reading the run).
 - **UI** `/admin/schedule`: the run panel (`GenerateScheduleButton`, a small
   client island with a two-step confirm), the coverage grid re-used with
   assigned counts (weekend `A·B`, supply in the tooltip), the per-student
@@ -1250,22 +1286,32 @@ The generator itself, layered exactly like the rest of the app:
   `--clean` removes exactly the `synthetic-` rows; refuses production.
 
 - **Manual overrides** (0.99, ahead of Phase C): `schedule_assignments.source`
-  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes the
-  admin-gated `setManualAssignment`/`removeManualAssignment`: current run only
-  (refuse cleanly when none exists), same-day conflicts refused via the pure
+  (`engine`|`manual`, migration 0021). `schedule/manual.ts` exposes one
+  admin-gated action, `applyScheduleEdits(email, removes, adds)` (1.15; it
+  replaced the per-click `setManualAssignment`/`removeManualAssignment` pair
+  when the grid moved to trial + Save, and the grid was their only caller):
+  current run only (refuse cleanly when none exists), then ONE transaction that
+  loads the student's rows, applies the removals (a missing row is a no-op),
+  and applies the additions in calendar order, each one re-validated against
+  the EVOLVING row set. Any addition that fails aborts the whole batch and
+  comes back naming its cell ("Sat 8a to 12p: ..."), so the admin never lands
+  half a save. Same-day conflicts are refused via the pure
   `domain/scheduling/manual.ts` (`findDayConflict` — every shift must add
   unique coverage, 1.04: a block already covered by the student's other shifts
   refuses, as does one whose arrival would leave an existing shift covering
   nothing of its own; staggered overlaps and touching are allowed, so handoff
   doubles are schedulable, and the same `redundantRangeIndex` predicate drives
-  the engine's candidate filter and the improvement pass —
-  `manualWeekendCohort` — reuse the student's current-run cohort, else `every`
-  for opt-ins, else `a`), cells outside the student's picks allowed (the
-  scheduler owns the schedule; the grid renders the mismatch). Edits mutate the
-  current run in place and never create a run. `generateSchedule`'s
-  carry-forward preserves `source` on frozen students' rows; a non-frozen
-  student's manual rows are superseded by the next update by design. The
-  per-student grid (PLAN §10a) is the UI.
+  the engine's candidate filter and the improvement pass; `dayConflictMessage`
+  turns a conflict into the admin's sentence, so the grid's client-side cue and
+  this refusal cannot drift apart — `manualWeekendCohort` — reuse the student's
+  current-run cohort, else `every` for opt-ins, else `a`), cells outside the
+  student's picks allowed (the scheduler owns the schedule; the grid renders
+  the mismatch). Labor and over-cap warnings are computed once on the state the
+  batch landed on (`laborWarningsForRows`, `weekMinutesForRows`), still warning
+  and never blocking. Edits mutate the current run in place and never create a run.
+  `generateSchedule`'s carry-forward preserves `source` on frozen students'
+  rows; a non-frozen student's manual rows are superseded by the next update by
+  design. The per-student grid (PLAN §10a) is the UI.
 
 - **Phase C — regeneration ergonomics** (1.00): migration 0022 adds
   `schedule_runs.restoredAt`/`restoredBy`. `restoreScheduleRun` flips a
@@ -1391,6 +1437,97 @@ the list and the number it explains cannot disagree. That grid counts
 auto-assigned weekend cells, so the dialog returns those people too and flags
 them rather than filtering them out. Any change to one query belongs in the
 other.
+
+### Labor rules, validation, and schedule health (v1.15)
+
+Five modules, added by the overhaul in
+`docs/generator-constraints-fairness-plan.md`. Each file's header is the long
+version; this is the seam map.
+
+- **`domain/scheduling/labor.ts`** owns the canonical fortnight calendar and the
+  six labor rules on it. `slotIndices(day, cohort)` maps a template day to slots
+  in 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂]; `laborLimits`
+  derives the numeric bounds from params (with `WEEK_CAP_MINUTES`, the 40h
+  payroll ceiling, a constant here and never a knob); `laborViolations` returns
+  typed hard and soft findings, and the hot-path `candidateAllowed` answers
+  yes-or-no at a given `LaborMode`. O(days) per call: it builds at most 14 slots
+  from at most 7 map entries and never a minute timeline. Its header carries the
+  symmetry proof that lets a null cohort evaluate canonically as `"a"`, so the
+  predicate never depends on the ledger's later cohort-balance choice. Shared by
+  the engine, the improvement pass, and manual edits; PLAN §7a records the same
+  calendar as the authoritative reading.
+- **`domain/scheduling/validate.ts`** is the independent read-time validator and
+  a **deliberate second derivation**, written from the spec by an author who did
+  not read `labor.ts`, re-implementing the interval merging and the fortnight
+  mapping on purpose. A divergence between the two is the safety net working;
+  the header says not to fold them together. `validateRunLabor(rows, limits)`
+  returns per-student findings with frozen and manual attribution, judges every
+  row it is given (frozen and manual rows are the point, not an exception), and
+  maps each row by that row's **own** cohort, so a mixed-cohort student from
+  manual editing is judged correctly. Same-person overlaps are deliberately not
+  flagged: staggered doubles merge, and the shared minutes count once.
+- **`domain/scheduling/stats.ts`** computes the versioned `RunStats` each run
+  stores as `report.stats`: fairness (weekly-minutes distribution, realized-week
+  maxima, over-cap counts, modal-start share and `welded`, `lockstep`,
+  alphabetical-rank against hours correlation), stretch (cyclic consecutive-days
+  and days-per-fortnight histograms, per-cohort split), per-position load, 14
+  `perDay` entries, coverage fragility, and `shifts` (instances nobody works at
+  all: one per weekday block per weekday, four per weekend block). Since
+  version 3 `shifts` also sits on each per-position row, and that IS the
+  enumeration: a block carries one `positionId`, so the rows partition the
+  instances and the run-wide figure is their sum. It imports
+  `slotIndices` rather than mapping the fortnight a third time; the validator is
+  the one sanctioned duplicate. Two denominators differ on purpose: per-day
+  figures run over all 14 slots, fragility over the 9 distinct staffing pictures
+  (one per weekday, one per weekend day per rotation week). Each fragility group
+  measures `openMinutes` over those same pictures off its blocks' spans, so its
+  `coverageShare` is the staffed share of scheduled open time. Everything is a
+  count, share, or
+  distribution except `stretch.overLimit`, which is judged against the run's own
+  `maxConsecutiveDays` and stores it as `overLimitAt`.
+- **`schedule/run-warnings.ts`** is the pure seam between the stored run and its
+  warnings, kept out of the I/O in `data.ts` and `actions.ts`. `lateStartWarnings`
+  compares `students.hired_on` against `positions.return_date` as `yyyy-mm-dd`
+  **strings**, never as Dates: the return date is stored as a string and stays
+  one, while the hire date arrives as a Date pinned to LOCAL midnight and so is
+  read with `localDay`'s local getters (`toISOString` would read the UTC frame
+  and land a day early east of UTC). The rest wires the validator to a stored
+  run, assignment rows in and display-ready findings out, and never throws: a run
+  whose report or blocks are unreadable must still render its page.
+- **`admin/schedule-health-view.ts`** builds the Schedule health section on
+  `/admin/schedule` from the stored snapshot, following the `analytics-view.ts`
+  precedent so the component holds layout and nothing else (bar widths as whole
+  percents, every figure already a string). `isReadableRunStats` gates on
+  `RUN_STATS_VERSION`, so an older or newer snapshot costs the section and not
+  the page. Tones: a floor over `SOLO_SHARE_DANGER` (20%) of its staffed time
+  with no returner is danger, over `SOLO_SHARE_WARNING` (10%) is a warning, and
+  any `newLeadSolo` minute at all is danger. A Cover row shows `coverageShare` as
+  its figure and bar, always in the neutral color since a bar whose width means
+  coverage cannot also mean alarm, and carries the returner share beside it as
+  the detail the tone and pill are read from. Hand-rolled div bars, no chart
+  library. Three of them: days-in-a-row, days-worked and weekly hours, the first
+  two through one `histogramBars` helper differing only in tone. Below them the
+  `perDay` fortnight reads as a seven-column, two-row **Day by day** table
+  ("N · Xh" a cell, a dash where nobody is on), keyed by slot so the rotation
+  weeks cannot transpose, and `stretch.byCohort` as one line per rotation on the
+  run. The By position table's **Empty shifts** column is the per-floor form of
+  the Uncovered shifts tile, and the only figure that speaks about a floor
+  nobody is on at all.
+
+Wiring: `engine.ts` filters candidates through `candidateAllowed` and climbs the
+`strict` then `relax-rest` then `relax-days` ladder inside the existing deferred
+double pass (deferred exclusion stays outermost), applies the
+`repeatStartPenalty` against a per-student map of starts already held, and orders
+final ties by `byHashedEmail`; `improve.ts` uses the same predicate as a filter
+and never as a score; `schedule/manual.ts` warns and never blocks;
+`domain/scheduling/problems.ts` gained a `below-min-hours` group mirroring the
+engine counter, and an `over-max-hours` group with no counter behind it that
+deliberately includes frozen students, since a hand edit to a kept row is the
+likeliest way somebody passes their hour cap; `data.ts` `loadScheduleForRun` runs
+the validator against the run's snapshotted params and extends
+`ScheduleStudentRow` with `belowMinHours`, `overMaxHours` and `lateStart`;
+`components/admin/ScheduleHealth.tsx` renders the view model.
+Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
 ## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
 

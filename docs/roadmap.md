@@ -421,6 +421,39 @@ Shift Leads claim weekend closes by hand (3.2, PLAN §18a) and those claims neve
 reach the generator, so pre-committing Shift Leads to generated weekend closes
 was wasted allocation.
 
+### 5.5 Labor rules, fairness, and schedule health — ✅ DONE (2026-08-20, v1.15)
+
+Full design in `docs/generator-constraints-fairness-plan.md`; the source
+checklist is `docs/constraints-from-welcome-week.md`, imported from a one-off
+welcome-week scheduling exercise that had already met every one of these rules by
+hand. Layering in `docs/architecture.md` (Schedule generation). Shipped:
+
+- **Six labor rules on a canonical fortnight calendar**
+  (`domain/scheduling/labor.ts`). The repo had never pinned which Saturday pairs
+  with which Sunday; it now does, and PLAN §7a carries the authoritative reading.
+  Day hours, the 40h W2W week (payroll law, a constant rather than a knob),
+  consecutive days, days per week, clopen rest, and split shifts. Soft rules
+  relax through a `strict` then `relax-rest` then `relax-days` ladder composed
+  inside the existing deferred-cells pass; hard rules never relax.
+- **An independent read-time validator** (`domain/scheduling/validate.ts`),
+  written from the spec by an author who did not read the engine-side module, so
+  a divergence between the two surfaces a bug in one of them rather than being
+  duplication to delete. It judges frozen and manual rows too, which is the
+  point: it sees hand edits made after a run was generated.
+- **Below-min-hours and late-start warnings**, a `below-min-hours` problem group,
+  and validator findings rendered on `/admin/schedule`.
+- **Fairness knobs and orderings**: a tunable repeat-start penalty, and hashed
+  email tie-breaks so a static alphabet cannot act as a seniority list.
+- **A per-run statistics snapshot and the Schedule health section**
+  (`domain/scheduling/stats.ts`, `admin/schedule-health-view.ts`): fairness,
+  stretch, per-position load, and coverage fragility, the last of which measures
+  the share of each floor's operating time covered only by new hires with no
+  returner overlapping. A new shift lead working alone is an alarm at any share.
+
+**Deliberately not built:** no hour-leveling pass and no random restarts. The
+one-off measured that re-seeding permutes who gets which hours but never changes
+the spread, so restarts would buy nothing. Event and blackout modeling is 5.6.
+
 ### 5.3 W2W-importable schedule document — **future, not scheduled**
 
 The ceiling on W2W interop (PLAN §17). Muster would emit a file in whatever
@@ -430,6 +463,25 @@ importer takes, and whether the scheduler's workflow actually wants a bulk
 import over reading `/admin/schedule` and typing. Explicitly **not** an
 integration: no API, no credentials, no automated transfer. Pairs with PLAN §16
 open question #6 (what layout the scheduler wants to read from).
+
+### 5.6 Event-driven cohort blackouts — **deferred, not scheduled**
+
+The known unmodeled constraint class, called out explicitly in
+`docs/constraints-from-welcome-week.md` §3 and left out of the v1.15 overhaul
+(5.5) on purpose. The engine is dateless: it generates a repeating weekly
+template and has no calendar, so nothing dated can constrain it. Travel excusals
+already live with that (they surface as per-student annotations and the human
+applies them in W2W), but **events** are different in kind, because they take out
+a whole **cohort** rather than one person: a freshman event that removes every
+first-year student for part of one specific day, convocation, training days. The
+one-off scheduling exercise hit exactly this and solved it by hand.
+
+Closing it means an **event calendar** the generator can read, plus a decision
+about how a dated blackout projects onto a dateless template. That decision is
+the hard part and is not made: a single-day event maps onto exactly one slot of
+one fortnight half, so honoring it either breaks the template's repetition or
+becomes a per-run annotation rather than a constraint. Until that is settled, the
+scheduler handles events in W2W and the run report says nothing about them.
 
 ## Tier 6 — Simplification
 

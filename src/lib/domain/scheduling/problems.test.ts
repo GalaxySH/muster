@@ -2,7 +2,14 @@ import { describe, it, expect } from "vitest";
 import { parseTime } from "../time";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { generateAssignments } from "./engine";
-import { problemGroups, type ProblemKind, type ProblemLookup } from "./problems";
+import {
+  isBelowMinHours,
+  isOverMaxHours,
+  problemGroups,
+  type ProblemKind,
+  type ProblemLookup,
+} from "./problems";
+import { EPSILON_MINUTES } from "./seats";
 import type {
   EngineReport,
   ScheduleAssignment,
@@ -72,12 +79,61 @@ function row(email: string, over: Partial<StudentScheduleReport> = {}): StudentS
 function lookup(
   names: Record<string, string> = {},
   minDays: (email: string) => number | null = () => 2,
+  minHours: (email: string) => number | null = () => CA.minHours,
+  international: (email: string) => boolean = () => false,
 ): ProblemLookup {
-  return { nameOf: (e) => names[e] ?? e, minDaysOf: minDays };
+  return {
+    nameOf: (e) => names[e] ?? e,
+    minDaysOf: minDays,
+    minHoursOf: minHours,
+    internationalOf: international,
+  };
 }
 
 const sizeOf = (groups: ReturnType<typeof problemGroups>, kind: ProblemKind) =>
   groups.find((g) => g.kind === kind)?.students.length ?? 0;
+
+describe("isBelowMinHours", () => {
+  it("compares against the floor with the rounding tolerance", () => {
+    expect(isBelowMinHours(540, 10)).toBe(true);
+    expect(isBelowMinHours(600, 10)).toBe(false);
+    expect(isBelowMinHours(660, 10)).toBe(false);
+    // A hair under the floor is the floor, not a violation.
+    expect(isBelowMinHours(600 - EPSILON_MINUTES / 2, 10)).toBe(false);
+  });
+
+  it("never flags a student whose position is unknown", () => {
+    expect(isBelowMinHours(0, null)).toBe(false);
+  });
+});
+
+describe("isOverMaxHours", () => {
+  // 30h domestic and 20h international, in minutes.
+  const DOMESTIC = 30 * 60;
+  const INTERNATIONAL = 20 * 60;
+
+  it("leaves a student sitting exactly on their cap alone", () => {
+    expect(isOverMaxHours(DOMESTIC, false)).toBe(false);
+    expect(isOverMaxHours(INTERNATIONAL, true)).toBe(false);
+  });
+
+  it("compares against the cap with the same rounding tolerance", () => {
+    // The mirror of the floor rule: a hair over the cap is the cap.
+    expect(isOverMaxHours(DOMESTIC + EPSILON_MINUTES / 2, false)).toBe(false);
+    expect(isOverMaxHours(DOMESTIC + 2 * EPSILON_MINUTES, false)).toBe(true);
+  });
+
+  it("flags a real overshoot", () => {
+    expect(isOverMaxHours(DOMESTIC + 60, false)).toBe(true);
+    expect(isOverMaxHours(DOMESTIC - 60, false)).toBe(false);
+  });
+
+  it("holds an international student to the lower cap", () => {
+    // 25h is over the 20h international cap and well under the 30h one.
+    expect(isOverMaxHours(25 * 60, true)).toBe(true);
+    expect(isOverMaxHours(25 * 60, false)).toBe(false);
+  });
+});
 
 describe("problemGroups", () => {
   it("matches the engine's aggregate counts on a real run", () => {
@@ -106,11 +162,13 @@ describe("problemGroups", () => {
     expect(r.report.skippedNoPosition).toEqual(["nopos@w"]);
     expect(r.report.shortOfTarget).toBe(2);
     expect(r.report.belowMinDays).toBe(1);
+    expect(r.report.belowMinHours).toBe(2);
 
     const groups = problemGroups(r.report, lookup());
     expect(sizeOf(groups, "dropped")).toBe(r.report.droppedStudents.length);
     expect(sizeOf(groups, "no-position")).toBe(r.report.skippedNoPosition.length);
     expect(sizeOf(groups, "short-of-hours")).toBe(r.report.shortOfTarget);
+    expect(sizeOf(groups, "below-min-hours")).toBe(r.report.belowMinHours);
     expect(sizeOf(groups, "below-min-days")).toBe(r.report.belowMinDays);
     expect(groups.find((g) => g.kind === "below-min-days")?.students).toEqual([
       { email: "oneday@w", name: "oneday@w" },
@@ -135,6 +193,32 @@ describe("problemGroups", () => {
     expect(sizeOf(problemGroups(rep, lookup()), "below-min-days")).toBe(1);
   });
 
+  it("skips the hours-minimum judgment when the position minimum is unknown", () => {
+    const rep = report({ students: [row("s@w", { assignedMinutes: 60 })] });
+    expect(
+      sizeOf(
+        problemGroups(
+          rep,
+          lookup(
+            {},
+            () => 2,
+            () => null,
+          ),
+        ),
+        "below-min-hours",
+      ),
+    ).toBe(0);
+    expect(sizeOf(problemGroups(rep, lookup()), "below-min-hours")).toBe(1);
+  });
+
+  it("leaves a student who clears the floor but not their target out of below-min-hours", () => {
+    // 12h assigned against a 20h target and the position's 10h floor.
+    const rep = report({ students: [row("s@w", { assignedMinutes: 720, targetMinutes: 1200 })] });
+    const groups = problemGroups(rep, lookup());
+    expect(sizeOf(groups, "short-of-hours")).toBe(1);
+    expect(sizeOf(groups, "below-min-hours")).toBe(0);
+  });
+
   it("orders groups fixedly and students by name then email", () => {
     const rep = report({
       students: [
@@ -149,6 +233,7 @@ describe("problemGroups", () => {
       "dropped",
       "no-position",
       "short-of-hours",
+      "below-min-hours",
       "below-min-days",
     ]);
     expect(groups[0]!.students).toEqual([
@@ -156,6 +241,7 @@ describe("problemGroups", () => {
       { email: "alpha@w", name: "alpha@w" },
     ]);
     expect(groups[2]!.students.map((s) => s.email)).toEqual(["amy@w", "zed@w"]);
+    expect(groups[3]!.students.map((s) => s.email)).toEqual(["amy@w", "zed@w"]);
   });
 
   it("writes count-aware labels", () => {
@@ -171,6 +257,7 @@ describe("problemGroups", () => {
       "1 left the roster and was dropped",
       "1 skipped with no position set",
       "1 student is short of their hours",
+      "1 student is below their position's minimum hours",
       "1 could not span their minimum days",
     ]);
 
@@ -180,5 +267,60 @@ describe("problemGroups", () => {
 
   it("omits every group on a clean report", () => {
     expect(problemGroups(report({ students: [row("ok@w")] }), lookup())).toEqual([]);
+  });
+});
+
+describe("the over-max-hours group", () => {
+  it("takes the student past their cap and leaves the one sitting on it", () => {
+    const rep = report({
+      students: [
+        row("over@w", { assignedMinutes: 31 * 60 }),
+        row("at@w", { assignedMinutes: 1800 }),
+      ],
+    });
+    const group = problemGroups(rep, lookup()).find((g) => g.kind === "over-max-hours")!;
+    expect(group.students).toEqual([{ email: "over@w", name: "over@w" }]);
+    expect(group.label).toBe("1 student is over their weekly hour maximum");
+  });
+
+  it("holds an international student to the lower cap", () => {
+    const rep = report({ students: [row("intl@w", { assignedMinutes: 25 * 60 })] });
+    const intl = lookup(
+      {},
+      () => 2,
+      () => 10,
+      () => true,
+    );
+    expect(sizeOf(problemGroups(rep, intl), "over-max-hours")).toBe(1);
+    expect(sizeOf(problemGroups(rep, lookup()), "over-max-hours")).toBe(0);
+  });
+
+  it("includes frozen students, unlike every other group here", () => {
+    // The deliberate asymmetry: a hand edit on a kept row is the likeliest way
+    // somebody lands over the cap, so the one group that would go quiet on that
+    // case does not. Compare the frozen student above, who is in no group.
+    const rep = report({ students: [row("kept@w", { assignedMinutes: 40 * 60, frozen: true })] });
+    const groups = problemGroups(rep, lookup());
+    expect(groups.map((g) => g.kind)).toEqual(["over-max-hours"]);
+    expect(groups[0]!.students).toEqual([{ email: "kept@w", name: "kept@w" }]);
+  });
+
+  it("sits between the two minimum groups in the fixed order", () => {
+    const rep = report({
+      students: [
+        row("zed@w", { assignedMinutes: 0, daysUsed: 0 }),
+        row("over@w", { assignedMinutes: 31 * 60 }),
+      ],
+      droppedStudents: ["gone@w"],
+      skippedNoPosition: ["skip@w"],
+    });
+    expect(problemGroups(rep, lookup()).map((g) => g.kind)).toEqual([
+      "dropped",
+      "no-position",
+      "short-of-hours",
+      "below-min-hours",
+      "over-max-hours",
+      "below-min-days",
+    ]);
   });
 });

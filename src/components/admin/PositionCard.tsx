@@ -27,9 +27,12 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export function PositionCard({
   position,
   aliasTargets,
+  dayCapHours,
 }: {
   position: AdminPositionItem;
   aliasTargets: PositionOption[];
+  /** The schedule engine's max merged hours per day (see BlockEditor). */
+  dayCapHours: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -252,6 +255,7 @@ export function PositionCard({
             }}
             blocks={position.blocks}
             onRosterCount={position.onRosterCount}
+            dayCapHours={dayCapHours}
             edits={edits}
             onEdit={(blockId, value) => setEdits((prev) => ({ ...prev, [blockId]: value }))}
             saving={pending}

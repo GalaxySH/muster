@@ -80,6 +80,7 @@ export function BlockEditor({
   position,
   blocks: allBlocks,
   onRosterCount,
+  dayCapHours,
   edits,
   onEdit,
   saving,
@@ -88,6 +89,8 @@ export function BlockEditor({
   blocks: AdminBlockItem[];
   /** On-roster students holding this position (the capacity check's demand side). */
   onRosterCount: number;
+  /** The schedule engine's max merged hours per day, for the over-cap warning. */
+  dayCapHours: number;
   /** Unsaved row edits, keyed by block id and owned by the card. */
   edits: Record<string, BlockRowEdit>;
   onEdit: (blockId: string, value: BlockRowEdit) => void;
@@ -130,7 +133,7 @@ export function BlockEditor({
       deriveOpenClose(liveBlocks.filter((b) => b.dayType === dayType)),
     ]),
   );
-  const warnings = blockSetWarnings(position, liveBlocks);
+  const warnings = blockSetWarnings(position, liveBlocks, dayCapHours);
   const capacity = positionCapacityCheck(liveBlocks, onRosterCount, position.minHours);
   // Supply side alone (no roster needed): what this position can seat each week.
   const seatHours = seatHoursPerWeek(liveBlocks);

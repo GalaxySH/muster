@@ -27,6 +27,26 @@ export const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 
 export const byEmail = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
+/**
+ * FNV-1a 32-bit hash of an email (over its code units). Person-keyed
+ * tie-breaks order by this instead of the alphabet: the one-off measured a
+ * real alphabetical-rank/hours correlation, and hashing removes that
+ * systematic bias. Deterministic and dependency-free on purpose; the need is
+ * decorrelation, not cryptography.
+ */
+export function orderHash(email: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < email.length; i++) {
+    hash ^= email.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+/** Orders by hashed email, falling back to byEmail on collision so the order stays total. */
+export const byHashedEmail = (a: string, b: string): number =>
+  orderHash(a) - orderHash(b) || byEmail(a, b);
+
 /** The tunable lateness pull of a block, as a share of a cell's target (0..1). */
 export function tierBonus(block: ShiftBlock, params: SchedulingParams): number {
   const tier = latenessTier(block.end);

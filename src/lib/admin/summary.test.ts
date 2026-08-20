@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { demandCellKey } from "@/lib/domain/demand";
-import { MAX_HOURS_DOMESTIC, MAX_HOURS_INTERNATIONAL, buildAdminGrid, hourCap } from "./summary";
+import { buildAdminGrid } from "./summary";
+
+// The hour cap left this module for domain/caps.ts, its single source, so the
+// cap test that lived here now lives in caps.test.ts.
 
 // Minimal block fixtures: one weekday block, two weekend blocks.
 const weekdayOpen: ShiftBlock = {
@@ -34,15 +37,6 @@ const weekendB: ShiftBlock = {
 };
 
 const allBlocks = [weekdayOpen, weekdayClose, weekendA, weekendB];
-
-describe("hourCap", () => {
-  it("is 30h domestic, 20h international", () => {
-    expect(hourCap(false)).toBe(MAX_HOURS_DOMESTIC);
-    expect(hourCap(false)).toBe(30);
-    expect(hourCap(true)).toBe(MAX_HOURS_INTERNATIONAL);
-    expect(hourCap(true)).toBe(20);
-  });
-});
 
 describe("buildAdminGrid", () => {
   it("marks a manually selected cell and leaves the rest off", () => {

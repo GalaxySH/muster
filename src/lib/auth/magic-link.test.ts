@@ -5,11 +5,18 @@ import {
   magicLinkValidity,
   cooldownRemainingMs,
   admitGlobalSend,
+  MAGIC_LINK_TTL_MS,
   MAGIC_LINK_COOLDOWN_MS,
   MAGIC_LINK_GLOBAL_MAX,
   MAGIC_LINK_GLOBAL_WINDOW_MS,
   type MagicLinkCheckRow,
 } from "./magic-link";
+
+describe("MAGIC_LINK_TTL_MS", () => {
+  it("is 1 day", () => {
+    expect(MAGIC_LINK_TTL_MS).toBe(24 * 60 * 60 * 1000);
+  });
+});
 
 describe("hashToken / generateToken", () => {
   it("hashes deterministically", () => {
@@ -30,7 +37,7 @@ describe("magicLinkValidity", () => {
   const now = new Date("2026-08-15T12:00:00Z");
   const base: MagicLinkCheckRow = {
     studentEmail: "a@wisc.edu",
-    expiresAt: new Date("2026-08-15T12:30:00Z"),
+    expiresAt: new Date("2026-08-16T12:00:00Z"),
     redeemedAt: null,
     revokedAt: null,
   };

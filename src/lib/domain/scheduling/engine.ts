@@ -17,6 +17,19 @@
  * scarcer cells are preferred (the "short at night" priority, first-class in
  * the objective rather than faked with lowered morning capacities).
  *
+ * Every assignment also passes the labor rules (./labor.ts): hard rules
+ * always, soft rules through the relax ladder in placeStudent, so an
+ * engine-built pattern never carries a hard violation and carries a soft one
+ * only where the ladder allowed it (the report counts those students).
+ *
+ * Since 1.15 the student's own weekly hour cap (../caps.ts: 20h international,
+ * 30h otherwise) is a hard rule here too, not merely the clamp on
+ * `targetMinutes` it used to be. Clamping the target stopped the FILL loop
+ * aiming past the cap but let it overshoot by one block, and left seeding
+ * unbounded; the check now sits beside the labor filters in `bestCandidate`,
+ * so it binds on every seed, every fill step, every ladder mode and every
+ * deferred cell alike. Like the labor hard rules it never relaxes.
+ *
  * Students marked scheduled are frozen: their previous run's rows are carried
  * forward verbatim (still consuming capacity) and no pass touches them. The
  * admin's "mark scheduled" toggle is the whole protection model; there is no
@@ -33,13 +46,16 @@ import { coveredMinutes, redundantRangeIndex } from "../intervals";
 import type { TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
 import { improveAssignments } from "./improve";
+import { candidateAllowed, laborLimits, type LaborLimits, type LaborMode } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
+import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
   EPSILON_MINUTES,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
+  byHashedEmail,
   tierBonus,
 } from "./seats";
 import type {
@@ -74,10 +90,15 @@ interface ActiveState {
   taken: Set<string>;
   cohort: Exclude<Cohort, "weekday"> | null;
   assignments: ScheduleAssignment[];
+  /** Cells already held per start minute, for the repeat-start penalty. */
+  startCounts: Map<number, number>;
+  /** True once any cell was taken at a non-strict labor mode. */
+  relaxed: boolean;
 }
 
 export function generateAssignments(input: EngineInput): EngineResult {
   const params = input.params ?? DEFAULT_SCHEDULING_PARAMS;
+  const limits = laborLimits(params);
   const deferred = new Set(input.deferredBlockIds ?? []);
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const positionById = new Map(input.positions.map((p) => [p.id, p]));
@@ -87,10 +108,12 @@ export function generateAssignments(input: EngineInput): EngineResult {
   // Returners first, then first come first served inside each cohort. Putting
   // the cohort ahead of the timestamp is what actually spreads experience:
   // as a tiebreak it would do nothing, since two responses never share a
-  // millisecond.
+  // millisecond. The final tie-break only ever decides equal timestamps, in
+  // practice the fill-in pass where submittedAt is null for everyone; hashing
+  // there keeps the alphabet out of who picks first.
   const fcfs = [...input.students].sort(
     (x, y) =>
-      cohortRank(x) - cohortRank(y) || fcfsTime(x) - fcfsTime(y) || byEmail(x.email, y.email),
+      cohortRank(x) - cohortRank(y) || fcfsTime(x) - fcfsTime(y) || byHashedEmail(x.email, y.email),
   );
   const eligible = new Set(fcfs.map((s) => s.email));
 
@@ -171,9 +194,11 @@ export function generateAssignments(input: EngineInput): EngineResult {
       taken: new Set(),
       cohort: student.everyWeekendOptIn ? "every" : null,
       assignments: [],
+      startCounts: new Map(),
+      relaxed: false,
     };
     states.push(state);
-    placeStudent(state, blockById, seats, weekendMinutes, params, deferred);
+    placeStudent(state, blockById, seats, weekendMinutes, params, limits, deferred);
     return state.assignments;
   };
 
@@ -212,6 +237,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
 
   let shortOfTarget = 0;
   let belowMinDays = 0;
+  let belowMinHours = 0;
   for (const state of states) {
     const ranges = finalRanges.get(state.student.email) ?? new Map<Day, TimeRange[]>();
     // A fill-in the run found no room for is simply not in it: they stay a
@@ -220,6 +246,10 @@ export function generateAssignments(input: EngineInput): EngineResult {
     const assigned = averagedAssignedMinutes(ranges, state.student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES < state.target) shortOfTarget += 1;
     if (ranges.size < state.position.minDays) belowMinDays += 1;
+    // The floor, not the goal: a student under it needs hours added by hand.
+    // Mirrors problems.ts isBelowMinHours, which re-derives the same set from
+    // the stored report; the two must agree or the count and its list differ.
+    if (assigned + EPSILON_MINUTES < state.position.minHours * 60) belowMinHours += 1;
     reports.push({
       email: state.student.email,
       targetMinutes: state.target,
@@ -240,7 +270,9 @@ export function generateAssignments(input: EngineInput): EngineResult {
       skippedNoPosition,
       shortOfTarget,
       belowMinDays,
+      belowMinHours,
       params,
+      laborRelaxed: { students: states.filter((s) => s.relaxed).length },
     },
   };
 }
@@ -250,6 +282,9 @@ interface Candidate {
   day: Day;
 }
 
+/** The relax ladder's mode order: soft labor rules give way one at a time. */
+const LABOR_MODES: readonly LaborMode[] = ["strict", "relax-rest", "relax-days"];
+
 /** Seed the minimum day span, then fill open days first until target hours. */
 function placeStudent(
   state: ActiveState,
@@ -257,23 +292,46 @@ function placeStudent(
   ledger: SeatLedger,
   weekendMinutes: { a: number; b: number },
   params: SchedulingParams,
+  limits: LaborLimits,
   deferred: ReadonlySet<string>,
 ): void {
   const { student, position } = state;
 
+  // Every candidate scan runs the same double ladder. Deferred exclusion stays
+  // outermost: a deferred cell risks double-booking a hand-claimed close (a
+  // real conflict), while a soft labor violation is only a preference, so even
+  // a relaxed-mode non-deferred cell is taken before any deferred cell is
+  // considered. Inside each (deferred, mode) cell the day filters keep their
+  // order: ranking alone would not keep deferred cells last, since each call
+  // ranks only within its own day filter, so "fill an open day first" would
+  // beat the deferred tier and take a close while another day sat free.
+  const pick = (dayFilters: readonly { daysOpen: boolean; weekendOnly?: boolean }[]) => {
+    for (const excludeDeferred of [true, false]) {
+      for (const mode of LABOR_MODES) {
+        for (const filter of dayFilters) {
+          const found = bestCandidate(state, blockById, ledger, params, limits, deferred, {
+            ...filter,
+            excludeDeferred,
+            mode,
+          });
+          if (found) {
+            if (mode !== "strict") state.relaxed = true;
+            return found;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
   // Non-exempt students belong on the weekend rotation (PLAN §5 #5), so one
   // seed is the best weekend cell they offered; the rest span new days.
-  // Deferred cells rank last everywhere, so a Shift Lead only anchors on a
-  // weekend close when they offered no other weekend cell.
   if (!position.weekendExempt) {
-    const weekend = bestCandidate(state, blockById, ledger, params, deferred, {
-      daysOpen: false,
-      weekendOnly: true,
-    });
+    const weekend = pick([{ daysOpen: false, weekendOnly: true }]);
     if (weekend) assign(state, weekend, ledger, weekendMinutes);
   }
   while (state.ranges.size < position.minDays) {
-    const seed = bestCandidate(state, blockById, ledger, params, deferred, { daysOpen: false });
+    const seed = pick([{ daysOpen: false }]);
     if (!seed) break;
     assign(state, seed, ledger, weekendMinutes);
   }
@@ -282,21 +340,7 @@ function placeStudent(
   for (let i = 0; i < maxSteps; i++) {
     const assigned = averagedAssignedMinutes(state.ranges, student.everyWeekendOptIn);
     if (assigned + EPSILON_MINUTES >= state.target) break;
-    // Ranking alone would not keep deferred cells last here: each call ranks
-    // only within its own day filter, so "fill an open day first" would beat
-    // the deferred tier and take a close while another day sat free. Both
-    // filters therefore run without deferred cells before either retries with
-    // them, which is what makes them a genuine last resort.
-    const pick = (excludeDeferred: boolean) =>
-      bestCandidate(state, blockById, ledger, params, deferred, {
-        daysOpen: true,
-        excludeDeferred,
-      }) ??
-      bestCandidate(state, blockById, ledger, params, deferred, {
-        daysOpen: false,
-        excludeDeferred,
-      });
-    const next = pick(true) ?? pick(false);
+    const next = pick([{ daysOpen: true }, { daysOpen: false }]);
     if (!next) break;
     assign(state, next, ledger, weekendMinutes);
   }
@@ -329,19 +373,20 @@ function outranks(a: CandidateRank, b: CandidateRank): boolean {
 /**
  * The best feasible cell from the student's own selections, restricted to
  * already-open or still-unopened days. Pull is the unmet share of target plus
- * the tunable tier bonus, so late cells run ahead by about that share instead
- * of soaking up every seat; untargeted cells rank on tier bonus alone. See
- * `outranks` for the full ordering.
+ * the tunable tier bonus, minus the repeat-start penalty for starts the
+ * student already holds, so late cells run ahead by about that share instead
+ * of soaking up every seat; untargeted cells rank on tier bonus alone (still
+ * below every targeted cell). See `outranks` for the full ordering.
  */
 function bestCandidate(
   state: ActiveState,
   blockById: Map<string, ShiftBlock>,
   ledger: SeatLedger,
   params: SchedulingParams,
+  limits: LaborLimits,
   deferred: ReadonlySet<string>,
-  filter: { daysOpen: boolean; weekendOnly?: boolean; excludeDeferred?: boolean },
+  filter: { daysOpen: boolean; weekendOnly?: boolean; excludeDeferred?: boolean; mode: LaborMode },
 ): Candidate | null {
-  const dayCapMinutes = params.dayCapHours * 60;
   let best: Candidate | null = null;
   let bestRank: CandidateRank | null = null;
 
@@ -362,17 +407,37 @@ function bestCandidate(
     if (dayOpen) {
       // Staggered overlaps are fine (they merge into a double), but every
       // shift on the day must keep at least one minute of unique coverage.
+      // The old day-cap check that lived here is subsumed by the labor
+      // day-hours rule below, which also covers the first cell on a day.
       const daySet = [...dayRanges, range];
       if (redundantRangeIndex(daySet) >= 0) continue;
-      if (coveredMinutes(daySet) > dayCapMinutes) continue;
     }
+
+    // Labor rules on the whole standing pattern plus this cell. A weekend
+    // candidate before the rotation is chosen evaluates as "a": labor.ts's
+    // symmetry lemma makes "a" and "b" verdicts agree, so the ledger's later
+    // cohort-balance pick cannot invalidate the check. The lemma does not
+    // extend to "every"; opt-ins carry "every" from state init, so their very
+    // first weekend candidate already occupies all four weekend slots here.
+    const laborCohort = block.dayType === "weekend" ? (state.cohort ?? "a") : state.cohort;
+    if (!candidateAllowed(state.ranges, laborCohort, { day: cell.day, range }, limits, filter.mode))
+      continue;
+
+    // The student's own weekly hour cap, hard since 1.15. It sits in this same
+    // filter family deliberately: every ladder mode, the weekend and min-days
+    // seeds, and deferred cells all reach placement through here, so one check
+    // binds all of them and nothing can relax it. `isOverMaxHours` is the
+    // read-time flag's own predicate, imported rather than restated so the two
+    // can never disagree about the boundary; sitting exactly on the cap passes.
+    if (isOverMaxHours(assignedWith(state, cell.day, range), state.student.international)) continue;
 
     const targeted = block.desiredCapacity != null;
     const bonus = tierBonus(block, params);
+    const penalty = (params.repeatStartPenalty / 100) * (state.startCounts.get(block.start) ?? 0);
     const rank: CandidateRank = {
       deferred: deferred.has(block.id),
       targeted,
-      pull: targeted ? ledger.need(block, cell.day, cohortContext) + bonus : bonus,
+      pull: (targeted ? ledger.need(block, cell.day, cohortContext) + bonus : bonus) - penalty,
       day: cell.day,
       blockId: block.id,
     };
@@ -382,6 +447,19 @@ function bestCandidate(
     }
   }
   return best;
+}
+
+/**
+ * The student's cycle-averaged assigned minutes if this cell were added. The
+ * whole hypothetical week is measured with `averagedAssignedMinutes` rather
+ * than the candidate's day delta being re-weighted here: the weekend factor
+ * lives in one place, and the cap check must read the same arithmetic the
+ * report and the read-time flag do or the three could disagree at the boundary.
+ */
+function assignedWith(state: ActiveState, day: Day, range: TimeRange): number {
+  const hypothetical = new Map(state.ranges);
+  hypothetical.set(day, [...(state.ranges.get(day) ?? []), range]);
+  return averagedAssignedMinutes(hypothetical, state.student.everyWeekendOptIn);
 }
 
 /** Commit one cell: pick the rotation on the first weekend seat, update ledgers. */
@@ -407,6 +485,7 @@ function assign(
 
   ledger.add(block.id, day, cohort);
   state.taken.add(demandCellKey(block.id, day));
+  state.startCounts.set(block.start, (state.startCounts.get(block.start) ?? 0) + 1);
   const list = state.ranges.get(day) ?? [];
   const before = coveredMinutes(list);
   list.push({ start: block.start, end: block.end });

@@ -36,6 +36,7 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
+import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
 import {
   applyScopeFreeze,
@@ -58,10 +59,19 @@ import {
   loadCellAvailability,
   loadCurrentRunRow,
   type CellAvailability,
+  type StoredRunReport,
 } from "./data";
+import { lateStartWarnings } from "./run-warnings";
 
 /** Superseded runs kept for restore before pruning. */
 const RUN_RETENTION = 10;
+
+/**
+ * The fall 2026 semester start, and the late-start threshold for a position
+ * with no return date of its own. Cycle-specific, so it lives here next to the
+ * clock rather than in the engine, which has no dates at all.
+ */
+const DEFAULT_SEMESTER_START = "2026-09-02";
 
 /**
  * The Shift Lead weekend closing block, which the engine fills only as a last
@@ -216,6 +226,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // dates silently becomes plain FCFS. Count it rather than let that pass
   // unseen.
   const unknownHireDate = studentRows.filter((r) => r.hiredOn === null).length;
+  // Hire dates for the late-start check below. Non-responders add theirs when
+  // the option brings them in.
+  const hiredOnByEmail = new Map<string, Date | null>(studentRows.map((r) => [r.email, r.hiredOn]));
 
   const domainBlocks = blockRows.map(toDomainBlock);
 
@@ -259,6 +272,10 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         .innerJoin(students, eq(submissions.studentEmail, students.email))
         .where(notSubmitted),
     ]);
+
+    for (const r of rosterRows) {
+      if (!hiredOnByEmail.has(r.email)) hiredOnByEmail.set(r.email, r.hiredOn);
+    }
 
     const draftByEmail = new Map<string, { blockId: string; day: Day }[]>();
     for (const row of draftCells) {
@@ -381,6 +398,47 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     count: engineStudentsFinal.filter((s) => s.returner === true).length,
     unknownHireDate,
   };
+  // Late starts: someone hired after their position is back at work cannot
+  // cover the template's first shifts, so the scheduler edits theirs by hand in
+  // W2W. Every email holding a row is checked, frozen and manual carries too.
+  result.report.lateStarts = lateStartWarnings({
+    assignments: result.assignments,
+    hiredOn: hiredOnByEmail,
+    positionOf: new Map(engineStudentsFinal.map((s) => [s.email, s.positionId])),
+    returnDateOf: new Map(positionRows.map((p) => [p.id, p.returnDate])),
+    defaultStart: DEFAULT_SEMESTER_START,
+  });
+  // A health snapshot of the run as generated (fairness, stretch, coverage
+  // fragility). The read-time validator stays the live truth about the rows;
+  // this records what the run looked like on the day it was made.
+  const frozenEmails = new Set(result.report.students.filter((s) => s.frozen).map((s) => s.email));
+  const storedReport: StoredRunReport = {
+    ...result.report,
+    stats: computeRunStats({
+      assignments: result.assignments,
+      blocks: domainBlocks,
+      students: engineStudentsFinal.map((s) => ({
+        email: s.email,
+        positionId: s.positionId,
+        international: s.international,
+        // The rotation the engine capped their hours against, so the snapshot's
+        // over-cap count and the student table's over-maximum pill measure the
+        // same week.
+        everyWeekendOptIn: s.everyWeekendOptIn,
+        returner: s.returner === true,
+        fillIn: s.fillIn === true,
+        frozen: frozenEmails.has(s.email),
+      })),
+      poolPositionIds: params.coveragePoolPositionIds,
+      leadPositionId: SHIFT_LEAD_POSITION_ID,
+      // The run's own limit, so the health section and the read-time validator
+      // judge a long stretch against the same number.
+      maxConsecutiveDays: params.maxConsecutiveDays,
+    }),
+    // Repair runs stamp their kept-from-plan counts in too, so the run panel
+    // can tell virtually-frozen from admin-frozen.
+    ...(repaired ? { repaired: { students: repaired.students } } : {}),
+  };
 
   const runId = randomUUID();
   await db.transaction(async (tx) => {
@@ -394,11 +452,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       status: "current",
       // Null for a whole-roster run, which is what every run before scoping was.
       scopeJson: serializeScope(scope),
-      // Repair runs stamp their kept-from-plan counts into the stored report
-      // so the run panel can tell virtually-frozen from admin-frozen.
-      summaryJson: JSON.stringify(
-        repaired ? { ...result.report, repaired: { students: repaired.students } } : result.report,
-      ),
+      summaryJson: JSON.stringify(storedReport),
     });
     // Chunked inserts: a full fall cycle is a few thousand rows.
     const rows = result.assignments.map((a) => ({

@@ -87,6 +87,12 @@ body {
 .stack-table tbody tr {
   border-top: 0.5px solid var(--color-border-secondary);
 }
+/* Zebra striping (opt-in per table): alternate row shading so a wide row can
+   be followed across its columns, spreadsheet style. On the stacked mobile
+   layout the shading keeps separating one row's block from the next. */
+.zebra-table tbody tr:nth-child(even) {
+  background: var(--color-background-secondary);
+}
 @media (min-width: 720px) {
   .stack-table {
     min-width: 680px;

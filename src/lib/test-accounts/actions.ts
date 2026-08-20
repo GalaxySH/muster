@@ -188,7 +188,7 @@ export async function signInAsTestAccount(formData: FormData): Promise<void> {
  * open it in a private window and keep their own session. Redirects back to
  * the manager with the raw token; the page assembles the /magic/redeem URL
  * (never a caller-supplied one) and shows it with a copy button. Same
- * single-use short-lived token as sign-in-as.
+ * single-use expiring token as sign-in-as.
  */
 export async function mintTestAccountLink(formData: FormData): Promise<void> {
   const email = await requireImpersonableTestAccount(formData);

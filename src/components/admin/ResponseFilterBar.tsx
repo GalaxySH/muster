@@ -6,11 +6,12 @@ import {
   NO_POSITION,
   REVIEW_FILTER_OPTIONS,
   STARTED_MODE_OPTIONS,
+  STATUS_FILTER_OPTIONS,
   UNGROUPED,
 } from "@/lib/admin/response-filters";
 
 /**
- * Group + position + flag + off-roster + all-students + start-date filters for the
+ * Group + position + flag + off-roster + submission-state + start-date filters for the
  * response dashboard (roadmap 2.2). These live in the URL (not client state) so they
  * survive navigation into the per-student view and drive its prev/next walk. Search +
  * sort stay client-side in the table.
@@ -22,7 +23,7 @@ export function ResponseFilterBar({
   position,
   flag,
   roster,
-  all,
+  status,
   started,
   startedDate,
   review,
@@ -33,7 +34,8 @@ export function ResponseFilterBar({
   position?: string;
   flag?: string;
   roster?: string;
-  all?: string;
+  /** The parsed value, so an old `all=1` link still shows the right option. */
+  status?: string;
   started?: string;
   startedDate?: string;
   review?: string;
@@ -45,7 +47,7 @@ export function ResponseFilterBar({
     position?: string;
     flag?: string;
     roster?: string;
-    all?: string;
+    status?: string;
     started?: string;
     startedDate?: string;
     review?: string;
@@ -55,7 +57,7 @@ export function ResponseFilterBar({
     const p = next.position ?? position ?? "";
     const f = next.flag ?? flag ?? "";
     const r = next.roster ?? roster ?? "";
-    const a = next.all ?? all ?? "";
+    const st = next.status ?? status ?? "";
     const sm = next.started ?? started ?? "";
     const sd = next.startedDate ?? startedDate ?? "";
     const rv = next.review ?? review ?? "";
@@ -63,7 +65,7 @@ export function ResponseFilterBar({
     if (p && p !== "all") params.set("position", p);
     if (f) params.set("flag", f);
     if (r === "all") params.set("roster", r);
-    if (a === "1") params.set("all", a);
+    if (st) params.set("status", st);
     if (rv) params.set("review", rv);
     // A mode with no date yet stays in the URL so the date picker shows up;
     // the parser ignores the half-set pair until both halves are present.
@@ -177,13 +179,21 @@ export function ResponseFilterBar({
         )}
       </label>
 
+      {/* "Submission", not "Show": the off-roster checkbox next door already
+          leads with Show, and two controls opening the same way read as one. */}
       <label style={labelStyle}>
-        <input
-          type="checkbox"
-          checked={all === "1"}
-          onChange={(e) => navigate({ all: e.target.checked ? "1" : "" })}
-        />
-        Show all students
+        Submission
+        <select
+          value={status ?? ""}
+          onChange={(e) => navigate({ status: e.target.value })}
+          style={selectStyle}
+        >
+          {STATUS_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label style={labelStyle}>

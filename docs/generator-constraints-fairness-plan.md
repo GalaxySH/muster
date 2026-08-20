@@ -1,0 +1,405 @@
+# Generator labor constraints, fairness, and schedule health — implementation plan
+
+**Status: complete.** P0 through P4 are committed on
+`worktree-generator-constraints-fairness`; P5 (docs, the tuning script, and the
+tuned `repeatStartPenalty` default) is this commit and the one after it. Each
+phase was gated by an adversarial review before the next began. §9 records what
+was deliberately left undone. This doc is the design record;
+`docs/constraints-from-welcome-week.md` is the imported checklist it
+implements, and `docs/schedule-generation-plan.md` §3 describes the engine
+this extends.
+
+**Scope decisions (owner, 2026-08-18):**
+
+- The engine stays **dateless** — no start-date constraint in a repeating
+  weekly template. Instead the run report warns per student when
+  `students.hiredOn` (the PCPL per-student Start Date) is later than
+  `positions.returnDate` (falling back to the hardcoded semester start
+  `2026-09-02`): those schedules must be edited by hand in W2W after upload.
+  The one-off's per-person `person_rules` custom dates are **not** ported.
+- Event/blackout modeling (convocation, freshman events) is **deferred
+  entirely**; `constraints-from-welcome-week.md` §3 records the gap.
+- Fairness lands as **stats + engine knobs** (repeat-start penalty, hashed
+  tie-breaks). No hour-leveling pass: the shipped "no student's covered hours
+  may drop" invariant stands. No random restarts — the one-off measured that
+  re-seeding permutes who gets which hours but never changes the spread.
+- Hard labor rules are enforced **in the engine** and re-checked by an
+  **independent read-time validator** written against the spec, not the
+  engine's code. Frozen and manual rows are never dropped for a violation —
+  they are flagged. Advisory posture is unchanged.
+- A student the engine cannot bring to `positions.minHours` gets a
+  **below-min-hours** flag (report counter, problem group, student-row pill);
+  the scheduler fills those by hand.
+- Every run stores a **statistics snapshot** (`report.stats`) rendered as a
+  "Schedule health" section on `/admin/schedule`: the one-off's stretch,
+  fairness, and coverage-fragility metrics adapted to the weekly template.
+
+---
+
+## 1. The canonical fortnight model
+
+The rotation calendar has never been pinned down in this repo
+(`domain/types.ts` treats Sun and Sat as opposite week-edge days for the pick
+UI; `domain/capacity.ts` speaks of a contiguous "on-weekend"). This plan
+canonizes it. **PLAN §7a now carries this as the authoritative reading** (amended
+in P5), and `labor.ts`'s header is the implementation and its proof:
+
+```
+Fortnight indices 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂].
+W2W week 1 = 0..6, week 2 = 7..13. Index 13 is cyclically adjacent to index 0.
+Rotation A's on-weekend is the contiguous pair (Sat₁=6, Sun₂=7).
+Rotation B's on-weekend is the contiguous pair (Sat₂=13, Sun₁=0).
+Weekday rows occupy both halves (d and d+7). "every" rows occupy all four
+weekend slots. Weekday-only students degenerate to a 7-day-periodic pattern.
+```
+
+Consequences worth stating because they are not obvious:
+
+- A calendar weekend **straddles** the W2W Sun–Sat boundary (Sat ends one W2W
+  week, Sun starts the next), so an A/B student tops out at **6 days per W2W
+  week** structurally; only "every" students can reach 7.
+- The longest possible consecutive run for an A/B student is **12 days**
+  (Mon₁–Fri₁, Sat₁, Sun₂, Mon₂–Fri₂), not 7 — weekday rows repeat in both
+  halves. "Every" students can occupy all 14 (reported as unbounded). The ≤5
+  consecutive-days rule is therefore the constraint that bites most dense
+  availabilities.
+- **Symmetry lemma.** For a student holding only weekday rows, the two
+  fortnight halves are mirror images, so a first weekend candidate evaluates
+  identically under cohort "a" and "b". The labor predicate therefore
+  canonically evaluates `cohort ?? "a"` and never depends on the ledger's
+  cohort-balance choice. (In practice the weekend seed is placed first anyway.)
+- A student **can clopen against their own on-weekend** (Sat close → Sun open
+  is an adjacent pair inside the on-weekend), and Sun close → Mon open wraps
+  into the weekday template.
+
+## 2. The rules
+
+| Rule | Severity | Evaluation on the fortnight |
+|---|---|---|
+| ≤8h merged day span | hard | per template day, applied unconditionally; this retires the old engine's allowance for a lone over-cap block to stand on its day (a configured block longer than the cap is now never assignable, so P3 adds a config-time warning naming it) |
+| ≤40h W2W week | hard **constant** (payroll law, not a knob) | per fortnight half. Engine-placed rows cannot reach it because `candidateAllowed` checks each half's minutes on every placement (`labor.ts`), *not* because the ≤30h cycle-averaged target implies it: the fill loop can overshoot a target by a block, and a weekend-heavy realized half can sit well above the cycle average. It also exists for frozen/manual rows, which no engine check ever saw, and for the validator |
+| ≤5 consecutive days | hard, param default 5 | longest cyclic run of occupied slots over the 14-cycle |
+| ≤6 days per W2W week hard, 5 soft | params | occupied-slot count per half |
+| No clopen: 8h floor hard, 10h preferred soft | params | each cyclically adjacent occupied pair: `firstStart(next) + 1440 − lastEnd(prev)` |
+| No split shifts | hard | per occupied day, merged spans must form **one** contiguous run; staggered-overlap doubles stay legal (they merge) |
+| ≤ the student's own weekly hour cap (20h international, 30h otherwise) | hard **engine policy**, not labor law (v1.15) | the cycle-averaged week (`averagedAssignedMinutes`: weekend rows halve under A/B, count whole under every), checked in the same `bestCandidate` filter family as the rules above, so it binds on every seed, every fill step, every ladder rung and every deferred cell. `improve.ts` re-checks the after-state of a move. The boundary is `isOverMaxHours` itself, imported rather than restated, so exactly-at-cap passes. **The validator deliberately does not check it**: it is a policy target rather than a legal one, manual edits may knowingly cross it, and the read-time **over-max flag** already owns making that visible |
+
+Soft rules use a **relax ladder** — `strict → relax-rest → relax-days` —
+composed *inside* the existing deferred-cells double pass, so deferred cells
+stay the outermost last resort (a deferred cell risks double-booking a
+hand-claimed SL close, a real conflict; a soft labor violation is a
+preference). Hard rules are never on the ladder. There is no backtracking: a
+student the ladder cannot seed or fill lands in the warnings
+(`belowMinDays` / `belowMinHours`) and the scheduler takes over.
+
+## 3. New modules (pure, test-first, colocated tests)
+
+- **`src/lib/domain/scheduling/labor.ts`** — the canonical fortnight mapping
+  (`slotIndices(day, cohort)`), `LaborLimits` derived from params,
+  `laborViolations(ranges, cohort, limits)` returning typed hard/soft
+  violations, and the hot-path `candidateAllowed(ranges, cohort, candidate,
+  limits, mode)`. O(days) per call — builds ≤14 slots from ≤7 map entries,
+  never a minute timeline. Shared by engine, improve, and manual. The
+  canonical-calendar header comment is a deliverable.
+- **`src/lib/domain/scheduling/validate.ts`** — the independent validator.
+  Imports only type vocabulary; re-implements span merging and the fortnight
+  mapping itself. A divergence between `validate.ts` and `labor.ts` is a bug
+  *surfacing*, not duplication to eliminate — the header says so. Written in
+  P3 by an author who does not read `labor.ts`.
+  `validateRunLabor(rows, limits) → StudentLaborFinding[]` with
+  frozen/manual attribution. Runs at **read time** in `loadScheduleForRun`
+  against the run's snapshotted params, so manual edits made after generation
+  are judged live. Never drops anything. Deliberately does not flag
+  same-person overlaps — staggered doubles are first-class here.
+- **`src/lib/domain/scheduling/stats.ts`** — `computeRunStats(...)` → a
+  versioned `RunStats` stored as `report.stats`:
+  - *fairness*: weekly-minutes percentiles, mean, pstdev, spread; per-person
+    realized-week max (of the two halves); over-cap counts; modal-start share
+    (mean + a "welded" count of people working **two or more** days whose merged-day
+    starts are all identical, so a one-day person sitting at share 1.0 is excluded);
+    lockstep (identical
+    `(day, blockId, cohort)` signatures shared by ≥2 people);
+    alphabetical-rank↔hours Pearson r.
+  - *stretch*: cyclic consecutive-days histogram (the 12/14 buckets exist) +
+    per-cohort split; days-per-fortnight histogram.
+  - *per-position*: staff, targeted-cell fill, weekly-minutes and
+    minutes-per-day-worked stats, span/load (open, close, shifts/day,
+    people/day), and since **version 3** `shifts: { total, uncovered }` on the
+    same instance definition as the top-level measure. That enumeration now
+    happens once, per position; the run-wide `shifts` figure is the sum of
+    those rows, since a block carries exactly one `positionId` and the rows
+    therefore partition the instances.
+  - *perDay*: 14 entries (day × rotation week).
+  - *fragility*: minute timelines per pooled-position × day × rotation week
+    (confined to this module): share of operating minutes covered **only** by
+    non-returners with no returner overlapping — per position, overall
+    non-lead, building-wide, and `newLeadSolo` within the Shift Lead position
+    (design invariant: 0; anything above renders as an alarm). "New" means
+    `!isReturningStudent(hiredOn)` — the roster Start Date column, per the
+    W2W-Hire-Date lesson. The cross-coverage pool defaults to
+    `["culinary-assistant", "cashier"]` (the CA+R&C analog) and is
+    configurable via params. Since **version 2** each group also carries
+    `openMinutes` (the union of its blocks' spans over the same nine pictures,
+    so overlapping blocks open the floor once) and `coverageShare`
+    (`operatingMinutes / openMinutes`, null when nothing is scheduled to run),
+    which is what the Cover bars draw.
+  - *shifts*: `{ total, uncovered, uncoveredShare }` over shift **instances**
+    rather than minutes — one per (weekday block × weekday), four per weekend
+    block (each weekend day × each rotation week) — covered when anybody at
+    all is on them. A floor nobody works has no operating minutes for a
+    fragility share to speak about, and this is the measure that does. Summed
+    from the per-position rows above rather than enumerated a second time.
+- **`src/lib/admin/schedule-health-view.ts`** — pure view builder per the
+  `analytics-view.ts` precedent; tones (solo share >20% danger, >10% warning;
+  `newLeadSolo` >0 danger; lockstep >0 warning); hand-rolled div bars, no
+  chart libraries. A Cover row shows `coverageShare` as its figure and bar,
+  always in the neutral color since a width that means coverage cannot also
+  mean alarm, and carries the returner share as the toned detail beside it.
+  The stretch histograms both render through one `histogramBars` helper and
+  differ only in their tone: days-in-a-row reads the run's own limit,
+  days-worked carries none, because how many days out of fourteen somebody
+  works is not a rule anything can break. `perDay` renders as a seven-column
+  fortnight table read **by slot** rather than by arrival order, and
+  `stretch.byCohort` as one short line per rotation anyone is on ("A rotation:
+  41 people, longest 6 days") rather than four more histograms: the question
+  those answer is whether the rotation weeks carry comparable loads.
+- **`seats.ts` addition** — `orderHash` (FNV-1a 32-bit of the email) and
+  `byHashedEmail` (falls back to `byEmail` on collision, keeping the order
+  total). FNV-1a rather than sha256 deliberately: the requirement is
+  decorrelation from the alphabet, not cryptography, and domain modules
+  import nothing beyond domain.
+
+## 4. Params
+
+New `SchedulingParams` fields (admin-edited, snapshotted per run; the
+existing spread-over-defaults parse backfills old stored JSON):
+`repeatStartPenalty` (0–100; shipped at 0 through P4, **tuned to 20 in P5**, §9.1),
+`minRestHours` (8), `preferredRestHours` (10, ≥ min), `maxConsecutiveDays`
+(5), `maxDaysPerWeek` (6), `preferredDaysPerWeek` (5, ≤ max),
+`coveragePoolPositionIds` (stats-only). The 40h week cap is a constant, not a
+param.
+
+## 5. Integration points
+
+- `engine.ts` `bestCandidate`: `candidateAllowed` filter after the day-cap
+  check, with `effectiveCohort = state.cohort ?? ("a" for weekend blocks)`
+  per the symmetry lemma; repeat-start penalty subtracts
+  `(repeatStartPenalty/100) × count of already-held cells at this start`
+  from pull (a `Map` on the active state, updated in `assign`).
+- `engine.ts` `placeStudent`: the ladder wraps the existing
+  `pick(excludeDeferred)` pattern — for each of deferred-excluded then
+  deferred-allowed, try strict, relax-rest, relax-days. Seeds try modes in
+  the same order. FCFS final tie-break becomes `byHashedEmail` (this only
+  decides equal timestamps, i.e. the fill-in pass). Report gains
+  `belowMinHours` and `laborRelaxed` counters. Frozen carry-forward is
+  untouched.
+- `improve.ts`: relocations build the hypothetical full-day map and must add
+  no hard violations and not increase the soft-violation count (diff-based —
+  a same-day move shifts that day's first start and last end, which can
+  create or cure a clopen with adjacent days). Iteration order becomes
+  `byHashedEmail`. The termination argument survives: labor checks filter,
+  they never score.
+- `manual.ts` + `src/lib/schedule/manual.ts`: `laborWarningsForRows(...)`
+  formats human messages from the shared `laborViolations`. **Warn, never
+  block** — manual edits are scheduler prerogative; the read-time validator
+  keeps flagging whatever the scheduler accepts. `AssignmentEditResult`
+  gains `warnings?: string[]`.
+- `problems.ts`: new `below-min-hours` group mirroring the engine counter
+  exactly (same contract as the existing groups).
+- `actions.ts` `generateSchedule`: `DEFAULT_SEMESTER_START = "2026-09-02"`
+  lives here (cycle-specific and clock-adjacent; the engine stays dateless).
+  Late-start warnings cover every email holding ≥1 row (including frozen and
+  manual carries), comparing ISO date strings only — never
+  `new Date(returnDate)`. Stats stamped into `summaryJson`.
+- `data.ts` `loadScheduleForRun`: select `source` (missing today), run the
+  validator with limits from the run's snapshotted params, thread `minHours`
+  into the problem lookup, extend `ScheduleStudentRow` with
+  `belowMinHours` / `lateStart`.
+- `/admin/schedule` page: below-min problem group, late-start expander,
+  validator findings as danger details (hard first; frozen/manual rows marked
+  with the existing kept/manual chip vocabulary), new params fields + pool
+  checkboxes on `ScheduleParamsForm`, pills on `ScheduleStudentTable`, and a
+  new server-rendered `ScheduleHealth` section (hidden with a short note when
+  a run predates stats).
+- `types.ts`: every new stored-report field is **optional** — pre-overhaul
+  runs must keep parsing (fixture test).
+
+## 6. Known risks, answered
+
+1. **Split-shift vs block config.** A position whose blocks leave a genuine
+   mid-day gap loses second shifts; short-of-target and below-min counts rise.
+   P2 measures on the synthetic fixture before merging; a collapse is a
+   block-configuration conversation, not a rule relaxation (the one-off
+   deleted its relaxations on purpose).
+2. **12-day runs are the common violation.** Expect materially different
+   placements from today's engine; the ladder's work is mostly
+   consecutive-days. Tests must cover the 13→0 seam, the "every" all-14 case,
+   the weekday-only run of 5 (legal), and the on-weekend Sat-close→Sun-open
+   clopen.
+3. **Scoped/frozen runs right after the overhaul** will show validator
+   findings on carried rows until each slice is re-solved; the copy must not
+   read as an error in the run.
+4. **Performance.** The ladder multiplies candidate scans ≤3×; if engine time
+   exceeds ~300ms at 400 students, short-circuit the relaxed retries when no
+   candidate was rejected soft-only.
+5. **Determinism.** All new logic is pure and param-snapshotted. The hash
+   ordering reshuffles fill-in placement once, at rollout — changelog note.
+6. **The first post-overhaul generation moves many students.** Guidance:
+   generate, inspect the diff view, then mark students scheduled.
+
+## 7. Phases
+
+All phases are shipped. P0 (not a row below) imported
+`constraints-from-welcome-week.md` and this plan.
+
+| Phase | Status | Contents | Gate |
+|---|---|---|---|
+| **P1** | ✅ done | `labor.ts` + tests, params fields + form. No engine wiring; nothing behavioral changes. | Adversarial review: fortnight mapping proof, 13→0 seam, symmetry counterexample hunt, soft/hard classification vs the one-off table, midnight rest math, param cross-field validation. |
+| **P2** | ✅ done | Engine/improve/manual integration, relax ladder, repeat-start penalty (default 0), hashed orderings, `laborRelaxed`. Synthetic before/after numbers in the commit message. | Review: weakened-test hunt, ladder ordering vs deferred, cohort canonicalization, frozen leakage, improve termination, double-run determinism, measured perf. |
+| **P3** | ✅ done | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring, and a config-time warning for blocks longer than the day cap (the engine can never fill one; the admin must learn why from `/admin/positions`, not from a silent shortfall). | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
+| **P4** | ✅ done | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. Also (owner, 2026-08-19): the response list's show-unsubmitted checkbox becomes a submission-state filter in `response-filters.ts` and the filter bar. One `status` dropdown: Responses (default, submitted + draft, missing hidden, today's default view unchanged), Submitted, Drafts, No submission, Everyone. The old `all=1` URL keeps parsing as Everyone so saved filter links survive; serialization emits the new param. The review (scheduled) filter is unchanged and composes as before. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges; filter parse/apply/serialize round-trip incl. the `all=1` alias, and the default view staying byte-identical. |
+| **P5** | ✅ done | Docs (this doc's statuses, `schedule-generation-plan.md` §3.6/§3.7, `architecture.md`, PLAN §5/§7/§9 + changelog, roadmap), `src/scripts/tune-schedule-params.ts`, tuned `repeatStartPenalty` default. Tuning runs against a read-only snapshot of production availability (pulled over SSH with SELECT-only queries; the snapshot file holds student emails, so it lives outside the repo and is never committed), with the synthetic generator as the CI-side fallback. Full suite + lint + build. | Whole-branch review: doc/code drift, PLAN §7 consistency, changelog honesty, no smuggled expectation changes in the tuning commit. |
+
+## 8. Verification
+
+- `npm test`, typecheck, lint, build green at every phase boundary.
+- Synthetic end-to-end: seed 400 students at fill 0.8, generate; the validator
+  must be clean on engine-only rows; double-generation must be identical.
+- P2 pastes before/after seat-fill and wall-time numbers; P5 pastes the
+  penalty tuning table into the changelog.
+- A pre-overhaul `summaryJson` fixture parses; the dashboard hides gracefully
+  on runs without stats.
+
+## 9. P5: tuning, and what was deliberately left undone
+
+### 9.1 The `repeatStartPenalty` sweep
+
+`src/scripts/tune-schedule-params.ts` (`npm run dev:tune-params`) sweeps the
+penalty over {0, 2, 5, 10, 20} with every other knob at its default, running the
+pure engine path (`generateAssignments`, which runs the improvement pass itself)
+rather than the server action, so no database is involved. With `--snapshot` it
+reads a read-only production export; without it, it builds a seeded synthetic
+population over the repo's own initial block config, which is the CI-safe path.
+Every penalty runs **twice** and the two runs are compared before either is
+reported, so determinism is checked rather than assumed. Metrics come from
+`computeRunStats`, not from a reimplementation.
+
+**Production snapshot, 2026-08-19 (pre-cap)** (172 eligible students, 69 live
+blocks, 7 positions, 3 internal copies, nobody frozen). Every penalty ran twice;
+both runs matched exactly. Measured before the weekly hour cap became a hard
+generation rule; the post-cap addendum below re-runs the same sweep.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0     832      69        34      0.5159       5        1        2   1755.0    282.7      23
+      2     834      66        31      0.5196       4        1        2   1755.0    283.5      20
+      5     830      66        33      0.5194       5        1        2   1867.5    284.2      19
+     10     834      67        34      0.5118       5        0        0   1800.0    279.7      21
+     20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
+```
+
+**Synthetic fallback (pre-cap)** (400 students, seed 42, fill 0.8, the CI-safe
+path, over the repo's initial block config at a derived target of 8 per cell).
+Also deterministic across both runs of every penalty.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0    2208     180        95      0.5160      22        3        7   1680.0    346.3     114
+      2    2214     179        96      0.4667      15        2        4   1665.0    344.6      90
+      5    2214     180        91      0.4643      14        2        4   1665.0    340.7      85
+     10    2203     172        95      0.4692      14        2        4   1665.0    338.6      81
+     20    2211     179        91      0.4426       8        3        6   1725.0    342.8      80
+```
+
+**Decision, applied mechanically.** Take the smallest penalty improving at least
+two of {modal-start share, welded, lockstep people, spread} by more than 2%
+relative (or by more than one person where the metric counts people), provided
+seats filled drop by no more than 0.5% relative and neither `shortOfTarget` nor
+`belowMinHours` rises. On the production snapshot: penalty 2 improves only
+`welded`; 5 improves nothing and widens the spread by 6.4%; 10 improves only
+lockstep people; **20 improves two** (lockstep people 2 to 0, spread 1755 to
+1695, 3.4% tighter) and violates no guard, since seats rose from 832 to 837 and
+`shortOfTarget` fell from 69 to 67. **`repeatStartPenalty` therefore ships at
+20.**
+
+**The synthetic population does not independently choose 20, and the honest
+statement is that it chooses 5.** Under the same mechanical rule its sweep
+qualifies **5, 10, and 20**, so its own smallest-wins tie-break lands on 5: run
+with no flags (the CI-safe path), the script's final line prints `Chosen
+repeatStartPenalty: 5`. Twenty is also the qualifying synthetic value that comes
+off worst against its smaller rivals on two of the four metrics: spread **widens**
+to 1725, against 1665 at both 5 and 10 and 1680 at the baseline, and lockstep
+people land at 6 against 4 at both 5 and 10 (still a fall from the baseline's 7,
+but the smallest one on offer). What 20 does show on synthetic is a much stronger effect on the
+metrics it improves (modal-start share 0.516 to 0.443, welded 22 to 8), because
+a 400-person roster gives the engine far more to weld in the first place.
+**Production selects 20, and production governs**: it is the real roster and the
+real availability shape, while the synthetic population is a CI-safe stand-in
+whose size and density are invented.
+
+The honest caveat: on a 172-student roster, `welded` and `lockstep` are single
+digits, so the rule is deciding on small counts. The penalty is a tie-breaker
+that stops the engine defaulting to identical days, not a leveling mechanism, and
+the table should be re-run whenever the roster changes size materially.
+
+**Addendum: the same sweep after the hour cap turned hard** (§2's last row,
+v1.15). Same snapshot, same knobs, same twice-and-compare determinism check.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0     830      71        35      0.5179       5        1        2   1695.0    280.1      21
+      2     831      68        32      0.5216       4        1        2   1695.0    280.5      15
+      5     829      67        33      0.5201       5        1        2   1687.5    277.9      15
+     10     832      69        35      0.5168       5        0        0   1695.0    274.7      16
+     20     836      69        34      0.5112       5        0        0   1650.0    280.5      15
+```
+
+The decision is unchanged: 20 is still the only qualifying penalty and the script
+still prints it. At the shipped 20 the cost of the cap is **one seat** (837 to
+836) and **two more students short of target** (67 to 69), with `belowMinHours`
+flat at 34 and the spread tightening from 1695 to 1650. That is the cap doing
+exactly what it was asked to: the students it stops are the ones the fill loop
+used to carry past their own ceiling by a block, so "short of target" is now
+counting a bound that is real rather than one the engine quietly ignored.
+
+### 9.2 Known deferred items
+
+Three things this branch knowingly did not do. All are recorded here rather than
+left for a later reader to rediscover.
+
+1. **`src/lib/flow/returner.ts` carries the same latent timezone hazard class
+   that was fixed elsewhere on this branch.** `isReturningStudent` compares a
+   `hiredOn` Date against a cutoff built with `Date.UTC(year, 5, 1)`. The mysql2
+   driver hands back a `date` column as **local** midnight, so the two sides are
+   read in different frames and a hire date landing exactly on the June 1
+   boundary can be classified wrongly depending on the server's timezone. This is
+   the same defect class `run-warnings.ts` fixed with `localDay` and
+   `response-filters.ts` fixed for its start-date comparison. The fix is the same
+   shape: read the hire date's day with local getters and compare calendar days
+   as strings, never as instants. It is **deliberately deferred** to keep this
+   branch's production diff minimal, because returner status feeds student
+   ordering on every run and changing it belongs in a commit whose whole subject
+   is that change. The blast radius today is limited to students hired exactly on
+   a June 1.
+2. **`labor.ts` and `validate.ts` deliberately disagree on one input class no
+   app path can produce.** A weekend-day row (sat or sun) carrying cohort
+   `"weekday"` maps differently in the two modules: `labor.ts`'s `slotIndices`
+   falls through its cohort switch to rotation A's slots (sun to 7, sat to 6),
+   while `validate.ts`'s `slotsForRow` tests `cohort === "weekday"` before its
+   weekend-day guard and so maps the row to both halves. Nothing in the app can
+   build that row: the engine only ever stamps `"weekday"` on Mon..Fri, and the
+   manual editor derives the cohort from the day. It is reachable only from a
+   hand-written database row. This is **recorded rather than reconciled on
+   purpose**: `validate.ts` was written blind against the spec, and editing it to
+   agree with a module its author never read would spend the byte-identity that
+   makes a real divergence meaningful evidence of a bug.
+3. **Event and blackout modeling is deferred entirely** (roadmap 5.6,
+   `constraints-from-welcome-week.md` §3). A freshman event that takes a whole
+   cohort out for part of one specific day cannot constrain a dateless repeating
+   template, and how a dated blackout should project onto that template is
+   unfinished design rather than unfinished code. Nothing in this branch pretends
+   otherwise: the engine has no calendar, the run report says nothing about
+   events, and the scheduler handles them in W2W as they already do travel.

@@ -113,7 +113,7 @@ export interface GenerateMagicLinkResult extends AdminActionResult {
 
 /**
  * Admin: mint a single-use sign-in link for a student so an admin can hand it to
- * someone Google won't let in (PLAN §11). Same short-lived single-use token as the
+ * someone Google won't let in (PLAN §11). Same single-use expiring token as the
  * self-service flow (`issueMagicLink`), minted on demand with no cooldown since this
  * is an explicit admin action, not roster-probing input.
  *

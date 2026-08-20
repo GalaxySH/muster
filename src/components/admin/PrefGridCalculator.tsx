@@ -9,7 +9,10 @@ import { keysToSelection, selectionKey } from "@/lib/availability/selection";
 import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { removeOrphanedSelection } from "@/lib/admin/actions";
 import type { OrphanedCell } from "@/lib/positions/orphans";
-import { removeManualAssignment, setManualAssignment } from "@/lib/schedule/manual";
+import { applyScheduleEdits } from "@/lib/schedule/manual";
+import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-colors";
+import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
+import { EPSILON_MINUTES } from "@/lib/domain/scheduling/seats";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
 import {
@@ -39,17 +42,27 @@ import {
  * admin's own working state). Only this admin surface gets the override; the
  * student form keeps refusing.
  *
- * **Edit schedule** toggles the current run's rows per cell through the manual
- * assignment actions (source "manual"; removing an engine row is allowed).
- * Disabled until a run exists.
+ * **Edit schedule** is the same trial + Save shape (1.15). Clicks build a local
+ * trial of the run's rows for this student; nothing is written until Save,
+ * which sends the whole diff to `applyScheduleEdits` as one transaction. A
+ * click that would break the unique-coverage rule is refused here, with the
+ * sentence the server would use (`domain/scheduling/manual.ts`), so the admin
+ * learns it at the cell rather than at Save; the save-time check on the final
+ * state is still the truth. Pending cells carry the amber dashed ring the grid
+ * already uses for "deviates". Rows are added as source "manual"; removing an
+ * engine row is allowed. Disabled until a run exists.
+ *
+ * The header carries BOTH hour figures at once, because the question the admin
+ * is asking changes with the mode and the other number is still worth a glance:
+ * the trial's preferred hours and the run's scheduled hours. Whichever the
+ * current mode is about takes the full size and the status line, the other
+ * shrinks to a labelled miniature beside it, so the two can never be mistaken
+ * for each other.
  */
 
 // Compact fixed cell size; keeps the grid tight instead of stretching wide.
 const CELL = 26;
 
-/** Schedule-half fills: engine rows green, manual rows violet. */
-const ENGINE_COLOR = "#2e9e5b";
-const MANUAL_COLOR = "#8a4fd3";
 /** The empty half of a cell; matches the untouched-preference fill. */
 const EMPTY_COLOR = "var(--color-background-secondary)";
 /**
@@ -85,6 +98,14 @@ export interface PrefGridCalculatorProps {
   everyWeekendOptIn: boolean;
   /** Weekly hours cap (scheduler-side context), for the over-cap cue. */
   cap: number;
+  /**
+   * The student's cycle-averaged SCHEDULED minutes in the current run, totalled
+   * on the server from the run's own rows (the same measure the schedule page's
+   * student table shows). Null before any generation, which hides the scheduled
+   * readout entirely. Deliberately not derived from the grid cells: a row
+   * carried on a retired shift has no cell and would go missing.
+   */
+  scheduledMinutes: number | null;
   /** False before any generation: schedule mode stays disabled. */
   hasCurrentRun: boolean;
   /**
@@ -118,6 +139,23 @@ export interface PrefGridCalculatorProps {
 /** How long "Saved" stays up before the button retires itself. */
 const SAVED_MS = 2000;
 
+type SaveState = "idle" | "saving" | "saved";
+
+/**
+ * One Save button's state. "Saved" is a receipt for the save that just landed,
+ * so it retires on its own rather than sitting there over a grid the admin has
+ * moved on from. Both modes save, so both get their own receipt.
+ */
+function useSaveState(): [SaveState, (next: SaveState) => void] {
+  const [state, setState] = useState<SaveState>("idle");
+  useEffect(() => {
+    if (state !== "saved") return;
+    const timer = setTimeout(() => setState("idle"), SAVED_MS);
+    return () => clearTimeout(timer);
+  }, [state]);
+  return [state, setState];
+}
+
 /** Pull the persisted overlays (picks, auto weekend, assignments) out of the grid. */
 function referenceKeys(grid: AdminGridModel): {
   preferred: Set<string>;
@@ -150,11 +188,19 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // weekend (x0.5 under A/B, x1.0 every-weekend) without touching the student's
   // real answer.
   const [optIn, setOptIn] = useState(props.everyWeekendOptIn);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveState, setSaveState] = useSaveState();
   const [saveError, setSaveError] = useState<string | null>(null);
   // The failing hard checks a save must acknowledge, or null when none pending.
   const [overrideChecks, setOverrideChecks] = useState<string[] | null>(null);
+  // The schedule trial: the run's rows for this student as the admin is
+  // shaping them. Seeded from what is persisted, so a clean trial is exactly
+  // the schedule; after a save the refreshed props come back equal to it,
+  // which is what drops `scheduleDirty` again.
+  const [trial, setTrial] = useState<Set<string>>(() => new Set(assigned.keys()));
+  const [schedSaveState, setSchedSaveState] = useSaveState();
   const [assignError, setAssignError] = useState<string | null>(null);
+  // Labor notes from the last saved batch; the shifts are placed anyway.
+  const [assignWarnings, setAssignWarnings] = useState<string[] | null>(null);
   const [busyCell, setBusyCell] = useState<string | null>(null);
   const [orphanError, setOrphanError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -178,6 +224,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   // Guard against any stray key referencing an unknown block (computeCapacity throws).
   const validIds = useMemo(() => new Set(props.blocks.map((b) => b.id)), [props.blocks]);
+  const blockById = useMemo(() => new Map(props.blocks.map((b) => [b.id, b])), [props.blocks]);
   // The student's own cells, for the diff cues against a loaded internal copy.
   const studentKeys = useMemo(
     () =>
@@ -197,6 +244,23 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   );
   const hours = capacity.weeklyAverageHours;
   const dayCount = useMemo(() => new Set(selection.map((s) => s.day)).size, [selection]);
+
+  // --- the schedule trial ---
+  const schedAdds = useMemo(() => [...trial].filter((k) => !assigned.has(k)), [trial, assigned]);
+  const schedRemoves = useMemo(
+    () => [...assigned.keys()].filter((k) => !trial.has(k)),
+    [trial, assigned],
+  );
+  const scheduleDirty = schedAdds.length > 0 || schedRemoves.length > 0;
+  // The trial's rows in the shape the coverage rule reads, for the per-click cue.
+  const trialRows = useMemo<RowSpan[]>(
+    () =>
+      keysToSelection(trial).flatMap(({ blockId, day }) => {
+        const block = blockById.get(blockId);
+        return block ? [{ blockId, day, start: block.start, end: block.end }] : [];
+      }),
+    [trial, blockById],
+  );
 
   /**
    * The auto-assigned weekend is hours the student never offered but would work
@@ -236,14 +300,9 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const saving = saveState === "saving";
   const saved = saveState === "saved";
   const showSave = dirty || saveState !== "idle";
-
-  // "Saved" is a receipt for the save that just landed, so it retires on its own
-  // rather than sitting there over a grid the admin has moved on from.
-  useEffect(() => {
-    if (saveState !== "saved") return;
-    const timer = setTimeout(() => setSaveState("idle"), SAVED_MS);
-    return () => clearTimeout(timer);
-  }, [saveState]);
+  const schedSaving = schedSaveState === "saving";
+  const schedSaved = schedSaveState === "saved";
+  const showSchedSave = scheduleDirty || schedSaveState !== "idle";
 
   /** The same hard checks the server re-runs before accepting a save. */
   function hardFailures(): string[] {
@@ -323,29 +382,97 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     });
   }
 
-  /** Schedule mode: one click adds or removes the current run's row for the cell. */
+  /**
+   * Schedule mode: one click adds or removes the cell in the TRIAL. Nothing is
+   * written until Save. Removals are pure set arithmetic, so they are always
+   * allowed here even where a per-click server edit used to refuse them: a
+   * removal that leaves another row covering nothing can be legal in a batch
+   * where a later add covers it, and the save re-checks the final state anyway.
+   * An add that breaks the coverage rule against the trial as it stands is
+   * refused right here, in the words the server would use.
+   */
   function toggleAssignment(blockId: string, day: Day) {
-    if (busyCell) return;
+    if (busyCell || schedSaveState === "saving") return;
     const key = selectionKey(blockId, day);
     setAssignError(null);
-    setBusyCell(key);
-    startTransition(async () => {
-      const res = assigned.has(key)
-        ? await removeManualAssignment(props.studentEmail, blockId, day)
-        : await setManualAssignment(props.studentEmail, blockId, day);
-      setBusyCell(null);
-      if (!res.ok) {
-        setAssignError(res.error ?? "Something went wrong.");
+    setAssignWarnings(null);
+    setSchedSaveState("idle");
+    if (trial.has(key)) {
+      setTrial((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+    const block = blockById.get(blockId);
+    if (block) {
+      const clash = findDayConflict(block, day, trialRows);
+      if (clash) {
+        setAssignError(dayConflictMessage(block, day, clash));
         return;
       }
-      // The new assignment comes back as grid props.
-      router.refresh();
+    }
+    setTrial((prev) => new Set(prev).add(key));
+  }
+
+  function resetSchedule() {
+    setAssignError(null);
+    setAssignWarnings(null);
+    setSchedSaveState("idle");
+    setTrial(new Set(assigned.keys()));
+  }
+
+  /** Send the whole diff as one batch; the server applies all of it or none. */
+  function saveSchedule() {
+    setAssignError(null);
+    setAssignWarnings(null);
+    setSchedSaveState("saving");
+    startTransition(async () => {
+      try {
+        const res = await applyScheduleEdits(
+          props.studentEmail,
+          keysToSelection(schedRemoves),
+          keysToSelection(schedAdds),
+        );
+        if (!res.ok) {
+          // The trial survives a refusal: the error names a cell, and the admin
+          // needs the rest of their composition still on screen to fix it.
+          setAssignError(res.error ?? "Something went wrong.");
+          setSchedSaveState("idle");
+          return;
+        }
+        if (res.warnings && res.warnings.length > 0) setAssignWarnings(res.warnings);
+        setSchedSaveState("saved");
+        // The saved rows come back as grid props, which is what settles the trial.
+        router.refresh();
+      } catch {
+        // A THROW, not a refusal: a dropped connection, a row another admin got
+        // to first. startTransition swallows it, so without this the button sits
+        // disabled on "Saving…" and the grid dead-ends. Whether the batch landed
+        // is genuinely unknown here (a commit can be followed by a failed
+        // refresh), so the line says to look rather than promising nothing
+        // happened.
+        setAssignError("Could not save those changes. Reload the page to check, then try again.");
+        setSchedSaveState("idle");
+      }
     });
   }
 
   function onToggle(blockId: string, day: Day) {
     if (mode === "schedule") toggleAssignment(blockId, day);
     else togglePref(blockId, day);
+  }
+
+  /**
+   * Switching modes keeps a dirty schedule trial in memory: it took work to
+   * compose and looking at the preferences is often part of composing it. Only
+   * the schedule notices go, since they describe a screen the admin left.
+   */
+  function switchMode(next: Mode) {
+    setAssignError(null);
+    setAssignWarnings(null);
+    setMode(next);
   }
 
   // Split the cell into preference + schedule halves only when there's a schedule
@@ -370,6 +497,63 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       ? "var(--color-text-warning)"
       : "var(--color-text-info)";
 
+  /**
+   * The scheduled figure follows the trial while schedule mode is dirty. It is
+   * the server's total plus a DELTA between the trial's grid cells and the
+   * persisted ones, never a fresh total over the trial: `scheduledMinutes`
+   * counts rows carried on retired shifts, which have no cell here, and a delta
+   * leaves them counted. Both sides use the student's effective rotation, the
+   * one the server's figure used, not the preference trial's pill.
+   *
+   * One case the delta cannot get right: a trialed cell that overlaps a retired
+   * shift's row on the same day. The server merges the two spans into one
+   * clock-in; the delta counts the trialed cell whole, so the preview can read
+   * high until the save comes back. Accepted, because retired rows have no
+   * spans on this side to merge against, and the figure it lands on and the
+   * server's over-cap warning are both computed from the merged truth.
+   */
+  const gridMinutes = (keys: Iterable<string>) =>
+    computeCapacity(
+      keysToSelection(keys).filter((s) => validIds.has(s.blockId)),
+      props.blocks,
+      { everyWeekendOptIn: props.everyWeekendOptIn },
+    ).weeklyAverageMinutes;
+  // Schedule mode only: in preference mode the scheduled figure is an unlabelled
+  // miniature, so it stays the run as it stands rather than quietly reading as a trial.
+  const scheduleIsTrial = mode === "schedule" && scheduleDirty;
+  const trialDelta = scheduleIsTrial ? gridMinutes(trial) - gridMinutes(assigned.keys()) : 0;
+  const trialMinutes = props.scheduledMinutes === null ? null : props.scheduledMinutes + trialDelta;
+  const scheduledHours = trialMinutes === null ? null : trialMinutes / 60;
+  // The cap is a hard generation rule since 1.15, so a composition that breaks
+  // it should get loud in the trial, before the admin saves it. Judged in
+  // MINUTES against the same epsilon `isOverMaxHours` uses
+  // (domain/scheduling/problems.ts): averaged minutes are float-valued, so
+  // sitting exactly on the cap must never read as over it, and the cue must not
+  // disagree with the over-max flag the schedule page will raise afterwards.
+  // The figure beside it is rounded for reading; the comparison is not.
+  const scheduledOverCap = trialMinutes !== null && trialMinutes - EPSILON_MINUTES > props.cap * 60;
+  const scheduledAccent = scheduledOverCap
+    ? "var(--color-text-danger)"
+    : scheduledHours === 0
+      ? "var(--color-text-secondary)"
+      : "var(--color-text-info)";
+  // Same wording as the schedule page's over-max pill, so the two agree.
+  const scheduledStatus = scheduledOverCap
+    ? `over ${props.cap}h cap`
+    : scheduleIsTrial
+      ? "trial schedule"
+      : scheduledHours === 0
+        ? "nothing scheduled"
+        : "scheduled";
+  // Mini form of the preferred figure: the auto-weekend range survives, since
+  // dropping it here would quietly restate an upper bound as a single number.
+  const preferredMini = showAutoRange
+    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} preferred`
+    : `${fmtHours(hours)} preferred`;
+  // Schedule mode without a run cannot happen (the button is disabled), but the
+  // fallback keeps the preferred readout big rather than rendering nothing.
+  const scheduleIsBig = mode === "schedule" && scheduledHours !== null;
+
   return (
     <>
       {/* Header: title + the mode toggle share the top line; the hours readout gets
@@ -382,7 +566,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             <button
               type="button"
               aria-pressed={mode === "prefs"}
-              onClick={() => setMode("prefs")}
+              onClick={() => switchMode("prefs")}
               style={modeBtn(mode === "prefs")}
             >
               Edit preferences
@@ -391,7 +575,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               type="button"
               aria-pressed={mode === "schedule"}
               disabled={!props.hasCurrentRun}
-              onClick={() => setMode("schedule")}
+              onClick={() => switchMode("schedule")}
               style={modeBtn(mode === "schedule")}
             >
               Edit schedule
@@ -407,38 +591,69 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           </p>
         )}
         <div style={badge} aria-live="polite">
-          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: accent }}>
-            {showAutoRange ? (
-              <>
-                {fmtNum(hours)}
-                <span
-                  style={{ color: "var(--color-text-auto)" }}
-                  title={`Includes the auto-assigned weekend shift: ${autoWeekend
-                    .map((s) => describeCell(s, props.blocks))
-                    .join(", ")}`}
+          {scheduleIsBig ? (
+            <>
+              <div style={readoutGroup}>
+                <div style={{ ...bigFigure, color: scheduledAccent }}>
+                  {fmtHours(scheduledHours!)}
+                </div>
+                <div
+                  style={{
+                    ...statusLine,
+                    color: scheduledOverCap ? scheduledAccent : "var(--color-text-secondary)",
+                  }}
                 >
-                  –{fmtHours(hoursWithAuto)}
-                </span>
-              </>
-            ) : (
-              fmtHours(hours)
-            )}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              whiteSpace: "nowrap",
-              color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
-            }}
-          >
-            {statusText}
-            {mock.size > 0 && !belowFloor && !overCap && (
-              <span style={{ color: "var(--color-text-tertiary)" }}>
-                {" "}
-                · {dayCount} day{dayCount === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
+                  {scheduledStatus}
+                </div>
+              </div>
+              <div style={miniReadout}>{preferredMini}</div>
+            </>
+          ) : (
+            <>
+              <div style={readoutGroup}>
+                <div style={{ ...bigFigure, color: accent }}>
+                  {showAutoRange ? (
+                    <>
+                      {fmtNum(hours)}
+                      <span
+                        style={{ color: "var(--color-text-auto)" }}
+                        title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                          .map((s) => describeCell(s, props.blocks))
+                          .join(", ")}`}
+                      >
+                        –{fmtHours(hoursWithAuto)}
+                      </span>
+                    </>
+                  ) : (
+                    fmtHours(hours)
+                  )}
+                </div>
+                <div
+                  style={{
+                    ...statusLine,
+                    color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
+                  }}
+                >
+                  {statusText}
+                  {mock.size > 0 && !belowFloor && !overCap && (
+                    <span style={{ color: "var(--color-text-tertiary)" }}>
+                      {" "}
+                      · {dayCount} day{dayCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {scheduledHours !== null && (
+                <div
+                  style={
+                    scheduledOverCap ? { ...miniReadout, color: scheduledAccent } : miniReadout
+                  }
+                >
+                  {fmtHours(scheduledHours)} scheduled
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -452,6 +667,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             preferred={preferred}
             auto={auto}
             assigned={assigned}
+            trial={trial}
             busyCell={busyCell}
             split={split}
             isInternal={props.isInternal}
@@ -488,6 +704,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
               preferred={preferred}
               auto={auto}
               assigned={assigned}
+              trial={trial}
               busyCell={busyCell}
               split={split}
               isInternal={props.isInternal}
@@ -501,10 +718,10 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       </div>
 
       <div style={footerRow}>
-        <Legend split={split} showDiff={studentKeys !== null} />
+        <Legend split={split} showDiff={studentKeys !== null} showPending={mode === "schedule"} />
         {/* marginLeft keeps the controls in the bottom-right corner even when the
             legend is wide enough to push them onto their own line. */}
-        {mode === "prefs" && (
+        {mode === "prefs" ? (
           <div style={{ display: "flex", gap: 4, flex: "none", marginLeft: "auto" }}>
             {dirty && (
               <button
@@ -532,6 +749,35 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 }
               >
                 {saving ? "Saving…" : saved ? "Saved" : "Save"}
+              </button>
+            )}
+          </div>
+        ) : (
+          /* No Clear here: wiping a whole schedule should not be one click. */
+          <div style={{ display: "flex", gap: 4, flex: "none", marginLeft: "auto" }}>
+            {scheduleDirty && (
+              <button
+                type="button"
+                onClick={resetSchedule}
+                style={miniBtn}
+                title="Drop the pending changes"
+              >
+                Reset
+              </button>
+            )}
+            {showSchedSave && (
+              <button
+                type="button"
+                onClick={saveSchedule}
+                disabled={schedSaving || schedSaved || busyCell !== null}
+                style={saveBtn(schedSaved)}
+                title={
+                  schedSaved
+                    ? "Saved to the current schedule"
+                    : "Write the pending changes to the current schedule"
+                }
+              >
+                {schedSaving ? "Saving…" : schedSaved ? "Saved" : "Save"}
               </button>
             )}
           </div>
@@ -570,6 +816,19 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           {assignError}
         </p>
       )}
+      {/* Non-blocking labor notes on the week the save landed on: the shifts are
+          placed, the admin decides. Deliberately quieter than the amber
+          acknowledge panel, which blocks. */}
+      {assignWarnings && (
+        <div role="status" style={laborNotePanel}>
+          <p style={{ margin: 0, fontWeight: 600 }}>Saved, but worth checking:</p>
+          <ul style={overrideList}>
+            {assignWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {orphanError && (
         <p role="status" style={saveErrorStyle}>
           {orphanError}
@@ -599,6 +858,7 @@ function CalcTable({
   preferred,
   auto,
   assigned,
+  trial,
   busyCell,
   split,
   isInternal,
@@ -612,7 +872,10 @@ function CalcTable({
   mock: Set<string>;
   preferred: Set<string>;
   auto: Set<string>;
+  /** What the run holds now. */
   assigned: Map<string, AssignmentSource>;
+  /** What the schedule trial holds; the schedule half renders from it in schedule mode. */
+  trial: Set<string>;
   busyCell: string | null;
   split: boolean;
   isInternal: boolean;
@@ -670,9 +933,16 @@ function CalcTable({
               const notOffered =
                 inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
               const removedFromStudent = inStudent === true && !inMock;
-              const source = assigned.get(key) ?? null;
+              const persisted = assigned.get(key) ?? null;
+              // In schedule mode the half renders the TRIAL: a pending add takes
+              // the manual violet, a pending removal empties the half.
+              const inTrial = trial.has(key);
+              const schedMode = mode === "schedule";
+              const source = schedMode ? (inTrial ? (persisted ?? "manual") : null) : persisted;
+              const pendingAdd = schedMode && inTrial && persisted === null;
+              const pendingRemove = schedMode && !inTrial && persisted !== null;
               const isHot = row.highDemandDays[i] ?? false;
-              const pressed = mode === "schedule" ? source !== null : inMock;
+              const pressed = schedMode ? inTrial : inMock;
               return (
                 <td key={day} style={{ padding: 0, ...weekSplit(sub, day) }}>
                   <button
@@ -689,6 +959,8 @@ function CalcTable({
                       isInternal,
                       notOffered,
                       removedFromStudent,
+                      pendingAdd,
+                      pendingRemove,
                     )}
                     onClick={() => onToggle(row.block.id, day)}
                     style={cellStyle(
@@ -700,6 +972,7 @@ function CalcTable({
                       split,
                       notOffered,
                       removedFromStudent,
+                      pendingAdd || pendingRemove,
                     )}
                   >
                     {isHot && <span aria-hidden style={hotTick} />}
@@ -816,6 +1089,8 @@ function cellTitle(
   isInternal: boolean,
   notOffered: boolean,
   removedFromStudent: boolean,
+  pendingAdd: boolean,
+  pendingRemove: boolean,
 ): string {
   // With an internal copy loaded the saved picks are the admin's, so the
   // tooltips stop attributing them to the student.
@@ -825,7 +1100,9 @@ function cellTitle(
     : "not one the student picked";
   const parts: string[] = [];
   if (mode === "schedule") {
-    if (source === "manual") parts.push("Scheduled by hand. Click to remove.");
+    if (pendingAdd) parts.push("Pending: added on Save. Click to undo.");
+    else if (pendingRemove) parts.push("Pending: removed on Save. Click to undo.");
+    else if (source === "manual") parts.push("Scheduled by hand. Click to remove.");
     else if (source === "engine") parts.push("Scheduled. Click to remove.");
     else parts.push("Click to schedule this shift.");
     if (wasPreferred || wasAuto) parts.push(wasAuto ? "auto-assigned weekend" : pickedLabel);
@@ -871,7 +1148,16 @@ function SubHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Legend({ split, showDiff }: { split: boolean; showDiff: boolean }) {
+function Legend({
+  split,
+  showDiff,
+  showPending,
+}: {
+  split: boolean;
+  showDiff: boolean;
+  /** Schedule mode only: the ring that means "not saved yet". */
+  showPending: boolean;
+}) {
   return (
     <div style={legendCol}>
       {/* The split only exists once there's a schedule run to compare against;
@@ -908,6 +1194,11 @@ function Legend({ split, showDiff }: { split: boolean; showDiff: boolean }) {
               <span style={schedSwatch(MANUAL_COLOR)} /> scheduled by hand
             </span>
           </>
+        )}
+        {showPending && (
+          <span>
+            <span style={ringSwatch("1.5px dashed var(--color-border-warning)")} /> pending change
+          </span>
         )}
         <span>
           <span
@@ -947,12 +1238,43 @@ const sectionLabel: React.CSSProperties = {
   fontWeight: 700,
   color: "var(--color-text-primary)",
 };
-/** Hours and status sit side by side on the readout line, hard against the title. */
+/**
+ * The readout line, hard against the title: the mode's own figure first, the
+ * other one as a miniature after it. The wider gap between the two readouts
+ * than inside either keeps them reading as two things and not one long number.
+ */
 const badge: React.CSSProperties = {
   display: "flex",
   alignItems: "baseline",
-  gap: 6,
+  gap: 14,
   marginTop: 2,
+  flexWrap: "wrap",
+};
+/** One readout: its figure and its status line, side by side. */
+const readoutGroup: React.CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: 6,
+};
+const bigFigure: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 700,
+  lineHeight: 1,
+};
+const statusLine: React.CSSProperties = {
+  fontSize: 11,
+  whiteSpace: "nowrap",
+};
+/**
+ * The figure the current mode is NOT about. Small, quiet, and always carrying
+ * its own noun ("scheduled", "preferred"), since the only thing worse than two
+ * hour figures is two hour figures nobody can tell apart.
+ */
+const miniReadout: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  color: "var(--color-text-secondary)",
 };
 /** The two-mode switch; the active mode reads as the pressed segment. */
 const modeGroup: React.CSSProperties = {
@@ -1017,6 +1339,15 @@ const overridePanel: React.CSSProperties = {
 const overrideList: React.CSSProperties = {
   margin: "4px 0 0",
   paddingLeft: 18,
+};
+const laborNotePanel: React.CSSProperties = {
+  marginTop: 10,
+  padding: "8px 10px",
+  fontSize: 12,
+  background: "var(--color-background-secondary)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  color: "var(--color-text-secondary)",
 };
 const overrideBtn: React.CSSProperties = {
   ...miniBtn,
@@ -1164,16 +1495,20 @@ function cellStyle(
   split: boolean,
   notOffered: boolean,
   removedFromStudent: boolean,
+  pendingChange: boolean,
 ): React.CSSProperties {
   const pref = prefFill(inMock, wasPreferred, wasAuto);
   // A cell the student never offered, now in the trial, gets an amber dashed
   // ring; a student cell missing from the trial (dropped by the internal copy,
-  // or just unchecked) gets a blue dotted one.
-  const border = notOffered
-    ? "1.5px dashed var(--color-border-warning)"
-    : removedFromStudent
-      ? `1.5px dotted ${PREF_PICKED_COLOR}`
-      : "1px solid var(--color-border-tertiary)";
+  // or just unchecked) gets a blue dotted one. An unsaved schedule change is
+  // the same "deviates" cue and takes precedence, since in schedule mode that
+  // is the thing the admin is tracking.
+  const border =
+    pendingChange || notOffered
+      ? "1.5px dashed var(--color-border-warning)"
+      : removedFromStudent
+        ? `1.5px dotted ${PREF_PICKED_COLOR}`
+        : "1px solid var(--color-border-tertiary)";
   return {
     position: "relative",
     width: CELL,

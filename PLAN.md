@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.11
-- **Last updated:** 2026-08-04
+- **Version:** 1.18
+- **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -206,8 +206,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + position + flag filters carried in the URL** so they follow the admin into
-  the per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
-  switch widens the list to the whole roster, badging everyone who never started (§10).
+  the per-student view and drive its prev/next walk (roadmap 2.2). A **submission-state
+  select** (`status`) widens the list to the whole roster, badging everyone who never
+  started (§10).
 - **Per-student detail** — expanded view + computed stats (§10). The name is a
   **jump-to dropdown** over the filtered list for direct hops. The page opens for **any
   student on the roster**, responder or not, and the scheduler can record notes and
@@ -250,7 +251,7 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 |---|---|---|---|
 | 1 | Shifts cannot conflict with course schedule | (manual review for now — see §12) | course evidence required |
 | 2 | Selection must be able to reach **min hours** | **Hard** | covered hours of selected shifts (union per day; overlaps counted once) ≥ min (10h; SL 15h), cycle-averaged |
-| 3 | **Max hours** = scheduler-side cap, **not** an entry constraint | context | 30h domestic / 20h international; students may select **more** than their cap as preferences — over-selection is allowed; the cap is applied only when the schedule is written |
+| 3 | **Max hours** = scheduler-side cap, **not** an entry constraint | context at entry, **hard at generation** since v1.15 | 30h domestic / 20h international; students may select **more** than their cap as preferences — over-selection is allowed; the cap is applied only when the schedule is written. Since 1.15 the engine treats it as a hard ceiling on the cycle-averaged week and refuses any placement or relocation past it, rather than merely clamping the target it aims for. Manual edits still only **warn**, and the read-time over-max flag keeps whoever the scheduler pushes over it visible; the labor validator deliberately does not check it, since it is policy and not law (`docs/schedule-generation-plan.md` §3.6) |
 | 4 | Honor shift preferences when availability allows | informational | — |
 | 5 | Must work a weekend shift; A/B rotation, cycle-averaged hours | **Soft** | missing → auto-assign + flag. **Barista exempt** (weekday-only) |
 | 6 | Must work at least one **open OR one close** | **Hard** | ≥1 opening or ≥1 closing block selected |
@@ -258,6 +259,7 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 | 8 | Travel excused only if submitted **before the cutoff** (default 9/1, admin-configurable; all positions) | rule | entries on/after the cutoff are **refused** by default — the form stops accepting them; the admin's accept-late toggle stores them late/unexcused instead (§7b) |
 | 9 | Excuse around course schedules **and mandatory extracurriculars** | informational | evidence pages (§7b); manual review |
 | 10 | **Desired hours** must be stated and reach the position floor | **Hard** | `desiredHours` entered + finite + ≥ position `minHours` (v0.34; §7). The 20/30h cap is still not applied at entry — see #3 |
+| 11 | **Labor rules** on the written schedule (v1.15) | **scheduler-side**, like #3 | Six rules the generator enforces and an independent validator re-checks at read time, evaluated on the canonical fortnight of §7. Never an entry constraint: a student may select anything, and these bind only when the schedule is written. **Hard:** merged day span ≤ `dayCapHours` (default 8); ≤ 40h per W2W week (payroll law, a constant in `domain/scheduling/labor.ts`, deliberately not a knob); longest cyclic run of working days ≤ `maxConsecutiveDays` (default 5); days per W2W week ≤ `maxDaysPerWeek` (default 6); rest from one day's close to the next day's open ≥ `minRestHours` (default 8, the clopen floor); one contiguous span per worked day (no split shifts, though staggered handoff doubles merge and stay legal). **Soft**, relaxed one at a time by the engine's ladder and flagged rather than blocked: days per week ≤ `preferredDaysPerWeek` (default 5), rest ≥ `preferredRestHours` (default 10). Knobs live in `schedule_params` (§9) and are snapshotted per run. Design in `docs/generator-constraints-fairness-plan.md`, behavior in `docs/schedule-generation-plan.md` §3.6 |
 
 > Notes: **Selection = preferences, not a proposed schedule.** Students may mark as
 > many shifts as they want; the two hours hard-blocks are #2 (min reachable via the
@@ -486,6 +488,48 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `borderLeft` on the Sat column, in that grid's border colour.
   No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
+### 7a. The canonical fortnight calendar (v1.15, authoritative)
+
+Until v1.15 this repo never pinned **which Saturday pairs with which Sunday**.
+`domain/types.ts` treated Sun and Sat as opposite week-edge days for the pick
+grid, and `domain/capacity.ts` spoke of a contiguous "on-weekend", but no
+document said how the two W2W weeks line up against the A/B rotation. The labor
+rules needed that answer to exist, so the overhaul settled it. **This is now the
+authoritative reading**, and `domain/scheduling/labor.ts`'s header comment is its
+implementation and proof:
+
+```
+Fortnight indices 0..13 = [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂].
+W2W week 1 = 0..6, week 2 = 7..13. Index 13 is cyclically adjacent to index 0.
+Rotation A's on-weekend is the contiguous pair (Sat₁ = 6, Sun₂ = 7).
+Rotation B's on-weekend is the contiguous pair (Sat₂ = 13, Sun₁ = 0).
+Weekday rows occupy both halves (d and d + 7). "Every" rows occupy all four
+weekend slots. Weekday-only students degenerate to a 7-day-periodic pattern.
+```
+
+Four consequences, none of them obvious, all of them load-bearing:
+
+- A calendar weekend **straddles** the W2W Sun-to-Sat boundary: Saturday ends one
+  W2W week and Sunday starts the next. So an A/B student structurally tops out at
+  **6 days per W2W week**; only an "every" student can reach 7.
+- The longest possible run for an A/B student is **12 consecutive days**
+  (Mon₁ through Fri₁, Sat₁, Sun₂, Mon₂ through Fri₂), not 7, because weekday rows
+  repeat in both halves. An "every" student can occupy all 14. This is why the
+  consecutive-days rule (§5 #11) is the one that bites dense availabilities.
+- **Rotation is symmetric.** The "b" slot table is the "a" table rotated by +7
+  mod 14, and every labor rule is invariant under that rotation (cyclic runs and
+  cyclically adjacent rest pairs rotate whole; per-half totals just swap between
+  two halves checked against identical limits). So an A verdict and a B verdict
+  agree for **every** availability, and a student whose rotation is not chosen yet
+  is evaluated canonically as "a" without prejudging the ledger's cohort balance.
+- A student **can clopen against their own on-weekend**: Sat close into Sun open
+  is an adjacent pair inside the on-weekend, and Sun close into Mon open wraps
+  into the weekday template.
+
+Nothing student-facing changed. The pick grid still renders Sun then Sat as
+opposite week edges (above), which this model agrees with: those two columns
+really do sit at opposite ends of a W2W week.
+
 ### 7b. Evidence & excusal pages
 All three upload through the **`drive.file` relay** (§12); the app stores only Drive
 `fileId`s, never image bytes. All are **advisory input for manual review** by the
@@ -651,13 +695,19 @@ columns from the roster.
   travel cutoff + `late_travel_accept` (§7b), `excluded_roster_titles` (§4.2),
   `default_group_auto_assign` (§13), the email master switch + change-digest
   enabled/recipients/last-run (§11), and `schedule_params` (the tunable generation
-  knobs — §17). Rows are created on first write, so an unset key means "use the coded
+  knobs — §17; since 1.15 also the labor bounds of §5 #11, the repeat-start penalty,
+  and the stats-only cross-coverage pool. A stored value missing the newer fields
+  backfills them from the coded defaults, and a value that fails cross-field
+  validation falls back **wholesale** rather than field by field, because judging a
+  run against half-validated knobs produces findings nobody can act on). Rows are
+  created on first write, so an unset key means "use the coded
   default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
   awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
-  `tokenHash`, `requestedAt`, `expiresAt` (**as built: 30 minutes from issue**, not the
-  form-window close the original design proposed), `redeemedAt?`, `redeemedFrom?`,
-  `revokedAt?`. Issued self-service, or by an admin from the per-student page (0.92).
+  `tokenHash`, `requestedAt`, `expiresAt` (**as built: 1 day from issue** — 1.16, up
+  from 30 minutes — not the form-window close the original design proposed),
+  `redeemedAt?`, `redeemedFrom?`, `revokedAt?`. Issued self-service, or by an admin
+  from the per-student page (0.92).
   Redemption establishes the **standard JWT `AppSession`** — the window-scoped session
   cookie stays deferred (§11). Store hash only.
 - **ChangeRequest** (schedule change mini-flow — roadmap 3.1, §4.1): `id`,
@@ -676,7 +726,12 @@ columns from the roster.
 - **ScheduleRun** (recommended schedule — `docs/schedule-generation-plan.md` §2.2):
   `id`, `generatedAt`, `generatedBy` (admin email), `status` (`current`|`superseded`),
   `summaryJson` (the engine's run report), `restoredAt` + `restoredBy` (1.00 — stamped
-  when an admin restores the run; also its retention rank). **Append-only:** generating
+  when an admin restores the run; also its retention rank). The report grew in 1.15
+  with **no schema change at all**, since it is one JSON column: `belowMinHours`,
+  `laborRelaxed`, `lateStarts`, and `stats` (the versioned per-run statistics
+  snapshot behind the Schedule health section). Every one of those fields is
+  **optional**, so runs generated before the overhaul still parse and simply render
+  without the new sections. **Append-only:** generating
   writes a new run and flips the old one to superseded (retention 10, ranked by
   restore-or-generate time so a restored run moves to the front of the queue; the
   current run is never pruned), so any generation can be restored and nothing is ever
@@ -704,11 +759,16 @@ columns from the roster.
   and the neighbor computation. A **show-off-roster switch** (`roster=all`, same URL
   mechanism) reveals retained submissions from off-roster responders (People Leaving,
   test accounts), badged "off roster"; default stays on-roster only. The list is
-  **roster-wide** underneath (students LEFT JOIN submissions): a **show-all-students
-  switch** (`all=1`, default off, so the default view is still the responses) adds
-  everyone who never started, badged red **"missing"**, submission-only cells empty.
-  Whoever is open in the per-student view is always part of the prev/next walk, even
-  when the active switches would hide them.
+  **roster-wide** underneath (students LEFT JOIN submissions), and a **submission-state
+  select** decides who that surfaces: `status` = `submitted` | `draft` | `missing` |
+  `all`, plus the empty default that keeps the dashboard a list of responses (submitted
+  and draft, never-started hidden). Choosing `missing` or `all` brings in everyone who
+  never started, badged red **"missing"**, submission-only cells empty. The old `all=1`
+  link still **parses** as an alias for `status=all` so saved filter links survive, but it
+  is never serialized back. The per-student prev/next walk widens the **off-roster** switch
+  unconditionally, so whoever is open is always reachable that way; it widens the
+  submission state **only when none was chosen**, so a student outside an explicitly
+  chosen state gets no arrows, exactly as the review filter already behaves.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -901,7 +961,7 @@ allowlist, no manual admin step. Identity proof = the link is only ever delivere
 the `@wisc.edu` mailbox the user enters (only the mailbox owner can get in).
 
 > **As built (auth-only):** `/signin` has a "Email me a sign-in link" disclosure →
-> `requestMagicLink` issues a hashed, single-use, 30-min token (`magic_links` table) and
+> `requestMagicLink` issues a hashed, single-use, 1-day token (`magic_links` table) and
 > sends it via **Resend** (verified domain `re.hauge.rocks`; no `RESEND_API_KEY` ⇒ the link
 > is logged to the server console for local dev). **Eligibility = the email is already a
 > known student or admin** (neutral "if eligible, we've sent a link" either way — no
@@ -948,11 +1008,15 @@ prevents mail-scanner / link-preview bots from consuming a one-time link on a ba
 not a targeted attacker — sufficient given the low stakes.)
 
 **Token properties:** bound to one student email; high-entropy; stored **hashed**;
-expires (**as built: 30 minutes**, not the form-window close proposed here); issuance +
-redemption audited. **Deferred:** an admin **revoke UI** — the `revokedAt` column exists
-and *is* honored on redeem, but nothing writes it yet — and per-IP rate limiting (only
-the 60 s per-address cooldown ships). Blast radius of a leak = that one student's
-availability prefs (no other student, no admin view, no records).
+expires (**as built: 1 day** — 1.16, up from the 30 minutes it launched with — not the
+form-window close proposed here); issuance + redemption audited. **Deferred:** an
+admin **revoke UI** — the `revokedAt` column exists and *is* honored on redeem, but
+nothing writes it yet, so until it exists an unredeemed leaked link cannot be killed
+before its day runs out — and per-IP rate limiting (the 60 s per-address cooldown and
+the global send budget ship; nothing is keyed to IP). Blast radius of a leaked
+**student** link = that one student's availability prefs (no other student, no admin
+view, no records). An **admin's own** link redeems to a full admin session — the
+allowlists gate on identity, not on how the session was established.
 
 **Email transport (decided): app sends directly via a transactional email provider.**
 Power Automate is **ruled out** — its "When a HTTP request is received" trigger is
@@ -1253,7 +1317,10 @@ under-18 test (deferred → fallback, §11).
   B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
   C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
   sheet — in 1.00; scheduling non-responders on operational need, opt-in per run, plus
-  the Shift-Lead weekend-close bias in 1.08). Two limits are permanent, and they are
+  the Shift-Lead weekend-close bias in 1.08; position-scoped runs in 1.14; and in 1.15
+  the six labor rules on the canonical fortnight of §7a, the independent read-time
+  validator, below-min-hours and late-start warnings, and the per-run statistics behind
+  the Schedule health section). Two limits are permanent, and they are
   what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
@@ -1408,6 +1475,287 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.18 (2026-08-20)** — **Popup polish and zebra tables.** The student
+  schedule popup's grids shrink-wrap again: as flex items (in the card and
+  again in the modal panel) they were being stretched across the full width,
+  spreading the columns apart. The hover card is now fixed-positioned off its
+  anchor's viewport rect, because both of its hosts, the cell dialog's
+  scrolling panel and the students table's overflow wrapper, clip
+  absolutely-positioned children; a scroll or resize closes it rather than
+  letting it drift off its anchor. Its placement is measured, not guessed:
+  the card's real size is read after render and the position clamps fully
+  inside the viewport, flush below the name when it fits (so the pointer can
+  travel into it), else flush above, else pinned within and scrolling
+  itself, so no edge of it can leave the page. Hovering a name in the
+  students table now
+  floats the same card the cell dialog shows. And the two widest admin
+  lists, the schedule students table and the response list, take alternate
+  row shading (`.zebra-table`) so a row can be followed across its columns.
+- **1.17 (2026-08-20)** — **A one-student schedule popup, and the honest
+  numbers an adversarial review demanded (§5 #11, §7a, §10a).** The students
+  table's shift enumeration is now a count that opens the familiar
+  blocks-by-days grid in a popup, filled with that student's current-run
+  shifts: engine placements green, hand edits violet, weekend cells lettered
+  with their rotation, retired blocks kept and tagged so carried shifts stay
+  visible. Hovering a name in a coverage cell's dialog floats the same card;
+  both triggers fetch on demand and keep the result. The cell dialog also
+  gained the per-person mark-scheduled check, and its old "scheduled" label,
+  which meant "placed on this cell", became "on this shift" so the word means
+  one thing everywhere.
+  The adversarial pass over the six commits after AR5 confirmed real defects,
+  all fixed here. The biggest: the over-maximum flag read the run **as
+  generated**, so the hand edits it exists to catch never moved it. The
+  student table's hours, both hour flags and their warning groups now
+  re-measure the live rows on every load, through the same
+  `weekMinutesForRows` the editor's Save warning uses and the same effective
+  weekend-rotation seam the engine reads, so every surface judges the same
+  week. Schedule health's coverage arithmetic flattered itself twice: a floor
+  with blocks and nobody on it fell out of the denominators entirely, and the
+  building-wide bar divided non-lead time by every block including the
+  lead's, so it could never reach 100%. Both are re-based, and the fairness
+  week now uses the student-flag measure the engine caps against, judged
+  through `isOverMaxHours`, epsilon included. Those fixes change what stored
+  figures mean, so `RUN_STATS_VERSION` is **4** and older snapshots fall to
+  the regenerate note. The schedule editor's Save is hardened: the
+  transaction re-reads the current run and takes a locking read of the
+  student's rows, so two admins saving at once or a Save racing a
+  regeneration refuse instead of committing a conflicting union; a thrown
+  Save restores the button instead of dead-ending on "Saving"; and the
+  batch's ordering, validation and blame logic is a pure, tested
+  `planScheduleEdits`. One cap definition survives (`domain/caps.ts`; the
+  `admin/summary.ts` duplicate is deleted), the positions page warns when a
+  minimum exceeds the 20h international cap, a contradiction no generation
+  can satisfy, and the grid-mode choice now survives the Compare runs form.
+  Also recorded here: the dev database handle now caches on `globalThis`,
+  because HMR re-evaluation leaked one pool per reload until MariaDB refused
+  connections at its default 151 cap.
+- **1.16 (2026-08-20)** — **Magic links now expire after 1 day, up from the 30
+  minutes they launched with (§9, §11).** A sign-in link should still work when
+  the student opens the email hours after asking for it; the old window forced a
+  re-request more often than it stopped anything. What protects a link already
+  sitting in a mailbox is unchanged: it works exactly once (one atomic UPDATE),
+  only for the typed email, and only its hash is at rest. The issuance limits
+  (per-email cooldown, global send budget) never bounded that window, and the
+  admin and test-account mint paths skip them anyway. Two things the longer
+  life makes worth stating plainly: re-issuing never invalidates earlier links,
+  so several unredeemed links can now be live for one address at once; and
+  until the deferred admin revoke UI (§11) exists, nothing can kill a leaked
+  link before its day runs out — that deferral is more load-bearing than it was
+  at 30 minutes. Historical changelog mentions of the 30-minute token (0.98's
+  reconciliation, 0.18's launch entry) describe what was true then and stand as
+  written.
+- **1.15 (2026-08-20)** — **The generator now knows labor law, and every run
+  reports its own health (roadmap 5.5, §5 #11, §7a,
+  `docs/generator-constraints-fairness-plan.md`).** The engine bounded exactly one
+  thing about a student's time: merged hours in a single day. Everything else that
+  makes a schedule legal or humane lived in the scheduler's head. Six rules now
+  bind the whole two-week cycle: the day cap, the 40h W2W week (payroll law, so a
+  constant in `domain/scheduling/labor.ts` rather than a knob anyone can raise),
+  at most 5 consecutive working days, at most 6 days per W2W week, at least 8
+  hours of rest between a day's close and the next day's open, and one contiguous
+  span per worked day. Soft preferences (5 days, 10 hours of rest) give way one at
+  a time through a `strict` then `relax-rest` then `relax-days` ladder composed
+  inside the existing deferred-cells pass, so a relaxed ordinary cell is still
+  taken before any last-resort Shift Lead weekend close. Hard rules never relax.
+  Manual edits **warn and never block**: the schedule belongs to the scheduler.
+  Getting here required settling something the repo had **never written down**,
+  which Saturday pairs with which Sunday. **§7a is now the authoritative reading**
+  and `labor.ts`'s header is its proof. Two consequences justify the whole
+  exercise: a calendar weekend straddles the W2W Sun-to-Sat boundary, so an A/B
+  student structurally tops out at 6 days a week, and the longest run an A/B
+  student can work is **12 consecutive days**, not 7, because weekday rows repeat
+  in both halves of the fortnight. That 12-day run is the violation the old engine
+  produced most and nobody had a name for.
+  A second, **independent validator** (`domain/scheduling/validate.ts`) re-checks
+  every stored run at read time. It was written from the spec by an author who did
+  not read the engine-side module, and it re-implements the interval merging and
+  the calendar mapping deliberately, so a disagreement between the two surfaces a
+  bug instead of being duplication to delete. It judges frozen and manual rows
+  too, which is the entire point: it sees hand edits made after a run was
+  generated, and the as-generated snapshot never will.
+  Also shipped: **below-min-hours** flags and a matching problem group for
+  students the engine could not bring to their position floor; **late-start
+  warnings** for anyone hired after their position went back to work (compared as
+  date strings, never as Dates, so no timezone can roll the day); a config-time
+  warning on `/admin/positions` naming any block longer than the day cap, since
+  such a block is now never assignable and the admin should learn that there
+  rather than from a silent shortfall; and a **Schedule health** section on
+  `/admin/schedule` built from a versioned statistics snapshot stored with each
+  run: hours fairness, how long people's stretches run, per-position load, and
+  **coverage fragility**, the share of each floor's operating time covered only by
+  new hires with no returner overlapping. A new shift lead working alone reads as
+  an alarm at any share above zero.
+  **Two honest warnings for the first run after this deploys.** (1) The final
+  ordering tie-break is now a **hashed** email rather than the alphabet, so that a
+  static list cannot quietly act as a seniority list. That decides only genuinely
+  equal timestamps, which in practice is the fill-in pass, so **fill-in placement
+  reshuffles once**, at rollout, and then stays put. (2) More importantly, **the
+  labor rules will move a lot of students on the first regeneration.** Schedules
+  that were legal under the old single-rule engine can violate the consecutive-days
+  or rest rules, and re-solving them is the correct behavior, not a regression.
+  **Operator guidance: generate, inspect the diff view, then mark students
+  scheduled.** The diff is what turns a large reshuffle into something reviewable,
+  and the scheduled mark is what freezes each student once you are satisfied.
+  Runs generated before this release still parse and simply render without the new
+  sections; every added report field is optional. **No migration:** the run report
+  is one JSON column and the knobs are one `app_settings` row.
+  **The repeat-start penalty now ships at 20, up from 0.** It subtracts
+  `(penalty/100) x the number of cells the student already holds at this start
+  time` from a candidate cell's pull, so a schedule of five identical 8am shifts
+  stops being the cheapest thing for the engine to build. The value was chosen by
+  sweeping `npm run dev:tune-params` against a read-only production availability
+  snapshot (2026-08-19: 172 eligible students, 69 live blocks, 7 positions, 3
+  internal copies, nobody frozen). Every penalty ran twice and both runs matched
+  exactly, so the table is reproducible rather than merely observed. `spread` is
+  the gap in weekly minutes between the best and worst off; `lockPpl` counts
+  people whose entire set of shifts is shared with somebody else:
+
+  ```
+  penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+  -------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+        0     832      69        34      0.5159       5        1        2   1755.0    282.7      23
+        2     834      66        31      0.5196       4        1        2   1755.0    283.5      20
+        5     830      66        33      0.5194       5        1        2   1867.5    284.2      19
+       10     834      67        34      0.5118       5        0        0   1800.0    279.7      21
+       20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
+  ```
+
+  The rule applied was fixed before the numbers were read: take the **smallest on
+  the swept ladder {0, 2, 5, 10, 20}** penalty improving at least two of
+  {modal-start share, welded, lockstep people, spread} by more than 2% relative
+  (or by more than one person where the metric counts people), provided seats
+  filled drop by no more than 0.5% and neither shortfall counter rises. "Smallest"
+  is a claim about that ladder and nothing else: nothing between 11 and 19 was
+  ever measured. Only **20** qualifies. It clears two metrics outright
+  (lockstep people 2 to 0, spread 1755 to 1695, a 3.4% tightening) and costs
+  nothing anywhere else: seats went **up**, 832 to 837, and students short of
+  target fell from 69 to 67. Penalty 2 improves only `welded`; 5 improves nothing
+  and widens the spread; 10 clears only lockstep. Nothing here is a large effect
+  at this roster size, which is the honest reading: the penalty is a tie-breaker
+  that stops the engine defaulting to identical days, not a leveling mechanism.
+  The synthetic 400-student population (`npm run dev:tune-params` with no
+  snapshot, the CI-safe path) qualifies 20 but does **not** choose it. Under the
+  same rule 5, 10 and 20 all qualify there, so its own smallest-wins tie-break
+  lands on **5**, which is what the script's final line prints. Twenty shows the
+  effect far more strongly on that population (modal-start share 0.516 to 0.443,
+  welded 22 to 8, since a larger roster produces far more welding to break up),
+  but it also **widens** the spread there, to 1725 against 1665 at both 5 and 10
+  and 1680 at the baseline, and leaves lockstep people at 6 against 4 at both 5
+  and 10. **Production selects 20 and production governs**, because it is the real
+  roster and the real availability shape.
+  **Two admin-side changes rode along on this release.** (1) The response list's
+  show-unsubmitted checkbox became a five-option **submission-state select**
+  (Responses, Submitted, Drafts, No submission, Everyone), so the three-way status
+  the list already computed is finally filterable in its own right rather than
+  through one all-or-nothing switch. The old `all=1` URL still parses as a legacy
+  alias for `status=all`, so saved filter links keep working, and the **default view
+  is unchanged**. (2) A **local-midnight timezone bug in the responses started-date
+  filter** (`matchesStarted`) is fixed: it read the hire date's calendar day through
+  `toISOString`, the UTC frame, while the driver hands that `date` column back at
+  LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
+  It now reads the day with local getters, the same shape as the late-start fix
+  above and the `localDay` fix in `run-warnings.ts`.
+  **Six follow-ups on the schedule surfaces shipped with it.** (1) The Cover
+  table's **bars now draw total coverage**, the staffed share of each floor's
+  scheduled open time, with the no-returner share beside them as the right-hand
+  column: a bar whose width means "alarm" cannot also mean "staffed", and the
+  first question about a floor is whether anybody is on it at all. The tones and
+  pills still read the returner share alone, so none of the alarm rules moved.
+  `FragilityGroup` gained `openMinutes` and `coverageShare`, which took
+  `RUN_STATS_VERSION` to 2 (item 5 below takes it to its shipped **3**): a run
+  stamped under an older number shows the quiet "update the schedule" line until
+  it is regenerated, which is exactly what the version gate is for.
+  A new **Uncovered shifts** tile counts shift instances
+  nobody works (a weekday block is five, a weekend block is four, one per weekend
+  day per rotation week), which is the measure the fragility shares structurally
+  cannot express: a floor nobody is on has no operating time to take a share of.
+  (2) The coverage grid's two data modes are now an explicit **Scheduled /
+  Availability switch** on the legend line (`?grid=`) instead of being chosen for
+  the reader by whether a run exists. Scheduled stays the default once one does,
+  availability is all there is before, and the two grid tiles follow the switch
+  while "Responses in" does not. (3) An **over maximum** flag mirrors
+  below-minimum for students scheduled past their weekly hour cap (20h
+  international, 30h otherwise). The cap binds the engine hard as of this same
+  release (below), so the flag can only mean a hand edit or a carried row, never
+  a fresh placement; unlike every other problem group this one **includes frozen
+  students**, because an edit to a kept row is the likeliest way somebody lands
+  over it. The flag reads the run's live rows rather than the stored report, so
+  the edit that goes over raises it and the edit that undoes it clears it.
+  (4) The per-student grid's
+  hours readout is now **two figures**, preferred and scheduled, with the edit mode
+  deciding which is full size and which shrinks to a labelled miniature beside it
+  ("12.5h scheduled", "10h preferred"). Editing preferences asks what the student
+  offered; editing the schedule asks what they actually hold, and the answer to the
+  other question stays worth a glance either way. The scheduled figure is
+  server-computed with the same `averagedAssignedMinutes` the schedule page's
+  student table reads, off the run's own rows rather than the grid cells, so a row
+  carried on a retired shift still counts and every refresh after a schedule edit
+  moves it. Its status line reads "scheduled", "nothing scheduled" at zero, or
+  "over Nh cap" in the danger accent. (5) **Schedule health renders the three
+  figures it had been computing and storing without showing anybody**, and gains
+  a fourth. `stretch.daysPerFortnight` becomes a third bars column, **Days
+  worked**, beside Days in a row and Weekly hours, untoned because working nine
+  days out of fourteen breaks no rule. `perDay` becomes a **Day by day** table,
+  seven columns and two rows, each cell "N · Xh" with a quiet dash where nobody
+  is on, read by fortnight slot so the two rotation weeks cannot transpose.
+  `stretch.byCohort` becomes one short line per rotation anyone is on ("A
+  rotation: 41 people, longest 6 days"), which answers whether the two rotation
+  weeks carry comparable loads without four more histograms. The new figure is
+  per-position **Empty shifts** in the By position table ("12 of 48", or
+  "none"): the Uncovered shifts tile counts the run, and this says which floor.
+  It uses the same instance definition, and there is still only one enumeration
+  of it, since a block belongs to exactly one position and the run-wide figure
+  is now the sum of the rows. `RUN_STATS_VERSION` is **3** accordingly. (6) The
+  per-student grid's **Edit schedule mode becomes trial + Save**, the shape Edit
+  preferences already had. Every click used to write to the live run, so a
+  scheduler rearranging somebody's week walked the schedule through states they
+  never meant to create, one refresh at a time, and a cell that could only be
+  added after another was removed had to be done in exactly that order. Clicks
+  now build a local trial and Save sends the whole diff to one new action,
+  `applyScheduleEdits`, which applies every removal and addition inside a single
+  transaction: all of it lands or none of it does, and a failing cell comes back
+  named ("Sat 8a to 12p: ...") with the trial still on screen to fix. The
+  per-click actions are gone, folded into it; the grid was their only caller.
+  The scheduled hours figure follows the trial while it is dirty and reads
+  "trial schedule", pending cells carry the amber dashed ring the grid already
+  uses for cells that deviate, and there is deliberately **no Clear** in
+  schedule mode, since wiping a whole schedule should not be one click. Adds
+  that break the unique-coverage rule are refused at the click, in the sentence
+  the server would have used, while removals are always allowed in a trial: a
+  removal that orphans another row can be legal in a batch where a later add
+  covers it, and the save-time check on the final state is the truth. One honest
+  cost: **labor warnings now arrive once at Save, describing the state the batch
+  landed on, instead of per click**, so the admin no longer sees a clopen the
+  moment they create it, only when they commit the week that contains it.
+  **The 20h/30h weekly hour cap is now a hard generation rule** (§5 #3). It was
+  only ever a clamp on the target the engine aimed for, which stopped the fill
+  loop *aiming* past a student's cap but let it overshoot by a whole block, and
+  left seeding unbounded entirely: a Shift Lead's three-day minimum could seed an
+  international student to 24h without anything objecting. The check now sits in
+  the same `bestCandidate` filter family as the labor rules, so one test binds
+  the weekend seed, the min-days seeds, every fill step, every rung of the relax
+  ladder and every deferred cell; hard rules never relax, and this one is hard.
+  `improve.ts` re-checks the after-state of a relocation, since a move swaps one
+  block for another and the minutes can grow. The boundary is `isOverMaxHours`
+  itself, imported rather than restated, so the engine and the read-time over-max
+  flag can never disagree about it and sitting exactly on the cap is fine.
+  Manual edits keep the house paradigm and only **warn** ("This puts them over
+  their 20h weekly cap."), and the validator deliberately does not check the cap
+  at all: it is a policy target rather than payroll law, and the over-max flag
+  owns read-time visibility. Re-running the tuning sweep on the same production
+  snapshot, the decision is unchanged (20 still the only qualifying penalty) and
+  the cap costs **one seat** at that setting, 837 to 836, with two more students
+  short of target (67 to 69), `belowMinHours` flat at 34, and the hours spread
+  tightening from 1695 to 1650. Those two students are precisely the ones the old
+  fill loop used to carry past their own ceiling, so the counter is now measuring
+  a bound that is actually enforced. The pre-cap tables in
+  `docs/generator-constraints-fairness-plan.md` §9.1 are labelled as such, with
+  the post-cap sweep as an addendum beneath them.
+  Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
+  A freshman event that removes every first-year student for part of one specific
+  day cannot constrain a dateless weekly template, and deciding how a dated
+  blackout should project onto that template is unfinished design, not an
+  oversight. The scheduler handles those in W2W, as with travel.
 - **1.14 (2026-08-10)** — **Schedule generation can be run one position at a time,
   and coverage cells now say who they are counting (roadmap 5.1,
   `docs/architecture.md`).** The generator was whole-roster or nothing, which did

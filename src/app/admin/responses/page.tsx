@@ -16,10 +16,10 @@ import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
- * view. Lists every submission, plus the students who never started one when the
- * all-students switch (`all=1`) is on; the per-student prev/next walks this same
- * order. The filters (roadmap 2.2) live in the URL so they follow the admin into
- * the per-student view.
+ * view. Lists every submission, and the students who never started one once the
+ * submission-state filter (`status`) asks for them; the per-student prev/next
+ * walks this same order. The filters (roadmap 2.2) live in the URL so they
+ * follow the admin into the per-student view.
  */
 export default async function ResponsesPage({
   searchParams,
@@ -29,6 +29,8 @@ export default async function ResponsesPage({
     position?: string;
     flag?: string;
     roster?: string;
+    status?: string;
+    /** The old show-everyone switch, still read so saved links keep working. */
     all?: string;
     started?: string;
     startedDate?: string;
@@ -76,7 +78,7 @@ export default async function ResponsesPage({
         position={sp.position}
         flag={sp.flag}
         roster={sp.roster}
-        all={sp.all}
+        status={filters.status}
         started={sp.started}
         startedDate={sp.startedDate}
         review={sp.review}

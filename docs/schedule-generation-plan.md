@@ -9,6 +9,14 @@ history + restore, the run diff, the staleness banner, and the `Muster
 Schedule` sheet. Nothing in this plan remains unbuilt; the decisions block
 below records the as-built design.
 
+**Extended in v1.15** by the labor, fairness, and schedule-health overhaul
+(`docs/generator-constraints-fairness-plan.md`): six labor rules on a canonical
+fortnight calendar with a soft-rule relax ladder (§3.6), an independent
+read-time validator, a per-run statistics snapshot and the Schedule health
+section (§3.7), and a tuned `repeatStartPenalty`. Event and blackout modeling
+(convocation, freshman events) stays deferred and is still not represented in
+the engine at all.
+
 **Phase C decisions (owner, 2026-07-30):** restore flips a superseded run's
 status back in place and stamps new `restoredAt`/`restoredBy` columns (no new
 run row); retention ranks runs by restore-or-generate time
@@ -126,7 +134,11 @@ total (explicit tie-breaks), so the same inputs always produce the same run.
 
 ### 3.1 Student ordering: first-come-first-serve by `submittedAt`
 
-Students are processed in ascending `submittedAt` order (tie-break: email).
+Students are processed in ascending `submittedAt` order, returners ahead of new
+hires (v1.13), with a final tie-break on the **hashed** email (`byHashedEmail`
+in `seats.ts`, FNV-1a with `byEmail` behind it so the order stays total). The
+hash only decides genuinely equal timestamps, which in practice is the fill-in
+pass; it exists so a static alphabet does not quietly become a seniority list.
 Only `status = "submitted"` and `onRoster = true` participate, unless the admin
 opts a run into **fill-ins** (v1.08): on-roster students with no submitted
 response, given a stand-in availability of every cell their position runs. Those
@@ -169,9 +181,10 @@ onto as few days as possible: it seeds the position's minimum day span (2, SL
 3) one cell per day — for non-exempt positions the first seed is their best
 weekend cell, so everyone lands on the rotation — then fills already-worked
 days before opening another. Two guards shape this: one day's **merged
-assigned span never exceeds the admin-set max hours per day** (default 8; a
-single block longer than the cap may stand alone on its day but nothing
-stacks on it), and a day past the minimum opens only when the target hours
+assigned span never exceeds the admin-set max hours per day** (default 8; since
+v1.15 this applies unconditionally, so a block configured longer than the cap is
+never assignable at all and `/admin/positions` warns about it, see §3.6), and a
+day past the minimum opens only when the target hours
 cannot fit otherwise. So at the 8h default a 10h student lands on exactly 2
 days and a 20h student needs 3 (8+8+4).
 
@@ -184,7 +197,22 @@ all targeted cells evenly, and the default 50 keeps night cells running about
 half a target ahead while mornings still get coverage — the original absolute
 ordering starved mornings entirely under contention. Untargeted cells rank
 after every targeted one (they claim no need), ordered by tier bonus alone.
-Deterministic tie-breaks (day, block id). The knobs are admin-edited on
+Deterministic tie-breaks (day, block id).
+
+**Repeat-start penalty (v1.15, default 20).** A candidate's pull is reduced by
+`(repeatStartPenalty / 100) x the count of cells this student already holds at
+that start time`, tracked on the active state and updated as each cell is
+assigned. Without it the deterministic tie-breaks make five identical 8am shifts
+the cheapest schedule to build, which reads as a machine welding someone to one
+time slot. At 0 the knob is a no-op and the block-id tie-break decides; at 100 a
+start time is essentially spent after one use. The shipped 20 was chosen by
+sweeping a production availability snapshot, and the table plus the decision rule
+that picked it are in `docs/generator-constraints-fairness-plan.md` §9.1. It is a
+tie-breaker, not a leveling mechanism: it never overrides the targeted-before-
+untargeted ordering, so a penalized targeted cell still outranks an untargeted
+one.
+
+The knobs are admin-edited on
 `/admin/schedule` (one JSON `app_settings` row, `schedule_params`), applied at
 the next update, and snapshotted into each run's stored report.
 
@@ -232,6 +260,162 @@ weekend closing block, since Shift Leads claim weekend closes by hand (PLAN
 §18a) and those claims never reach the generator, making a generated SL weekend
 close wasted allocation. The engine stays generic: it knows only that these
 cells come last.
+
+### 3.6 Labor rules (shipped, v1.15)
+
+Until v1.15 the engine bounded exactly one thing about a student's time: merged
+hours in a single day. Six labor rules now bound the whole fortnight. They live
+in `domain/scheduling/labor.ts`, whose header carries the canonical calendar and
+its symmetry proof; PLAN §7a records the same calendar as the authoritative
+reading. Slots 0..13 are [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂], W2W
+week 1 is 0..6, week 2 is 7..13, and slot 13 is cyclically adjacent to slot 0.
+
+| Rule | Severity | How it reads on the fortnight |
+|---|---|---|
+| Merged day span within `dayCapHours` (default 8) | hard | Per template day, applied unconditionally. This retires the old allowance that let a single over-cap block stand alone on its day, so a block configured longer than the cap is now never assignable at all; `domain/config-validation.ts` names such a block on `/admin/positions` rather than letting it turn into a silent shortfall. |
+| 40 hours per W2W week | hard, and a constant | `WEEK_CAP_MINUTES` in `labor.ts`, deliberately not a knob: it is payroll law, not a preference. Read per fortnight half. Engine-placed rows cannot reach it because `candidateAllowed` tests each half's minutes against the cap on every placement, **not** because the cycle-averaged 30h target implies it: the fill loop can overshoot a target by a block, and a weekend-heavy realized half can run well above the average. The enforced check is what prevents it. Frozen and manual rows never passed that check at all, which is the other reason the cap exists here and in the validator. |
+| Longest run of working days within `maxConsecutiveDays` (default 5) | hard | The longest **cyclic** run of occupied slots over the 14, so a run that wraps the 13-to-0 seam is counted whole. This is the rule that bites densest availabilities: an A/B student can structurally reach 12 consecutive days, not 7. |
+| Working days per W2W week within `maxDaysPerWeek` (default 6) hard, within `preferredDaysPerWeek` (default 5) soft | hard + soft | Occupied-slot count per half. |
+| Rest between one day's close and the next day's open at least `minRestHours` (default 8) hard, at least `preferredRestHours` (default 10) soft | hard (clopen) + soft (short rest) | Every cyclically adjacent occupied pair, measured as `firstStart(next) + 1440 - lastEnd(prev)`. A student can clopen against their own on-weekend, since Sat close to Sun open is an adjacent pair inside it. |
+| One contiguous span per worked day | hard (split shift) | The day's merged spans must form a single run. Staggered overlaps merge, so handoff doubles stay legal. |
+| The student's own weekly hour cap: 20h international, 30h otherwise | hard **engine policy**, not labor law (v1.15) | `domain/caps.ts`. Not one of the six labor rules and not in `labor.ts`: it is a policy target the university sets, not a legal bound, so it lives with the engine rather than with payroll law. Measured on the cycle-averaged week (`averagedAssignedMinutes`) and checked in the same `bestCandidate` filter family as the rules above, so one check binds the weekend seed, the min-days seeds, every fill step, every ladder rung and deferred cells alike; `improve.ts` re-checks the after-state of a relocation. The boundary is `isOverMaxHours` itself, imported rather than restated, so sitting exactly on the cap passes. **The validator deliberately does not check it**, and that is the design: manual edits may knowingly cross a policy target, and the read-time over-max flag already owns making that visible on `/admin/schedule`. |
+
+**The relax ladder.** Soft rules give way one at a time through
+`LaborMode`: `strict` rejects every soft violation, `relax-rest` tolerates short
+rest, `relax-days` tolerates short rest and a day count over the preferred.
+Hard rules reject in every mode and are never on the ladder. The ladder is
+composed *inside* the deferred-cells double pass in `placeStudent`, with
+deferred exclusion staying outermost: a deferred cell risks double-booking a
+hand-claimed SL close, which is a real conflict, while a soft labor violation is
+only a preference, so even a relaxed-mode ordinary cell is taken before any
+deferred cell is considered. There is no backtracking. A student the ladder
+cannot seed or fill lands in the run's warnings (`belowMinDays`,
+`belowMinHours`) and the scheduler finishes them by hand. The report counts
+`laborRelaxed.students` at placement time, so it says where the ladder did work,
+not which soft violations survived the improvement pass.
+
+`improve.ts` applies the same predicate as a filter, never as a score: a
+relocation must add no hard violation and must not increase the soft-violation
+count, evaluated as a diff because a same-day move shifts that day's first start
+and last end and can therefore create or cure a clopen with an adjacent day. The
+termination argument is unchanged.
+
+Manual edits **warn and never block** (`laborWarningsForRows` in
+`schedule/manual.ts`). The schedule belongs to the scheduler; the read-time
+validator keeps flagging whatever they accept. Since 1.15 the grid saves a batch
+of edits rather than writing one cell per click, so the warnings arrive once, at
+Save, describing the week the batch landed on. The hour cap warns there on the
+same terms: `applyScheduleEdits` adds "This puts them over their 20h weekly
+cap." when the saved state carries the student's averaged week past it, judged
+on `weekMinutesForRows` and `isOverMaxHours` so the note and the over-max flag
+can never disagree, and inside its own try/catch so a week it cannot measure
+costs a warning line rather than the save.
+
+**The independent validator.** `domain/scheduling/validate.ts` re-checks a
+stored run at read time, and it is a deliberate second derivation rather than a
+call into `labor.ts`. It was written from the spec by an author who did not read
+the engine-side module, and it re-implements the span merging and the fortnight
+mapping itself, so a divergence between the two is a bug surfacing rather than
+duplication to delete. It runs in `loadScheduleForRun` against the run's own
+snapshotted params, which is what lets it judge hand edits made after the run
+was generated. It never drops or excuses anything: frozen and manual rows are
+exactly what read-time validation exists to catch, and they are attributed as
+such. It deliberately does not flag same-person overlapping rows, because
+staggered doubles are first-class here and merge into one span with the shared
+minutes counted once. Unlike `labor.ts`, which takes one cohort for the whole
+student, it maps each row by that row's own cohort, so a mixed-cohort student
+produced by manual editing is judged correctly.
+
+### 3.7 Per-run statistics and the Schedule health dashboard (shipped, v1.15)
+
+Every run stores a versioned statistics snapshot as `report.stats`
+(`domain/scheduling/stats.ts`, `RUN_STATS_VERSION`). Two things about it are
+worth stating plainly, because confusing them would mislead a scheduler:
+
+- **The snapshot is the run as generated**, taken once and frozen. It is not a
+  verdict and it does not update. The **live truth** about a schedule is the
+  read-time validator above, which re-judges the rows on every page load and so
+  sees hand edits the snapshot never will.
+- The one judgment the snapshot does carry, `stretch.overLimit`, is measured
+  against the run's **own** `maxConsecutiveDays`, so it agrees with the
+  validator instead of against whatever default happens to ship later.
+  `stretch.overLimitAt` stores that limit beside the count, so the snapshot says
+  what it was judged against rather than leaving a later reader to guess.
+
+What it holds: *fairness* (cycle-averaged weekly-minutes distribution with mean,
+pstdev and spread; per-person realized-week maximum; over-cap and over-week-cap
+counts; mean modal-start share with a `welded` count of people working **two or
+more** days whose every working day starts at the same time, a one-day person
+being excluded because their single start time says nothing; `lockstep` groups
+and people sharing an
+identical set of (day, block, rotation) cells; the alphabetical-rank against
+hours correlation); *stretch* (cyclic consecutive-days histogram, per-cohort
+split, days-per-fortnight histogram); *per-position* staffing, targeted-cell
+fill, span and load figures, and that position's own shift instances; *perDay*
+over all 14 slots; *fragility*; and *shifts*, which counts shift **instances**
+rather than minutes (one per weekday block per weekday, four per weekend block,
+one for each weekend day in each rotation week) and reports how many of them
+nobody works at all. That last one exists because a floor with nobody on it has
+no operating minutes for a fragility share to be a share of. Since **version 3**
+the instance count also sits on each per-position row as
+`shifts: { total, uncovered }`, and there is only ONE enumeration: a block
+carries exactly one `positionId`, so the position rows partition the instances
+and the run-wide figure is their sum.
+
+Two denominators run through the module and they differ on purpose. Anything
+counted per day runs over all **fourteen** slots, so a weekday row counts in both
+halves exactly as the calendar works. The fragility timelines run over the
+**nine distinct staffing pictures**: one per weekday, since both halves hold the
+identical row, plus one per weekend day per rotation week, which really are
+different people. Counting a weekday twice would only scale a share by a
+constant; counting each distinct picture once is what "share of operating time"
+means. A group's `openMinutes` are measured over those same nine pictures but
+off the **block spans** rather than the seats, as a union so two overlapping
+blocks open the floor once, which makes `coverageShare` (operating over open)
+the staffed share of the time the shifts were scheduled to run.
+
+**Fragility pool semantics.** A fragility group measures the share of a floor's
+operating minutes covered only by new people with no returner overlapping.
+"New" is `!isReturningStudent(hiredOn)`, the roster Start Date column, not a
+guess from seniority. Positions that cover for each other are measured as **one
+floor**, because a returner on either is real backup for the other; the pool is
+the `coveragePoolPositionIds` param (default `["culinary-assistant",
+"cashier"]`), it is read only by the statistics, and ids that no longer exist
+simply match nothing. Four views are reported: `perPosition` with the pooled
+positions merged into a single entry (since version 4 a floor with blocks and
+nobody on it still appears, carrying its open time against zero staffed time,
+so an unstaffed floor drags the shares down instead of vanishing from them),
+`overallNonLead` adding those floors up, `buildingWide` putting every seat,
+the lead's included, against every block so a returner anywhere in the
+building counts and a fully staffed building can actually reach 100%, and
+`newLeadSolo` inside the Shift Lead position. `newLeadSolo` is a design invariant of zero: any minute of a new shift
+lead alone is an alarm whatever its share.
+
+**The dashboard.** `admin/schedule-health-view.ts` builds the whole section
+following the `analytics-view.ts` precedent, so the component holds layout and
+nothing else: bar widths arrive as whole percents and every figure as the string
+that goes on screen. Tones are the alarm rules: a floor over
+`SOLO_SHARE_DANGER` (20%) of its staffed time with no returner is danger, over
+`SOLO_SHARE_WARNING` (10%) is a warning, and any `newLeadSolo` at all is danger.
+A Cover row separates the two things it knows: the bold figure and the bar are
+`coverageShare`, drawn in the neutral color because a width that means coverage
+cannot also mean alarm, and the returner share sits beside them as the detail
+the tone and pill are read from. Bars are hand-rolled divs; no chart library.
+The stretch histograms share one bar builder and differ only in their tone:
+days-in-a-row reads the run's own limit, **Days worked** carries none, since
+working nine days out of fourteen breaks no rule. A **Day by day** table under
+the bars lays the fortnight out seven columns wide and two rows deep, each cell
+"N · Xh" and a quiet dash where nobody is on, read by fortnight slot so the two
+rotation weeks cannot transpose. `stretch.byCohort` renders as one short line
+per rotation anyone is on, under the days-in-a-row bars. The **By position**
+table carries an **Empty shifts** column ("12 of 48", or "none"), which is the
+per-floor form of the Uncovered shifts tile and the only thing that speaks about
+a floor nobody is on at all. A run stamped under a different `RUN_STATS_VERSION`
+(now **4**, after the coverage re-base put unstaffed floors in the
+denominators and moved the fairness week to the student-flag measure), or a run
+generated before stats existed, is passed over rather than parsed hopefully, and
+the section hides behind a short note: a rolled-back deploy meeting a newer run
+must cost the health section, not the whole page.
 
 ## 4. Regeneration model (shipped, v0.84: one mode)
 
@@ -318,6 +502,7 @@ npm run dev:generate-availability -- --seed 42 [--students 400] [--fill 0.8]
 | **A** | `desired_capacity` end-to-end + coverage grid vs selections (standalone value, no generator) | ✅ shipped, v0.79 |
 | **B** | Synthetic availability generator, then the domain engine (FCFS + min-days concentration + weights + cohorts + improvement pass, TDD), runs/assignments tables, generate action, `/admin/schedule` v1 (grid + per-student list + CSV) | ✅ shipped, v0.84 |
 | **C** | Regeneration ergonomics: run history + restore UI, diff view, staleness banner, `Muster Schedule` sheet (manual overrides shipped early, v0.99) | ✅ shipped, v1.00 |
+| **Labor + fairness + health** | The overhaul planned in `docs/generator-constraints-fairness-plan.md`: labor rules and the fortnight calendar (§3.6), the independent validator, below-min-hours and late-start warnings, per-run statistics and the Schedule health section (§3.7), hashed orderings, and the tuned repeat-start penalty | ✅ shipped, v1.15 |
 
 Docs shipped alongside each phase (same-commit rule): PLAN §17 amendment +
 §9 entities + a changelog entry, and a `docs/architecture.md` scheduling
@@ -340,3 +525,8 @@ section.
   Phase C diff-view concern.
 - `submissions.scheduled` stays manual; keying it off assignment presence is
   a possible later refinement.
+- **Events and blackouts are still unmodeled** (roadmap 5.6). Convocation, a
+  freshman event that takes a cohort out for part of a day, and anything else
+  dated are invisible to the engine, exactly as travel excusals are (§1). The
+  scheduler handles them by hand in W2W. This is the one constraint class the
+  v1.15 overhaul deliberately did not close.

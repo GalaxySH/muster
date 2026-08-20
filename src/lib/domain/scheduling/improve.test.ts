@@ -204,6 +204,8 @@ describe("improveAssignments", () => {
     );
     // a-spare may not take late: first and late together would cover all of
     // mid. first may (mid and late form a legal double), so that move wins.
+    // The day is split before and after the move, so the diff-based labor
+    // check stays neutral and the pre-labor behavior stands.
     expect(r.moved).toBe(1);
     expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["a-spare", "late", "mid"]);
   });
@@ -226,9 +228,46 @@ describe("improveAssignments", () => {
       blocks,
     );
     // mid sits inside the hull of am and pm but adds real time, so the move
-    // out of a-spare lands there.
+    // out of a-spare lands there. The day stays split either way, so the
+    // diff-based labor check stays neutral.
     expect(r.moved).toBe(1);
     expect(r.assignments.map((a) => a.blockId).sort()).toEqual(["am", "mid", "pm"]);
+  });
+
+  it("refuses a move that would create a clopen on an adjacent day", () => {
+    const blocks = [
+      block("day", "weekday", "10a", "2p"),
+      block("late", "weekday", "3:30p", "11:30p", 3),
+      block("tue-am", "weekday", "7a", "11a"),
+    ];
+    const students = [student("s@w", { selection: [sel("day", "mon"), sel("late", "mon")] })];
+    const r = improveAssignments(
+      [row("s@w", "day", "mon"), row("s@w", "tue-am", "tue")],
+      students,
+      blocks,
+    );
+    // The targeted late cell out-pulls the vacated one and raises coverage,
+    // but ending Monday at 11:30p leaves 7.5h before the Tuesday 7a open.
+    expect(r.moved).toBe(0);
+    expect(r.assignments[0]!.blockId).toBe("day");
+  });
+
+  it("allows a move that cures a short-rest soft violation", () => {
+    const blocks = [
+      block("night", "weekday", "6:30p", "10:30p"),
+      block("day2", "weekday", "2p", "6p", 3),
+      block("tue-am", "weekday", "7a", "11a"),
+    ];
+    const students = [student("s@w", { selection: [sel("night", "mon"), sel("day2", "mon")] })];
+    const r = improveAssignments(
+      [row("s@w", "night", "mon"), row("s@w", "tue-am", "tue")],
+      students,
+      blocks,
+    );
+    // 8.5h of rest into Tuesday is a standing soft violation; the move to the
+    // afternoon cell keeps coverage and cures it, so nothing blocks the gain.
+    expect(r.moved).toBe(1);
+    expect(r.assignments[0]!.blockId).toBe("day2");
   });
 
   it("refuses a move that would push the day past the 8h cap", () => {
@@ -282,5 +321,49 @@ describe("improveAssignments", () => {
     const moved = r.assignments.find((a) => a.studentEmail === "s@w")!;
     expect(moved.blockId).toBe("we-close");
     expect(moved.cohort).toBe("b");
+  });
+
+  // A relocation swaps one block for another, so the student's minutes can grow
+  // even though their day count and their coverage cannot fall. The weekly hour
+  // cap (../caps.ts) is hard since 1.15, and this pass has to respect it too.
+  describe("the weekly hour cap", () => {
+    // Mon holds an untargeted 4h morning; the 8h night carries a target, so it
+    // is a strict gain. Tue and Wed hold 8h each, which puts the week at 20h
+    // before the move and 24h after it. Nothing else refuses it: every labor
+    // rule reads clean on both sides, so the cap is the only thing in the way.
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "1p", "9p", 3),
+      block("full", "weekday", "8a", "4p"),
+    ];
+    const selection = [
+      sel("morning", "mon"),
+      sel("night", "mon"),
+      sel("full", "tue"),
+      sel("full", "wed"),
+    ];
+    const rows = () => [
+      row("s@w", "morning", "mon"),
+      row("s@w", "full", "tue"),
+      row("s@w", "full", "wed"),
+    ];
+    const monBlock = (r: ReturnType<typeof improveAssignments>) =>
+      r.assignments.find((a) => a.day === "mon")!.blockId;
+
+    it("makes the move for a domestic student, whose 30h cap leaves room", () => {
+      const r = improveAssignments(rows(), [student("s@w", { selection })], blocks);
+      expect(r.moved).toBe(1);
+      expect(monBlock(r)).toBe("night");
+    });
+
+    it("refuses it for an international student it would carry past 20h", () => {
+      const r = improveAssignments(
+        rows(),
+        [student("s@w", { international: true, selection })],
+        blocks,
+      );
+      expect(r.moved).toBe(0);
+      expect(monBlock(r)).toBe("morning");
+    });
   });
 });

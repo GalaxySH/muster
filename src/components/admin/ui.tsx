@@ -7,6 +7,8 @@
  * components can both import it. Colors go through the globals.css tokens.
  */
 import Link from "next/link";
+import type { HealthBar, HealthTone } from "@/lib/admin/schedule-health-view";
+import type { FrozenReason } from "@/lib/schedule/run-warnings";
 
 export const panelStyle: React.CSSProperties = {
   background: "var(--color-background-primary)",
@@ -90,6 +92,50 @@ export const warningPillStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+/**
+ * The small tag that rides after a shift list or a warning line. The two
+ * schedule surfaces share these so a run reads the same in both places: green
+ * for a row nothing moved, purple for one a person placed by hand (the same
+ * purple the preference grid paints manual cells).
+ */
+const tagStyle: React.CSSProperties = {
+  borderRadius: 10,
+  padding: "1px 8px",
+  fontSize: 11,
+  marginLeft: 6,
+  whiteSpace: "nowrap",
+};
+
+export const keptTagStyle: React.CSSProperties = {
+  ...tagStyle,
+  background: "#e6f4ea",
+  color: "#196127",
+};
+
+export const manualTagStyle: React.CSSProperties = {
+  ...tagStyle,
+  background: "#f3ecfb",
+  color: "#8a4fd3",
+};
+
+/** Why a student's shifts did not move. See FrozenReason for the split. */
+export const FROZEN_LABEL: Record<FrozenReason, string> = {
+  marked: "kept",
+  "out-of-scope": "not in this update",
+  kept: "kept",
+};
+
+/**
+ * A stored `yyyy-mm-dd` as "Sep 2". Read as UTC so the day never shifts, and
+ * pinned to en-US so the server and the client render the same string.
+ */
+export const formatDayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+
 const tileStyle: React.CSSProperties = {
   display: "block",
   background: "var(--color-background-secondary)",
@@ -142,6 +188,72 @@ export function StatTile({
     <Link href={href} style={tileStyle}>
       {body}
     </Link>
+  );
+}
+
+/** The groove a bar's fill sits in; the fill paints over it at its own width. */
+export const barTrackStyle: React.CSSProperties = {
+  height: 6,
+  borderRadius: 3,
+  overflow: "hidden",
+  background: "var(--color-background-secondary)",
+};
+
+/** The quiet aside a SectionLabel parks on the right to explain its figures. */
+export const hintStyle: React.CSSProperties = {
+  fontWeight: 400,
+  fontSize: 12,
+  color: "var(--color-text-tertiary)",
+};
+
+/** The smallest line on a panel: provenance, caveats, "nothing to show here". */
+export const footnoteStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--color-text-tertiary)",
+  margin: 0,
+};
+
+/** Text color for a health tone: red for danger, amber for warning, plain otherwise. */
+export const toneColor = (tone: HealthTone): string =>
+  tone === "danger"
+    ? "var(--color-text-danger)"
+    : tone === "warning"
+      ? "var(--color-text-warning)"
+      : "var(--color-text-primary)";
+
+/** The same three tones as a bar fill, where the warning reads better as a wash. */
+export const barColor = (tone: HealthTone): string =>
+  tone === "danger"
+    ? "var(--color-text-danger)"
+    : tone === "warning"
+      ? "var(--color-background-warning)"
+      : "var(--color-text-info)";
+
+/**
+ * One hand-rolled bar: label and figure on a line, the track under them. Shared
+ * with the analytics funnel's shape on purpose, and hand-rolled on purpose:
+ * these pages carry no chart library.
+ */
+export function Bar({ bar }: { bar: HealthBar }) {
+  return (
+    <div style={{ padding: "6px 0", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}
+      >
+        <span style={{ color: toneColor(bar.tone) }}>{bar.label}</span>
+        <span style={{ color: "var(--color-text-secondary)" }}>{bar.caption}</span>
+      </div>
+      <div style={barTrackStyle}>
+        <div
+          style={{
+            width: `${bar.percent}%`,
+            height: "100%",
+            borderRadius: 3,
+            background: barColor(bar.tone),
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

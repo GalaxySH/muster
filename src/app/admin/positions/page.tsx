@@ -3,6 +3,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import { listGhostTitles, listPositionsAdmin, positionOptions } from "@/lib/positions/data";
+import { getSchedulingParams } from "@/lib/settings";
 import { GhostTitleSection } from "@/components/admin/GhostTitleCard";
 import { PositionCard } from "@/components/admin/PositionCard";
 import { AddPositionForm } from "@/components/admin/AddPositionForm";
@@ -17,10 +18,11 @@ export default async function AdminPositionsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/positions");
   if (!session.isAdmin) redirect("/me");
 
-  const [items, ghosts, options] = await Promise.all([
+  const [items, ghosts, options, params] = await Promise.all([
     listPositionsAdmin(),
     listGhostTitles(),
     positionOptions(),
+    getSchedulingParams(),
   ]);
 
   // Working positions first, retired ones next, aliases last (name order within).
@@ -34,15 +36,20 @@ export default async function AdminPositionsPage() {
       </AppHeader>
       <h1>Positions and shift blocks</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        These positions and their shift blocks are what students pick from on the availability
-        form. The Open and Close tags mark the earliest and latest block of each day type and move
-        as you edit times. Changes apply to new form loads right away.
+        These positions and their shift blocks are what students pick from on the availability form.
+        The Open and Close tags mark the earliest and latest block of each day type and move as you
+        edit times. Changes apply to new form loads right away.
       </p>
 
       <GhostTitleSection ghosts={ghosts} options={options} />
 
       {sorted.map((p) => (
-        <PositionCard key={p.id} position={p} aliasTargets={options} />
+        <PositionCard
+          key={p.id}
+          position={p}
+          aliasTargets={options}
+          dayCapHours={params.dayCapHours}
+        />
       ))}
 
       <AddPositionForm />

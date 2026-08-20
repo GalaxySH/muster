@@ -2,21 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { FrozenReason, ScheduleStudentRow } from "@/lib/schedule/data";
-import { formatSpan } from "@/lib/domain/time";
-import { DAY_LABEL } from "@/lib/domain/types";
+import type { ScheduleStudentRow } from "@/lib/schedule/data";
+import { FROZEN_LABEL, formatDayLabel, keptTagStyle } from "@/components/admin/ui";
+import {
+  StudentScheduleHover,
+  StudentScheduleModalLink,
+} from "@/components/admin/StudentSchedulePopup";
 import { hoursLabel } from "@/lib/domain/config-validation";
 
 type SortKey = "name" | "position" | "hours" | "days" | "rotation" | "scheduled";
 
 const ROTATION_LABEL = { a: "A", b: "B", every: "Every" } as const;
-
-/** Why this student's shifts did not move. See FrozenReason for the split. */
-const FROZEN_LABEL: Record<FrozenReason, string> = {
-  marked: "kept",
-  "out-of-scope": "not in this update",
-  kept: "kept",
-};
 
 /**
  * The current run's per-student list on /admin/schedule, sortable by column
@@ -47,7 +43,7 @@ export function ScheduleStudentTable({ students }: { students: ScheduleStudentRo
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+      <table className="zebra-table" style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
         <thead>
           <tr>
             <Th onClick={() => toggleSort("name")} align="left">
@@ -99,8 +95,18 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
   return (
     <tr>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
-        <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
-        {s.fillIn && <span style={noResponseTag}>no response</span>}
+        <StudentScheduleHover email={s.email}>
+          <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
+        </StudentScheduleHover>
+        {s.fillIn && <span style={warningTag}>no response</span>}
+        {s.lateStart && (
+          <span
+            style={warningTag}
+            title={`Starts after ${formatDayLabel(s.lateStart.expectedStart)}`}
+          >
+            starts late
+          </span>
+        )}
       </td>
       <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {s.positionName ?? "-"}
@@ -114,16 +120,23 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
         }}
       >
         {hoursLabel(s.assignedMinutes)} of {hoursLabel(s.targetMinutes)}h
+        {s.belowMinHours && <span style={dangerTag}>below minimum</span>}
+        {/* The engine refuses to schedule anyone past their cap, so this pill
+            means a hand edit or a kept row, never a fresh placement. Both pills
+            need a hand fix. */}
+        {s.overMaxHours && <span style={dangerTag}>over maximum</span>}
       </td>
       <td style={tdStyle}>{s.daysUsed}</td>
       <td style={tdStyle}>{s.cohort ? ROTATION_LABEL[s.cohort] : "-"}</td>
-      <td style={{ ...tdStyle, textAlign: "left" }}>
+      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {s.cells.length === 0 ? (
           <span style={{ color: "var(--color-text-secondary)" }}>none</span>
         ) : (
-          s.cells.map((c) => `${DAY_LABEL[c.day]} ${formatSpan(c.start, c.end)}`).join(", ")
+          <StudentScheduleModalLink email={s.email} displayName={s.displayName}>
+            {s.cells.length} {s.cells.length === 1 ? "shift" : "shifts"}
+          </StudentScheduleModalLink>
         )}
-        {s.frozenReason && <span style={keptTag}>{FROZEN_LABEL[s.frozenReason]}</span>}
+        {s.frozenReason && <span style={keptTagStyle}>{FROZEN_LABEL[s.frozenReason]}</span>}
       </td>
       <td style={tdStyle}>{s.scheduled ? "✓" : ""}</td>
     </tr>
@@ -169,18 +182,16 @@ const tdStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--color-border-secondary)",
 };
 
-const keptTag: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-  marginLeft: 6,
-  whiteSpace: "nowrap",
-  background: "#e6f4ea",
-  color: "#196127",
-};
-
-const noResponseTag: React.CSSProperties = {
-  ...keptTag,
+/** Worth a look, not a failure: no response of their own, a late start. */
+const warningTag: React.CSSProperties = {
+  ...keptTagStyle,
   background: "#fdf0d5",
   color: "#8a5a00",
+};
+
+/** Something the scheduler has to fix by hand. */
+const dangerTag: React.CSSProperties = {
+  ...keptTagStyle,
+  background: "#fce8e6",
+  color: "#b3261e",
 };

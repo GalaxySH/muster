@@ -4,14 +4,19 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import {
+  FROZEN_LABEL,
   SectionLabel,
   StatTile,
   bannerStyle,
   cardsGridStyle,
+  formatDayLabel,
+  keptTagStyle,
+  manualTagStyle,
   panelStyle,
   successPillStyle,
 } from "@/components/admin/ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
+import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
 import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
@@ -34,6 +39,12 @@ import {
   type RunDiffData,
   type ScheduleRunListItem,
 } from "@/lib/schedule/data";
+import {
+  laborFindingSections,
+  type LaborFindingSection,
+  type LaborFindingView,
+} from "@/lib/schedule/run-warnings";
+import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import {
@@ -44,11 +55,13 @@ import {
   type CoverageStatus,
   type CoverageSummary,
 } from "@/lib/domain/coverage";
+import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
+import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import type { ProblemGroup } from "@/lib/domain/scheduling/problems";
-import type { Cohort } from "@/lib/domain/scheduling/types";
+import type { Cohort, LateStartWarning } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
 
@@ -57,16 +70,19 @@ export const dynamic = "force-dynamic";
 
 /**
  * Admin: schedule coverage and the recommended schedule (roadmap 5.1;
- * docs/schedule-generation-plan.md Phases A to C). Before a run exists the
- * grid shows selection supply per (block × day) cell; once one is generated it
- * grades the run's assigned seats against the targets, with supply in the cell
- * tooltip, and lists every student's recommended shifts below, plus the run
- * history with restore, the run diff picker, and the Muster Schedule sheet.
+ * docs/schedule-generation-plan.md Phases A to C). The coverage grid has two
+ * modes: availability counts the submitted students who could work each (block
+ * × day) cell, scheduled counts the seats the current run put in it, graded
+ * against the targets with supply in the cell tooltip. Before any run exists
+ * only availability is possible; afterwards `?grid=` switches between them and
+ * scheduled is the default. Below the grids: every student's recommended
+ * shifts, the run history with restore, the run diff picker, and the Muster
+ * Schedule sheet.
  */
 export default async function AdminSchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ before?: string; after?: string }>;
+  searchParams: Promise<{ before?: string; after?: string; grid?: string }>;
 }) {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
@@ -86,6 +102,7 @@ export default async function AdminSchedulePage({
       loadScopeLedger(),
     ]);
   const scopePositions = coverage.map((c) => ({ id: c.positionId, name: c.positionName }));
+  const positionNames = new Map(scopePositions.map((p) => [p.id, p.name]));
   const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
   const staleLine = staleness ? stalenessMessage(staleness.newSubmissions, staleness.edited) : null;
@@ -98,8 +115,20 @@ export default async function AdminSchedulePage({
   const beforeId = sp.before && runIds.has(sp.before) ? sp.before : defaultBefore;
   const diffData =
     beforeId && afterId && beforeId !== afterId ? await loadRunDiff(beforeId, afterId) : null;
+  // Which grid the reader asked for. With no run there is nothing to show but
+  // availability, so the param is ignored rather than offering an empty grid;
+  // with one, scheduled stays the default the way it was before the toggle.
+  const gridMode: GridMode = !schedule
+    ? "availability"
+    : sp.grid === "availability"
+      ? "availability"
+      : "scheduled";
+  // The grids and their two tiles read THIS, so availability mode falls into the
+  // same null branches the page took before any run existed. Everything else on
+  // the page keeps the real run.
+  const gridSchedule = gridMode === "scheduled" ? schedule : null;
   const summaryOf = (p: PositionCoverage): CoverageSummary =>
-    schedule ? summarizeAssignedCoverage(p.rows, schedule.assignedCells) : p.summary;
+    gridSchedule ? summarizeAssignedCoverage(p.rows, gridSchedule.assignedCells) : p.summary;
   const totals = coverage.reduce(
     (acc, p) => {
       const s = summaryOf(p);
@@ -121,7 +150,7 @@ export default async function AdminSchedulePage({
       </AppHeader>
       <h1>Schedule</h1>
       <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        {schedule
+        {gridMode === "scheduled"
           ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Click a cell to see everyone who could work it. Weekend cells show both rotation weeks as A·B."
           : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Click a cell to see who they are. Set targets per block on the Positions and shift blocks page."}
       </p>
@@ -140,10 +169,17 @@ export default async function AdminSchedulePage({
         positions={scopePositions}
       />
       <ScopeLedgerPanel ledger={ledger} />
+      <ScheduleHealthSection schedule={schedule} positionNames={positionNames} />
 
       <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
         <SectionLabel>Generation settings</SectionLabel>
-        <ScheduleParamsForm initial={params} />
+        {/* Shift Lead is not offered in the cross-coverage pool: the statistics
+            drop the lead id from it and measure new leads on their own floor,
+            so a ticked box there would look like a setting and do nothing. */}
+        <ScheduleParamsForm
+          initial={params}
+          positions={scopePositions.filter((p) => p.id !== SHIFT_LEAD_POSITION_ID)}
+        />
       </section>
 
       <div style={{ ...cardsGridStyle, maxWidth: 720 }}>
@@ -167,6 +203,19 @@ export default async function AdminSchedulePage({
       </div>
 
       <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+        {/* Only worth offering once a run exists: before that there is one grid.
+            The four status chips below apply to both modes and never move. */}
+        {schedule && (
+          <span style={{ marginRight: 10 }}>
+            <GridModeLink mode="scheduled" active={gridMode} before={sp.before} after={sp.after} />{" "}
+            <GridModeLink
+              mode="availability"
+              active={gridMode}
+              before={sp.before}
+              after={sp.after}
+            />
+          </span>
+        )}
         <span style={{ ...legendChip, ...statusStyles.ok }}>meets target</span>{" "}
         <span style={{ ...legendChip, ...statusStyles.short }}>short</span>{" "}
         <span style={{ ...legendChip, ...statusStyles.severe }}>under half</span>{" "}
@@ -177,7 +226,7 @@ export default async function AdminSchedulePage({
         <PositionSection
           key={p.positionId}
           coverage={p}
-          schedule={schedule}
+          schedule={gridSchedule}
           summary={summaryOf(p)}
         />
       ))}
@@ -191,6 +240,7 @@ export default async function AdminSchedulePage({
           runs={runs}
           beforeId={beforeId}
           afterId={afterId}
+          grid={gridMode}
           data={diffData}
           mismatches={mismatches}
         />
@@ -202,6 +252,43 @@ export default async function AdminSchedulePage({
         )
       )}
     </Page>
+  );
+}
+
+/** Which numbers the coverage grids show: the run's seats, or who could work. */
+type GridMode = "scheduled" | "availability";
+
+const GRID_MODE_LABEL: Record<GridMode, string> = {
+  scheduled: "Scheduled",
+  availability: "Availability",
+};
+
+/**
+ * One half of the grid switch. The diff picker's own params ride along, so
+ * switching grids does not throw away the pair of runs being compared.
+ */
+function GridModeLink({
+  mode,
+  active,
+  before,
+  after,
+}: {
+  mode: GridMode;
+  active: GridMode;
+  before?: string;
+  after?: string;
+}) {
+  const params = new URLSearchParams();
+  if (before) params.set("before", before);
+  if (after) params.set("after", after);
+  params.set("grid", mode);
+  return (
+    <Link
+      href={`/admin/schedule?${params.toString()}`}
+      style={mode === active ? activeLegendChip : legendChip}
+    >
+      {GRID_MODE_LABEL[mode]}
+    </Link>
   );
 }
 
@@ -247,6 +334,10 @@ function SchedulePanel({
   const frozen = schedule.students.filter((s) => s.frozenReason === "marked").length;
   const outOfScope = schedule.students.filter((s) => s.frozenReason === "out-of-scope").length;
   const planKept = schedule.students.filter((s) => s.frozenReason === "kept").length;
+  const nameByEmail = new Map(schedule.students.map((s) => [s.email, s.displayName]));
+  // Backfilled, so a run stored before the labor knobs existed shows the values
+  // it is now judged against rather than a line full of blanks.
+  const knobs = report.params ? storedSchedulingParams(report.params) : null;
   const scopeNames = schedule.scope
     ? positions
         .filter((p) => schedule.scope!.positionIds.includes(p.id))
@@ -278,8 +369,8 @@ function SchedulePanel({
           ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
         {report.returners &&
           ` ${report.returners.count} returners were placed before new students.`}
-        {report.params &&
-          ` Used max ${report.params.dayCapHours}h per day, night priority ${report.params.nightPriority}, evening ${report.params.eveningPriority}.`}
+        {knobs &&
+          ` Used max ${knobs.dayCapHours}h per day, night priority ${knobs.nightPriority}, evening ${knobs.eveningPriority}, rest ${knobs.minRestHours}h/${knobs.preferredRestHours}h, days ${knobs.preferredDaysPerWeek}/${knobs.maxDaysPerWeek}, run cap ${knobs.maxConsecutiveDays}.`}
       </p>
       {/* Without hire dates everyone counts as a new student, so the ordering
           quietly becomes plain first come first served. Say so. */}
@@ -301,6 +392,11 @@ function SchedulePanel({
           )}
         </div>
       )}
+      <LateStartWarnings
+        lateStarts={report.lateStarts ?? []}
+        nameOf={(email) => nameByEmail.get(email) ?? email}
+      />
+      <LaborFindings findings={schedule.laborFindings} />
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
       <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
@@ -312,6 +408,31 @@ function SchedulePanel({
       </div>
     </section>
   );
+}
+
+/**
+ * The run's stored health figures. A run generated before stats existed has
+ * none of its own, and so does one stamped under a snapshot version this build
+ * cannot read (a rollback meeting a newer run). Both take the same quiet line:
+ * regenerating is how the admin gets the section back, and neither is allowed
+ * to take the rest of the page down.
+ */
+function ScheduleHealthSection({
+  schedule,
+  positionNames,
+}: {
+  schedule: CurrentSchedule | null;
+  positionNames: ReadonlyMap<string, string>;
+}) {
+  if (!schedule) return null;
+  if (!isReadableRunStats(schedule.report.stats)) {
+    return (
+      <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+        Update the schedule to see health statistics.
+      </p>
+    );
+  }
+  return <ScheduleHealth stats={schedule.report.stats} positionNames={positionNames} />;
 }
 
 /**
@@ -386,6 +507,102 @@ function ProblemWarning({ group }: { group: ProblemGroup }) {
   );
 }
 
+/**
+ * Students hired after their position's shifts resume. The engine is dateless,
+ * so their generated week is a template the scheduler has to trim by hand.
+ */
+function LateStartWarnings({
+  lateStarts,
+  nameOf,
+}: {
+  lateStarts: LateStartWarning[];
+  nameOf: (email: string) => string;
+}) {
+  if (lateStarts.length === 0) return null;
+  const n = lateStarts.length;
+  return (
+    <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-warning)" }}>
+      <details>
+        <summary style={{ cursor: "pointer" }}>
+          {n} {n === 1 ? "student starts" : "students start"} after the schedule begins.
+        </summary>
+        <p style={{ margin: "4px 0 0" }}>Edit their shifts by hand in W2W.</p>
+        <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+          {lateStarts.map((w) => (
+            <li key={w.email}>
+              <Link href={`/admin/students/${encodeURIComponent(w.email)}`}>{nameOf(w.email)}</Link>{" "}
+              starts {formatDayLabel(w.hiredOn)}, after shifts resume{" "}
+              {formatDayLabel(w.expectedStart)}.
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+/** Hard labor rule breaks first, then the soft preferences. */
+function laborSectionLabel(section: LaborFindingSection): string {
+  const n = section.students;
+  return section.severity === "hard"
+    ? `${n} ${n === 1 ? "student breaks" : "students break"} a labor rule`
+    : `${n} ${n === 1 ? "student is" : "students are"} outside a preferred limit`;
+}
+
+/**
+ * The read-time validator's verdicts on the run as it stands now, hand edits
+ * included (`domain/scheduling/validate.ts`).
+ */
+function LaborFindings({ findings }: { findings: LaborFindingView[] }) {
+  const sections = laborFindingSections(findings);
+  if (sections.length === 0) return null;
+  const lines = sections.flatMap((s) => s.lines);
+  const anyFrozen = lines.some((l) => l.frozenReason !== null);
+  const anyManual = lines.some((l) => l.involvesManual);
+  return (
+    <div style={{ margin: "0 0 10px", fontSize: 13 }}>
+      {sections.map((section) => (
+        <details
+          key={section.severity}
+          style={{
+            margin: "0 0 4px",
+            color:
+              section.severity === "hard"
+                ? "var(--color-text-danger)"
+                : "var(--color-text-warning)",
+          }}
+        >
+          <summary style={{ cursor: "pointer" }}>{laborSectionLabel(section)}.</summary>
+          <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+            {section.lines.map((line, i) => (
+              <li key={`${line.email}|${i}`}>
+                <Link href={`/admin/students/${encodeURIComponent(line.email)}`}>
+                  {line.displayName}
+                </Link>
+                {": "}
+                {line.message}
+                {line.frozenReason && (
+                  <span style={keptTagStyle}>{FROZEN_LABEL[line.frozenReason]}</span>
+                )}
+                {line.involvesManual && <span style={manualTagStyle}>manual</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      {(anyFrozen || anyManual) && (
+        <p style={{ margin: "0 0 4px", color: "var(--color-text-secondary)" }}>
+          {anyFrozen && anyManual
+            ? "Kept and hand-edited shifts are included."
+            : anyFrozen
+              ? "Kept shifts are included."
+              : "Hand-edited shifts are included."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const ROTATION_LABEL: Record<Cohort, string> = {
   weekday: "",
   a: "week A",
@@ -418,6 +635,7 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
               <th style={cellTh}>Assignments</th>
               <th style={cellTh}>Students</th>
               <th style={cellTh}>Short of hours</th>
+              <th style={cellTh}>Below min</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Restored</th>
               <th style={{ ...cellTh, textAlign: "left" }}>Status</th>
             </tr>
@@ -432,6 +650,8 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
                 <td style={cellTd}>{r.assignments}</td>
                 <td style={cellTd}>{r.students}</td>
                 <td style={cellTd}>{r.shortOfTarget}</td>
+                {/* Runs stored before the counter existed have nothing to show. */}
+                <td style={cellTd}>{r.belowMinHours ?? "-"}</td>
                 <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
                   {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
                 </td>
@@ -455,12 +675,15 @@ function DiffSection({
   runs,
   beforeId,
   afterId,
+  grid,
   data,
   mismatches,
 }: {
   runs: ScheduleRunListItem[];
   beforeId: string;
   afterId: string;
+  /** The grid mode in force, so comparing runs does not switch grids underneath. */
+  grid: GridMode;
   data: RunDiffData | null;
   mismatches: FrozenMismatchView[];
 }) {
@@ -495,6 +718,12 @@ function DiffSection({
             ))}
           </select>
         </label>
+        {/* A GET form submits its own fields and nothing else, so without this
+            the two selects would wipe ?grid= and bounce the reader back to the
+            scheduled grid. GridModeLink carries the run pair the other way;
+            this is the same preservation in the other direction. Only the
+            non-default mode needs saying. */}
+        {grid === "availability" && <input type="hidden" name="grid" value="availability" />}
         <button type="submit">Compare</button>
       </form>
 
@@ -797,4 +1026,14 @@ const legendChip: React.CSSProperties = {
   padding: "1px 8px",
   fontSize: 12,
   background: "var(--color-background-secondary)",
+  color: "inherit",
+  textDecoration: "none",
+};
+
+/** The grid mode currently on screen: filled, so the pair reads as one switch. */
+const activeLegendChip: React.CSSProperties = {
+  ...legendChip,
+  background: "var(--color-background-info)",
+  color: "var(--color-text-info)",
+  fontWeight: 600,
 };
