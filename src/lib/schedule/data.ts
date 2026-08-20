@@ -14,6 +14,7 @@ import "server-only";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
+  internalAvailability,
   positions,
   scheduleAssignments,
   scheduleRuns,
@@ -36,6 +37,7 @@ import {
   type RunCell,
   type RunDiff,
 } from "@/lib/domain/scheduling/diff";
+import { weekMinutesForRows, type RowSpan } from "@/lib/domain/scheduling/manual";
 import {
   isBelowMinHours,
   isOverMaxHours,
@@ -272,7 +274,14 @@ export interface AssignedCell {
 
 export type { FrozenReason };
 
-/** One eligible student's row in the current run's per-student list. */
+/**
+ * One eligible student's row in the current run's per-student list.
+ *
+ * Inherited fields are the run as generated, with one deliberate exception:
+ * `assignedMinutes` is re-measured from the run's live assignment rows, so hand
+ * edits move it (see `loadScheduleForRun`). `belowMinHours` and `overMaxHours`
+ * are derived from that live figure.
+ */
 export interface ScheduleStudentRow extends StudentScheduleReport {
   displayName: string;
   positionName: string | null;
@@ -300,7 +309,7 @@ export interface CurrentSchedule {
   assignedCells: Map<string, AssignedCellCounts>;
   students: ScheduleStudentRow[];
   totalAssignments: number;
-  /** The report's warning lines with the students behind each. */
+  /** The run's warning lines with the students behind each, hours judged live. */
   problems: ProblemGroup[];
   /** Labor rule violations the independent validator found in these rows. */
   laborFindings: LaborFindingView[];
@@ -380,6 +389,10 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
   const db = getDb();
   const report = JSON.parse(run.summaryJson) as StoredRunReport;
 
+  // The run's rows as they stand now, hand edits included. The join is on block
+  // id alone, never on `retiredAt`: a retired block keeps its `shift_blocks`
+  // row, so a carried assignment on one keeps its span and its hours here, the
+  // same way `loadStudentCurrentAssignments` reads them for the per-student page.
   const rows = await db
     .select({
       studentEmail: scheduleAssignments.studentEmail,
@@ -397,6 +410,9 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
 
   const assignedCells = new Map<string, AssignedCellCounts>();
   const cellsByStudent = new Map<string, AssignedCell[]>();
+  // The same rows keyed for the hours measure below, which needs the block id
+  // the display cells drop.
+  const spansByStudent = new Map<string, RowSpan[]>();
   for (const row of rows) {
     const key = demandCellKey(row.blockId, row.day);
     let counts = assignedCells.get(key);
@@ -420,6 +436,10 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     const list = cellsByStudent.get(row.studentEmail) ?? [];
     list.push(cell);
     cellsByStudent.set(row.studentEmail, list);
+
+    const spans = spansByStudent.get(row.studentEmail) ?? [];
+    spans.push({ blockId: row.blockId, day: row.day, start: row.start, end: row.end });
+    spansByStudent.set(row.studentEmail, spans);
   }
   for (const list of cellsByStudent.values()) {
     list.sort((a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || a.start - b.start);
@@ -443,10 +463,17 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       minDays: number | null;
       minHours: number | null;
       international: boolean;
+      /** Effective rotation: the internal copy's when an admin saved one. */
+      everyWeekendOptIn: boolean;
       scheduled: boolean;
     }
   >();
   if (emails.length > 0) {
+    // The internal-availability join is the effective rotation seam (PLAN §10a):
+    // an admin's internal copy overrides the student's own answer, which is the
+    // rule the per-student page's scheduled-hours figure resolves and the one
+    // the generator schedules on. Weekend rows halve or not on this flag, so the
+    // two surfaces would report different hours for the same rows without it.
     const infoRows = await db
       .select({
         email: students.email,
@@ -456,11 +483,14 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: positions.minDays,
         minHours: positions.minHours,
         international: students.international,
+        everyWeekendOptIn: submissions.everyWeekendOptIn,
+        internalOptIn: internalAvailability.everyWeekendOptIn,
         scheduled: submissions.scheduled,
       })
       .from(students)
       .leftJoin(positions, eq(students.positionId, positions.id))
       .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+      .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
       infoByEmail.set(r.email, {
@@ -470,6 +500,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: r.minDays,
         minHours: r.minHours,
         international: r.international,
+        everyWeekendOptIn: r.internalOptIn ?? r.everyWeekendOptIn ?? false,
         scheduled: r.scheduled ?? false,
       });
     }
@@ -477,7 +508,23 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
 
   const scope = parseScope(run.scopeJson);
   const lateStartByEmail = new Map((report.lateStarts ?? []).map((w) => [w.email, w]));
-  const studentRows: ScheduleStudentRow[] = report.students.map((s) => {
+  // Hours are MEASURED HERE rather than read from the report, because the
+  // report is the run as generated and the schedule editor writes its edits
+  // straight into these rows: taking the stored figure would leave the hours
+  // column, the two pills, and the warning lines frozen at generation time and
+  // blind to exactly the hand edits they exist to catch. Same measure the
+  // engine reported with (`averagedAssignedMinutes`, through
+  // `weekMinutesForRows`) on the same effective rotation, so a run nobody has
+  // touched reads precisely as it did when it was generated. Only the minutes
+  // are re-measured; `daysUsed` and `cohort` stay as the run recorded them.
+  const liveStudents = report.students.map((s) => ({
+    ...s,
+    assignedMinutes: weekMinutesForRows(
+      spansByStudent.get(s.email) ?? [],
+      infoByEmail.get(s.email)?.everyWeekendOptIn ?? false,
+    ),
+  }));
+  const studentRows: ScheduleStudentRow[] = liveStudents.map((s) => {
     const info = infoByEmail.get(s.email);
     const scheduled = info?.scheduled ?? false;
     const minHours = info?.minHours ?? null;
@@ -497,11 +544,13 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       positionName: info?.positionName ?? null,
       scheduled,
       frozenReason,
-      // Same predicate as the below-min-hours problem group, so the pills and
-      // the warning line always count the same people.
+      // Same predicate and the same live minutes as the below-min-hours problem
+      // group, so the pills and the warning line always count the same people.
       belowMinHours: !s.frozen && isBelowMinHours(s.assignedMinutes, minHours),
       // Frozen rows count here, unlike belowMinHours above: a hand edit on a
-      // kept row is the likeliest way somebody ends up over their cap.
+      // kept row is the likeliest way somebody ends up over their cap. Measured
+      // on the live rows, so the pill appears on the edit that pushes them over
+      // and clears on the one that pulls them back.
       overMaxHours: isOverMaxHours(s.assignedMinutes, info?.international ?? false),
       lateStart: lateStart ? { expectedStart: lateStart.expectedStart } : null,
       cells: cellsByStudent.get(s.email) ?? [],
@@ -521,12 +570,19 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     assignedCells,
     students: studentRows,
     totalAssignments: rows.length,
-    problems: problemGroups(report, {
-      nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
-      minDaysOf: (email) => infoByEmail.get(email)?.minDays ?? null,
-      minHoursOf: (email) => infoByEmail.get(email)?.minHours ?? null,
-      internationalOf: (email) => infoByEmail.get(email)?.international ?? false,
-    }),
+    // Fed the live-hours students, not the stored ones, so the hours groups
+    // (short of target, below minimum, over maximum) count the same people the
+    // pills above mark. The rest of the report is the run as generated, which
+    // is what the day-span and dropped/skipped groups still read.
+    problems: problemGroups(
+      { ...report, students: liveStudents },
+      {
+        nameOf: (email) => infoByEmail.get(email)?.displayName ?? email,
+        minDaysOf: (email) => infoByEmail.get(email)?.minDays ?? null,
+        minHoursOf: (email) => infoByEmail.get(email)?.minHours ?? null,
+        internationalOf: (email) => infoByEmail.get(email)?.international ?? false,
+      },
+    ),
     // Read time, not generation time: the rules are re-checked against the
     // run's own params every load, so hand edits made since are judged too.
     // The findings borrow the student list's freeze reasons so both surfaces

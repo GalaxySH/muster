@@ -52,9 +52,12 @@ export function isBelowMinHours(assignedMinutes: number, minHours: number | null
  * otherwise (`domain/caps.ts`). The mirror image of `isBelowMinHours`, epsilon
  * discipline included, so sitting exactly on the cap is never over it.
  *
- * The cap is a policy target and not a labor rule: the engine may overshoot it,
- * and a hand edit certainly can, so this exists to make that visible at read
- * time rather than to stop anything.
+ * This is the cap's one boundary, and it stops things as well as reports them.
+ * Since 1.15 the engine and its improvement pass import it to REFUSE any
+ * placement or relocation that would carry a student past their cap, so a
+ * generated run cannot be over it. Manual edits still only warn (the schedule
+ * belongs to the scheduler), which is what the read-time flag this same
+ * predicate backs is for: a hand edit past the cap stays visible.
  */
 export function isOverMaxHours(assignedMinutes: number, international: boolean): boolean {
   return assignedMinutes - EPSILON_MINUTES > hourCap(international) * 60;
@@ -74,8 +77,13 @@ export interface ProblemLookup {
 /**
  * The run's warnings with their affected students, in a fixed group order with
  * students sorted by name then email. Groups with nobody in them are omitted,
- * so each label's count equals its list length and matches the report's
- * aggregate number.
+ * so each label's count equals its list length.
+ *
+ * The counts equal the report's own aggregates for the run as generated. They
+ * are allowed to move away from them afterwards: `loadScheduleForRun` hands in
+ * students whose `assignedMinutes` it re-measured from the live assignment
+ * rows, so the three hours groups follow hand edits while the stored aggregate
+ * stays the number the run was generated with.
  */
 export function problemGroups(report: EngineReport, lookup: ProblemLookup): ProblemGroup[] {
   const active = report.students.filter((s) => !s.frozen);

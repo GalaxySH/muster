@@ -240,6 +240,7 @@ export default async function AdminSchedulePage({
           runs={runs}
           beforeId={beforeId}
           afterId={afterId}
+          grid={gridMode}
           data={diffData}
           mismatches={mismatches}
         />
@@ -674,12 +675,15 @@ function DiffSection({
   runs,
   beforeId,
   afterId,
+  grid,
   data,
   mismatches,
 }: {
   runs: ScheduleRunListItem[];
   beforeId: string;
   afterId: string;
+  /** The grid mode in force, so comparing runs does not switch grids underneath. */
+  grid: GridMode;
   data: RunDiffData | null;
   mismatches: FrozenMismatchView[];
 }) {
@@ -714,6 +718,12 @@ function DiffSection({
             ))}
           </select>
         </label>
+        {/* A GET form submits its own fields and nothing else, so without this
+            the two selects would wipe ?grid= and bounce the reader back to the
+            scheduled grid. GridModeLink carries the run pair the other way;
+            this is the same preservation in the other direction. Only the
+            non-default mode needs saying. */}
+        {grid === "availability" && <input type="hidden" name="grid" value="availability" />}
         <button type="submit">Compare</button>
       </form>
 

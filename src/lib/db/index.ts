@@ -8,7 +8,9 @@
  * and re-evaluates this module on edits, and a module-level cache leaks one
  * pool per reload until MariaDB refuses connections (hit live at the default
  * 151-connection cap). globalThis survives re-evaluation; a production build
- * evaluates once either way, so this is the same singleton there.
+ * evaluates once either way, so this is the same singleton there. The cache
+ * also outlives a DATABASE_URL edit: a dev who repoints .env keeps talking to
+ * the old database until the server restarts.
  */
 import "server-only";
 import { env } from "@/lib/env";

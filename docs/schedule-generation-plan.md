@@ -382,10 +382,13 @@ floor**, because a returner on either is real backup for the other; the pool is
 the `coveragePoolPositionIds` param (default `["culinary-assistant",
 "cashier"]`), it is read only by the statistics, and ids that no longer exist
 simply match nothing. Four views are reported: `perPosition` with the pooled
-positions merged into a single entry, `overallNonLead` adding those floors up,
-`buildingWide` putting every non-lead seat in one timeline so a returner
-anywhere in the building counts, and `newLeadSolo` inside the Shift Lead
-position. `newLeadSolo` is a design invariant of zero: any minute of a new shift
+positions merged into a single entry (since version 4 a floor with blocks and
+nobody on it still appears, carrying its open time against zero staffed time,
+so an unstaffed floor drags the shares down instead of vanishing from them),
+`overallNonLead` adding those floors up, `buildingWide` putting every seat,
+the lead's included, against every block so a returner anywhere in the
+building counts and a fully staffed building can actually reach 100%, and
+`newLeadSolo` inside the Shift Lead position. `newLeadSolo` is a design invariant of zero: any minute of a new shift
 lead alone is an alarm whatever its share.
 
 **The dashboard.** `admin/schedule-health-view.ts` builds the whole section
@@ -408,7 +411,8 @@ per rotation anyone is on, under the days-in-a-row bars. The **By position**
 table carries an **Empty shifts** column ("12 of 48", or "none"), which is the
 per-floor form of the Uncovered shifts tile and the only thing that speaks about
 a floor nobody is on at all. A run stamped under a different `RUN_STATS_VERSION`
-(now **3**, since `shifts` moved down into the per-position rows), or a run
+(now **4**, after the coverage re-base put unstaffed floors in the
+denominators and moved the fairness week to the student-flag measure), or a run
 generated before stats existed, is passed over rather than parsed hopefully, and
 the section hides behind a short note: a rolled-back deploy meeting a newer run
 must cost the health section, not the whole page.

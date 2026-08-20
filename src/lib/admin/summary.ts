@@ -11,14 +11,6 @@ import { buildGridModel, type BlockRow, type SubGrid } from "@/lib/availability/
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import type { Day, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
-/** Max weekly hours used as scheduler-side context (PLAN §3); never an entry cap. */
-export const MAX_HOURS_DOMESTIC = 30;
-export const MAX_HOURS_INTERNATIONAL = 20;
-
-export function hourCap(international: boolean): number {
-  return international ? MAX_HOURS_INTERNATIONAL : MAX_HOURS_DOMESTIC;
-}
-
 /** One assigned (block, day) cell of the current run, as the grid overlay reads it. */
 export interface AssignedCellRef extends SelectedShift {
   source: AssignmentSource;

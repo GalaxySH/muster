@@ -41,8 +41,6 @@
  *
  * Pure and deterministic: no clock, no randomness, every ordering explicit.
  */
-import { AB_WEEKEND_FACTOR } from "../capacity";
-import { hourCap } from "../caps";
 import { assignedCellCount } from "../coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes, mergeRanges } from "../intervals";
@@ -56,6 +54,8 @@ import {
   type ShiftBlock,
 } from "../types";
 import { WEEK_CAP_MINUTES, slotIndices } from "./labor";
+import { isOverMaxHours } from "./problems";
+import { averagedAssignedMinutes } from "./seats";
 import type { Cohort, ScheduleAssignment } from "./types";
 
 /** Slots in the fortnight: [Sun1, Mon1..Fri1, Sat1, Sun2, Mon2..Fri2, Sat2]. */
@@ -68,14 +68,28 @@ const MINUTES_PER_DAY = 24 * 60;
  * `openMinutes` and `coverageShare`, and `shifts` counts covered instances.
  * Version 3 pushed `shifts` down into the per-position rows as well, and the
  * top-level figure is now their sum rather than its own enumeration.
+ * Version 4 re-based the cover figures: floors with blocks and nobody on them
+ * joined the coverage denominators, building-wide now counts every seat
+ * against every block, and the fairness week moved to the student-flag
+ * measure the engine caps against. Same shape, different meanings.
  */
-export const RUN_STATS_VERSION = 3;
+export const RUN_STATS_VERSION = 4;
 
 /** One student as the statistics see them: flags only, no availability. */
 export interface StatsStudent {
   email: string;
   positionId: string | null;
   international: boolean;
+  /**
+   * The student's own weekend rotation, which is what weighs their weekend
+   * minutes here: every weekend counts whole, the alternating A/B one counts
+   * half. Read off the STUDENT and not off the rows, because that is the
+   * measure the engine caps against and the student table flags against
+   * (`./seats.ts`, `./problems.ts`), and a carried or hand-edited row can
+   * disagree with the flag. Absent means alternating, the same fallback an
+   * unknown rotation gets everywhere else.
+   */
+  everyWeekendOptIn?: boolean;
   /** Hired before the current cycle (`flow/returner.ts`). Everyone else is new. */
   returner: boolean;
   /** Scheduled without a response of their own. */
@@ -144,14 +158,21 @@ export interface FairnessStats {
    * behind them, which is what a roster with no hire dates looks like.
    */
   returners: number;
-  /** Cycle-averaged weekly minutes (weekend rows halve under A/B, count whole under every). */
+  /**
+   * Cycle-averaged weekly minutes on the engine's own measure
+   * (`averagedAssignedMinutes` in ./seats.ts): the day's rows merged, weekend
+   * days halved unless the STUDENT works every weekend.
+   */
   weeklyMinutes: Distribution;
   /** Per person, the busier of the two fortnight halves in merged minutes. */
   realizedWeekMinutes: Distribution;
   /**
    * People whose averaged week is over their own cap: 20h international, 30h
-   * otherwise. Expected **0** for rows the engine placed, since 1.15 made the
-   * cap a hard generation rule (`domain/caps.ts`) — the same standing
+   * otherwise. Judged by `isOverMaxHours` over the measure above, the same
+   * boundary the over-maximum pill reads; the two agree as generated, and
+   * afterwards only the pill follows hand edits, because this is a stored
+   * snapshot. Expected **0** for rows the engine placed, since 1.15 made the
+   * cap a hard generation rule (`domain/caps.ts`), the same standing
    * expectation `newLeadSolo` carries. A nonzero count means frozen rows
    * carried from an older run, or hand edits, which is exactly what it is now
    * useful for spotting.
@@ -285,11 +306,18 @@ export interface ShiftCoverageStats extends ShiftInstances {
 }
 
 export interface FragilityStats {
-  /** One entry per position floor, with the pooled positions merged into one. */
+  /**
+   * One entry per position floor, with the pooled positions merged into one. A
+   * floor with blocks and nobody on them is here too, reading zero coverage.
+   */
   perPosition: FragilityGroup[];
   /** Those same floors added up: how fragile the non-lead positions are on their own. */
   overallNonLead: FragilityGroup;
-  /** Every non-lead seat in ONE timeline: a returner anywhere in the building counts. */
+  /**
+   * Every seat in ONE timeline against every block, the leads included on both
+   * sides: a returner anywhere in the building counts, and so does every hour
+   * the building is open. Fully staffed reads 1 here.
+   */
   buildingWide: FragilityGroup;
   /** Inside the lead position: new leads with no veteran lead overlapping. Should be 0. */
   newLeadSolo: FragilityGroup;
@@ -481,21 +509,18 @@ function personCohort(seats: readonly Seat[]): Cohort {
 }
 
 /**
- * Cycle-averaged weekly minutes for one person, weighted row by row: a weekend
- * day worked on rotation A or B comes round once a fortnight and counts half,
- * an every-weekend day and every weekday count whole. Collapsing the person to
- * one rotation flag would pay a mixed weekend (Saturday every, Sunday A) at the
- * every rate for both days.
+ * Cycle-averaged weekly minutes for one person, on the ONE measure the engine
+ * caps against and the student table flags against (`averagedAssignedMinutes`
+ * in ./seats.ts): the whole day merged, and weekend days weighted by the
+ * student's own rotation flag rather than by the cohort each row carries.
+ *
+ * Weighting row by row instead would be a second measure: it disagrees with the
+ * flag on exactly the rows most worth catching, the carried and hand-edited
+ * ones whose cohort no longer matches the student, and then `overHourCap` here
+ * would read clean while the same person is pilled over their maximum there.
  */
-function averagedWeekMinutes(seats: readonly Seat[]): number {
-  let total = 0;
-  for (const list of groupBy(seats, (s) => `${s.day}|${s.cohort}`).values()) {
-    const row = list[0]!;
-    const covered = coveredMinutes(toRanges(list));
-    const halved = dayTypeOf(row.day) === "weekend" && row.cohort !== "every";
-    total += halved ? AB_WEEKEND_FACTOR * covered : covered;
-  }
-  return total;
+function averagedWeekMinutes(seats: readonly Seat[], everyWeekendOptIn: boolean): number {
+  return averagedAssignedMinutes(rangesByDay(seats), everyWeekendOptIn);
 }
 
 /** Merged minutes behind each of the 14 fortnight slots for one person. */
@@ -706,9 +731,11 @@ function fairnessStats(
     if (student?.fillIn) fillIn += 1;
     if (student?.returner) returners += 1;
 
-    const weeklyMinutes = averagedWeekMinutes(seats);
+    const weeklyMinutes = averagedWeekMinutes(seats, student?.everyWeekendOptIn === true);
     weekly.push(weeklyMinutes);
-    if (weeklyMinutes > hourCap(student?.international === true) * 60) overHourCap += 1;
+    // The read layer's own test, epsilon and all, so sitting exactly on the cap
+    // is never over it here while the student page says it is fine.
+    if (isOverMaxHours(weeklyMinutes, student?.international === true)) overHourCap += 1;
 
     const minutes = slotMinutes(seats);
     const half = (h: 0 | 1) =>
@@ -824,8 +851,10 @@ function positionStats(
 
     const weekly: number[] = [];
     const perDayWorked: number[] = [];
-    for (const list of byPerson.values()) {
-      weekly.push(averagedWeekMinutes(list));
+    for (const [email, list] of byPerson) {
+      // Their rows in THIS position only, but weighted by the same student flag
+      // the run-wide figure uses, so the two never read a weekend differently.
+      weekly.push(averagedWeekMinutes(list, studentByEmail.get(email)?.everyWeekendOptIn === true));
       for (const dayList of groupBy(list, (s) => s.day).values()) {
         perDayWorked.push(coveredMinutes(toRanges(dayList)));
       }
@@ -945,43 +974,48 @@ function fragilityStats(input: RunStatsInput, seats: readonly Seat[]): Fragility
   // positions on it, whether or not the run put anybody in them.
   const blocksByPosition = groupBy(input.blocks, (b) => b.positionId);
 
-  const groups: FragilityGroup[] = [];
-  const others = groupBy(
-    nonLead.filter((s) => !inPool.has(s.positionId)),
-    (s) => s.positionId,
+  // Floors are enumerated from the BLOCKS as much as from the seats, the way
+  // the per-position table is: a position whose shifts nobody works still opens
+  // the building, and keying the groups off the seats alone kept its open
+  // minutes out of `overallNonLead`'s denominator, flattering the very run that
+  // covered least. A seat takes its position from its block, so the union is
+  // today the block positions; it is written as a union so nothing here depends
+  // on that staying true.
+  const seatsByPosition = groupBy(nonLead, (s) => s.positionId);
+  const floorIds = [...new Set([...blocksByPosition.keys(), ...seatsByPosition.keys()])]
+    .filter((id) => id !== input.leadPositionId && !inPool.has(id))
+    .sort();
+
+  const groups: FragilityGroup[] = floorIds.map((positionId) =>
+    fragilityOf(
+      positionId,
+      [positionId],
+      seatsByPosition.get(positionId) ?? [],
+      blocksByPosition.get(positionId) ?? [],
+    ),
   );
-  for (const positionId of [...others.keys()].sort()) {
-    groups.push(
-      fragilityOf(
-        positionId,
-        [positionId],
-        others.get(positionId)!,
-        blocksByPosition.get(positionId) ?? [],
-      ),
-    );
-  }
   const pooledSeats = nonLead.filter((s) => inPool.has(s.positionId));
-  if (pooledSeats.length > 0) {
-    groups.push(
-      fragilityOf(
-        poolKey,
-        pool,
-        pooledSeats,
-        input.blocks.filter((b) => inPool.has(b.positionId)),
-      ),
-    );
+  const pooledBlocks = input.blocks.filter((b) => inPool.has(b.positionId));
+  // The pool is a floor as soon as anything is scheduled on it, staffed or not.
+  // A pool with neither blocks nor seats is not a floor at all, and a row of
+  // nulls for it would only be noise.
+  if (pooledSeats.length > 0 || pooledBlocks.length > 0) {
+    groups.push(fragilityOf(poolKey, pool, pooledSeats, pooledBlocks));
   }
   groups.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
   return {
     perPosition: groups,
     overallNonLead: sumFragility("non-lead", groups),
-    // One merged timeline on both sides: every non-lead seat against every hour
-    // the building is scheduled to be open, the lead's blocks included.
+    // One merged timeline on both sides, and BOTH sides count the leads: every
+    // seat in the building against every hour the building is scheduled to be
+    // open. Holding the leads out of the numerator while their blocks stayed in
+    // the denominator pinned this row low by construction, since a lead block
+    // spanning open to close is time no non-lead seat can ever cover.
     buildingWide: fragilityOf(
       "building",
-      [...new Set(nonLead.map((s) => s.positionId))],
-      nonLead,
+      [...new Set([...blocksByPosition.keys(), ...seats.map((s) => s.positionId)])],
+      seats,
       input.blocks,
     ),
     newLeadSolo: fragilityOf(

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.16
+- **Version:** 1.17
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1475,6 +1475,44 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.17 (2026-08-20)** — **A one-student schedule popup, and the honest
+  numbers an adversarial review demanded (§5 #11, §7a, §10a).** The students
+  table's shift enumeration is now a count that opens the familiar
+  blocks-by-days grid in a popup, filled with that student's current-run
+  shifts: engine placements green, hand edits violet, weekend cells lettered
+  with their rotation, retired blocks kept and tagged so carried shifts stay
+  visible. Hovering a name in a coverage cell's dialog floats the same card;
+  both triggers fetch on demand and keep the result. The cell dialog also
+  gained the per-person mark-scheduled check, and its old "scheduled" label,
+  which meant "placed on this cell", became "on this shift" so the word means
+  one thing everywhere.
+  The adversarial pass over the six commits after AR5 confirmed real defects,
+  all fixed here. The biggest: the over-maximum flag read the run **as
+  generated**, so the hand edits it exists to catch never moved it. The
+  student table's hours, both hour flags and their warning groups now
+  re-measure the live rows on every load, through the same
+  `weekMinutesForRows` the editor's Save warning uses and the same effective
+  weekend-rotation seam the engine reads, so every surface judges the same
+  week. Schedule health's coverage arithmetic flattered itself twice: a floor
+  with blocks and nobody on it fell out of the denominators entirely, and the
+  building-wide bar divided non-lead time by every block including the
+  lead's, so it could never reach 100%. Both are re-based, and the fairness
+  week now uses the student-flag measure the engine caps against, judged
+  through `isOverMaxHours`, epsilon included. Those fixes change what stored
+  figures mean, so `RUN_STATS_VERSION` is **4** and older snapshots fall to
+  the regenerate note. The schedule editor's Save is hardened: the
+  transaction re-reads the current run and takes a locking read of the
+  student's rows, so two admins saving at once or a Save racing a
+  regeneration refuse instead of committing a conflicting union; a thrown
+  Save restores the button instead of dead-ending on "Saving"; and the
+  batch's ordering, validation and blame logic is a pure, tested
+  `planScheduleEdits`. One cap definition survives (`domain/caps.ts`; the
+  `admin/summary.ts` duplicate is deleted), the positions page warns when a
+  minimum exceeds the 20h international cap, a contradiction no generation
+  can satisfy, and the grid-mode choice now survives the Compare runs form.
+  Also recorded here: the dev database handle now caches on `globalThis`,
+  because HMR re-evaluation leaked one pool per reload until MariaDB refused
+  connections at its default 151 cap.
 - **1.16 (2026-08-20)** — **Magic links now expire after 1 day, up from the 30
   minutes they launched with (§9, §11).** A sign-in link should still work when
   the student opens the email hours after asking for it; the old window forced a
@@ -1621,10 +1659,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   availability is all there is before, and the two grid tiles follow the switch
   while "Responses in" does not. (3) An **over maximum** flag mirrors
   below-minimum for students scheduled past their weekly hour cap (20h
-  international, 30h otherwise). The cap is a policy target and not a labor rule,
-  so the engine may overshoot it and a hand edit certainly can; unlike every
-  other problem group this one **includes frozen students**, because an edit to a
-  kept row is the likeliest way somebody lands over it. (4) The per-student grid's
+  international, 30h otherwise). The cap binds the engine hard as of this same
+  release (below), so the flag can only mean a hand edit or a carried row, never
+  a fresh placement; unlike every other problem group this one **includes frozen
+  students**, because an edit to a kept row is the likeliest way somebody lands
+  over it. The flag reads the run's live rows rather than the stored report, so
+  the edit that goes over raises it and the edit that undoes it clears it.
+  (4) The per-student grid's
   hours readout is now **two figures**, preferred and scheduled, with the edit mode
   deciding which is full size and which shrinks to a labelled miniature beside it
   ("12.5h scheduled", "10h preferred"). Editing preferences asks what the student

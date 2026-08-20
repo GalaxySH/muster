@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ScheduleStudentRow } from "@/lib/schedule/data";
 import { FROZEN_LABEL, formatDayLabel, keptTagStyle } from "@/components/admin/ui";
-import { formatSpan } from "@/lib/domain/time";
-import { DAY_LABEL } from "@/lib/domain/types";
+import { StudentScheduleModalLink } from "@/components/admin/StudentSchedulePopup";
 import { hoursLabel } from "@/lib/domain/config-validation";
 
 type SortKey = "name" | "position" | "hours" | "days" | "rotation" | "scheduled";
@@ -117,17 +116,20 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
       >
         {hoursLabel(s.assignedMinutes)} of {hoursLabel(s.targetMinutes)}h
         {s.belowMinHours && <span style={dangerTag}>below minimum</span>}
-        {/* The cap is a policy target, not a labor rule, so this can appear on a
-            kept row the engine never touched. Both pills need a hand fix. */}
+        {/* The engine refuses to schedule anyone past their cap, so this pill
+            means a hand edit or a kept row, never a fresh placement. Both pills
+            need a hand fix. */}
         {s.overMaxHours && <span style={dangerTag}>over maximum</span>}
       </td>
       <td style={tdStyle}>{s.daysUsed}</td>
       <td style={tdStyle}>{s.cohort ? ROTATION_LABEL[s.cohort] : "-"}</td>
-      <td style={{ ...tdStyle, textAlign: "left" }}>
+      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {s.cells.length === 0 ? (
           <span style={{ color: "var(--color-text-secondary)" }}>none</span>
         ) : (
-          s.cells.map((c) => `${DAY_LABEL[c.day]} ${formatSpan(c.start, c.end)}`).join(", ")
+          <StudentScheduleModalLink email={s.email} displayName={s.displayName}>
+            {s.cells.length} {s.cells.length === 1 ? "shift" : "shifts"}
+          </StudentScheduleModalLink>
         )}
         {s.frozenReason && <span style={keptTagStyle}>{FROZEN_LABEL[s.frozenReason]}</span>}
       </td>

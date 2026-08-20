@@ -10,8 +10,9 @@ import {
   serializeResponseFilters,
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
-import { buildAdminGrid, hourCap } from "@/lib/admin/summary";
+import { buildAdminGrid } from "@/lib/admin/summary";
 import { diffInternalFromStudent, type InternalDiff } from "@/lib/availability/effective";
+import { hourCap } from "@/lib/domain/caps";
 import { validateAvailability } from "@/lib/domain/validation";
 import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
 import { averagedAssignedMinutes } from "@/lib/domain/scheduling/seats";

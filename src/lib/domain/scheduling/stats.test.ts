@@ -60,10 +60,11 @@ describe("computeRunStats on an empty run", () => {
   const stats = run({});
 
   it("stamps the version", () => {
-    // 3 since `shifts` moved down into the per-position rows and the top-level
-    // figure became their sum (2 was the cover figures growing openMinutes,
-    // coverageShare and the run-wide shifts count).
-    expect(stats.version).toBe(3);
+    // 4 since the coverage re-base: unstaffed floors joined the denominators,
+    // building-wide counts every seat against every block, and the fairness
+    // week moved to the student-flag measure (3 was `shifts` moving down into
+    // the per-position rows).
+    expect(stats.version).toBe(4);
   });
 
   it("reports zeroed distributions rather than making the caller branch", () => {
@@ -199,7 +200,9 @@ describe("fairness distributions", () => {
 
 describe("the realized week against the averaged week", () => {
   const blocks = [block("we", "cashier", "weekend", { start: 480, end: 960 })];
-  const students = [student("ab@w"), student("ev@w")];
+  // The rotation now comes off the STUDENT, so the every-weekend fixture carries
+  // the flag rather than leaning on the cohort its rows happen to hold.
+  const students = [student("ab@w"), student("ev@w", { everyWeekendOptIn: true })];
   const stats = run({
     blocks,
     assignments: [cell("ab@w", "we", "sat", "a"), cell("ev@w", "we", "sat", "every")],
@@ -217,39 +220,74 @@ describe("the realized week against the averaged week", () => {
     expect(stats.fairness.realizedWeekMinutes.max).toBe(480);
   });
 
-  it("weights a mixed weekend row by row rather than by the person", () => {
-    // Saturday every week (240 whole) plus Sunday on rotation A (240 halved to
-    // 120) is 360 averaged minutes. Reading the person as one every-weekend
-    // student would pay the A Sunday at the every rate and report 480.
-    const mixed = run({
-      blocks: [block("we", "cashier", "weekend", MORNING)],
-      assignments: [cell("mix@w", "we", "sat", "every"), cell("mix@w", "we", "sun", "a")],
-      students: [student("mix@w")],
+  it("weights a mixed weekend by the student's rotation rather than by the row", () => {
+    // Rule moved: the fairness measure is the engine's own
+    // `averagedAssignedMinutes` now, which weighs weekend days by the STUDENT's
+    // opt-in flag. The same two rows (Saturday stamped every, Sunday stamped A)
+    // read 480 for an every-weekend student and 240 for an alternating one;
+    // weighting row by row used to pay them 360 whatever the roster said.
+    const mixedRows = [cell("mix@w", "we", "sat", "every"), cell("mix@w", "we", "sun", "a")];
+    const blocks = [block("we", "cashier", "weekend", MORNING)];
+    const optedIn = run({
+      blocks,
+      assignments: mixedRows,
+      students: [student("mix@w", { everyWeekendOptIn: true })],
     });
-    expect(mixed.fairness.weeklyMinutes.max).toBe(360);
+    const alternating = run({ blocks, assignments: mixedRows, students: [student("mix@w")] });
+    expect(optedIn.fairness.weeklyMinutes.max).toBe(480);
+    expect(alternating.fairness.weeklyMinutes.max).toBe(240);
     // The realized week was always right: both days land in week 1 whole.
-    expect(mixed.fairness.realizedWeekMinutes.max).toBe(480);
+    expect(optedIn.fairness.realizedWeekMinutes.max).toBe(480);
   });
 
-  it("carries the row-by-row weighting into the hour cap count", () => {
-    // 30h domestic cap. Five 8h weekdays is 2400, and a 480-minute A Saturday
-    // adds 240 on top: 2640 minutes, over the 1800-minute cap either way. Under
-    // the every rate the same person would read 2880, so the fixture pins that
-    // the halved figure is what the cap is checked against.
-    const long = block("long", "cashier", "weekday", { start: 480, end: 960 });
-    const we = block("we", "cashier", "weekend", { start: 480, end: 960 });
-    const capped = run({
-      blocks: [long, we],
-      assignments: [
-        ...WEEKDAYS.map((d) => cell("a@w", "long", d)),
-        cell("a@w", "we", "sat", "a"),
-        cell("a@w", "we", "sun", "every"),
+  it("merges a day's rows before weighting it, the way the engine does", () => {
+    // Rule moved: the day is merged whole and then weighted, so a hand-edited
+    // Saturday holding one A row and one B row is one 8a-4p day at the halved
+    // rate (240). Merging inside each cohort first paid the same day 300.
+    const stats = run({
+      blocks: [
+        block("we-am", "cashier", "weekend", { start: 480, end: 720 }),
+        block("we-mid", "cashier", "weekend", { start: 600, end: 960 }),
       ],
+      assignments: [cell("a@w", "we-am", "sat", "a"), cell("a@w", "we-mid", "sat", "b")],
       students: [student("a@w")],
     });
-    // 2400 weekday + 240 halved Saturday + 480 whole Sunday.
-    expect(capped.fairness.weeklyMinutes.max).toBe(3120);
+    expect(stats.fairness.weeklyMinutes.max).toBe(240);
+  });
+
+  it("carries the student's own rotation into the hour cap count", () => {
+    // Rule moved: 30h domestic cap, judged on the flag and not on the cohorts
+    // the rows carry. Three 4h weekdays (720) plus two whole 12h weekend days
+    // is 2160 minutes, over the 1800-minute cap. Weighting the carried A rows
+    // by their own cohort read 1440 and called this person clean, while the
+    // student table pilled them over their maximum off the very same flag.
+    const wd = block("wd", "cashier", "weekday", MORNING);
+    const we = block("we", "cashier", "weekend", { start: 480, end: 1200 });
+    const capped = run({
+      blocks: [wd, we],
+      assignments: [
+        ...WEEKDAYS.slice(0, 3).map((d) => cell("opt@w", "wd", d)),
+        // Rows carried from an older run, still stamped with the A rotation.
+        cell("opt@w", "we", "sat", "a"),
+        cell("opt@w", "we", "sun", "a"),
+      ],
+      students: [student("opt@w", { everyWeekendOptIn: true })],
+    });
+    expect(capped.fairness.weeklyMinutes.max).toBe(2160);
     expect(capped.fairness.overHourCap).toBe(1);
+  });
+
+  it("leaves someone sitting exactly on their cap out of the count", () => {
+    // The boundary `isOverMaxHours` draws, shared with the student table's pill:
+    // 30h on the nose is not over 30h. Five 6h weekdays is 1800 minutes.
+    const six = block("six", "cashier", "weekday", { start: 480, end: 840 });
+    const exact = run({
+      blocks: [six],
+      assignments: WEEKDAYS.map((d) => cell("a@w", "six", d)),
+      students: [student("a@w")],
+    });
+    expect(exact.fairness.weeklyMinutes.max).toBe(1800);
+    expect(exact.fairness.overHourCap).toBe(0);
   });
 });
 
@@ -641,7 +679,11 @@ describe("coverage fragility", () => {
       assignments: [cell("newlead@w", "sl", "mon")],
       students: [student("newlead@w", { positionId: LEAD })],
     });
-    expect(stats.fragility.perPosition).toEqual([]);
+    // Rule moved: floors are enumerated from the blocks, so the pooled non-lead
+    // floor is listed with its open time and nobody on it. The lead is still no
+    // part of it, which is what this fixture is about.
+    expect(stats.fragility.perPosition.map((g) => g.key)).toEqual(["cashier+culinary-assistant"]);
+    expect(stats.fragility.perPosition[0]!.operatingMinutes).toBe(0);
     expect(stats.fragility.overallNonLead.soloShare).toBeNull();
     expect(stats.fragility.newLeadSolo.soloShare).toBe(1);
   });
@@ -746,14 +788,82 @@ describe("open time and total coverage", () => {
     expect(pooled.coverageShare).toBe(0.1);
     // One floor, so the sum is that floor.
     expect(stats.fragility.overallNonLead.openMinutes).toBe(2400);
-    // Building-wide is one merged timeline on both sides: every live block,
-    // the lead's included, against every non-lead seat. 8a-4p on 5 weekdays.
+    // Building-wide is one merged timeline on both sides: every live block and
+    // every seat, the lead's included on both. 8a-4p on 5 weekdays.
     expect(stats.fragility.buildingWide.openMinutes).toBe(2400);
-    expect(stats.fragility.buildingWide.operatingMinutes).toBe(240);
+    // Rule moved: the lead seat counts in the numerator now, so the Monday
+    // picture is the culinary 8a-12p merged with the lead's 8a-4p. Counting the
+    // lead's block but not the lead's seat used to read 240 here.
+    expect(stats.fragility.buildingWide.operatingMinutes).toBe(480);
     // The lead row is measured against the lead's own blocks only: its one
     // 8h Monday out of 8a-4p on five weekdays.
     expect(stats.fragility.newLeadSolo.openMinutes).toBe(2400);
     expect(stats.fragility.newLeadSolo.coverageShare).toBe(0.2);
+  });
+
+  it("keeps a floor with blocks and nobody on it in the denominator", () => {
+    const stats = run({
+      blocks: [block("ck", "cashier", "weekday"), block("ca", "culinary-assistant", "weekday")],
+      assignments: [cell("a@w", "ck", "mon")],
+      students: [student("a@w")],
+      poolPositionIds: [],
+    });
+    const byKey = Object.fromEntries(stats.fragility.perPosition.map((g) => [g.key, g]));
+    // The floor nobody works is a row of its own: open all five weekdays, with
+    // no operating time for a returner share to speak about.
+    expect(byKey["culinary-assistant"]).toMatchObject({
+      openMinutes: 1200,
+      operatingMinutes: 0,
+      coverageShare: 0,
+      soloShare: null,
+    });
+    // Two floors open 1200 minutes each and one Monday staffed on one of them:
+    // 240 of 2400. Keying the groups off the seats dropped the culinary floor
+    // out of the table and out of this denominator, and read 20%.
+    expect(stats.fragility.overallNonLead.openMinutes).toBe(2400);
+    expect(stats.fragility.overallNonLead.coverageShare).toBe(0.1);
+  });
+
+  it("counts an unstaffed pool's open time too", () => {
+    const stats = run({
+      blocks: [block("ca", "culinary-assistant", "weekday"), block("ba", "barista", "weekday")],
+      assignments: [cell("a@w", "ba", "mon")],
+      students: [student("a@w", { positionId: "barista" })],
+      poolPositionIds: POOL,
+    });
+    const byKey = Object.fromEntries(stats.fragility.perPosition.map((g) => [g.key, g]));
+    // The pool is a floor as soon as one of its positions has a block, staffed
+    // or not: only culinary runs any shifts, and nobody is on them.
+    expect(byKey["cashier+culinary-assistant"]).toMatchObject({
+      openMinutes: 1200,
+      operatingMinutes: 0,
+      coverageShare: 0,
+    });
+    expect(stats.fragility.overallNonLead.openMinutes).toBe(2400);
+    expect(stats.fragility.overallNonLead.coverageShare).toBe(0.1);
+  });
+
+  it("reaches full coverage building-wide when every block is staffed", () => {
+    const stats = run({
+      blocks: [
+        block("ck", "cashier", "weekday"),
+        block("sl", LEAD, "weekday", { start: 480, end: 960 }),
+      ],
+      assignments: [
+        ...WEEKDAYS.map((d) => cell("a@w", "ck", d)),
+        ...WEEKDAYS.map((d) => cell("lead@w", "sl", d)),
+      ],
+      students: [student("a@w"), student("lead@w", { positionId: LEAD })],
+      poolPositionIds: [],
+    });
+    // Every hour the building is open has somebody on it, so the building-wide
+    // row can reach 1. It could not while the lead's blocks were in the
+    // denominator and the lead's seats were left out of the numerator.
+    expect(stats.fragility.buildingWide.coverageShare).toBe(1);
+    // The non-lead sum is the cashier floor alone, and the lead's own open time
+    // is no part of it: 8a-12p covered out of 8a-12p.
+    expect(stats.fragility.overallNonLead.coverageShare).toBe(1);
+    expect(stats.fragility.overallNonLead.openMinutes).toBe(1200);
   });
 
   it("reports no coverage share where nothing is scheduled to run", () => {

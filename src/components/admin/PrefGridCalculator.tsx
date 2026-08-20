@@ -10,7 +10,9 @@ import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { removeOrphanedSelection } from "@/lib/admin/actions";
 import type { OrphanedCell } from "@/lib/positions/orphans";
 import { applyScheduleEdits } from "@/lib/schedule/manual";
+import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-colors";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
+import { EPSILON_MINUTES } from "@/lib/domain/scheduling/seats";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
 import {
@@ -61,9 +63,6 @@ import {
 // Compact fixed cell size; keeps the grid tight instead of stretching wide.
 const CELL = 26;
 
-/** Schedule-half fills: engine rows green, manual rows violet. */
-const ENGINE_COLOR = "#2e9e5b";
-const MANUAL_COLOR = "#8a4fd3";
 /** The empty half of a cell; matches the untouched-preference fill. */
 const EMPTY_COLOR = "var(--color-background-secondary)";
 /**
@@ -430,22 +429,33 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     setAssignWarnings(null);
     setSchedSaveState("saving");
     startTransition(async () => {
-      const res = await applyScheduleEdits(
-        props.studentEmail,
-        keysToSelection(schedRemoves),
-        keysToSelection(schedAdds),
-      );
-      if (!res.ok) {
-        // The trial survives a refusal: the error names a cell, and the admin
-        // needs the rest of their composition still on screen to fix it.
-        setAssignError(res.error ?? "Something went wrong.");
+      try {
+        const res = await applyScheduleEdits(
+          props.studentEmail,
+          keysToSelection(schedRemoves),
+          keysToSelection(schedAdds),
+        );
+        if (!res.ok) {
+          // The trial survives a refusal: the error names a cell, and the admin
+          // needs the rest of their composition still on screen to fix it.
+          setAssignError(res.error ?? "Something went wrong.");
+          setSchedSaveState("idle");
+          return;
+        }
+        if (res.warnings && res.warnings.length > 0) setAssignWarnings(res.warnings);
+        setSchedSaveState("saved");
+        // The saved rows come back as grid props, which is what settles the trial.
+        router.refresh();
+      } catch {
+        // A THROW, not a refusal: a dropped connection, a row another admin got
+        // to first. startTransition swallows it, so without this the button sits
+        // disabled on "Saving…" and the grid dead-ends. Whether the batch landed
+        // is genuinely unknown here (a commit can be followed by a failed
+        // refresh), so the line says to look rather than promising nothing
+        // happened.
+        setAssignError("Could not save those changes. Reload the page to check, then try again.");
         setSchedSaveState("idle");
-        return;
       }
-      if (res.warnings && res.warnings.length > 0) setAssignWarnings(res.warnings);
-      setSchedSaveState("saved");
-      // The saved rows come back as grid props, which is what settles the trial.
-      router.refresh();
     });
   }
 
@@ -494,6 +504,13 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
    * counts rows carried on retired shifts, which have no cell here, and a delta
    * leaves them counted. Both sides use the student's effective rotation, the
    * one the server's figure used, not the preference trial's pill.
+   *
+   * One case the delta cannot get right: a trialed cell that overlaps a retired
+   * shift's row on the same day. The server merges the two spans into one
+   * clock-in; the delta counts the trialed cell whole, so the preview can read
+   * high until the save comes back. Accepted, because retired rows have no
+   * spans on this side to merge against, and the figure it lands on and the
+   * server's over-cap warning are both computed from the merged truth.
    */
   const gridMinutes = (keys: Iterable<string>) =>
     computeCapacity(
@@ -505,11 +522,16 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // miniature, so it stays the run as it stands rather than quietly reading as a trial.
   const scheduleIsTrial = mode === "schedule" && scheduleDirty;
   const trialDelta = scheduleIsTrial ? gridMinutes(trial) - gridMinutes(assigned.keys()) : 0;
-  const scheduledHours =
-    props.scheduledMinutes === null ? null : (props.scheduledMinutes + trialDelta) / 60;
+  const trialMinutes = props.scheduledMinutes === null ? null : props.scheduledMinutes + trialDelta;
+  const scheduledHours = trialMinutes === null ? null : trialMinutes / 60;
   // The cap is a hard generation rule since 1.15, so a composition that breaks
-  // it should get loud in the trial, before the admin saves it.
-  const scheduledOverCap = scheduledHours !== null && scheduledHours > props.cap;
+  // it should get loud in the trial, before the admin saves it. Judged in
+  // MINUTES against the same epsilon `isOverMaxHours` uses
+  // (domain/scheduling/problems.ts): averaged minutes are float-valued, so
+  // sitting exactly on the cap must never read as over it, and the cue must not
+  // disagree with the over-max flag the schedule page will raise afterwards.
+  // The figure beside it is rounded for reading; the comparison is not.
+  const scheduledOverCap = trialMinutes !== null && trialMinutes - EPSILON_MINUTES > props.cap * 60;
   const scheduledAccent = scheduledOverCap
     ? "var(--color-text-danger)"
     : scheduledHours === 0

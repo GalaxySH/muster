@@ -16,10 +16,12 @@
  * for the generator since 1.15, a warning here, which is what
  * `weekMinutesForRows` is for. `dayConflictMessage` lives here too, so the
  * grid's client-side cue and the server's refusal say the same sentence.
+ * `planScheduleEdits` is the whole batch decision in one pure pass, so the
+ * sequence a save applies can be tested without a database behind it.
  */
 import { redundantRangeIndex } from "../intervals";
 import { formatSpan, type TimeRange } from "../time";
-import { DAY_LABEL, type Day, type ShiftBlock } from "../types";
+import { ALL_DAYS, DAY_LABEL, dayTypeOf, type Day, type ShiftBlock } from "../types";
 import { laborViolations, type LaborLimits } from "./labor";
 import { averagedAssignedMinutes } from "./seats";
 import type { Cohort } from "./types";
@@ -153,4 +155,112 @@ export function manualWeekendCohort(
   const weekend = existing.find((row) => row.cohort !== "weekday");
   if (weekend) return weekend.cohort as Exclude<Cohort, "weekday">;
   return everyWeekendOptIn ? "every" : "a";
+}
+
+/** One (block, day) cell of an edit batch: what the grid's Save sends. */
+export interface EditCell {
+  blockId: string;
+  day: Day;
+}
+
+/** One row the batch will write, with the rotation it lands in. */
+export interface PlannedInsert extends EditCell {
+  cohort: Cohort;
+}
+
+/**
+ * What a batch comes to: the deletes, then the inserts in the order they were
+ * judged, and the row set the whole thing lands on (what the warnings are
+ * judged against). A refusal carries no operations at all, since the batch is
+ * all-or-nothing.
+ */
+export type ScheduleEditPlan =
+  | {
+      ok: true;
+      removes: readonly EditCell[];
+      inserts: readonly PlannedInsert[];
+      rows: ExistingAssignment[];
+    }
+  | { ok: false; error: string };
+
+/** Context a batch is judged in: the live blocks it may use, and the rotation. */
+export interface EditPlanContext {
+  /** Live (non-retired) blocks by id; a missing id reads as "shift is gone". */
+  blocks: ReadonlyMap<string, ShiftBlock>;
+  everyWeekendOptIn: boolean;
+}
+
+/**
+ * Names the cell a refusal is about ("Sat 8a to 12p"), since a batch save can
+ * fail on any one of several cells and the admin has to know which to fix.
+ * Falls back to the day alone when the block itself is gone.
+ */
+function cellName(day: Day, block: ShiftBlock | null): string {
+  return block ? `${DAY_LABEL[day]} ${formatSpan(block.start, block.end)}` : DAY_LABEL[day];
+}
+
+/**
+ * The whole batch decision, with no database in it: removals first, then the
+ * additions in calendar order, each judged against the rows as the batch has
+ * left them rather than against the state it started in. So a removal can free
+ * the day for a later add, an add can be refused for clashing with nothing but
+ * an earlier add of the same batch, and the first weekend add fixes the
+ * rotation the rest follow.
+ *
+ * Order is fixed here (day, then earliest block, then id) precisely because it
+ * decides blame: of two adds that cannot both stand, the calendar-earlier one
+ * is applied and the later one is the cell the refusal names, whatever order
+ * the grid happened to send them in. One bad cell refuses the batch: the caller
+ * gets the sentence and nothing to apply, never a partial list.
+ */
+export function planScheduleEdits(
+  current: readonly ExistingAssignment[],
+  removes: readonly EditCell[],
+  adds: readonly EditCell[],
+  ctx: EditPlanContext,
+): ScheduleEditPlan {
+  // A removal with no row is a no-op here; the caller still issues its delete,
+  // so a cell the admin let go of is gone whatever the read found.
+  const rows: ExistingAssignment[] = [...current];
+  for (const cell of removes) {
+    const at = rows.findIndex((r) => r.blockId === cell.blockId && r.day === cell.day);
+    if (at >= 0) rows.splice(at, 1);
+  }
+
+  const ordered = [...adds].sort(
+    (a, b) =>
+      ALL_DAYS.indexOf(a.day) - ALL_DAYS.indexOf(b.day) ||
+      (ctx.blocks.get(a.blockId)?.start ?? 0) - (ctx.blocks.get(b.blockId)?.start ?? 0) ||
+      a.blockId.localeCompare(b.blockId),
+  );
+
+  const inserts: PlannedInsert[] = [];
+  for (const cell of ordered) {
+    // Adding a cell they already hold is a no-op, not a conflict with itself.
+    if (rows.some((r) => r.blockId === cell.blockId && r.day === cell.day)) continue;
+    const block = ctx.blocks.get(cell.blockId) ?? null;
+    if (!block) {
+      return { ok: false, error: `${cellName(cell.day, null)}: That shift no longer exists.` };
+    }
+    if (dayTypeOf(cell.day) !== block.dayType) {
+      return {
+        ok: false,
+        error: `${cellName(cell.day, block)}: That shift does not run on ${DAY_LABEL[cell.day]}.`,
+      };
+    }
+    const clash = findDayConflict(block, cell.day, rows);
+    if (clash) {
+      return {
+        ok: false,
+        error: `${cellName(cell.day, block)}: ${dayConflictMessage(block, cell.day, clash)}`,
+      };
+    }
+
+    const cohort: Cohort =
+      block.dayType === "weekend" ? manualWeekendCohort(rows, ctx.everyWeekendOptIn) : "weekday";
+    inserts.push({ blockId: cell.blockId, day: cell.day, cohort });
+    rows.push({ blockId: cell.blockId, day: cell.day, cohort, start: block.start, end: block.end });
+  }
+
+  return { ok: true, removes, inserts, rows };
 }

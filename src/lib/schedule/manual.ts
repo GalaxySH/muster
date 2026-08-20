@@ -10,18 +10,24 @@
  * docs/architecture.md). Manual rows carry source "manual"; removing an engine
  * row is allowed, since the scheduler owns the schedule. The only hard rule is
  * that every same-day shift must add unique time (domain/scheduling/manual.ts),
- * re-checked here against the batch's evolving rows so the state it lands on is
- * the thing judged; assigning a cell the student never selected is deliberate
+ * re-checked against the batch's evolving rows so the state it lands on is the
+ * thing judged; assigning a cell the student never selected is deliberate
  * scheduler prerogative, and labor rule violations come back as warnings on the
  * success result, never refusals. The weekly hour cap is the same shape: hard
  * for the generator since 1.15 (domain/caps.ts), one more warning line here.
+ *
+ * What this file owns is the transaction: the locking read, the re-read of the
+ * current run, the writes, the warnings, and the refresh. Which cells may land
+ * and in what order is `planScheduleEdits` (domain/scheduling/manual.ts), pure
+ * and tested on its own.
  */
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
   internalAvailability,
   scheduleAssignments,
+  scheduleRuns,
   shiftBlocks,
   students,
   submissions,
@@ -31,23 +37,28 @@ import { normalizeEmail } from "@/lib/auth/policy";
 import { hourCap } from "@/lib/domain/caps";
 import { laborLimits } from "@/lib/domain/scheduling/labor";
 import {
-  dayConflictMessage,
-  findDayConflict,
   laborWarningsForRows,
-  manualWeekendCohort,
+  planScheduleEdits,
   weekMinutesForRows,
+  type EditCell,
   type ExistingAssignment,
 } from "@/lib/domain/scheduling/manual";
 import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import { isOverMaxHours } from "@/lib/domain/scheduling/problems";
-import type { Cohort, EngineReport } from "@/lib/domain/scheduling/types";
+import type { EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
-import { formatSpan } from "@/lib/domain/time";
-import { ALL_DAYS, DAY_LABEL, dayTypeOf, type Day, type ShiftBlock } from "@/lib/domain/types";
+import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
+/**
+ * The run moved under the save. Named rather than paraphrased because the
+ * admin's trial is still on screen and re-composing it against the new run is
+ * the only honest next step.
+ */
+const RUN_MOVED_MESSAGE =
+  "The schedule was regenerated while you were editing. Reload the page and make these changes again.";
 
 export interface AssignmentEditResult {
   ok: boolean;
@@ -57,24 +68,12 @@ export interface AssignmentEditResult {
 }
 
 /** One (block, day) cell of an edit batch. */
-export interface ScheduleEditCell {
-  blockId: string;
-  day: Day;
-}
+export type ScheduleEditCell = EditCell;
 
 const fail = (error: string): AssignmentEditResult => ({ ok: false, error });
 
 /** Aborts the transaction, carrying the refusal the admin should read. */
 class EditRefused extends Error {}
-
-/**
- * Names the cell a refusal is about ("Sat 8a to 12p"), since a batch save can
- * fail on any one of several cells and the admin has to know which to fix.
- * Falls back to the day alone when the block itself is gone.
- */
-function cellName(day: Day, block: ShiftBlock | null): string {
-  return block ? `${DAY_LABEL[day]} ${formatSpan(block.start, block.end)}` : DAY_LABEL[day];
-}
 
 async function refreshAfterEdit(studentEmail: string): Promise<void> {
   revalidatePath(`/admin/students/${encodeURIComponent(studentEmail)}`);
@@ -91,7 +90,9 @@ async function refreshAfterEdit(studentEmail: string): Promise<void> {
  * transaction. A removal with no row is a no-op, as is an addition of a cell
  * they already hold. Any addition that fails a hard rule aborts the WHOLE
  * batch and comes back naming its cell, so the admin fixes that cell in the
- * trial rather than discovering half a save landed.
+ * trial rather than discovering half a save landed. A run that stopped being
+ * the current one between the read and the transaction refuses the same way:
+ * writing into a superseded run would report success over nothing.
  */
 export async function applyScheduleEdits(
   studentEmail: string,
@@ -129,6 +130,26 @@ export async function applyScheduleEdits(
   let rows: ExistingAssignment[];
   try {
     rows = await db.transaction(async (tx) => {
+      // The run was read before the transaction opened, which only established
+      // that there WAS one. Read it again in here: a save racing a regeneration
+      // would otherwise write its rows into a run that is no longer current and
+      // report success over a schedule nobody is looking at.
+      const [live] = await tx
+        .select({ id: scheduleRuns.id })
+        .from(scheduleRuns)
+        .where(eq(scheduleRuns.status, "current"))
+        .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
+        .limit(1);
+      if (!live || live.id !== run.id) throw new EditRefused(RUN_MOVED_MESSAGE);
+
+      // Locking read, not a plain one: under REPEATABLE READ two admins saving
+      // overlapping batches for the same student would each judge their own
+      // snapshot, and the committed union could break the day-conflict rule
+      // neither batch broke alone. FOR UPDATE holds this student's rows in this
+      // run (and the gap they sit in) until commit, so the second save waits
+      // and then judges what the first actually left. The join drags the
+      // matching block rows into the lock too, which is a fair price: the
+      // transaction is short, and block edits are rare by comparison.
       const current = await tx
         .select({
           blockId: scheduleAssignments.shiftBlockId,
@@ -141,23 +162,8 @@ export async function applyScheduleEdits(
         .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
         .where(
           and(eq(scheduleAssignments.runId, run.id), eq(scheduleAssignments.studentEmail, email)),
-        );
-      const state: ExistingAssignment[] = [...current];
-
-      for (const cell of removes) {
-        await tx
-          .delete(scheduleAssignments)
-          .where(
-            and(
-              eq(scheduleAssignments.runId, run.id),
-              eq(scheduleAssignments.studentEmail, email),
-              eq(scheduleAssignments.shiftBlockId, cell.blockId),
-              eq(scheduleAssignments.day, cell.day),
-            ),
-          );
-        const at = state.findIndex((r) => r.blockId === cell.blockId && r.day === cell.day);
-        if (at >= 0) state.splice(at, 1);
-      }
+        )
+        .for("update");
 
       // Only live blocks can be added, and the coverage rule needs their times.
       const wanted = [...new Set(adds.map((a) => a.blockId))];
@@ -170,54 +176,40 @@ export async function applyScheduleEdits(
         for (const r of blockRows) blockById.set(r.id, toDomainBlock(r));
       }
 
-      // Calendar order, then earliest block: the rule reads a growing day, so
-      // the order decides which cell a conflict is reported against. Fixing it
-      // here keeps the refusal the same sentence whatever order the grid sent.
-      const ordered = [...adds].sort(
-        (a, b) =>
-          ALL_DAYS.indexOf(a.day) - ALL_DAYS.indexOf(b.day) ||
-          (blockById.get(a.blockId)?.start ?? 0) - (blockById.get(b.blockId)?.start ?? 0) ||
-          a.blockId.localeCompare(b.blockId),
-      );
+      // Everything read, so the whole batch is decided in one pure pass
+      // (domain/scheduling/manual.ts) before a single row is written.
+      const plan = planScheduleEdits(current, removes, adds, {
+        blocks: blockById,
+        everyWeekendOptIn,
+      });
+      if (!plan.ok) throw new EditRefused(plan.error);
 
-      for (const cell of ordered) {
-        if (state.some((r) => r.blockId === cell.blockId && r.day === cell.day)) continue;
-        const block = blockById.get(cell.blockId) ?? null;
-        if (!block) {
-          throw new EditRefused(`${cellName(cell.day, null)}: That shift no longer exists.`);
-        }
-        if (dayTypeOf(cell.day) !== block.dayType) {
-          throw new EditRefused(
-            `${cellName(cell.day, block)}: That shift does not run on ${DAY_LABEL[cell.day]}.`,
+      // Deletes before inserts, the order the plan judged them in: an add can
+      // be legal only because a removal in the same batch made room for it.
+      for (const cell of plan.removes) {
+        await tx
+          .delete(scheduleAssignments)
+          .where(
+            and(
+              eq(scheduleAssignments.runId, run.id),
+              eq(scheduleAssignments.studentEmail, email),
+              eq(scheduleAssignments.shiftBlockId, cell.blockId),
+              eq(scheduleAssignments.day, cell.day),
+            ),
           );
-        }
-        const clash = findDayConflict(block, cell.day, state);
-        if (clash) {
-          throw new EditRefused(
-            `${cellName(cell.day, block)}: ${dayConflictMessage(block, cell.day, clash)}`,
-          );
-        }
-
-        const cohort: Cohort =
-          block.dayType === "weekend" ? manualWeekendCohort(state, everyWeekendOptIn) : "weekday";
+      }
+      for (const row of plan.inserts) {
         await tx.insert(scheduleAssignments).values({
           runId: run.id,
           studentEmail: email,
-          shiftBlockId: cell.blockId,
-          day: cell.day,
-          cohort,
+          shiftBlockId: row.blockId,
+          day: row.day,
+          cohort: row.cohort,
           source: "manual",
-        });
-        state.push({
-          blockId: cell.blockId,
-          day: cell.day,
-          cohort,
-          start: block.start,
-          end: block.end,
         });
       }
 
-      return state;
+      return plan.rows;
     });
   } catch (e) {
     if (!(e instanceof EditRefused)) throw e;

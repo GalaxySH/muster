@@ -8,6 +8,7 @@
  * checks.
  */
 import { computeCapacity } from "./capacity";
+import { INTERNATIONAL_HOUR_CAP } from "./caps";
 import { formatSpan } from "./time";
 import {
   WEEKDAY_DAYS,
@@ -60,6 +61,7 @@ export type BlockSetWarningKind =
   | "no_weekday_blocks"
   | "no_weekend_blocks"
   | "min_hours_unreachable"
+  | "min_hours_over_intl_cap"
   | "min_days_unreachable"
   | "block_over_day_cap";
 
@@ -118,6 +120,17 @@ export function blockSetWarnings(
     warnings.push({
       kind: "min_hours_unreachable",
       message: `These blocks cover at most ${hoursLabel(capacity.weeklyAverageMinutes)}h a week, under the ${position.minHours}h minimum.`,
+    });
+  }
+
+  // The weekly hour cap is a hard generation rule (20h international, PLAN §5
+  // #3), so a minimum above it is a contradiction the generator re-flags every
+  // run: an international student here is capped below their own floor and
+  // shows both "below minimum" and at-cap hours forever.
+  if (position.minHours > INTERNATIONAL_HOUR_CAP) {
+    warnings.push({
+      kind: "min_hours_over_intl_cap",
+      message: `The ${position.minHours}h minimum is over the ${INTERNATIONAL_HOUR_CAP}h weekly cap for international students, so an international student here can never reach the minimum.`,
     });
   }
 

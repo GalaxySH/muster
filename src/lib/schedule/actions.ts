@@ -421,6 +421,10 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         email: s.email,
         positionId: s.positionId,
         international: s.international,
+        // The rotation the engine capped their hours against, so the snapshot's
+        // over-cap count and the student table's over-maximum pill measure the
+        // same week.
+        everyWeekendOptIn: s.everyWeekendOptIn,
         returner: s.returner === true,
         fillIn: s.fillIn === true,
         frozen: frozenEmails.has(s.email),

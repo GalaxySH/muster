@@ -281,7 +281,14 @@ describe("days worked, rotations, and the fortnight day by day", () => {
         weCell("ev@w", "sat", "every"),
         weCell("ev@w", "sun", "every"),
       ],
-      students: ["wk@w", "a@w", "b@w", "ev@w"].map((e) => student(e)),
+      // The every-weekend student carries the rotation flag their rows imply:
+      // weekend minutes are weighted off the student now, not off the row.
+      students: [
+        student("wk@w"),
+        student("a@w"),
+        student("b@w"),
+        student("ev@w", { everyWeekendOptIn: true }),
+      ],
     }),
     NAMES,
   );
@@ -376,8 +383,20 @@ describe("the fragility table", () => {
       pill: "covered",
     });
     expect(byLabel["All positions"]).toMatchObject({
-      coverage: "20%",
+      // Rule moved: a floor with blocks and nobody on it is a row too, so the
+      // unstaffed Culinary Assistant floor is in this denominator now. Three
+      // floors open five weekdays each, two of them staffed one Monday: 480 of
+      // 3600. The returner share beside it is over the staffed time and is
+      // untouched by the empty floor.
+      coverage: "13%",
       detail: "50% of staffed time with no returner",
+    });
+    // The floor nobody is on says so plainly rather than being left out.
+    expect(byLabel["Culinary Assistant"]).toMatchObject({
+      coverage: "0%",
+      coveragePercent: 0,
+      detail: "nobody is on",
+      pill: "",
     });
     // One shared timeline on both sides: every block in the building opens the
     // same 8a to 12p, and the returner overlaps the new person everywhere in it.
@@ -401,8 +420,12 @@ describe("the fragility table", () => {
       }),
       NAMES,
     );
-    expect(view.fragility[0]!.label).toBe("Cashier + Culinary Assistant");
-    expect(view.fragility[0]!.tone).toBeNull();
+    // Rule moved: the Barista floor has a block and nobody on it, so it is a row
+    // now and it sorts ahead of the pool. The naming is what this fixture is
+    // about, so the row is read by name rather than by position.
+    expect(view.fragility.map((r) => r.label)).toContain("Cashier + Culinary Assistant");
+    const pooled = view.fragility.find((r) => r.label === "Cashier + Culinary Assistant")!;
+    expect(pooled.tone).toBeNull();
   });
 
   it("marks any new lead left without a veteran, however small the share", () => {
@@ -634,6 +657,14 @@ describe("reading a stored snapshot back", () => {
     // The rollback the version field exists for: a run stamped by a newer build
     // must cost this section, not the whole of /admin/schedule.
     expect(isReadableRunStats({ ...stats, version: RUN_STATS_VERSION + 1 })).toBe(false);
+  });
+
+  it("turns down a snapshot from an older stats version too", () => {
+    // The direction this build actually moved in: version 2 is what runs stored
+    // before `shifts` went down into the per-position rows, and its fragility
+    // groups were keyed off the seats. Reading one hopefully would put figures
+    // on screen that no longer mean what the labels say.
+    expect(isReadableRunStats({ ...stats, version: 2 })).toBe(false);
   });
 
   it("turns down a run stored before statistics existed", () => {

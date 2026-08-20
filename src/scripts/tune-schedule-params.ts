@@ -487,6 +487,7 @@ function runOnce(pop: Population, penalty: number): RunOutcome {
       email: s.email,
       positionId: s.positionId,
       international: s.international,
+      everyWeekendOptIn: s.everyWeekendOptIn,
       returner: s.returner === true,
       fillIn: s.fillIn === true,
       frozen: frozenEmails.has(s.email),

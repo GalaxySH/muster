@@ -156,6 +156,24 @@ describe("blockSetWarnings", () => {
     expect(kinds(unreachable)).toContain("min_hours_unreachable");
   });
 
+  it("warns when the minimum is over the international weekly cap", () => {
+    // 25h floor vs the 20h international hard cap: no block set can fix it.
+    const warnings = blockSetWarnings(position({ minHours: 25, weekendExempt: true }), [
+      block("wd", "weekday", "8a", "6p"),
+    ]);
+    expect(kinds(warnings)).toContain("min_hours_over_intl_cap");
+    const warning = warnings.find((w) => w.kind === "min_hours_over_intl_cap")!;
+    expect(warning.message).toContain("25h");
+    expect(warning.message).toContain("20h");
+  });
+
+  it("leaves a minimum exactly at the international cap alone", () => {
+    const warnings = blockSetWarnings(position({ minHours: 20, weekendExempt: true }), [
+      block("wd", "weekday", "8a", "6p"),
+    ]);
+    expect(kinds(warnings)).not.toContain("min_hours_over_intl_cap");
+  });
+
   it("warns when a position has no weekday blocks", () => {
     const warnings = blockSetWarnings(position(), [block("we", "weekend", "9a", "7p")]);
     expect(kinds(warnings)).toContain("no_weekday_blocks");

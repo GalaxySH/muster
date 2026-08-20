@@ -759,6 +759,82 @@ describe("PrefGridCalculator", () => {
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
 
+    it("clears a stale labor note once a Save comes back clean", async () => {
+      const user = userEvent.setup();
+      vi.mocked(applyScheduleEdits).mockResolvedValue({
+        ok: true,
+        warnings: ["Only 7h 30m of rest between Mon ending 11:30p and Tue starting 7a."],
+      });
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+      expect(await screen.findByText(/Saved, but worth checking/)).toBeInTheDocument();
+
+      // The "Saved" receipt retires itself; the note does not, so the next Save
+      // is what has to take it down. It describes a week that is no longer the
+      // one on screen.
+      vi.mocked(applyScheduleEdits).mockResolvedValue({ ok: true });
+      await waitFor(() => expect(save()).toBeEnabled(), { timeout: 3000 });
+      await user.click(save()!);
+
+      await waitFor(() => expect(screen.queryByText(/Saved, but worth checking/)).toBeNull());
+    });
+
+    it("re-arms Save and says so when the action throws rather than refusing", async () => {
+      const user = userEvent.setup();
+      // Not an { ok: false } refusal: a dropped connection, a row another admin
+      // got to first. startTransition swallows the throw, so the button would
+      // otherwise sit disabled on "Saving…" with nothing on screen to explain it.
+      vi.mocked(applyScheduleEdits).mockRejectedValue(new Error("connection reset"));
+      await inScheduleMode(user);
+
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
+      await user.click(save()!);
+
+      expect(await screen.findByText(/Could not save those changes/)).toBeInTheDocument();
+      expect(save()).toHaveTextContent("Save");
+      expect(save()).toBeEnabled();
+      expect(refresh).not.toHaveBeenCalled();
+      // The composition survives, the same as after a refusal.
+      expect(screen.getByRole("button", { name: "1p–5p Wed" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("leaves a trial that lands exactly on the cap unflagged, and flags a minute past it", async () => {
+      const user = userEvent.setup();
+      // The cap comparison is in minutes with the over-max flag's own epsilon
+      // (domain/scheduling/problems.ts), so sitting exactly on the cap is never
+      // over it and the cue can never disagree with the schedule page's pill.
+      const { unmount } = renderCalc({
+        hasCurrentRun: true,
+        assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
+        cap: 20,
+        scheduledMinutes: 16 * 60,
+      });
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // +4h: exactly 20h
+      const onCap = screen.getByText("20h");
+      expect(onCap.style.color).not.toBe("var(--color-text-danger)");
+      expect(within(onCap.parentElement!).queryByText("over 20h cap")).toBeNull();
+      unmount();
+
+      // One minute past. The figure still reads 20h (it rounds; the comparison
+      // does not), which is exactly what the server would flag.
+      renderCalc({
+        hasCurrentRun: true,
+        assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
+        cap: 20,
+        scheduledMinutes: 20 * 60 + 1,
+      });
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      const over = screen.getByText("20h");
+      expect(over.style.color).toBe("var(--color-text-danger)");
+      expect(within(over.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
+    });
+
     it("keeps the trial when the save is refused, so the named cell can be fixed", async () => {
       const user = userEvent.setup();
       vi.mocked(applyScheduleEdits).mockResolvedValue({

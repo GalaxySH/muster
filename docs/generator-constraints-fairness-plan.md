@@ -199,7 +199,7 @@ param.
   create or cure a clopen with adjacent days). Iteration order becomes
   `byHashedEmail`. The termination argument survives: labor checks filter,
   they never score.
-- `manual.ts` + `src/lib/schedule/manual.ts`: `laborWarningsForEdit(...)`
+- `manual.ts` + `src/lib/schedule/manual.ts`: `laborWarningsForRows(...)`
   formats human messages from the shared `laborViolations`. **Warn, never
   block** — manual edits are scheduler prerogative; the read-time validator
   keeps flagging whatever the scheduler accepts. `AssignmentEditResult`
