@@ -144,7 +144,14 @@ export interface FairnessStats {
   weeklyMinutes: Distribution;
   /** Per person, the busier of the two fortnight halves in merged minutes. */
   realizedWeekMinutes: Distribution;
-  /** People whose averaged week is over their own cap: 20h international, 30h otherwise. */
+  /**
+   * People whose averaged week is over their own cap: 20h international, 30h
+   * otherwise. Expected **0** for rows the engine placed, since 1.15 made the
+   * cap a hard generation rule (`domain/caps.ts`) — the same standing
+   * expectation `newLeadSolo` carries. A nonzero count means frozen rows
+   * carried from an older run, or hand edits, which is exactly what it is now
+   * useful for spotting.
+   */
   overHourCap: number;
   /** People whose busier realized week is over the 40h payroll ceiling. */
   overWeekCap: number;

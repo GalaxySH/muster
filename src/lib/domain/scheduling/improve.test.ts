@@ -322,4 +322,48 @@ describe("improveAssignments", () => {
     expect(moved.blockId).toBe("we-close");
     expect(moved.cohort).toBe("b");
   });
+
+  // A relocation swaps one block for another, so the student's minutes can grow
+  // even though their day count and their coverage cannot fall. The weekly hour
+  // cap (../caps.ts) is hard since 1.15, and this pass has to respect it too.
+  describe("the weekly hour cap", () => {
+    // Mon holds an untargeted 4h morning; the 8h night carries a target, so it
+    // is a strict gain. Tue and Wed hold 8h each, which puts the week at 20h
+    // before the move and 24h after it. Nothing else refuses it: every labor
+    // rule reads clean on both sides, so the cap is the only thing in the way.
+    const blocks = [
+      block("morning", "weekday", "8a", "12p"),
+      block("night", "weekday", "1p", "9p", 3),
+      block("full", "weekday", "8a", "4p"),
+    ];
+    const selection = [
+      sel("morning", "mon"),
+      sel("night", "mon"),
+      sel("full", "tue"),
+      sel("full", "wed"),
+    ];
+    const rows = () => [
+      row("s@w", "morning", "mon"),
+      row("s@w", "full", "tue"),
+      row("s@w", "full", "wed"),
+    ];
+    const monBlock = (r: ReturnType<typeof improveAssignments>) =>
+      r.assignments.find((a) => a.day === "mon")!.blockId;
+
+    it("makes the move for a domestic student, whose 30h cap leaves room", () => {
+      const r = improveAssignments(rows(), [student("s@w", { selection })], blocks);
+      expect(r.moved).toBe(1);
+      expect(monBlock(r)).toBe("night");
+    });
+
+    it("refuses it for an international student it would carry past 20h", () => {
+      const r = improveAssignments(
+        rows(),
+        [student("s@w", { international: true, selection })],
+        blocks,
+      );
+      expect(r.moved).toBe(0);
+      expect(monBlock(r)).toBe("morning");
+    });
+  });
 });

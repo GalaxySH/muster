@@ -82,6 +82,7 @@ Consequences worth stating because they are not obvious:
 | ≤6 days per W2W week hard, 5 soft | params | occupied-slot count per half |
 | No clopen: 8h floor hard, 10h preferred soft | params | each cyclically adjacent occupied pair: `firstStart(next) + 1440 − lastEnd(prev)` |
 | No split shifts | hard | per occupied day, merged spans must form **one** contiguous run; staggered-overlap doubles stay legal (they merge) |
+| ≤ the student's own weekly hour cap (20h international, 30h otherwise) | hard **engine policy**, not labor law (v1.15) | the cycle-averaged week (`averagedAssignedMinutes`: weekend rows halve under A/B, count whole under every), checked in the same `bestCandidate` filter family as the rules above, so it binds on every seed, every fill step, every ladder rung and every deferred cell. `improve.ts` re-checks the after-state of a move. The boundary is `isOverMaxHours` itself, imported rather than restated, so exactly-at-cap passes. **The validator deliberately does not check it**: it is a policy target rather than a legal one, manual edits may knowingly cross it, and the read-time **over-max flag** already owns making that visible |
 
 Soft rules use a **relax ladder** — `strict → relax-rest → relax-days` —
 composed *inside* the existing deferred-cells double pass, so deferred cells
@@ -270,9 +271,10 @@ Every penalty runs **twice** and the two runs are compared before either is
 reported, so determinism is checked rather than assumed. Metrics come from
 `computeRunStats`, not from a reimplementation.
 
-**Production snapshot, 2026-08-19** (172 eligible students, 69 live blocks, 7
-positions, 3 internal copies, nobody frozen). Every penalty ran twice; both runs
-matched exactly.
+**Production snapshot, 2026-08-19 (pre-cap)** (172 eligible students, 69 live
+blocks, 7 positions, 3 internal copies, nobody frozen). Every penalty ran twice;
+both runs matched exactly. Measured before the weekly hour cap became a hard
+generation rule; the post-cap addendum below re-runs the same sweep.
 
 ```
 penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
@@ -284,9 +286,9 @@ penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread
      20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
 ```
 
-**Synthetic fallback** (400 students, seed 42, fill 0.8, the CI-safe path, over
-the repo's initial block config at a derived target of 8 per cell). Also
-deterministic across both runs of every penalty.
+**Synthetic fallback (pre-cap)** (400 students, seed 42, fill 0.8, the CI-safe
+path, over the repo's initial block config at a derived target of 8 per cell).
+Also deterministic across both runs of every penalty.
 
 ```
 penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
@@ -328,6 +330,27 @@ The honest caveat: on a 172-student roster, `welded` and `lockstep` are single
 digits, so the rule is deciding on small counts. The penalty is a tie-breaker
 that stops the engine defaulting to identical days, not a leveling mechanism, and
 the table should be re-run whenever the roster changes size materially.
+
+**Addendum: the same sweep after the hour cap turned hard** (§2's last row,
+v1.15). Same snapshot, same knobs, same twice-and-compare determinism check.
+
+```
+penalty   seats   short  belowMin  modalStart  welded  lockGrp  lockPpl   spread   pstdev      ms
+-------  ------  ------  --------  ----------  ------  -------  -------  -------  -------  ------
+      0     830      71        35      0.5179       5        1        2   1695.0    280.1      21
+      2     831      68        32      0.5216       4        1        2   1695.0    280.5      15
+      5     829      67        33      0.5201       5        1        2   1687.5    277.9      15
+     10     832      69        35      0.5168       5        0        0   1695.0    274.7      16
+     20     836      69        34      0.5112       5        0        0   1650.0    280.5      15
+```
+
+The decision is unchanged: 20 is still the only qualifying penalty and the script
+still prints it. At the shipped 20 the cost of the cap is **one seat** (837 to
+836) and **two more students short of target** (67 to 69), with `belowMinHours`
+flat at 34 and the spread tightening from 1695 to 1650. That is the cap doing
+exactly what it was asked to: the students it stops are the ones the fill loop
+used to carry past their own ceiling by a block, so "short of target" is now
+counting a bound that is real rather than one the engine quietly ignored.
 
 ### 9.2 Known deferred items
 

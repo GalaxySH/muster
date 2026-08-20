@@ -278,6 +278,7 @@ week 1 is 0..6, week 2 is 7..13, and slot 13 is cyclically adjacent to slot 0.
 | Working days per W2W week within `maxDaysPerWeek` (default 6) hard, within `preferredDaysPerWeek` (default 5) soft | hard + soft | Occupied-slot count per half. |
 | Rest between one day's close and the next day's open at least `minRestHours` (default 8) hard, at least `preferredRestHours` (default 10) soft | hard (clopen) + soft (short rest) | Every cyclically adjacent occupied pair, measured as `firstStart(next) + 1440 - lastEnd(prev)`. A student can clopen against their own on-weekend, since Sat close to Sun open is an adjacent pair inside it. |
 | One contiguous span per worked day | hard (split shift) | The day's merged spans must form a single run. Staggered overlaps merge, so handoff doubles stay legal. |
+| The student's own weekly hour cap: 20h international, 30h otherwise | hard **engine policy**, not labor law (v1.15) | `domain/caps.ts`. Not one of the six labor rules and not in `labor.ts`: it is a policy target the university sets, not a legal bound, so it lives with the engine rather than with payroll law. Measured on the cycle-averaged week (`averagedAssignedMinutes`) and checked in the same `bestCandidate` filter family as the rules above, so one check binds the weekend seed, the min-days seeds, every fill step, every ladder rung and deferred cells alike; `improve.ts` re-checks the after-state of a relocation. The boundary is `isOverMaxHours` itself, imported rather than restated, so sitting exactly on the cap passes. **The validator deliberately does not check it**, and that is the design: manual edits may knowingly cross a policy target, and the read-time over-max flag already owns making that visible on `/admin/schedule`. |
 
 **The relax ladder.** Soft rules give way one at a time through
 `LaborMode`: `strict` rejects every soft violation, `relax-rest` tolerates short
@@ -301,7 +302,12 @@ termination argument is unchanged.
 
 Manual edits **warn and never block** (`laborWarningsForEdit` in
 `schedule/manual.ts`). The schedule belongs to the scheduler; the read-time
-validator keeps flagging whatever they accept.
+validator keeps flagging whatever they accept. The hour cap warns there on the
+same terms: `setManualAssignment` adds "This puts them over their 20h weekly
+cap." when the added cell carries the student's averaged week past it, judged on
+`weekMinutesForEdit` and `isOverMaxHours` so the note and the over-max flag can
+never disagree, and inside its own try/catch so a week it cannot measure costs a
+warning line rather than the edit.
 
 **The independent validator.** `domain/scheduling/validate.ts` re-checks a
 stored run at read time, and it is a deliberate second derivation rather than a

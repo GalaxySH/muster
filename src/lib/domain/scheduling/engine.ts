@@ -22,6 +22,14 @@
  * engine-built pattern never carries a hard violation and carries a soft one
  * only where the ladder allowed it (the report counts those students).
  *
+ * Since 1.15 the student's own weekly hour cap (../caps.ts: 20h international,
+ * 30h otherwise) is a hard rule here too, not merely the clamp on
+ * `targetMinutes` it used to be. Clamping the target stopped the FILL loop
+ * aiming past the cap but let it overshoot by one block, and left seeding
+ * unbounded; the check now sits beside the labor filters in `bestCandidate`,
+ * so it binds on every seed, every fill step, every ladder mode and every
+ * deferred cell alike. Like the labor hard rules it never relaxes.
+ *
  * Students marked scheduled are frozen: their previous run's rows are carried
  * forward verbatim (still consuming capacity) and no pass touches them. The
  * admin's "mark scheduled" toggle is the whole protection model; there is no
@@ -40,6 +48,7 @@ import type { Day, Position, ShiftBlock } from "../types";
 import { improveAssignments } from "./improve";
 import { candidateAllowed, laborLimits, type LaborLimits, type LaborMode } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
+import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
   EPSILON_MINUTES,
@@ -414,6 +423,14 @@ function bestCandidate(
     if (!candidateAllowed(state.ranges, laborCohort, { day: cell.day, range }, limits, filter.mode))
       continue;
 
+    // The student's own weekly hour cap, hard since 1.15. It sits in this same
+    // filter family deliberately: every ladder mode, the weekend and min-days
+    // seeds, and deferred cells all reach placement through here, so one check
+    // binds all of them and nothing can relax it. `isOverMaxHours` is the
+    // read-time flag's own predicate, imported rather than restated so the two
+    // can never disagree about the boundary; sitting exactly on the cap passes.
+    if (isOverMaxHours(assignedWith(state, cell.day, range), state.student.international)) continue;
+
     const targeted = block.desiredCapacity != null;
     const bonus = tierBonus(block, params);
     const penalty = (params.repeatStartPenalty / 100) * (state.startCounts.get(block.start) ?? 0);
@@ -430,6 +447,19 @@ function bestCandidate(
     }
   }
   return best;
+}
+
+/**
+ * The student's cycle-averaged assigned minutes if this cell were added. The
+ * whole hypothetical week is measured with `averagedAssignedMinutes` rather
+ * than the candidate's day delta being re-weighted here: the weekend factor
+ * lives in one place, and the cap check must read the same arithmetic the
+ * report and the read-time flag do or the three could disagree at the boundary.
+ */
+function assignedWith(state: ActiveState, day: Day, range: TimeRange): number {
+  const hypothetical = new Map(state.ranges);
+  hypothetical.set(day, [...(state.ranges.get(day) ?? []), range]);
+  return averagedAssignedMinutes(hypothetical, state.student.everyWeekendOptIn);
 }
 
 /** Commit one cell: pick the rotation on the first weekend seat, update ledgers. */

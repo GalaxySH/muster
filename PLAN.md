@@ -251,7 +251,7 @@ Encoded as configurable, per-position parameters. **Hard** = blocks submission;
 |---|---|---|---|
 | 1 | Shifts cannot conflict with course schedule | (manual review for now — see §12) | course evidence required |
 | 2 | Selection must be able to reach **min hours** | **Hard** | covered hours of selected shifts (union per day; overlaps counted once) ≥ min (10h; SL 15h), cycle-averaged |
-| 3 | **Max hours** = scheduler-side cap, **not** an entry constraint | context | 30h domestic / 20h international; students may select **more** than their cap as preferences — over-selection is allowed; the cap is applied only when the schedule is written |
+| 3 | **Max hours** = scheduler-side cap, **not** an entry constraint | context at entry, **hard at generation** since v1.15 | 30h domestic / 20h international; students may select **more** than their cap as preferences — over-selection is allowed; the cap is applied only when the schedule is written. Since 1.15 the engine treats it as a hard ceiling on the cycle-averaged week and refuses any placement or relocation past it, rather than merely clamping the target it aims for. Manual edits still only **warn**, and the read-time over-max flag keeps whoever the scheduler pushes over it visible; the labor validator deliberately does not check it, since it is policy and not law (`docs/schedule-generation-plan.md` §3.6) |
 | 4 | Honor shift preferences when availability allows | informational | — |
 | 5 | Must work a weekend shift; A/B rotation, cycle-averaged hours | **Soft** | missing → auto-assign + flag. **Barista exempt** (weekday-only) |
 | 6 | Must work at least one **open OR one close** | **Hard** | ≥1 opening or ≥1 closing block selected |
@@ -1614,6 +1614,30 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   carried on a retired shift still counts and every refresh after a schedule edit
   moves it. Its status line reads "scheduled", "nothing scheduled" at zero, or
   "over Nh cap" in the danger accent.
+  **The 20h/30h weekly hour cap is now a hard generation rule** (§5 #3). It was
+  only ever a clamp on the target the engine aimed for, which stopped the fill
+  loop *aiming* past a student's cap but let it overshoot by a whole block, and
+  left seeding unbounded entirely: a Shift Lead's three-day minimum could seed an
+  international student to 24h without anything objecting. The check now sits in
+  the same `bestCandidate` filter family as the labor rules, so one test binds
+  the weekend seed, the min-days seeds, every fill step, every rung of the relax
+  ladder and every deferred cell; hard rules never relax, and this one is hard.
+  `improve.ts` re-checks the after-state of a relocation, since a move swaps one
+  block for another and the minutes can grow. The boundary is `isOverMaxHours`
+  itself, imported rather than restated, so the engine and the read-time over-max
+  flag can never disagree about it and sitting exactly on the cap is fine.
+  Manual edits keep the house paradigm and only **warn** ("This puts them over
+  their 20h weekly cap."), and the validator deliberately does not check the cap
+  at all: it is a policy target rather than payroll law, and the over-max flag
+  owns read-time visibility. Re-running the tuning sweep on the same production
+  snapshot, the decision is unchanged (20 still the only qualifying penalty) and
+  the cap costs **one seat** at that setting, 837 to 836, with two more students
+  short of target (67 to 69), `belowMinHours` flat at 34, and the hours spread
+  tightening from 1695 to 1650. Those two students are precisely the ones the old
+  fill loop used to carry past their own ceiling, so the counter is now measuring
+  a bound that is actually enforced. The pre-cap tables in
+  `docs/generator-constraints-fairness-plan.md` §9.1 are labelled as such, with
+  the post-cap sweep as an addendum beneath them.
   Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
   A freshman event that removes every first-year student for part of one specific
   day cannot constrain a dateless weekly template, and deciding how a dated

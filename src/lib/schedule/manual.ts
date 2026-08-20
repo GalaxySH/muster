@@ -10,6 +10,8 @@
  * shift must add unique time (domain/scheduling/manual.ts); assigning a cell
  * the student never selected is deliberate scheduler prerogative, and labor
  * rule violations come back as warnings on the success result, never refusals.
+ * The weekly hour cap is the same shape: hard for the generator since 1.15
+ * (domain/caps.ts), one more warning line here.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -18,18 +20,22 @@ import {
   internalAvailability,
   scheduleAssignments,
   shiftBlocks,
+  students,
   submissions,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { hourCap } from "@/lib/domain/caps";
 import { laborLimits } from "@/lib/domain/scheduling/labor";
 import {
   findDayConflict,
   laborWarningsForEdit,
   manualWeekendCohort,
+  weekMinutesForEdit,
   type ExistingAssignment,
 } from "@/lib/domain/scheduling/manual";
 import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
+import { isOverMaxHours } from "@/lib/domain/scheduling/problems";
 import type { Cohort, EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
 import { formatSpan } from "@/lib/domain/time";
@@ -112,20 +118,28 @@ export async function setManualAssignment(
     );
   }
 
+  // The student's rotation and their cap context, in one read. Effective
+  // rotation (PLAN §10a): the internal copy's rotation wins over the student's
+  // own answer when an admin saved one. Driven off `students` rather than
+  // `submissions`, so somebody an admin is scheduling before they have answered
+  // still yields their `international` flag.
+  const [profile] = await db
+    .select({
+      everyWeekendOptIn: submissions.everyWeekendOptIn,
+      internalOptIn: internalAvailability.everyWeekendOptIn,
+      international: students.international,
+    })
+    .from(students)
+    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
+    .where(eq(students.email, email))
+    .limit(1);
+  const everyWeekendOptIn = profile?.internalOptIn ?? profile?.everyWeekendOptIn ?? false;
+  const international = profile?.international ?? false;
+
   let cohort: Cohort = "weekday";
   if (block.dayType === "weekend") {
-    // Effective rotation (PLAN §10a): the internal copy's rotation wins over
-    // the student's own answer when an admin saved one.
-    const [sub] = await db
-      .select({
-        everyWeekendOptIn: submissions.everyWeekendOptIn,
-        internalOptIn: internalAvailability.everyWeekendOptIn,
-      })
-      .from(submissions)
-      .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
-      .where(eq(submissions.studentEmail, email))
-      .limit(1);
-    cohort = manualWeekendCohort(existing, sub?.internalOptIn ?? sub?.everyWeekendOptIn ?? false);
+    cohort = manualWeekendCohort(existing, everyWeekendOptIn);
   }
 
   // Labor rules warn, never block, judged against the run's snapshotted
@@ -141,6 +155,22 @@ export async function setManualAssignment(
     warnings = laborWarningsForEdit({ block, day }, cohort, existing, limits);
   } catch {
     warnings = [];
+  }
+
+  // The weekly hour cap (domain/caps.ts) is a HARD rule for the generator since
+  // 1.15 and a warning here, for the same reason the labor rules are: the
+  // schedule belongs to the scheduler, and the read-time over-max flag keeps
+  // anyone they push over it visible on /admin/schedule afterwards. Judged on
+  // `isOverMaxHours`, the flag's own predicate, so the note and the flag agree.
+  // Its own try/catch keeps the warn-never-block posture: a range this cannot
+  // measure yields no line rather than a refused edit.
+  try {
+    const week = weekMinutesForEdit({ block, day }, existing, everyWeekendOptIn);
+    if (isOverMaxHours(week, international)) {
+      warnings.push(`This puts them over their ${hourCap(international)}h weekly cap.`);
+    }
+  } catch {
+    // No line. The edit still lands, exactly as it would with no warnings.
   }
 
   await db.insert(scheduleAssignments).values({

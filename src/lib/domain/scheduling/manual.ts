@@ -10,12 +10,15 @@
  * overlap gets scheduled. Assigning a cell the student never selected is
  * allowed; the scheduler owns the schedule and the split grid makes the
  * mismatch visible. Labor rules (scheduling/labor.ts) never block an edit
- * either: laborWarningsForEdit turns them into warnings the admin sees.
+ * either: laborWarningsForEdit turns them into warnings the admin sees, and
+ * the weekly hour cap (domain/caps.ts) is the same: hard for the generator
+ * since 1.15, a warning here, which is what `weekMinutesForEdit` is for.
  */
 import { redundantRangeIndex } from "../intervals";
 import type { TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import { laborViolations, type LaborLimits } from "./labor";
+import { averagedAssignedMinutes } from "./seats";
 import type { Cohort } from "./types";
 
 /** One of the student's existing current-run rows, with its block's times. */
@@ -88,6 +91,17 @@ export function laborWarningsForEdit(
   if (cohort !== "weekday") weekendCohorts.add(cohort);
   if (weekendCohorts.size > 1) return [];
 
+  const laborCohort = [...weekendCohorts][0] ?? null;
+  return laborViolations(rangesForEdit(candidate, existing), laborCohort, limits).map(
+    (v) => `${v.detail}.`,
+  );
+}
+
+/** The student's standing week with the candidate added, day by day. */
+function rangesForEdit(
+  candidate: { block: ShiftBlock; day: Day },
+  existing: readonly ExistingAssignment[],
+): Map<Day, TimeRange[]> {
   const ranges = new Map<Day, TimeRange[]>();
   const add = (day: Day, range: TimeRange) => {
     const list = ranges.get(day) ?? [];
@@ -96,9 +110,22 @@ export function laborWarningsForEdit(
   };
   for (const row of existing) add(row.day, { start: row.start, end: row.end });
   add(candidate.day, { start: candidate.block.start, end: candidate.block.end });
+  return ranges;
+}
 
-  const laborCohort = [...weekendCohorts][0] ?? null;
-  return laborViolations(ranges, laborCohort, limits).map((v) => `${v.detail}.`);
+/**
+ * Cycle-averaged weekly minutes the student's current-run rows plus the
+ * candidate come to. Measured with the engine's own `averagedAssignedMinutes`
+ * (weekend rows halve under an A/B rotation, count whole under every, weekday
+ * rows count whole), so a caller's over-cap warning and the read-time over-max
+ * flag can never disagree about the number they are judging.
+ */
+export function weekMinutesForEdit(
+  candidate: { block: ShiftBlock; day: Day },
+  existing: readonly ExistingAssignment[],
+  everyWeekendOptIn: boolean,
+): number {
+  return averagedAssignedMinutes(rangesForEdit(candidate, existing), everyWeekendOptIn);
 }
 
 /**

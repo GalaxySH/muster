@@ -5,6 +5,7 @@ import {
   findDayConflict,
   laborWarningsForEdit,
   manualWeekendCohort,
+  weekMinutesForEdit,
   type ExistingAssignment,
 } from "./manual";
 import { DEFAULT_SCHEDULING_PARAMS } from "./params";
@@ -138,6 +139,42 @@ describe("laborWarningsForEdit", () => {
     ];
     const edit = { block: block("pm", 12 * 60, 16 * 60), day: "wed" as const };
     expect(laborWarningsForEdit(edit, "weekday", existing, limits)).toEqual([]);
+  });
+});
+
+// What the caller's over-cap warning is judged on. It has to be the report's
+// own arithmetic, or a warning and the read-time over-max flag could disagree
+// about the very same week.
+describe("weekMinutesForEdit", () => {
+  const weekendBlock = (id: string, start: number, end: number): ShiftBlock => ({
+    id,
+    positionId: "p",
+    dayType: "weekend",
+    start,
+    end,
+  });
+
+  it("counts weekday rows and the candidate whole", () => {
+    const existing = [
+      row("mon", "mon", "weekday", 8 * 60, 16 * 60),
+      row("tue", "tue", "weekday", 8 * 60, 16 * 60),
+    ];
+    const edit = { block: block("wed", 8 * 60, 16 * 60), day: "wed" as const };
+    expect(weekMinutesForEdit(edit, existing, false)).toBe(3 * 8 * 60);
+  });
+
+  it("halves a weekend candidate under A/B and counts it whole under every", () => {
+    const existing = [row("mon", "mon", "weekday", 8 * 60, 16 * 60)];
+    const edit = { block: weekendBlock("sat", 9 * 60, 17 * 60), day: "sat" as const };
+    expect(weekMinutesForEdit(edit, existing, false)).toBe(480 + 240);
+    expect(weekMinutesForEdit(edit, existing, true)).toBe(480 + 480);
+  });
+
+  it("counts a staggered same-day double once over its merged span", () => {
+    // 8a-12p plus 11a-3p is one 7h clock-in, not 8h of two shifts.
+    const existing = [row("am", "mon", "weekday", 8 * 60, 12 * 60)];
+    const edit = { block: block("mid", 11 * 60, 15 * 60), day: "mon" as const };
+    expect(weekMinutesForEdit(edit, existing, false)).toBe(7 * 60);
   });
 });
 

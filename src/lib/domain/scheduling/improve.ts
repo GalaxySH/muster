@@ -9,8 +9,9 @@
  * with the seat lifted out of the ledger. Invariants: a relocation stays
  * within the student's selections and the same day (so the min-days
  * concentration and the daily cap survive), never lowers the student's covered
- * hours, keeps every shift on the day contributing unique time, never touches
- * a student marked scheduled, and obeys the labor rules (./labor.ts) as a
+ * hours, never carries them past their own weekly hour cap (../caps.ts, hard
+ * since 1.15), keeps every shift on the day contributing unique time, never
+ * touches a student marked scheduled, and obeys the labor rules (./labor.ts) as a
  * COUNT-PRESERVING diff rather than an absolute bar: a move may never add a
  * net-new hard violation nor raise the soft count, but a week that already
  * carries hard violations (only ever from carried state) may keep them. The
@@ -25,7 +26,16 @@ import type { TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import { laborLimits, laborViolations, type LaborLimits } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
-import { DAY_INDEX, EPSILON_MINUTES, SeatLedger, byEmail, byHashedEmail, tierBonus } from "./seats";
+import { isOverMaxHours } from "./problems";
+import {
+  DAY_INDEX,
+  EPSILON_MINUTES,
+  SeatLedger,
+  averagedAssignedMinutes,
+  byEmail,
+  byHashedEmail,
+  tierBonus,
+} from "./seats";
 import type { Cohort, ScheduleAssignment, ScheduleStudent } from "./types";
 
 const MAX_ROUNDS = 3;
@@ -230,6 +240,22 @@ function bestRelocation(
     // never judged here; the read-time validator owns them.)
     const hypothetical = new Map(state.ranges);
     hypothetical.set(row.day, [...otherRanges, range]);
+
+    // The student's weekly hour cap, hard since 1.15 (../caps.ts). A relocation
+    // moves a row to a different block, so the minutes can change and this pass
+    // could otherwise carry someone past a cap the engine respected. A plain
+    // AFTER-check is enough here, unlike the count-preserving labor diff below:
+    // engine output is already at or under the cap, so there is no pre-existing
+    // violation this could be blamed for failing to preserve.
+    if (
+      isOverMaxHours(
+        averagedAssignedMinutes(hypothetical, student.everyWeekendOptIn),
+        student.international,
+      )
+    ) {
+      continue;
+    }
+
     const violations = laborViolations(hypothetical, state.cohort, state.limits);
     const hardAfter = violations.filter((v) => v.severity === "hard").length;
     current ??= countBySeverity(laborViolations(state.ranges, state.cohort, state.limits));

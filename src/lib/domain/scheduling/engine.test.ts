@@ -1180,4 +1180,153 @@ describe("generateAssignments", () => {
     // the ladder demonstrably ran inside this determinism check.
     expect(first.report.laborRelaxed).toEqual({ students: 1 });
   });
+
+  // The weekly hour cap (domain/caps.ts) became a hard generation rule in 1.15.
+  // It used to clamp `targetMinutes` only, which left the fill loop free to
+  // overshoot by a whole block and left seeding unbounded.
+  describe("the weekly hour cap as a hard rule", () => {
+    // 6h days: 20h divides into neither three of them nor four, so the old
+    // overshoot-by-one-block is the difference between 18h and 24h.
+    const sixes = (["mon", "tue", "wed", "thu", "fri"] as const).map((d) =>
+      block(`six-${d}`, "barista", "weekday", "8a", "2p"),
+    );
+    const sixSelection = (["mon", "tue", "wed", "thu", "fri"] as const).map((d) =>
+      sel(`six-${d}`, d),
+    );
+
+    it("stops an international student under 20h where the fill loop used to overshoot", () => {
+      const r = run(
+        [
+          student("i@w", {
+            positionId: "barista",
+            international: true,
+            desiredHours: 40,
+            selection: sixSelection,
+          }),
+        ],
+        sixes,
+      );
+      // Three 6h days is 18h; the fourth would land on 24h, so it is refused.
+      expect(reportOf(r, "i@w").assignedMinutes).toBe(1080);
+      expect(rowsOf(r, "i@w")).toHaveLength(3);
+    });
+
+    it("leaves a domestic student on the same availability to reach their own 30h", () => {
+      // Same shifts, same appetite: the cap is per student, not a global ceiling.
+      const r = run(
+        [
+          student("d@w", {
+            positionId: "barista",
+            desiredHours: 40,
+            selection: sixSelection,
+          }),
+        ],
+        sixes,
+      );
+      expect(reportOf(r, "d@w").assignedMinutes).toBe(1800);
+    });
+
+    it("allows a placement that lands exactly on the cap", () => {
+      // 4h blocks: the last one takes them from 16h to exactly 20h. Rejecting
+      // that would put the engine at odds with the read-time over-max flag,
+      // which treats sitting on the cap as fine.
+      const r = run(
+        [
+          student("i@w", {
+            positionId: "barista",
+            international: true,
+            desiredHours: 40,
+            selection: barSelection,
+          }),
+        ],
+        barGrid,
+      );
+      expect(reportOf(r, "i@w").assignedMinutes).toBe(1200);
+    });
+
+    it("refuses a min-days seed over the cap, and reports it as below minimum days", () => {
+      // A Shift Lead needs three days; three 8h days is 24h, over the 20h cap.
+      // The right outcome is a two-day schedule the scheduler is warned about,
+      // never a legal-looking third day that breaks the ceiling.
+      const blocks = [
+        block("sl-mon", "sl", "weekday", "8a", "4p"),
+        block("sl-tue", "sl", "weekday", "8a", "4p"),
+        block("sl-wed", "sl", "weekday", "8a", "4p"),
+      ];
+      const r = run(
+        [
+          student("lead@w", {
+            positionId: "sl",
+            international: true,
+            desiredHours: 40,
+            selection: [sel("sl-mon", "mon"), sel("sl-tue", "tue"), sel("sl-wed", "wed")],
+          }),
+        ],
+        blocks,
+      );
+      expect(reportOf(r, "lead@w").daysUsed).toBe(2);
+      expect(reportOf(r, "lead@w").assignedMinutes).toBe(960);
+      expect(r.report.belowMinDays).toBe(1);
+    });
+
+    describe("the relax ladder cannot open it", () => {
+      // Mon closes at 9p and Tue opens at 6a: 9h of rest, under the preferred
+      // 10h but over the hard 8h floor, so Tuesday is reachable only at
+      // relax-rest. Wednesday sits clear of both neighbours.
+      const blocks = [
+        block("late-mon", "barista", "weekday", "1p", "9p"),
+        block("early-tue", "barista", "weekday", "6a", "2p"),
+        block("early-wed", "barista", "weekday", "6a", "2p"),
+      ];
+      const selection = [sel("late-mon", "mon"), sel("early-tue", "tue"), sel("early-wed", "wed")];
+
+      it("takes the relaxed cell when the cap leaves room", () => {
+        const r = run(
+          [student("d@w", { positionId: "barista", desiredHours: 40, selection })],
+          blocks,
+        );
+        expect(reportOf(r, "d@w").assignedMinutes).toBe(1440);
+        expect(reportOf(r, "d@w").daysUsed).toBe(3);
+        expect(r.report.laborRelaxed).toEqual({ students: 1 });
+      });
+
+      it("refuses the same cell for an international student, at every rung", () => {
+        // Identical availability, identical appetite. The soft rest rule gives
+        // way and the cap does not, so the ladder never even records a relax.
+        const r = run(
+          [
+            student("i@w", {
+              positionId: "barista",
+              international: true,
+              desiredHours: 40,
+              selection,
+            }),
+          ],
+          blocks,
+        );
+        expect(reportOf(r, "i@w").assignedMinutes).toBe(960);
+        expect(reportOf(r, "i@w").daysUsed).toBe(2);
+        expect(r.report.laborRelaxed).toEqual({ students: 0 });
+      });
+    });
+
+    it("stays deterministic across two runs with the cap binding", () => {
+      const students = [
+        student("i@w", {
+          positionId: "barista",
+          international: true,
+          desiredHours: 40,
+          selection: sixSelection,
+          submittedAt: at(1),
+        }),
+        student("d@w", {
+          positionId: "barista",
+          desiredHours: 40,
+          selection: sixSelection,
+          submittedAt: at(2),
+        }),
+      ];
+      expect(run(students, sixes)).toEqual(run(students, sixes));
+    });
+  });
 });
