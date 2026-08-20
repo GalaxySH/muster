@@ -266,14 +266,14 @@ cells come last.
 Until v1.15 the engine bounded exactly one thing about a student's time: merged
 hours in a single day. Six labor rules now bound the whole fortnight. They live
 in `domain/scheduling/labor.ts`, whose header carries the canonical calendar and
-its symmetry proof; PLAN §7 records the same calendar as the authoritative
+its symmetry proof; PLAN §7a records the same calendar as the authoritative
 reading. Slots 0..13 are [Sun₁, Mon₁..Fri₁, Sat₁, Sun₂, Mon₂..Fri₂, Sat₂], W2W
 week 1 is 0..6, week 2 is 7..13, and slot 13 is cyclically adjacent to slot 0.
 
 | Rule | Severity | How it reads on the fortnight |
 |---|---|---|
 | Merged day span within `dayCapHours` (default 8) | hard | Per template day, applied unconditionally. This retires the old allowance that let a single over-cap block stand alone on its day, so a block configured longer than the cap is now never assignable at all; `domain/config-validation.ts` names such a block on `/admin/positions` rather than letting it turn into a silent shortfall. |
-| 40 hours per W2W week | hard, and a constant | `WEEK_CAP_MINUTES` in `labor.ts`, deliberately not a knob: it is payroll law, not a preference. Engine-placed rows cannot reach it (targets are cycle-averaged at 30h or below), so it exists for frozen and manual rows and for the validator. Read per fortnight half. |
+| 40 hours per W2W week | hard, and a constant | `WEEK_CAP_MINUTES` in `labor.ts`, deliberately not a knob: it is payroll law, not a preference. Read per fortnight half. Engine-placed rows cannot reach it because `candidateAllowed` tests each half's minutes against the cap on every placement, **not** because the cycle-averaged 30h target implies it: the fill loop can overshoot a target by a block, and a weekend-heavy realized half can run well above the average. The enforced check is what prevents it. Frozen and manual rows never passed that check at all, which is the other reason the cap exists here and in the validator. |
 | Longest run of working days within `maxConsecutiveDays` (default 5) | hard | The longest **cyclic** run of occupied slots over the 14, so a run that wraps the 13-to-0 seam is counted whole. This is the rule that bites densest availabilities: an A/B student can structurally reach 12 consecutive days, not 7. |
 | Working days per W2W week within `maxDaysPerWeek` (default 6) hard, within `preferredDaysPerWeek` (default 5) soft | hard + soft | Occupied-slot count per half. |
 | Rest between one day's close and the next day's open at least `minRestHours` (default 8) hard, at least `preferredRestHours` (default 10) soft | hard (clopen) + soft (short rest) | Every cyclically adjacent occupied pair, measured as `firstStart(next) + 1440 - lastEnd(prev)`. A student can clopen against their own on-weekend, since Sat close to Sun open is an adjacent pair inside it. |
@@ -336,8 +336,10 @@ worth stating plainly, because confusing them would mislead a scheduler:
 
 What it holds: *fairness* (cycle-averaged weekly-minutes distribution with mean,
 pstdev and spread; per-person realized-week maximum; over-cap and over-week-cap
-counts; mean modal-start share with a `welded` count of people whose every
-working day starts at the same time; `lockstep` groups and people sharing an
+counts; mean modal-start share with a `welded` count of people working **two or
+more** days whose every working day starts at the same time, a one-day person
+being excluded because their single start time says nothing; `lockstep` groups
+and people sharing an
 identical set of (day, block, rotation) cells; the alphabetical-rank against
 hours correlation); *stretch* (cyclic consecutive-days histogram, per-cohort
 split, days-per-fortnight histogram); *per-position* staffing, targeted-cell

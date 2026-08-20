@@ -206,8 +206,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   code change.
 - **Response dashboard** — full response list, fast navigation, search/sort, plus
   **group + position + flag filters carried in the URL** so they follow the admin into
-  the per-student view and drive its prev/next walk (roadmap 2.2). A **show-all-students**
-  switch widens the list to the whole roster, badging everyone who never started (§10).
+  the per-student view and drive its prev/next walk (roadmap 2.2). A **submission-state
+  select** (`status`) widens the list to the whole roster, badging everyone who never
+  started (§10).
 - **Per-student detail** — expanded view + computed stats (§10). The name is a
   **jump-to dropdown** over the filtered list for direct hops. The page opens for **any
   student on the roster**, responder or not, and the scheduler can record notes and
@@ -757,11 +758,16 @@ columns from the roster.
   and the neighbor computation. A **show-off-roster switch** (`roster=all`, same URL
   mechanism) reveals retained submissions from off-roster responders (People Leaving,
   test accounts), badged "off roster"; default stays on-roster only. The list is
-  **roster-wide** underneath (students LEFT JOIN submissions): a **show-all-students
-  switch** (`all=1`, default off, so the default view is still the responses) adds
-  everyone who never started, badged red **"missing"**, submission-only cells empty.
-  Whoever is open in the per-student view is always part of the prev/next walk, even
-  when the active switches would hide them.
+  **roster-wide** underneath (students LEFT JOIN submissions), and a **submission-state
+  select** decides who that surfaces: `status` = `submitted` | `draft` | `missing` |
+  `all`, plus the empty default that keeps the dashboard a list of responses (submitted
+  and draft, never-started hidden). Choosing `missing` or `all` brings in everyone who
+  never started, badged red **"missing"**, submission-only cells empty. The old `all=1`
+  link still **parses** as an alias for `status=all` so saved filter links survive, but it
+  is never serialized back. The per-student prev/next walk widens the **off-roster** switch
+  unconditionally, so whoever is open is always reachable that way; it widens the
+  submission state **only when none was chosen**, so a student outside an explicitly
+  chosen state gets no arrows, exactly as the review filter already behaves.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -1306,7 +1312,10 @@ under-18 test (deferred → fallback, §11).
   B generation engine + run view in 0.84–0.85; per-cell manual overrides in 0.99; Phase
   C regeneration ergonomics — run history + restore, diffs, staleness, the schedule
   sheet — in 1.00; scheduling non-responders on operational need, opt-in per run, plus
-  the Shift-Lead weekend-close bias in 1.08). Two limits are permanent, and they are
+  the Shift-Lead weekend-close bias in 1.08; position-scoped runs in 1.14; and in 1.15
+  the six labor rules on the canonical fortnight of §7a, the independent read-time
+  validator, below-min-hours and late-start warnings, and the per-run statistics behind
+  the Schedule health section). Two limits are permanent, and they are
   what keep the boundary meaningful:
   output is **advisory** (the scheduler may ignore any of it, and nothing student-facing
   is gated on it), and it is **admin-only** (recommendations are never shown to
@@ -1537,11 +1546,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
        20     837      67        34      0.5102       5        0        0   1695.0    283.2      17
   ```
 
-  The rule applied was fixed before the numbers were read: take the **smallest**
-  penalty improving at least two of {modal-start share, welded, lockstep people,
-  spread} by more than 2% relative (or by more than one person where the metric
-  counts people), provided seats filled drop by no more than 0.5% and neither
-  shortfall counter rises. Only **20** qualifies. It clears two metrics outright
+  The rule applied was fixed before the numbers were read: take the **smallest on
+  the swept ladder {0, 2, 5, 10, 20}** penalty improving at least two of
+  {modal-start share, welded, lockstep people, spread} by more than 2% relative
+  (or by more than one person where the metric counts people), provided seats
+  filled drop by no more than 0.5% and neither shortfall counter rises. "Smallest"
+  is a claim about that ladder and nothing else: nothing between 11 and 19 was
+  ever measured. Only **20** qualifies. It clears two metrics outright
   (lockstep people 2 to 0, spread 1755 to 1695, a 3.4% tightening) and costs
   nothing anywhere else: seats went **up**, 832 to 837, and students short of
   target fell from 69 to 67. Penalty 2 improves only `welded`; 5 improves nothing
@@ -1549,9 +1560,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   at this roster size, which is the honest reading: the penalty is a tie-breaker
   that stops the engine defaulting to identical days, not a leveling mechanism.
   The synthetic 400-student population (`npm run dev:tune-params` with no
-  snapshot, the CI-safe path) agrees that 20 qualifies and shows the effect more
-  strongly, since a larger population produces far more welding to break up:
-  modal-start share 0.516 to 0.443 and welded 22 to 8.
+  snapshot, the CI-safe path) qualifies 20 but does **not** choose it. Under the
+  same rule 5, 10 and 20 all qualify there, so its own smallest-wins tie-break
+  lands on **5**, which is what the script's final line prints. Twenty shows the
+  effect far more strongly on that population (modal-start share 0.516 to 0.443,
+  welded 22 to 8, since a larger roster produces far more welding to break up),
+  but it also **widens** the spread there, to 1725 against 1665 at both 5 and 10
+  and 1680 at the baseline, and leaves lockstep people at 6 against 4 at both 5
+  and 10. **Production selects 20 and production governs**, because it is the real
+  roster and the real availability shape.
+  **Two admin-side changes rode along on this release.** (1) The response list's
+  show-unsubmitted checkbox became a five-option **submission-state select**
+  (Responses, Submitted, Drafts, No submission, Everyone), so the three-way status
+  the list already computed is finally filterable in its own right rather than
+  through one all-or-nothing switch. The old `all=1` URL still parses as a legacy
+  alias for `status=all`, so saved filter links keep working, and the **default view
+  is unchanged**. (2) A **local-midnight timezone bug in the responses started-date
+  filter** (`matchesStarted`) is fixed: it read the hire date's calendar day through
+  `toISOString`, the UTC frame, while the driver hands that `date` column back at
+  LOCAL midnight, so on a UTC-positive host the comparison could match a day early.
+  It now reads the day with local getters, the same shape as the late-start fix
+  above and the `localDay` fix in `run-warnings.ts`.
   Still not modeled, deliberately: **events and cohort blackouts** (roadmap 5.6).
   A freshman event that removes every first-year student for part of one specific
   day cannot constrain a dateless weekly template, and deciding how a dated

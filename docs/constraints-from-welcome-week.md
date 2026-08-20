@@ -21,8 +21,10 @@ enforcement of most of it.
 2026-07-30) and never integrates with W2W programmatically. So "honor" below
 means *either* enforce in a pass *or* surface as a validation flag the scheduler
 sees — an advisory tool that quietly emits a clopen or a split shift still costs
-someone a real complaint. None of these are built here today; this is the
-checklist, worst-consequence-first.
+someone a real complaint. None of these were built here when this file was
+imported (2026-08-18); `docs/generator-constraints-fairness-plan.md` records what
+has since shipped against it. This file remains the source checklist,
+worst-consequence-first.
 
 ---
 

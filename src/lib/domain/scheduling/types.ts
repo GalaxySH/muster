@@ -157,7 +157,7 @@ export interface EngineReport {
    * Students whose hire date falls after their position went back to work, so
    * the template's earliest shifts cannot be theirs. Stamped by the caller, not
    * the engine, which has no clock and no dates (see `returners`). Absent on
-   * pre-1.14 stored runs; an empty list means the run found none.
+   * pre-1.15 stored runs; an empty list means the run found none.
    */
   lateStarts?: LateStartWarning[];
 }

@@ -430,7 +430,7 @@ hand. Layering in `docs/architecture.md` (Schedule generation). Shipped:
 
 - **Six labor rules on a canonical fortnight calendar**
   (`domain/scheduling/labor.ts`). The repo had never pinned which Saturday pairs
-  with which Sunday; it now does, and PLAN §7 carries the authoritative reading.
+  with which Sunday; it now does, and PLAN §7a carries the authoritative reading.
   Day hours, the 40h W2W week (payroll law, a constant rather than a knob),
   consecutive days, days per week, clopen rest, and split shifts. Soft rules
   relax through a `strict` then `relax-rest` then `relax-days` ladder composed

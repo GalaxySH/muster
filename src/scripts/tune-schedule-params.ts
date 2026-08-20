@@ -27,7 +27,10 @@
  *   is deliberate rather than shared.
  *
  * Determinism is checked, not assumed: every penalty runs TWICE and the two
- * runs' assignments and reports are compared before either is reported.
+ * runs' assignments and reports are compared before either is reported. If any
+ * pair differs the script exits NON-ZERO and chooses no value: the table still
+ * prints, marked untrustworthy, but a sweep that cannot reproduce itself is not
+ * evidence for a default.
  */
 import { readFileSync } from "node:fs";
 import { applyInternalOverrides, type InternalCopy } from "../lib/availability/effective";
@@ -190,7 +193,7 @@ function snapshotPopulation(path: string): Population {
 
   // Retired blocks never enter a run (actions.ts filters them in SQL).
   const blockRows: ShiftBlockRow[] = t.shift_blocks
-    .filter((r) => r.retired_at === null)
+    .filter((r) => strOrNull(r.retired_at) === null)
     .map((r) => ({
       id: str(r.id),
       positionId: str(r.position_id),
@@ -575,6 +578,14 @@ interface MetricVerdict {
   improved: boolean;
 }
 
+/**
+ * Known small-count fragility, stated so a re-run on a different roster weighs
+ * it: because the two branches are OR'd, a COUNT metric moving by a single
+ * person can still qualify through the >2% relative branch, which is exactly
+ * what the >1-person absolute branch was written to reject. One person out of a
+ * base of 5 reads as 20% (production's `welded` 5 to 4 scored precisely that).
+ * The smaller the baseline count, the more a one-person swing is flattered.
+ */
 function judgeMetric(name: string, base: number, value: number, isCount: boolean): MetricVerdict {
   const relative = base === 0 ? 0 : (base - value) / base;
   const improved =
@@ -582,7 +593,7 @@ function judgeMetric(name: string, base: number, value: number, isCount: boolean
   return { name, base, value, relative, improved };
 }
 
-function evaluate(rows: readonly Row[]): number {
+function evaluate(rows: readonly Row[], trustworthy: boolean): number {
   const base = rows[0]!;
   console.log("");
   console.log(`Decision rule against penalty ${base.penalty} as the baseline.`);
@@ -628,12 +639,22 @@ function evaluate(rows: readonly Row[]): number {
   }
 
   console.log("");
-  if (chosen === base.penalty) {
+  if (!trustworthy) {
+    // A sweep that cannot reproduce itself cannot choose anything, so the
+    // verdict line is withheld rather than printed with a caveat beside it.
+    console.log("NO VALUE CHOSEN: at least one penalty differed between its two runs, so");
+    console.log("the table above decides nothing. Fix the nondeterminism and re-run.");
+  } else if (chosen === base.penalty) {
     console.log(
-      `No penalty qualified. repeatStartPenalty stays ${base.penalty} (the shipped default).`,
+      `No penalty qualified against the sweep baseline ${base.penalty}. ` +
+        `repeatStartPenalty stays at its shipped default, ` +
+        `${DEFAULT_SCHEDULING_PARAMS.repeatStartPenalty}.`,
     );
   } else {
-    console.log(`Chosen repeatStartPenalty: ${chosen} (smallest qualifying value).`);
+    console.log(
+      `Chosen repeatStartPenalty: ${chosen} ` +
+        `(smallest qualifying value on the swept ladder ${PENALTIES.join(", ")}).`,
+    );
   }
   return chosen;
 }
@@ -671,14 +692,19 @@ function main(): void {
     });
   }
 
+  // The table still prints when a run differed, clearly marked untrustworthy, so
+  // whoever is debugging the nondeterminism can see what it produced. But the
+  // process fails and no value is chosen from it.
+  const trustworthy = rows.every((r) => r.deterministic);
   printTable(rows);
   console.log("");
   console.log(
-    rows.every((r) => r.deterministic)
+    trustworthy
       ? "Determinism: every penalty ran twice and both runs matched exactly."
-      : "Determinism: AT LEAST ONE PENALTY DIFFERED BETWEEN RUNS.",
+      : "Determinism: AT LEAST ONE PENALTY DIFFERED BETWEEN RUNS. Table is untrustworthy.",
   );
-  evaluate(rows);
+  if (!trustworthy) process.exitCode = 1;
+  evaluate(rows, trustworthy);
 }
 
 main();

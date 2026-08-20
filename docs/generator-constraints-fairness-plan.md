@@ -77,7 +77,7 @@ Consequences worth stating because they are not obvious:
 | Rule | Severity | Evaluation on the fortnight |
 |---|---|---|
 | ≤8h merged day span | hard | per template day, applied unconditionally; this retires the old engine's allowance for a lone over-cap block to stand on its day (a configured block longer than the cap is now never assignable, so P3 adds a config-time warning naming it) |
-| ≤40h W2W week | hard **constant** (payroll law, not a knob) | per fortnight half; unreachable for engine-placed rows (target ≤30h cycle-averaged) — exists for frozen/manual rows and the validator |
+| ≤40h W2W week | hard **constant** (payroll law, not a knob) | per fortnight half. Engine-placed rows cannot reach it because `candidateAllowed` checks each half's minutes on every placement (`labor.ts`), *not* because the ≤30h cycle-averaged target implies it: the fill loop can overshoot a target by a block, and a weekend-heavy realized half can sit well above the cycle average. It also exists for frozen/manual rows, which no engine check ever saw, and for the validator |
 | ≤5 consecutive days | hard, param default 5 | longest cyclic run of occupied slots over the 14-cycle |
 | ≤6 days per W2W week hard, 5 soft | params | occupied-slot count per half |
 | No clopen: 8h floor hard, 10h preferred soft | params | each cyclically adjacent occupied pair: `firstStart(next) + 1440 − lastEnd(prev)` |
@@ -114,7 +114,9 @@ student the ladder cannot seed or fill lands in the warnings
   versioned `RunStats` stored as `report.stats`:
   - *fairness*: weekly-minutes percentiles, mean, pstdev, spread; per-person
     realized-week max (of the two halves); over-cap counts; modal-start share
-    (mean + "welded" count at share 1.0); lockstep (identical
+    (mean + a "welded" count of people working **two or more** days whose merged-day
+    starts are all identical, so a one-day person sitting at share 1.0 is excluded);
+    lockstep (identical
     `(day, blockId, cohort)` signatures shared by ≥2 people);
     alphabetical-rank↔hours Pearson r.
   - *stretch*: cyclic consecutive-days histogram (the 12/14 buckets exist) +
@@ -230,7 +232,7 @@ All phases are shipped. P0 (not a row below) imported
 | **P1** | ✅ done | `labor.ts` + tests, params fields + form. No engine wiring; nothing behavioral changes. | Adversarial review: fortnight mapping proof, 13→0 seam, symmetry counterexample hunt, soft/hard classification vs the one-off table, midnight rest math, param cross-field validation. |
 | **P2** | ✅ done | Engine/improve/manual integration, relax ladder, repeat-start penalty (default 0), hashed orderings, `laborRelaxed`. Synthetic before/after numbers in the commit message. | Review: weakened-test hunt, ladder ordering vs deferred, cohort canonicalization, frozen leakage, improve termination, double-run determinism, measured perf. |
 | **P3** | ✅ done | Independent `validate.ts` + tests (author does not read `labor.ts`), `belowMinHours`, late-start warnings, problems/data/UI wiring, and a config-time warning for blocks longer than the day cap (the engine can never fill one; the admin must learn why from `/admin/positions`, not from a silent shortfall). | Review: run P1's scenarios through the validator and diff verdicts; frozen/manual attribution; post-run manual edits; date-string math; old-run compat. |
-| **P4** | ✅ done | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. Also (owner, 2026-08-19): the response list's show-unsubmitted checkbox becomes a submission-state filter in `response-filters.ts` and the filter bar. One `status` dropdown: Responses (default, submitted + draft, missing hidden, today's default view unchanged), Submitted, Draft, No submission, Everyone. The old `all=1` URL keeps parsing as Everyone so saved filter links survive; serialization emits the new param. The review (scheduled) filter is unchanged and composes as before. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges; filter parse/apply/serialize round-trip incl. the `all=1` alias, and the default view staying byte-identical. |
+| **P4** | ✅ done | `stats.ts`, pool param, `schedule-health-view.ts`, `ScheduleHealth` section. Also (owner, 2026-08-19): the response list's show-unsubmitted checkbox becomes a submission-state filter in `response-filters.ts` and the filter bar. One `status` dropdown: Responses (default, submitted + draft, missing hidden, today's default view unchanged), Submitted, Drafts, No submission, Everyone. The old `all=1` URL keeps parsing as Everyone so saved filter links survive; serialization emits the new param. The review (scheduled) filter is unchanged and composes as before. | Review: metric definitions vs the one-off scripts, pool arithmetic, `newLeadSolo` alarm, summaryJson size, empty/absent-stats edges; filter parse/apply/serialize round-trip incl. the `all=1` alias, and the default view staying byte-identical. |
 | **P5** | ✅ done | Docs (this doc's statuses, `schedule-generation-plan.md` §3.6/§3.7, `architecture.md`, PLAN §5/§7/§9 + changelog, roadmap), `src/scripts/tune-schedule-params.ts`, tuned `repeatStartPenalty` default. Tuning runs against a read-only snapshot of production availability (pulled over SSH with SELECT-only queries; the snapshot file holds student emails, so it lives outside the repo and is never committed), with the synthetic generator as the CI-side fallback. Full suite + lint + build. | Whole-branch review: doc/code drift, PLAN §7 consistency, changelog honesty, no smuggled expectation changes in the tuning commit. |
 
 ## 8. Verification
@@ -294,10 +296,22 @@ seats filled drop by no more than 0.5% relative and neither `shortOfTarget` nor
 lockstep people; **20 improves two** (lockstep people 2 to 0, spread 1755 to
 1695, 3.4% tighter) and violates no guard, since seats rose from 832 to 837 and
 `shortOfTarget` fell from 69 to 67. **`repeatStartPenalty` therefore ships at
-20.** The synthetic population independently agrees that 20 qualifies, and shows
-the effect far more strongly (modal-start share 0.516 to 0.443, welded 22 to 8),
-because a 400-person roster gives the engine much more to weld in the first
-place.
+20.**
+
+**The synthetic population does not independently choose 20, and the honest
+statement is that it chooses 5.** Under the same mechanical rule its sweep
+qualifies **5, 10, and 20**, so its own smallest-wins tie-break lands on 5: run
+with no flags (the CI-safe path), the script's final line prints `Chosen
+repeatStartPenalty: 5`. Twenty is also the qualifying synthetic value that comes
+off worst against its smaller rivals on two of the four metrics: spread **widens**
+to 1725, against 1665 at both 5 and 10 and 1680 at the baseline, and lockstep
+people land at 6 against 4 at both 5 and 10 (still a fall from the baseline's 7,
+but the smallest one on offer). What 20 does show on synthetic is a much stronger effect on the
+metrics it improves (modal-start share 0.516 to 0.443, welded 22 to 8), because
+a 400-person roster gives the engine far more to weld in the first place.
+**Production selects 20, and production governs**: it is the real roster and the
+real availability shape, while the synthetic population is a CI-safe stand-in
+whose size and density are invented.
 
 The honest caveat: on a 172-student roster, `welded` and `lockstep` are single
 digits, so the rule is deciding on small counts. The penalty is a tie-breaker
@@ -306,7 +320,7 @@ the table should be re-run whenever the roster changes size materially.
 
 ### 9.2 Known deferred items
 
-Two things this branch knowingly did not do. Both are recorded here rather than
+Three things this branch knowingly did not do. All are recorded here rather than
 left for a later reader to rediscover.
 
 1. **`src/lib/flow/returner.ts` carries the same latent timezone hazard class
@@ -323,7 +337,19 @@ left for a later reader to rediscover.
    ordering on every run and changing it belongs in a commit whose whole subject
    is that change. The blast radius today is limited to students hired exactly on
    a June 1.
-2. **Event and blackout modeling is deferred entirely** (roadmap 5.6,
+2. **`labor.ts` and `validate.ts` deliberately disagree on one input class no
+   app path can produce.** A weekend-day row (sat or sun) carrying cohort
+   `"weekday"` maps differently in the two modules: `labor.ts`'s `slotIndices`
+   falls through its cohort switch to rotation A's slots (sun to 7, sat to 6),
+   while `validate.ts`'s `slotsForRow` tests `cohort === "weekday"` before its
+   weekend-day guard and so maps the row to both halves. Nothing in the app can
+   build that row: the engine only ever stamps `"weekday"` on Mon..Fri, and the
+   manual editor derives the cohort from the day. It is reachable only from a
+   hand-written database row. This is **recorded rather than reconciled on
+   purpose**: `validate.ts` was written blind against the spec, and editing it to
+   agree with a module its author never read would spend the byte-identity that
+   makes a real divergence meaningful evidence of a bug.
+3. **Event and blackout modeling is deferred entirely** (roadmap 5.6,
    `constraints-from-welcome-week.md` §3). A freshman event that takes a whole
    cohort out for part of one specific day cannot constrain a dateless repeating
    template, and how a dated blackout should project onto that template is

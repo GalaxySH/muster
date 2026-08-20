@@ -1176,8 +1176,12 @@ The generator itself, layered exactly like the rest of the app:
   (`generateAssignments`: FCFS by `submittedAt`, freeze carry-forward for
   students marked scheduled, weekend-first seeding to the position's minimum
   day span, open-days-first filling under the tunable day cap, targeted-first
-  cell choice ranked by pull = need + tier bonus so late cells run ahead
-  instead of soaking up every seat, cohort balancing by assigned weekend
+  cell choice ranked by pull = need + tier bonus for a targeted cell and the
+  tier bonus alone for an untargeted one, minus the repeat-start penalty
+  (`repeatStartPenalty`/100 times the cells the student already holds at that
+  start time), so late cells run ahead instead of soaking up every seat and a
+  week of identical start times stops being the cheapest thing to build;
+  cohort balancing by assigned weekend
   load), and `improve.ts` (bounded same-day relocation accepted when the
   destination's pull beats the vacated cell's, evaluated with the seat lifted
   out; never drops hours, never grows a day count, never touches frozen
@@ -1414,7 +1418,7 @@ version; this is the seam map.
   from at most 7 map entries and never a minute timeline. Its header carries the
   symmetry proof that lets a null cohort evaluate canonically as `"a"`, so the
   predicate never depends on the ledger's later cohort-balance choice. Shared by
-  the engine, the improvement pass, and manual edits; PLAN §7 records the same
+  the engine, the improvement pass, and manual edits; PLAN §7a records the same
   calendar as the authoritative reading.
 - **`domain/scheduling/validate.ts`** is the independent read-time validator and
   a **deliberate second derivation**, written from the spec by an author who did

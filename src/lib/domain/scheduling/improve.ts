@@ -10,9 +10,11 @@
  * within the student's selections and the same day (so the min-days
  * concentration and the daily cap survive), never lowers the student's covered
  * hours, keeps every shift on the day contributing unique time, never touches
- * a student marked scheduled, and obeys the labor rules (./labor.ts): the
- * moved week must end up with no hard violation and no more soft violations
- * than it has now. The labor check only FILTERS moves, it never scores them,
+ * a student marked scheduled, and obeys the labor rules (./labor.ts) as a
+ * COUNT-PRESERVING diff rather than an absolute bar: a move may never add a
+ * net-new hard violation nor raise the soft count, but a week that already
+ * carries hard violations (only ever from carried state) may keep them. The
+ * labor check only FILTERS moves, it never scores them,
  * so the termination argument is untouched. Deterministic
  * first-improvement order with a fixed round cap; each move strictly raises
  * the weighted-coverage objective, so the pass always terminates.
