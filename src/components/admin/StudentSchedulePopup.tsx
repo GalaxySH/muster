@@ -15,6 +15,7 @@ import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import type { StudentGridRow, StudentGridSub } from "@/lib/admin/student-schedule-view";
 import { DAY_LABEL } from "@/lib/domain/types";
 import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-ui";
+import { placeHoverCard, type Rect } from "./hover-placement";
 
 function useStudentSchedule(email: string) {
   const [view, setView] = useState<StudentScheduleView | null>(null);
@@ -88,9 +89,10 @@ const HOVER_MARGIN = 8;
  * detach it from its anchor, so any scroll or resize simply closes it.
  *
  * Placement is measured, not guessed: the card renders hidden, a layout
- * effect reads its real size, and the position clamps fully inside the
- * viewport (flush below the name, else flush above, else pinned within),
- * re-clamping when the loading line swaps for the grid and the height jumps.
+ * effect reads its real size, and ./hover-placement.ts decides where it goes,
+ * re-running when the loading line swaps for the grid and the height jumps.
+ * That module keeps the card off the anchor, so a tall card never lands on the
+ * cursor and eats the click on the name being hovered.
  */
 export function StudentScheduleHover({
   email,
@@ -99,7 +101,7 @@ export function StudentScheduleHover({
   email: string;
   children: React.ReactNode;
 }) {
-  const [anchor, setAnchor] = useState<{ top: number; bottom: number; left: number } | null>(null);
+  const [anchor, setAnchor] = useState<Rect | null>(null);
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const wrap = useRef<HTMLSpanElement | null>(null);
   const card = useRef<HTMLSpanElement | null>(null);
@@ -137,20 +139,14 @@ export function StudentScheduleHover({
   useLayoutEffect(() => {
     const el = card.current;
     if (!el || !anchor) return;
-    const h = el.offsetHeight;
-    const w = el.offsetWidth;
-    // Flush against the anchor when it fits, so mousing down into the card
-    // never crosses a gap that would fire the wrapper's mouseleave; otherwise
-    // flush above; a viewport with room for neither pins it fully inside.
-    let top = anchor.bottom;
-    if (top + h > window.innerHeight - HOVER_MARGIN) top = anchor.top - h;
-    top = Math.max(HOVER_MARGIN, Math.min(top, window.innerHeight - HOVER_MARGIN - h));
-    const left = Math.max(
+    const { left, top } = placeHoverCard(
+      anchor,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight },
       HOVER_MARGIN,
-      Math.min(anchor.left, window.innerWidth - HOVER_MARGIN - w),
     );
     setPlace({ left, top });
-    // Re-clamp when the content swaps (Loading to grid) and the height jumps.
+    // Re-place when the content swaps (Loading to grid) and the height jumps.
   }, [anchor, state.view, state.error]);
 
   const enter = () => {
@@ -160,7 +156,12 @@ export function StudentScheduleHover({
     timer.current = window.setTimeout(() => {
       const rect = wrap.current?.getBoundingClientRect();
       if (!rect) return;
-      setAnchor({ top: rect.top, bottom: rect.bottom, left: rect.left });
+      setAnchor({
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+      });
     }, 150);
   };
 
