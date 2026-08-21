@@ -9,13 +9,14 @@
  * each other (they claim no need).
  */
 import { AB_WEEKEND_FACTOR } from "../capacity";
-import { latenessTier } from "../coverage";
+import { hourCap } from "../caps";
+import { assignedCellCount, latenessTier } from "../coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
 import type { TimeRange } from "../time";
-import { ALL_DAYS, dayTypeOf, type Day, type ShiftBlock } from "../types";
+import { ALL_DAYS, dayTypeOf, type Day, type Position, type ShiftBlock } from "../types";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
-import type { Cohort } from "./types";
+import type { Cohort, ScheduleStudent } from "./types";
 
 /** The default day ceiling in engine units (DEFAULT_SCHEDULING_PARAMS.dayCapHours). */
 export const DAY_CAP_MINUTES = DEFAULT_SCHEDULING_PARAMS.dayCapHours * 60;
@@ -53,6 +54,17 @@ export function tierBonus(block: ShiftBlock, params: SchedulingParams): number {
   const priority =
     tier === "night" ? params.nightPriority : tier === "evening" ? params.eveningPriority : 0;
   return priority / 100;
+}
+
+/**
+ * The engine's per-student hour goal: desired hours clamped to floor and cap.
+ * Lives here rather than in ./engine.ts so the passes that run after placement
+ * (./improve.ts, ./anneal.ts) can read a student's target without importing the
+ * engine that calls them.
+ */
+export function targetMinutes(student: ScheduleStudent, position: Position): number {
+  const desired = student.desiredHours ?? position.minHours;
+  return Math.max(Math.min(desired, hourCap(student.international)), position.minHours) * 60;
 }
 
 /** Weekday covered minutes plus cycle-factored weekend covered minutes. */
@@ -116,6 +128,35 @@ export class SeatLedger {
     if (cohort === "b") return c.b < cap;
     if (cohort === "every") return c.a < cap && c.b < cap;
     return c.a < cap || c.b < cap;
+  }
+
+  /**
+   * Seats this cell contributes to the run's graded fill: its assigned count,
+   * capped at its own target. Weekend cells grade on the needier rotation week,
+   * since each real weekend day is worked by one cohort plus the every-weekend
+   * students and the target must hold in both. Untargeted cells contribute
+   * nothing, because there is no target to fill.
+   *
+   * `assignedCellCount` is imported rather than restated so this is the SAME
+   * measure `stats.ts` reports as `filledOfTarget`. Any pass that optimizes
+   * fill must move this number, not a private approximation of it.
+   */
+  gradedFill(block: ShiftBlock, day: Day): number {
+    const cap = block.desiredCapacity;
+    if (cap == null) return 0;
+    return Math.min(assignedCellCount(block.dayType, this.cell(block.id, day)), cap);
+  }
+
+  /**
+   * The rotation week carrying fewer people on this cell; ties go to "a".
+   * A weekend cell is graded on its needier week, so a student joining the
+   * fuller one adds nothing to the run. Which week they join never changes
+   * what the labor rules say (labor.ts symmetry lemma), so this is purely a
+   * capacity choice.
+   */
+  emptierWeek(blockId: string, day: Day): "a" | "b" {
+    const c = this.cell(blockId, day);
+    return c.b < c.a ? "b" : "a";
   }
 
   /** Which rotation weeks still have room in this cell. */

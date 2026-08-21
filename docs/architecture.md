@@ -1555,6 +1555,73 @@ the validator against the run's snapshotted params and extends
 `components/admin/ScheduleHealth.tsx` renders the view model.
 Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
+### The annealing pass (docs/generator-anneal-plan.md, v1.20)
+
+**A third pass, not a replacement.** `domain/scheduling/anneal.ts` runs inside
+`generateAssignments` between `improveAssignments` and the fill-in placement, and
+the fill-in pass now places against **its** ledger. The ordering is the same
+guarantee as before: fill-ins still only take what everyone else left.
+
+**What it does that no earlier pass could.** `improve.ts` relocates one student
+within one day. This pass exchanges seats **between** students: it can move A off
+a cell so B can take it. That is the difference between the two, and it is the
+whole reason the pass exists, since no reordering of the greedy pass reaches
+those trades (measured: ordering heuristics and random restarts plateau near 67%
+of target seats, the pass reaches 75%).
+
+**It ships off.** `annealIterations` defaults to 0. A run generated with it off
+is byte-identical to one generated before the pass existed (pinned by a test),
+and setting the knob back to 0 is the kill switch.
+
+**Reading the module, the load-bearing choices are:**
+
+- **The objective is `stats.ts`'s `filledOfTarget`, not a copy of it.**
+  `SeatLedger.gradedFill` (new, in `seats.ts`) imports `assignedCellCount` from
+  `domain/coverage.ts`, so weekend cells grade on the needier rotation week
+  exactly as every other surface grades them. A test pins the pass's own
+  `gainedSeats` to an independent recomputation. An early prototype optimized a
+  laxer week-seat count and quietly disagreed with the admin views; that is the
+  failure this seam exists to prevent.
+- **The feasibility oracle is `labor.ts`, deliberately not `validate.ts`.** The
+  independent validator's value is that it was written blind to the engine side;
+  wiring it into generation would spend that. It keeps judging annealed rows at
+  read time, and the pass's own tests assert against it, which is where a bug in
+  the pass would surface.
+- **The FCFS floor is the fairness model.** Each student carries
+  `floorMinutes = min(seed minutes, target)`, plus a day floor, plus "keeps a
+  weekend day if the seed gave them one". Since greedy serves earlier responders
+  first, protecting the seed's hours protects early responders by construction,
+  with no ordering bookkeeping. An FCFS weight on hours-toward-target breaks
+  remaining ties toward earlier submitters. Which *cells* someone holds is no
+  longer an FCFS entitlement.
+- **Determinism comes from a fixed iteration count**, never a time budget
+  (`mulberry32`, seed and rounds both snapshotted into `report.anneal`). Wall
+  time may vary by machine; the schedule may not, or the diff view, restore, and
+  the tuning harness lose their footing.
+- **Rotations are half open.** A student greedy already placed on a weekend keeps
+  that rotation for the whole search. A student greedy left off the weekend has
+  no rotation, and so could take no weekend cell at all; the pass hands those
+  students one the first time it places them on a weekend, always the emptier
+  week of that cell (`SeatLedger.emptierWeek`). Which week never changes what
+  `labor.ts` says, by its own symmetry lemma, so the choice is purely about
+  capacity. The best-seen snapshot carries each student's rotation alongside
+  their cells, since the two can now disagree with wherever the walk ended.
+  Re-rotating a student greedy already placed is the deferred half (plan §8);
+  it holds an 18-seat upper bound on the current run, where the half that
+  shipped measured at zero seats and instead cut the students with no weekend
+  at all from 9.2 to 5.2.
+- **The run report's per-student rotation is read off the final rows**, not the
+  greedy pass's own state, which the pass can now leave stale. Same reason the
+  report already rebuilds per-student coverage from the final rows.
+- **`targetMinutes` moved from `engine.ts` to `seats.ts`** (re-exported, so
+  callers are unchanged): the passes that run after placement need a student's
+  target without importing the engine that calls them.
+
+`labor.ts` is judged against the seed's violation counts rather than absolutely.
+For every student the pass may touch, engine output is hard-clean, so that reads
+as "no hard violations, ever"; phrasing it as a baseline keeps it true without
+assuming it, and makes the bar fixed rather than drifting.
+
 ## W2W shift-plan round-trip (roadmap 5.3, `docs/w2w-shift-plan-roundtrip.md`, v1.09)
 
 The scheduler's W2W week export is the budgeted seat plan; Muster fills it and

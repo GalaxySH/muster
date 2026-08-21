@@ -40,11 +40,11 @@
  * pass has settled everyone else, against the seats those final rows left, so
  * adding them never changes another student's schedule.
  */
-import { hourCap } from "../caps";
 import { demandCellKey } from "../demand";
 import { coveredMinutes, redundantRangeIndex } from "../intervals";
 import type { TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
+import { annealAssignments } from "./anneal";
 import { improveAssignments } from "./improve";
 import { candidateAllowed, laborLimits, type LaborLimits, type LaborMode } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
@@ -56,6 +56,7 @@ import {
   averagedAssignedMinutes,
   byEmail,
   byHashedEmail,
+  targetMinutes,
   tierBonus,
 } from "./seats";
 import type {
@@ -67,13 +68,7 @@ import type {
   StudentScheduleReport,
 } from "./types";
 
-export { DAY_CAP_MINUTES } from "./seats";
-
-/** The engine's per-student hour goal: desired hours clamped to floor and cap. */
-export function targetMinutes(student: ScheduleStudent, position: Position): number {
-  const desired = student.desiredHours ?? position.minHours;
-  return Math.max(Math.min(desired, hourCap(student.international)), position.minHours) * 60;
-}
+export { DAY_CAP_MINUTES, targetMinutes } from "./seats";
 
 const fcfsTime = (s: ScheduleStudent) =>
   s.submittedAt ? s.submittedAt.getTime() : Number.MAX_SAFE_INTEGER;
@@ -209,22 +204,39 @@ export function generateAssignments(input: EngineInput): EngineResult {
 
   const improved = improveAssignments(assignments, input.students, input.blocks, params, deferred);
 
-  // Fill-ins go in only once the improvement pass has settled everyone else, so
+  // Then the annealing pass, which exchanges seats BETWEEN students: it can
+  // move one student off a cell so another can take it, which the improvement
+  // pass cannot do (it relocates one student inside one day). Off unless an
+  // admin sets the rounds, and it never returns a schedule scoring below the
+  // one it was handed. See ./anneal.ts.
+  const annealed = annealAssignments(
+    improved.assignments,
+    input.students,
+    input.positions,
+    input.blocks,
+    params,
+    deferred,
+  );
+
+  // Fill-ins go in only once every other pass has settled everyone else, so
   // they can never take a seat a responder would have moved into. They run
   // against the ledger those final rows left behind. The weekend load carried
   // over from placement stays good enough to balance their rotations, since it
   // only breaks ties between the A and B weeks.
   const fillInRows: ScheduleAssignment[] = [];
   for (const student of active.filter((s) => s.fillIn)) {
-    fillInRows.push(...place(student, improved.ledger));
+    fillInRows.push(...place(student, annealed.ledger));
   }
-  const finalAssignments = [...improved.assignments, ...fillInRows];
+  const finalAssignments = [...annealed.assignments, ...fillInRows];
 
-  // Rebuild per-student coverage from the final rows so reports reflect any
-  // relocations the improvement pass made.
+  // Rebuild per-student coverage and rotation from the final rows, so reports
+  // reflect the relocations the improvement pass made and the rotation the
+  // annealing pass hands a student greedy left off the weekend.
   const finalRanges = new Map<string, Map<Day, TimeRange[]>>();
+  const finalCohorts = new Map<string, Exclude<Cohort, "weekday">>();
   for (const row of finalAssignments) {
     const block = blockById.get(row.blockId)!;
+    if (row.cohort !== "weekday") finalCohorts.set(row.studentEmail, row.cohort);
     let byDay = finalRanges.get(row.studentEmail);
     if (!byDay) {
       byDay = new Map();
@@ -255,7 +267,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       targetMinutes: state.target,
       assignedMinutes: assigned,
       daysUsed: ranges.size,
-      cohort: state.cohort,
+      cohort: finalCohorts.get(state.student.email) ?? null,
       frozen: false,
       fillIn: state.student.fillIn === true,
     });
@@ -273,6 +285,18 @@ export function generateAssignments(input: EngineInput): EngineResult {
       belowMinHours,
       params,
       laborRelaxed: { students: states.filter((s) => s.relaxed).length },
+      // Only when the pass actually ran, so a run made with it off is
+      // indistinguishable from one made before it existed.
+      ...(params.annealIterations > 0
+        ? {
+            anneal: {
+              seed: params.annealSeed,
+              iterations: params.annealIterations,
+              gainedSeats: annealed.gainedSeats,
+              trimmedStudents: annealed.trimmedStudents,
+            },
+          }
+        : {}),
     },
   };
 }

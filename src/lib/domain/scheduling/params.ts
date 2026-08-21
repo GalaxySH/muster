@@ -38,6 +38,28 @@ export interface SchedulingParams {
   /** Days per week the engine aims for; up to the max is a last resort. */
   preferredDaysPerWeek: number;
   /**
+   * Iterations of the annealing pass (./anneal.ts, docs/generator-anneal-plan.md).
+   * 0 switches it off entirely, which is the default: the pass ships dark, and
+   * setting this back to 0 is its kill switch.
+   *
+   * Iterations, never a time budget. Wall time may vary with the machine; the
+   * schedule may not, and a fixed count is what keeps "same inputs reproduce
+   * the same run" true for the diff view, restore, and the tuning harness.
+   */
+  annealIterations: number;
+  /**
+   * PRNG seed for that pass. Snapshotted per run with the rest of these knobs,
+   * so a run stays reproducible even if the stored seed changes later.
+   *
+   * Seeds are near-equivalent on coverage: swept 1..8 against the 2026-08-20
+   * production snapshot, every one landed 822-825 of 1094 seats at every round
+   * count tried. What moves is which students end up short, and only by a few
+   * (20 to 25 below their hour floor across the sweep), so the shipped 3 is the
+   * best of a close field on one roster rather than a discovered optimum.
+   * Worth re-sweeping when the roster changes size materially.
+   */
+  annealSeed: number;
+  /**
    * Positions that cover for each other, so a returner on one is real backup
    * for the other. Read only by the run statistics (./stats.ts), which measure
    * them as a single floor; the engine never looks at this. Ids that no longer
@@ -64,6 +86,8 @@ export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = Object.freeze({
   maxConsecutiveDays: 5,
   maxDaysPerWeek: 6,
   preferredDaysPerWeek: 5,
+  annealIterations: 0,
+  annealSeed: 3,
   coveragePoolPositionIds: Object.freeze(["culinary-assistant", "cashier"]) as string[],
 });
 
@@ -81,6 +105,15 @@ export const MAX_DAYS_PER_WEEK_MIN = 1;
 export const MAX_DAYS_PER_WEEK_MAX = 7;
 /** Preferred days' ceiling is the maxDaysPerWeek value. */
 export const PREFERRED_DAYS_PER_WEEK_MIN = 1;
+export const ANNEAL_ITERATIONS_MIN = 0;
+/**
+ * A ceiling, not a recommendation. The pass plateaus long before this on real
+ * data (a 6.7x longer run bought one seat), so the cap only exists to stop a
+ * typo turning one generation into a very long wait.
+ */
+export const ANNEAL_ITERATIONS_MAX = 5_000_000;
+export const ANNEAL_SEED_MIN = 1;
+export const ANNEAL_SEED_MAX = 2_147_483_647;
 
 /** True when the value is fractional or outside [min, max]. */
 const invalid = (value: number, min: number, max: number) =>
@@ -117,6 +150,12 @@ export function validateSchedulingParams(p: SchedulingParams): string | null {
   }
   if (p.preferredDaysPerWeek > p.maxDaysPerWeek) {
     return "Preferred days per week cannot be higher than max days per week.";
+  }
+  if (invalid(p.annealIterations, ANNEAL_ITERATIONS_MIN, ANNEAL_ITERATIONS_MAX)) {
+    return `Optimizer rounds must be a whole number from ${ANNEAL_ITERATIONS_MIN} to ${ANNEAL_ITERATIONS_MAX}.`;
+  }
+  if (invalid(p.annealSeed, ANNEAL_SEED_MIN, ANNEAL_SEED_MAX)) {
+    return `Optimizer seed must be a whole number from ${ANNEAL_SEED_MIN} to ${ANNEAL_SEED_MAX}.`;
   }
   // Runtime shape check, not just a type: this arrives from stored JSON and
   // from the form. Unknown ids are fine (they match no position), a value that
