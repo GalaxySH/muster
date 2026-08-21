@@ -50,6 +50,9 @@ module registers its own matrix builder with, which is item **A19**; until then 
 callers are allowlisted.
 It sees import paths only, so table-level coupling (`positions/actions.ts` reaching
 generator and W2W tables via `@/lib/db/schema`) is invisible to it and is tracked as A7.
+One such edge is already gone: W2W used to write `shift_blocks.desired_capacity`
+straight into the table and unvalidated, and now goes through `positions/capacity.ts`,
+which checks the whole batch before writing any of it (A6).
 
 **Deliberate duplication.** `domain/scheduling/validate.ts` is a second derivation of
 the labor rules, written from the spec by an author who did not read `labor.ts`, so a

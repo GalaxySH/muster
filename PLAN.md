@@ -1512,7 +1512,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   generator through the console. It wants a matrix-builder registry and its own
   branch. One more duplicated rule fell on the way: the local-calendar-day read of
   `students.hired_on` had been written out three times, and is now `domain/calendar-day.ts`.
-  Full backlog and sequencing in `docs/module-separation-plan.md`.
+  Two smaller separability items followed: W2W's position-map seed moves out of
+  shared config into `lib/w2w`, and the W2W plan import stops writing
+  `shift_blocks.desired_capacity` straight into the table. That second one was not
+  only a layering fix. Target staffing is position config and the admin form
+  validates every value it writes there, while the plan import validated nothing, so
+  a plan could put a number in config that the form itself would have refused. Both
+  writers now agree on what a legal target is, and W2W no longer references the
+  `shift_blocks` table at all. Full backlog and sequencing in
+  `docs/module-separation-plan.md`.
 - **1.20 (2026-08-20)** — **An optimizer that trades seats between students,
   shipped switched off.** The greedy engine places students one at a time and
   never revisits a placement, so a seat taken early by somebody who did not need

@@ -129,10 +129,10 @@ duplicated or contradictory rule, **A** architecture, **E** enforcement.
 |---|---|---|
 | A16 | ~~Formalize the admin console as the fourth module~~ — **done** | M |
 | A5 | Break the generator/W2W cycle with a `RepairSeedProvider` port | M |
-| A6 | Put an adapter in front of the `desired_capacity` write | S |
+| A6 | ~~Put an adapter in front of the `desired_capacity` write~~ — **done**, `positions/capacity.ts` | S |
 | A7 | Decontaminate `lib/positions/` | M |
 | A13 | Split `settings.ts`; generator config moves to `lib/schedule` | M |
-| A14 | Move the W2W seed fixture out of shared config | S |
+| A14 | ~~Move the W2W seed fixture out of shared config~~ — **done** | S |
 | A15 | Fix the `env.ts` and `auth/session.ts` substrate inversions | S |
 | A8 | Split the 699-line generation god-file | M |
 | A11 | Consolidate the W2W admin surface, now spread over five locations | M |
@@ -355,10 +355,10 @@ files, +1943/-308. No migration on this branch, so it merges in any order.
 | R10 | All W2W admin gates go through `requireAdmin()` |
 | R2, R9 | Investigated, closed **without** a change (§5a, §7) |
 
-### Wave 3 (2026-08-21): the four cheapest separability items
+### Wave 3 (2026-08-21): the cheap separability items
 
-Five more commits on the same branch. `npm run typecheck` clean, `npm run lint`
-reports no warnings or errors, `npm test` at **91 files / 1310 tests** (branch
+Eight more commits on the same branch. `npm run typecheck` clean, `npm run lint`
+reports no warnings or errors, `npm test` at **92 files / 1316 tests** (branch
 point was 85/1259). Still no migration.
 
 | Item | Outcome |
@@ -368,6 +368,8 @@ point was 85/1259). Still no migration.
 | A18 | `parseCsv` moves to `domain/csv.ts`; the W2W plan parser stops importing the form module |
 | R11 | One `localDay`, in `domain/calendar-day.ts`, which also takes `matchesStarted` |
 | A16 | Console named in the lint; popup seam moves to `lib/admin`; form core may no longer import the console; `closes/admin-actions.ts` reclassified |
+| A14 | The W2W position-map seed moves out of `lib/config` into `lib/w2w/position-map-seed.ts` |
+| A6 | The W2W capacity write goes through `positions/capacity.ts`, which validates it; `w2w/actions.ts` no longer imports `shiftBlocks` |
 | A19 | **New.** The `admin/sheet-sync` cycle, found while sizing A16 |
 
 **Allowlist movement.** `scheduleStudentData` removed (A16). The two `sheet-sync`
@@ -395,6 +397,11 @@ fixed rule.
    form-core folder. A16 names it in the config rather than moving it or weakening
    the rule around it.
 5. **`matchesStarted` had no tests.** It has six now.
+6. **A6 was not only a layering item.** Two paths wrote
+   `shift_blocks.desired_capacity`: the admin form, which validated it, and the
+   W2W plan import, which did not. A plan could put a number in config that the
+   form itself would have refused. The seam closes that, and its tests fail if
+   the check is taken back out.
 
 ### Behavior changes a reviewer must weigh
 
@@ -467,8 +474,11 @@ and confirm you are happy with 3 and 4. Nothing else blocks it.
 2. **A12 — contain the engine vocabulary** (M), and **A10 — subdirectories under
    `components/admin`** (S). A2 made both cheaper: there is now an obvious
    generator-side UI module for things to move into.
-3. **A14** (move the W2W seed fixture out of shared config) and **A6** (adapter in
-   front of the `desired_capacity` write) are both S and both unblocked.
+3. **A7 — decontaminate `lib/positions/`** (M). A6 took the first bite by giving
+   the capacity write an owner-side seam, and B2 already reworked the delete
+   guards, so what is left is the rest of the table-level coupling the lint
+   cannot see. Doing it here is what would let the known gap be closed rather
+   than restated.
 
 **Then the large ones**, in this order because each shrinks the next: **A1**
 (`loadEligibleStudents`, collapses ~12 of 29 generator raw reads) → **A8** (split
