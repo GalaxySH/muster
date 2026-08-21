@@ -12,18 +12,13 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import {
-  shiftBlocks,
-  shiftPlans,
-  shiftPlanRows,
-  students,
-  w2wEmployees,
-  w2wPositionMap,
-} from "@/lib/db/schema";
+import { shiftPlans, shiftPlanRows, students, w2wEmployees, w2wPositionMap } from "@/lib/db/schema";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { parseW2wPlan } from "@/lib/domain/w2w-plan/parse";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName, parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
+import { DESIRED_CAPACITY_MAX } from "@/lib/domain/config-validation";
+import { CapacityRefused, setBlockCapacities } from "@/lib/positions/capacity";
 import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
 import { validateW2wCsvUpload } from "./upload-validation";
 import { loadPlanMatchInputs } from "./plan-data";
@@ -137,17 +132,24 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
         );
       }
       if (applyCapacity) {
-        for (const line of report.capacity) {
-          if (line.desiredCapacity === line.planSeats) continue;
-          await tx
-            .update(shiftBlocks)
-            .set({ desiredCapacity: line.planSeats })
-            .where(eq(shiftBlocks.id, line.blockId));
-          capacityUpdated += 1;
-        }
+        // Target staffing is position config, so it is written through the
+        // seam the positions module owns rather than straight into the table.
+        // That is also what checks the plan's seat counts are in range.
+        capacityUpdated = await setBlockCapacities(
+          tx,
+          report.capacity
+            .filter((line) => line.desiredCapacity !== line.planSeats)
+            .map((line) => ({ blockId: line.blockId, desiredCapacity: line.planSeats })),
+        );
       }
     });
   } catch (e) {
+    if (e instanceof CapacityRefused) {
+      return {
+        ok: false,
+        error: `A shift in the plan asks for ${e.target.desiredCapacity} people. Target staffing has to be a whole number from 1 to ${DESIRED_CAPACITY_MAX}. Nothing was imported.`,
+      };
+    }
     console.error("Shift plan import failed:", e);
     return { ok: false, error: "Could not save the plan. Please try again." };
   }
