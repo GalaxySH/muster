@@ -406,10 +406,7 @@ function SchedulePanel({
       />
       <LaborFindings findings={schedule.laborFindings} />
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
-        <SaveRunButton />
-      </div>
+      <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}
@@ -632,7 +629,7 @@ const fmtRunTime = (d: Date) =>
 function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
-      <SectionLabel>Run history</SectionLabel>
+      <SectionLabel action={<SaveRunButton />}>Run history</SectionLabel>
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
         replaced run stays here. Pinned runs are kept regardless of age.
