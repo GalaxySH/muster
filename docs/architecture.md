@@ -933,8 +933,13 @@ to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
 (never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
 test-group membership AND the synthetic domain);
-delete only ever removes test-group members and also cleans up relayed Drive proofs
-(shared `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
+delete only ever removes test-group members, refuses while the account still holds
+shifts in the **current** run (`schedule_assignments` cascades off `students`, and the
+per-student grid applies no on-roster check, so an admin can hand-place a test account
+into it). The guard is scoped to the current run deliberately: the grid edits only that
+run, so guarding over superseded runs too would leave such an account permanently
+undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
+`collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
 be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
 (and before that, `/admin/preview`).
 
@@ -1118,6 +1123,18 @@ because the FK behavior differs and so does what the row means:
   Since v1.11 the map **has** an editor (`/admin/w2w`), so this is recoverable in-app:
   the delete still takes the mappings, but the admin can add them back. The confirm
   still names the count, because the cost is real between the delete and the re-map.
+
+Every one of those checks runs **inside** the delete transaction, behind two locking
+reads (the position row, then its blocks, both `FOR UPDATE`). Counted outside it they
+only describe a moment that has passed: a schedule generation committing between the
+count and the delete lands assignments the cascade then strips away, which is the exact
+hazard the checks exist to close. The parent-row locks are what make the counts hold,
+since InnoDB takes a shared lock on the parent row for every child insert's FK check, so
+nothing can move a student onto the position or land a pick or an assignment on its
+blocks until the delete commits. A refusal aborts the transaction (`DeleteRefused`,
+caught outside and turned back into the `fail(...)` result), so no partial delete is
+ever left behind. `deleteBlock` does the same, off the one locking read of the block
+row it already needed.
 
 ### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
 

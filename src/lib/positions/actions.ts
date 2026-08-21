@@ -302,6 +302,9 @@ export async function setPositionActive(id: string, active: boolean): Promise<Ac
   return { ok: true };
 }
 
+/** Aborts a delete transaction, carrying the refusal the admin should read. */
+class DeleteRefused extends Error {}
+
 export async function deletePosition(id: string): Promise<ActionResult> {
   const fail = (error: string): ActionResult => ({ ok: false, error });
   const gate = await requireAdmin();
@@ -311,70 +314,90 @@ export async function deletePosition(id: string): Promise<ActionResult> {
   }
 
   const db = getDb();
-  const [row] = await db
-    .select({ id: positions.id })
-    .from(positions)
-    .where(eq(positions.id, id))
-    .limit(1);
-  if (!row) return fail("Position not found.");
+  try {
+    await db.transaction(async (tx) => {
+      // Two locking reads, then every guard, then the deletes, all in here. A
+      // count taken outside the transaction is only a claim about the past: a
+      // schedule generation committing between it and the delete reopens the
+      // silent cascade these guards exist to close. InnoDB takes a shared lock
+      // on the parent row for every child insert's FK check, so holding the
+      // position row and its blocks means nobody can move a student onto the
+      // position, or land a pick or a schedule assignment on its blocks, until
+      // this commits. Plain counts, even in here, would read a snapshot and
+      // leave the same window open.
+      const [row] = await tx
+        .select({ id: positions.id })
+        .from(positions)
+        .where(eq(positions.id, id))
+        .limit(1)
+        .for("update");
+      if (!row) throw new DeleteRefused("Position not found.");
+      await tx
+        .select({ id: shiftBlocks.id })
+        .from(shiftBlocks)
+        .where(eq(shiftBlocks.positionId, id))
+        .for("update");
 
-  const [studentRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(students)
-    .where(eq(students.positionId, id));
-  const studentCount = Number(studentRef?.n ?? 0);
-  if (studentCount > 0) {
-    return fail(
-      `${studentCount} student${studentCount === 1 ? " still holds" : "s still hold"} this position. Deactivate it instead.`,
-    );
+      const [studentRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(students)
+        .where(eq(students.positionId, id));
+      const studentCount = Number(studentRef?.n ?? 0);
+      if (studentCount > 0) {
+        throw new DeleteRefused(
+          `${studentCount} student${studentCount === 1 ? " still holds" : "s still hold"} this position. Deactivate it instead.`,
+        );
+      }
+
+      // Both cell tables hold FKs to this position's blocks: the student's own
+      // picks and the admin's internal copies (PLAN §10a).
+      const [selectionRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(shiftSelections)
+        .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
+        .where(eq(shiftBlocks.positionId, id));
+      const [internalRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(internalSelections)
+        .innerJoin(shiftBlocks, eq(internalSelections.shiftBlockId, shiftBlocks.id))
+        .where(eq(shiftBlocks.positionId, id));
+      if (Number(selectionRef?.n ?? 0) + Number(internalRef?.n ?? 0) > 0) {
+        throw new DeleteRefused(
+          "Students still have shift picks on this position's blocks. Deactivate it instead.",
+        );
+      }
+
+      // schedule_assignments cascades off shift_blocks, so deleting this position's
+      // blocks would strip shifts out of a saved run with no warning. A run can
+      // outlive the picks behind it (an alias move carries selections to the new
+      // position but leaves the old run's rows), so this is reachable even though
+      // the checks above passed.
+      const [assignedRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(scheduleAssignments)
+        .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
+        .where(eq(shiftBlocks.positionId, id));
+      if (Number(assignedRef?.n ?? 0) > 0) {
+        throw new DeleteRefused(
+          "A saved schedule run still has shifts on this position's blocks. Deactivate it instead.",
+        );
+      }
+
+      // w2w_position_map points here with no ON DELETE, so it has to be cleared in
+      // the same transaction or the delete fails on the FK. The mapping is dead
+      // either way once the position is gone. Unlike a roster title mapping (which
+      // the next import or a ghost resolution recreates), this is seeded config a
+      // plan import needs, so the count is shown in the confirm before the delete
+      // rather than reported after it (`listPositionsAdmin` carries it).
+      await tx.delete(w2wPositionMap).where(eq(w2wPositionMap.musterPositionId, id));
+      await tx.delete(rosterTitleMappings).where(eq(rosterTitleMappings.positionId, id));
+      await tx.delete(shiftBlocks).where(eq(shiftBlocks.positionId, id));
+      await tx.delete(positions).where(eq(positions.id, id));
+    });
+  } catch (e) {
+    if (e instanceof DeleteRefused) return fail(e.message);
+    throw e;
   }
-
-  // Both cell tables hold FKs to this position's blocks: the student's own
-  // picks and the admin's internal copies (PLAN §10a).
-  const [selectionRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(shiftSelections)
-    .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
-    .where(eq(shiftBlocks.positionId, id));
-  const [internalRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(internalSelections)
-    .innerJoin(shiftBlocks, eq(internalSelections.shiftBlockId, shiftBlocks.id))
-    .where(eq(shiftBlocks.positionId, id));
-  if (Number(selectionRef?.n ?? 0) + Number(internalRef?.n ?? 0) > 0) {
-    return fail(
-      "Students still have shift picks on this position's blocks. Deactivate it instead.",
-    );
-  }
-
-  // schedule_assignments cascades off shift_blocks, so deleting this position's
-  // blocks would strip shifts out of a saved run with no warning. A run can
-  // outlive the picks behind it (an alias move carries selections to the new
-  // position but leaves the old run's rows), so this is reachable even though
-  // the checks above passed.
-  const [assignedRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(scheduleAssignments)
-    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
-    .where(eq(shiftBlocks.positionId, id));
-  if (Number(assignedRef?.n ?? 0) > 0) {
-    return fail(
-      "A saved schedule run still has shifts on this position's blocks. Deactivate it instead.",
-    );
-  }
-
-  // w2w_position_map points here with no ON DELETE, so it has to be cleared in
-  // the same transaction or the delete fails on the FK. The mapping is dead
-  // either way once the position is gone. Unlike a roster title mapping (which
-  // the next import or a ghost resolution recreates), this is seeded config a
-  // plan import needs, so the count is shown in the confirm before the delete
-  // rather than reported after it (`listPositionsAdmin` carries it).
-  await db.transaction(async (tx) => {
-    await tx.delete(w2wPositionMap).where(eq(w2wPositionMap.musterPositionId, id));
-    await tx.delete(rosterTitleMappings).where(eq(rosterTitleMappings.positionId, id));
-    await tx.delete(shiftBlocks).where(eq(shiftBlocks.positionId, id));
-    await tx.delete(positions).where(eq(positions.id, id));
-  });
   revalidatePositions();
   return { ok: true };
 }
@@ -613,50 +636,66 @@ export async function deleteBlock(blockId: string): Promise<DeleteBlockResult> {
   if (!gate.ok) return fail(gate.error);
 
   const db = getDb();
-  const [row] = await db
-    .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
-    .from(shiftBlocks)
-    .where(eq(shiftBlocks.id, blockId))
-    .limit(1);
-  if (!row) return fail("Block not found.");
-  if (row.retiredAt !== null) return fail("This shift is already removed.");
+  let outcome: { retired: boolean; orphaned: number };
+  try {
+    outcome = await db.transaction(async (tx) => {
+      // Locking read, with everything this decides on read behind it. InnoDB
+      // takes a shared lock on the parent row for every child insert's FK
+      // check, so while this X lock is held no pick and no schedule assignment
+      // can land on the block: the counts below still describe it when the
+      // write runs. A plain read, even in here, sees a snapshot and leaves a
+      // window for a schedule generation to commit into.
+      const [row] = await tx
+        .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
+        .from(shiftBlocks)
+        .where(eq(shiftBlocks.id, blockId))
+        .limit(1)
+        .for("update");
+      if (!row) throw new DeleteRefused("Block not found.");
+      if (row.retiredAt !== null) throw new DeleteRefused("This shift is already removed.");
 
-  // Count the students' own picks, internal-copy cells (PLAN §10a), and rows
-  // in any saved schedule run. The first two would break the FK on delete; the
-  // third would NOT (schedule_assignments cascades), which is exactly why it
-  // has to be counted: a hard delete would quietly erase shifts out of a run
-  // the scheduler already worked from.
-  const [ref] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(shiftSelections)
-    .where(eq(shiftSelections.shiftBlockId, blockId));
-  const [internalRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(internalSelections)
-    .where(eq(internalSelections.shiftBlockId, blockId));
-  const [assignedRef] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(scheduleAssignments)
-    .where(eq(scheduleAssignments.shiftBlockId, blockId));
-  const refCount = Number(ref?.n ?? 0) + Number(internalRef?.n ?? 0) + Number(assignedRef?.n ?? 0);
+      // Count the students' own picks, internal-copy cells (PLAN §10a), and rows
+      // in any saved schedule run. The first two would break the FK on delete; the
+      // third would NOT (schedule_assignments cascades), which is exactly why it
+      // has to be counted: a hard delete would quietly erase shifts out of a run
+      // the scheduler already worked from.
+      const [ref] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(shiftSelections)
+        .where(eq(shiftSelections.shiftBlockId, blockId));
+      const [internalRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(internalSelections)
+        .where(eq(internalSelections.shiftBlockId, blockId));
+      const [assignedRef] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(scheduleAssignments)
+        .where(eq(scheduleAssignments.shiftBlockId, blockId));
+      const refCount =
+        Number(ref?.n ?? 0) + Number(internalRef?.n ?? 0) + Number(assignedRef?.n ?? 0);
 
-  if (refCount === 0) {
-    await db.delete(shiftBlocks).where(eq(shiftBlocks.id, blockId));
-    revalidateBlockSurfaces();
-    return { ok: true, retired: false, orphaned: 0 };
+      if (refCount === 0) {
+        await tx.delete(shiftBlocks).where(eq(shiftBlocks.id, blockId));
+        return { retired: false, orphaned: 0 };
+      }
+
+      await tx
+        .update(shiftBlocks)
+        .set({ retiredAt: new Date() })
+        .where(eq(shiftBlocks.id, blockId));
+      // Retiring shrinks the live set, so both flags can move: picks on this
+      // block are orphaned now, and what remains may no longer validate.
+      const orphaned = await syncOrphanFlagsForBlocks(tx, [blockId]);
+      await revalidateSubmissionsHolding(tx, [blockId]);
+      return { retired: true, orphaned };
+    });
+  } catch (e) {
+    if (e instanceof DeleteRefused) return fail(e.message);
+    throw e;
   }
 
-  let orphaned = 0;
-  await db.transaction(async (tx) => {
-    await tx.update(shiftBlocks).set({ retiredAt: new Date() }).where(eq(shiftBlocks.id, blockId));
-    // Retiring shrinks the live set, so both flags can move: picks on this
-    // block are orphaned now, and what remains may no longer validate.
-    orphaned = await syncOrphanFlagsForBlocks(tx, [blockId]);
-    await revalidateSubmissionsHolding(tx, [blockId]);
-  });
-
   revalidateBlockSurfaces();
-  return { ok: true, retired: true, orphaned };
+  return { ok: true, ...outcome };
 }
 
 /**

@@ -30,6 +30,8 @@ const ERROR_COPY: Record<TestAccountError, string> = {
   "invalid-position": "Pick a valid position.",
   exists: "An account with that name already exists. Pick a different name.",
   "not-found": "That test account no longer exists (or isn't a test account).",
+  "in-schedule":
+    "This account has shifts in the current schedule. Remove them under View response, then delete it.",
   signin: "Sign-in as the test account failed. Try again.",
 };
 
