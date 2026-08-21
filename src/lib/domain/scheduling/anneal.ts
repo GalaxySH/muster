@@ -372,7 +372,9 @@ export function annealAssignments(
   const seedFilled = filled;
   let bestFilled = filled;
   let bestSecondary = secondary;
-  let bestHeld = states.map((s) => [...s.held.keys()]);
+  // Cells rather than keys: a deferred cell the walk later vacates is in
+  // neither `held` nor `options` by the end, so a key alone cannot name it.
+  let bestHeld = states.map((s) => [...s.held.values()]);
   let bestCohort = states.map((s) => s.cohort);
   let accepted = 0;
 
@@ -465,7 +467,7 @@ export function annealAssignments(
     ) {
       bestFilled = filled;
       bestSecondary = secondary;
-      bestHeld = states.map((s) => [...s.held.keys()]);
+      bestHeld = states.map((s) => [...s.held.values()]);
       bestCohort = states.map((s) => s.cohort);
     }
   }
@@ -478,11 +480,7 @@ export function annealAssignments(
 
   let trimmedStudents = 0;
   for (const [index, state] of states.entries()) {
-    const held = new Map<string, Cell>();
-    for (const key of bestHeld[index]!) {
-      const cell = state.held.get(key) ?? state.options.find((o) => o.key === key);
-      if (cell) held.set(key, cell);
-    }
+    const held = new Map<string, Cell>(bestHeld[index]!.map((cell) => [cell.key, cell]));
     const cells = [...held.values()].sort(
       (a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || byEmail(a.block.id, b.block.id),
     );

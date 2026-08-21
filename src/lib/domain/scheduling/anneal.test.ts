@@ -561,6 +561,54 @@ describe("annealAssignments: deferred cells", () => {
   });
 });
 
+describe("annealAssignments: a deferred cell the best state still holds", () => {
+  // The state greedy leaves when the non-deferred twin of a cell was already
+  // taken: the student sits on the deferred one. Both cells are the same hours
+  // on the same day, so the student may trade one for the other but may never
+  // hold both, since the second shift would add no coverage of its own. The
+  // trade is worth exactly zero seats and zero hours, so the search always
+  // takes it and it never beats the best state, which is still the seed.
+  // Returning that best state has to return the deferred cell with it.
+  const blocks = [
+    block("late", "bar", "weekday", "8a", "12p", 1),
+    block("open", "bar", "weekday", "8a", "12p", 1),
+  ];
+  const only = student("only@w", {
+    positionId: "bar",
+    desiredHours: 4,
+    submittedAt: at(0),
+    selection: [sel("late", "mon"), sel("open", "mon")],
+  });
+  const seed: ScheduleAssignment[] = [
+    { studentEmail: "only@w", blockId: "late", day: "mon", cohort: "weekday" },
+  ];
+  const result = annealAssignments(
+    seed,
+    [only],
+    POSITIONS,
+    blocks,
+    withAnneal(),
+    new Set(["late"]),
+  );
+
+  it("returns the best state's deferred cell instead of dropping it", () => {
+    expect(result.assignments).toEqual(seed);
+    expect(minutesFor(result.assignments, blocks, only)).toBe(240);
+  });
+
+  it("never scores below the seed schedule", () => {
+    expect(filledOfTarget(result.assignments, blocks)).toBeGreaterThanOrEqual(
+      filledOfTarget(seed, blocks),
+    );
+  });
+
+  it("reports exactly the seats it gained", () => {
+    expect(filledOfTarget(result.assignments, blocks) - filledOfTarget(seed, blocks)).toBe(
+      result.gainedSeats,
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Weekend rotations. Seeds are built by hand here rather than run through the
 // engine, so each case pins one starting state exactly: a student off the
