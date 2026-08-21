@@ -43,21 +43,25 @@
  */
 import { demandCellKey } from "../demand";
 import { redundantRangeIndex } from "../intervals";
-import type { TimeRange } from "../time";
+import { EPSILON_MINUTES, type TimeRange } from "../time";
 import { WEEKDAY_DAYS, WEEKEND_DAYS, type Day, type Position, type ShiftBlock } from "../types";
 import { laborLimits, laborViolations, type LaborLimits } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
-  EPSILON_MINUTES,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
   byHashedEmail,
   targetMinutes,
 } from "./seats";
-import type { Cohort, ScheduleAssignment, ScheduleStudent } from "./types";
+import {
+  weekendCohortOf,
+  type Cohort,
+  type ScheduleAssignment,
+  type ScheduleStudent,
+} from "./types";
 
 /**
  * Acceptance temperature, in seats: at the start a one-seat loss is taken
@@ -311,15 +315,14 @@ export function annealAssignments(
       (a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || byEmail(a.block.id, b.block.id),
     );
 
-    // The rotation the seed put them on: any weekend row's cohort, else
-    // "every" for opt-ins, else none (weekday-only, or nobody placed them on a
-    // weekend). None is a starting point, not a verdict; the search fills it in
-    // the first time it puts them on a weekend.
-    const weekendRow = rows.find((r) => r.cohort !== "weekday");
-    const cohort = (weekendRow?.cohort ?? (student.everyWeekendOptIn ? "every" : null)) as Exclude<
-      Cohort,
-      "weekday"
-    > | null;
+    // The rotation the seed put them on (./types.ts), else "every" for opt-ins,
+    // else none (weekday-only, or nobody placed them on a weekend). None is a
+    // starting point, not a verdict; the search fills it in the first time it
+    // puts them on a weekend. Movable students never carry mixed rows: greedy
+    // fixes one rotation per student and the improvement pass moves a row's
+    // block, never its cohort, so there is nothing here for a rule to break a
+    // tie on and the seed is the same one this pass has always started from.
+    const cohort = weekendCohortOf(rows) ?? (student.everyWeekendOptIn ? "every" : null);
 
     const ranges = rangesOf(held);
     const minutes = averagedAssignedMinutes(ranges, student.everyWeekendOptIn);

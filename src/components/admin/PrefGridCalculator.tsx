@@ -12,9 +12,8 @@ import type { OrphanedCell } from "@/lib/positions/orphans";
 import { applyScheduleEdits } from "@/lib/schedule/manual";
 import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-colors";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
-import { EPSILON_MINUTES } from "@/lib/domain/scheduling/seats";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
-import { formatTime } from "@/lib/domain/time";
+import { EPSILON_MINUTES, formatTime } from "@/lib/domain/time";
 import {
   DAY_LABEL,
   dayTypeOf,

@@ -9,8 +9,9 @@ import "server-only";
  * The plan is read as a per-position aggregate rather than by loading its
  * rows: a week is ~1000 of them and nothing here needs more than the counts.
  */
-import { asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
   positions,
   shiftBlocks,
@@ -93,7 +94,7 @@ async function loadMapHealthInputs(): Promise<MapHealthInputs> {
         weekend: sql<number>`sum(case when ${shiftBlocks.dayType} = 'weekend' then 1 else 0 end)`,
       })
       .from(shiftBlocks)
-      .where(isNull(shiftBlocks.retiredAt))
+      .where(liveBlocksOnly())
       .groupBy(shiftBlocks.positionId),
     // Newest current plan. There is no unique constraint on status, so order
     // rather than trusting there to be exactly one.

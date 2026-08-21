@@ -21,7 +21,8 @@
  * through applyPositionChange from the CLI as well as the admin upload.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import type { Database } from "@/lib/db/client";
 import {
   flags,
@@ -84,7 +85,7 @@ export async function loadOrphanedCells(
   const liveRows = await db
     .select({ id: shiftBlocks.id })
     .from(shiftBlocks)
-    .where(and(eq(shiftBlocks.positionId, row.positionId), isNull(shiftBlocks.retiredAt)));
+    .where(and(eq(shiftBlocks.positionId, row.positionId), liveBlocksOnly()));
   if (liveRows.length === 0) return [];
   const live = new Set(liveRows.map((b) => b.id));
 

@@ -3,8 +3,9 @@
  * Resolves the signed-in student → position → blocks → existing draft.
  */
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
@@ -32,7 +33,7 @@ export async function loadPositionWithBlocks(
   const blockRows = await db
     .select()
     .from(shiftBlocks)
-    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
+    .where(and(eq(shiftBlocks.positionId, positionId), liveBlocksOnly()));
   return { position: toDomainPosition(posRow), blocks: blockRows.map(toDomainBlock) };
 }
 
@@ -52,7 +53,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
   const blockRows = await db
     .select({ id: shiftBlocks.id, target: shiftBlocks.desiredCapacity })
     .from(shiftBlocks)
-    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
+    .where(and(eq(shiftBlocks.positionId, positionId), liveBlocksOnly()));
   const targets = new Map<string, number | null>(blockRows.map((b) => [b.id, b.target ?? null]));
 
   const rows = await db
@@ -75,7 +76,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
         eq(submissions.status, "submitted"),
         // Machine-assigned weekend cells aren't preferences; don't count them.
         eq(shiftSelections.autoAssigned, false),
-        isNull(shiftBlocks.retiredAt),
+        liveBlocksOnly(),
       ),
     )
     .groupBy(shiftSelections.shiftBlockId, shiftSelections.day);

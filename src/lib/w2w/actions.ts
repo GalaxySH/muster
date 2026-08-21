@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { getAppSession } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import {
   shiftBlocks,
   shiftPlans,
@@ -51,9 +51,8 @@ export interface PlanImportResult {
 const ROW_CHUNK = 200;
 
 export async function importShiftPlanFromUpload(formData: FormData): Promise<PlanImportResult> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false, error: "No file was provided." };
@@ -112,7 +111,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
         .where(eq(shiftPlans.status, "current"));
       await tx.insert(shiftPlans).values({
         id: planId,
-        importedBy: session.email,
+        importedBy: gate.email,
         sourceFilename: file.name,
         rowCount: parsed.rows.length,
         rotationWeek,
@@ -184,9 +183,8 @@ export async function setPlanRotationWeek(
   planId: string,
   rotationWeek: "a" | "b",
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
   if (rotationWeek !== "a" && rotationWeek !== "b") {
     return { ok: false, error: "Pick week A or week B." };
   }
@@ -224,9 +222,8 @@ export interface EmployeesImportResult {
 export async function importW2wEmployeesFromUpload(
   formData: FormData,
 ): Promise<EmployeesImportResult> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false, error: "No file was provided." };

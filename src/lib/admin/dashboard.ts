@@ -29,6 +29,7 @@ import {
   type DbFlagType,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { WEEKDAY_DAYS, WEEKEND_DAYS, type ShiftBlock } from "@/lib/domain/types";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
@@ -231,7 +232,7 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
       .select()
       .from(positions)
       .where(and(eq(positions.active, true), isNull(positions.mergedIntoId))),
-    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
+    db.select().from(shiftBlocks).where(liveBlocksOnly()),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)
@@ -386,7 +387,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       })
       .from(shiftBlocks)
       .innerJoin(positions, eq(shiftBlocks.positionId, positions.id))
-      .where(and(eq(positions.active, true), isNull(shiftBlocks.retiredAt))),
+      .where(and(eq(positions.active, true), liveBlocksOnly())),
     db
       .select({
         blockId: eff.shiftBlockId,

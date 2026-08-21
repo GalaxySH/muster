@@ -10,7 +10,7 @@
  * the per-student prev/next nav walks (PLAN §10 "fast prev/next", hard req).
  */
 import "server-only";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
@@ -24,6 +24,7 @@ import {
   flags,
   type DbFlagType,
 } from "@/lib/db/schema";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { loadInternalDetail, type InternalDetail } from "@/lib/availability/internal";
@@ -120,7 +121,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       const blockRows = await db
         .select()
         .from(shiftBlocks)
-        .where(and(eq(shiftBlocks.positionId, student.positionId), isNull(shiftBlocks.retiredAt)));
+        .where(and(eq(shiftBlocks.positionId, student.positionId), liveBlocksOnly()));
       blocks = blockRows.map(toDomainBlock);
     }
   }

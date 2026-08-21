@@ -5,9 +5,16 @@
  * small; the run row itself still comes from loadCurrentRunRow there.
  */
 import "server-only";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, scheduleAssignments, shiftBlocks, students, submissions } from "@/lib/db/schema";
+import { liveBlocksOnly } from "@/lib/db/blocks";
+import {
+  positions,
+  scheduleAssignments,
+  shiftBlocks,
+  students,
+  submissions,
+} from "@/lib/db/schema";
 import {
   buildStudentScheduleGrid,
   type StudentScheduleBlock,
@@ -70,9 +77,7 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       ? db
           .select()
           .from(shiftBlocks)
-          .where(
-            and(eq(shiftBlocks.positionId, student.positionId), isNull(shiftBlocks.retiredAt)),
-          )
+          .where(and(eq(shiftBlocks.positionId, student.positionId), liveBlocksOnly()))
       : Promise.resolve([]),
     assignedIds.length > 0
       ? db.select().from(shiftBlocks).where(inArray(shiftBlocks.id, assignedIds))

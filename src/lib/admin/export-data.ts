@@ -6,7 +6,7 @@
  * response list (by display name) for a stable sheet/CSV.
  */
 import "server-only";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { getDb } from "@/lib/db";
 import {
@@ -20,6 +20,7 @@ import {
   travelRequests,
   extracurricularFiles,
 } from "@/lib/db/schema";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
@@ -71,7 +72,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       ? db
           .select()
           .from(shiftBlocks)
-          .where(and(inArray(shiftBlocks.positionId, positionIds), isNull(shiftBlocks.retiredAt)))
+          .where(and(inArray(shiftBlocks.positionId, positionIds), liveBlocksOnly()))
       : Promise.resolve([]),
     db.select().from(shiftSelections).where(inArray(shiftSelections.submissionId, subIds)),
     db

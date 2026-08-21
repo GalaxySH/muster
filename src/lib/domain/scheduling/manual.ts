@@ -24,7 +24,7 @@ import { formatSpan, type TimeRange } from "../time";
 import { ALL_DAYS, DAY_LABEL, dayTypeOf, type Day, type ShiftBlock } from "../types";
 import { laborViolations, type LaborLimits } from "./labor";
 import { averagedAssignedMinutes } from "./seats";
-import type { Cohort } from "./types";
+import { weekendCohortOf, type Cohort } from "./types";
 
 /**
  * The part of an assignment row the coverage rule reads: which cell it is, and
@@ -113,6 +113,10 @@ export function laborWarningsForRows(
   // rows mix cohorts (possible through manual edits across runs) is outside
   // its scope; skip the warnings rather than judge half the picture. The
   // read-time validator owns the mixed case.
+  //
+  // This is why the set is built by hand and `weekendCohortOf` is not used:
+  // that helper answers with one rotation, and the mix is exactly what has to
+  // survive being looked at here.
   const weekendCohorts = new Set<Cohort>();
   for (const row of rows) if (row.cohort !== "weekday") weekendCohorts.add(row.cohort);
   if (weekendCohorts.size > 1) return [];
@@ -152,9 +156,7 @@ export function manualWeekendCohort(
   existing: readonly ExistingAssignment[],
   everyWeekendOptIn: boolean,
 ): Exclude<Cohort, "weekday"> {
-  const weekend = existing.find((row) => row.cohort !== "weekday");
-  if (weekend) return weekend.cohort as Exclude<Cohort, "weekday">;
-  return everyWeekendOptIn ? "every" : "a";
+  return weekendCohortOf(existing) ?? (everyWeekendOptIn ? "every" : "a");
 }
 
 /** One (block, day) cell of an edit batch: what the grid's Save sends. */

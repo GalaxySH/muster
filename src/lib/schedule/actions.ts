@@ -9,7 +9,7 @@
  * generation can be restored later and nothing is ever lost.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import type { Database } from "@/lib/db/client";
@@ -22,6 +22,7 @@ import {
   students,
   submissions,
 } from "@/lib/db/schema";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { applyInternalOverrides } from "@/lib/availability/effective";
@@ -178,7 +179,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       db.select().from(positions),
       // Retired blocks never enter a run: a pick left on one is orphaned, and
       // the engine skips any cell whose block is not in this map.
-      db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
+      db.select().from(shiftBlocks).where(liveBlocksOnly()),
       db
         .select({
           email: students.email,

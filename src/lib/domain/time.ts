@@ -6,6 +6,13 @@
  * matches PLAN.md §6.3: `a` = am, `p` = pm, e.g. `6:45a`, `8p`, `11:30p`.
  */
 
+/**
+ * Tolerance for comparing minute-valued quantities. Averaged minutes are
+ * float-valued (the ×0.5 weekend factor), so an exact >= would fail on a
+ * value that is a rounding error short of the threshold.
+ */
+export const EPSILON_MINUTES = 1e-6;
+
 /** A half-open time range [start, end) in minutes since midnight. */
 export interface TimeRange {
   start: number;

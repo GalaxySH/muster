@@ -21,9 +21,6 @@ import type { Cohort, ScheduleStudent } from "./types";
 /** The default day ceiling in engine units (DEFAULT_SCHEDULING_PARAMS.dayCapHours). */
 export const DAY_CAP_MINUTES = DEFAULT_SCHEDULING_PARAMS.dayCapHours * 60;
 
-/** Averaged minutes are float-valued (×0.5 weekend factor); compare with tolerance. */
-export const EPSILON_MINUTES = 1e-6;
-
 export const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 
 export const byEmail = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

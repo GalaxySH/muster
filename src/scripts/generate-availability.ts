@@ -14,9 +14,10 @@
  * generated (they would point at Drive files that don't exist).
  */
 import { randomUUID } from "node:crypto";
-import { inArray, isNull, like } from "drizzle-orm";
+import { inArray, like } from "drizzle-orm";
 import { createDb } from "../lib/db/client";
 import { positions, shiftBlocks, shiftSelections, students, submissions } from "../lib/db/schema";
+import { liveBlocksOnly } from "../lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
 import { deriveOpenClose } from "../lib/domain/blocks";
 import { EVENING_END_MINUTES } from "../lib/domain/coverage";
@@ -217,7 +218,7 @@ async function main() {
     }
 
     const posRows = await db.select().from(positions);
-    const blockRows = await db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt));
+    const blockRows = await db.select().from(shiftBlocks).where(liveBlocksOnly());
     const allBlocks = blockRows.map(toDomainBlock);
     const usable = posRows
       .filter((p) => p.active && p.mergedIntoId === null)

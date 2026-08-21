@@ -7,8 +7,10 @@ import "server-only";
  * edits on /admin/positions or a remapped position show up immediately
  * instead of leaving stale resolutions in the DB.
  */
-import { asc, count, desc, eq, isNull, max } from "drizzle-orm";
+import { asc, count, desc, eq, max } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
+import { toDomainBlock } from "@/lib/db/mappers";
 import {
   positions,
   shiftBlocks,
@@ -57,7 +59,7 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
     // id, so a retired block would otherwise still answer for its own hours —
     // and after the usual "remove a shift, add a corrected one" edit the dead
     // original would win over its live replacement, since it was inserted first.
-    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
+    db.select().from(shiftBlocks).where(liveBlocksOnly()),
     db.select({ id: positions.id, name: positions.name }).from(positions),
   ]);
   return {
@@ -67,14 +69,7 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
       musterPositionId: m.musterPositionId,
       fillOrder: m.fillOrder,
     })),
-    blocks: blockRows.map((b) => ({
-      id: b.id,
-      positionId: b.positionId,
-      dayType: b.dayType,
-      startMinutes: b.startMinutes,
-      endMinutes: b.endMinutes,
-      desiredCapacity: b.desiredCapacity,
-    })),
+    blocks: blockRows.map(toDomainBlock),
     positionNames: new Map(positionRows.map((p) => [p.id, p.name])),
   };
 }

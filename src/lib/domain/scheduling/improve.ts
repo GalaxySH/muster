@@ -22,21 +22,25 @@
  */
 import { demandCellKey } from "../demand";
 import { coveredMinutes, redundantRangeIndex } from "../intervals";
-import type { TimeRange } from "../time";
+import { EPSILON_MINUTES, type TimeRange } from "../time";
 import type { Day, ShiftBlock } from "../types";
 import { laborLimits, laborViolations, type LaborLimits } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
-  EPSILON_MINUTES,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
   byHashedEmail,
   tierBonus,
 } from "./seats";
-import type { Cohort, ScheduleAssignment, ScheduleStudent } from "./types";
+import {
+  weekendCohortOf,
+  type Cohort,
+  type ScheduleAssignment,
+  type ScheduleStudent,
+} from "./types";
 
 const MAX_ROUNDS = 3;
 const MIN_GAIN = 1e-9;
@@ -99,16 +103,15 @@ export function improveAssignments(
     }
     rangesByStudent.set(email, byDay);
   }
-  // The labor rules read one weekend rotation for the whole map: any weekend
-  // row's cohort, else "every" for opt-ins, else null (weekday-only, where the
-  // rotation cannot matter).
+  // The labor rules read one weekend rotation for the whole map: the rotation
+  // their rows are on (./types.ts), else "every" for opt-ins, else null
+  // (weekday-only, where the rotation cannot matter).
   const cohortByStudent = new Map<string, Cohort | null>();
   for (const [email, list] of rowsByStudent) {
     if (studentByEmail.get(email)?.scheduled) continue;
-    const weekend = list.find((r) => r.cohort !== "weekday");
     cohortByStudent.set(
       email,
-      weekend?.cohort ?? (studentByEmail.get(email)?.everyWeekendOptIn ? "every" : null),
+      weekendCohortOf(list) ?? (studentByEmail.get(email)?.everyWeekendOptIn ? "every" : null),
     );
   }
 

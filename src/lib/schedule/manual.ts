@@ -21,9 +21,10 @@
  * and in what order is `planScheduleEdits` (domain/scheduling/manual.ts), pure
  * and tested on its own.
  */
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
   internalAvailability,
   scheduleAssignments,
@@ -173,7 +174,7 @@ export async function applyScheduleEdits(
         const blockRows = await tx
           .select()
           .from(shiftBlocks)
-          .where(and(inArray(shiftBlocks.id, wanted), isNull(shiftBlocks.retiredAt)));
+          .where(and(inArray(shiftBlocks.id, wanted), liveBlocksOnly()));
         for (const r of blockRows) blockById.set(r.id, toDomainBlock(r));
       }
 

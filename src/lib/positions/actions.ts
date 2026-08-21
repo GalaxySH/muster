@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
   positions,
   internalSelections,
@@ -234,11 +235,7 @@ export async function savePosition(
       .from(shiftBlocks)
       // Retired shifts are not editable: restore one before changing its hours.
       .where(
-        and(
-          eq(shiftBlocks.positionId, id),
-          inArray(shiftBlocks.id, blockIds),
-          isNull(shiftBlocks.retiredAt),
-        ),
+        and(eq(shiftBlocks.positionId, id), inArray(shiftBlocks.id, blockIds), liveBlocksOnly()),
       );
     if (found.length !== new Set(blockIds).size) return { ok: false, error: "Block not found." };
     const before = new Map(found.map((b) => [b.id, b]));
@@ -593,7 +590,7 @@ export async function createBlock(
   const [live] = await db
     .select({ n: sql<number>`count(*)` })
     .from(shiftBlocks)
-    .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)));
+    .where(and(eq(shiftBlocks.positionId, positionId), liveBlocksOnly()));
   const wasBlockless = Number(live?.n ?? 0) === 0;
 
   // Block ids are opaque handles: the prefix keeps them readable, the random

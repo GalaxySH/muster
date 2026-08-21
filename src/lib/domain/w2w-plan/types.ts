@@ -6,7 +6,7 @@
  * positions/blocks and (on export) writes the employee identity. Passthrough
  * columns keep their verbatim source strings so the re-export is byte-stable.
  */
-import type { Day, DayType } from "../types";
+import type { Day, DayType, ShiftBlock } from "../types";
 
 /** One seat row parsed from a W2W schedule export. */
 export interface W2wPlanRow {
@@ -58,15 +58,15 @@ export interface W2wPositionMapEntry {
   fillOrder: number;
 }
 
-/** The slice of a Muster shift block that matching needs. */
-export interface MatchBlock {
-  id: string;
-  positionId: string;
-  dayType: DayType;
-  startMinutes: number;
-  endMinutes: number;
-  desiredCapacity: number | null;
-}
+/**
+ * The slice of a Muster shift block that matching needs. Derived from the
+ * shared block type so a rename or removal there is a compile error here
+ * instead of a silent mismatch while matching.
+ */
+export type MatchBlock = Pick<
+  ShiftBlock,
+  "id" | "positionId" | "dayType" | "start" | "end" | "desiredCapacity"
+>;
 
 /** A parsed row after resolution against the map and blocks. */
 export interface MatchedPlanRow extends W2wPlanRow {

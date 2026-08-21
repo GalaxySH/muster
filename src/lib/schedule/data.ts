@@ -13,6 +13,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
   internalAvailability,
   positions,
@@ -104,7 +105,7 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
       .from(positions)
       .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)))
       .orderBy(asc(positions.name)),
-    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
+    db.select().from(shiftBlocks).where(liveBlocksOnly()),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)
