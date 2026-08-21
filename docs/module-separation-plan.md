@@ -407,7 +407,8 @@ fixed rule.
 
 1. Deleting a test account holding shifts in the **current** run now fails where it
    silently succeeded. Scoped to the current run so such an account never becomes
-   undeletable; reverse to all-runs if that trade is wrong.
+   undeletable. **Confirmed as the wanted behavior on 2026-08-21**; not an open
+   question any more.
 2. `shiftPlans.importedBy` now sourced from `requireAdmin()` rather than
    `getAppSession()`. Same value, same seam; pinned by a test.
 3. B1 and R3 can change generated schedules only in cases proven unreachable today
@@ -461,8 +462,8 @@ second server is running.
 
 ## 12. Next steps
 
-**Before merging #61:** decide on the current-run scoping in behavior change 1,
-and confirm you are happy with 3 and 4. Nothing else blocks it.
+**Before merging #61:** confirm you are happy with behavior changes 3 and 4. The
+current-run scoping in change 1 is settled. Nothing else blocks it.
 
 **Next, in this order:**
 
