@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { localDay } from "@/lib/domain/calendar-day";
 import { windowState, type WindowState } from "@/lib/domain/window";
 import {
   createGroup,
@@ -32,8 +33,8 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
       <h2 style={h2}>Groups</h2>
       <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--color-text-secondary)" }}>
         Pick the open and close dates. The window starts and ends at{" "}
-        <strong>00:00 (midnight)</strong> on each date. <strong>No edit</strong> keeps
-        accepting new submissions while open but makes each student read-only once they finish.
+        <strong>00:00 (midnight)</strong> on each date. <strong>No edit</strong> keeps accepting new
+        submissions while open but makes each student read-only once they finish.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="stack-table">
@@ -183,12 +184,7 @@ function GroupRow({ group }: { group: GroupView }) {
         )}
       </td>
       <td data-label="Opens">
-        <input
-          type="date"
-          value={opens}
-          onChange={(e) => setOpens(e.target.value)}
-          style={input}
-        />
+        <input type="date" value={opens} onChange={(e) => setOpens(e.target.value)} style={input} />
       </td>
       <td data-label="Closes">
         <input
@@ -299,7 +295,15 @@ function StatusChip({ state }: { state: WindowState }) {
   };
   const s = map[state];
   return (
-    <span style={{ background: s.bg, color: s.color, borderRadius: 10, padding: "1px 8px", fontSize: 12 }}>
+    <span
+      style={{
+        background: s.bg,
+        color: s.color,
+        borderRadius: 10,
+        padding: "1px 8px",
+        fontSize: 12,
+      }}
+    >
       {s.label}
     </span>
   );
@@ -310,10 +314,7 @@ function StatusChip({ state }: { state: WindowState }) {
 // the window opens/closes at the start of the chosen day. Round-trips through a
 // UTC ISO instant for storage.
 export function toLocalInput(ms: number | null): string {
-  if (ms == null) return "";
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return ms == null ? "" : localDay(new Date(ms));
 }
 export function localInputToIso(value: string): string | null {
   if (!value) return null;

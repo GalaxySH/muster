@@ -7,8 +7,8 @@
  * strings. The two sides reach that form differently. `positions.return_date`
  * is stored as a string and stays one (see the schema comment), so never build
  * a Date from it. `students.hired_on` is a `date` column the driver hands back
- * as a Date pinned to LOCAL midnight, so its day is read with local getters
- * (`localDay`). The rest wires the independent validator
+ * as a Date pinned to LOCAL midnight, so its day is read through `localDay`
+ * (../calendar-day.ts). The rest wires the independent validator
  * (./validate.ts) to a stored run: assignment rows in,
  * display-ready findings out, and never a throw, since a run whose report or
  * blocks are unreadable must still render its page.
@@ -21,19 +21,8 @@ import {
   type ValidatorRow,
 } from "./validate";
 import type { AssignmentSource, Cohort, EngineReport, LateStartWarning } from "./types";
+import { localDay } from "../calendar-day";
 import type { Day } from "../types";
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/**
- * The `yyyy-mm-dd` of a Date read in the local frame. A `date` column comes
- * back from the driver as `new Date(y, m - 1, d)`, midnight local time, so the
- * local getters are the exact inverse of how it was built. `toISOString` would
- * read the UTC frame instead and land a day early anywhere east of UTC.
- */
-export function localDay(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 export interface LateStartInput {
   /** Every assignment row the run holds, including frozen and manual carries. */

@@ -6,7 +6,6 @@ import type { EngineReport, StoredRunReport, StudentScheduleReport } from "./typ
 import {
   laborFindingSections,
   lateStartWarnings,
-  localDay,
   runLaborFindings,
   validatorLimits,
   type FrozenReason,
@@ -96,24 +95,10 @@ describe("lateStartWarnings", () => {
   });
 
   it("reads the hire day in the frame the driver built it in", () => {
-    // mysql2 materializes a `date` column as new Date(y, m - 1, d), local
-    // midnight. Reading that through toISOString lands a day early on any host
-    // east of UTC, so the day has to come off the local getters.
-    const localMidnight = new Date(2026, 8, 3);
-    expect(localDay(localMidnight)).toBe("2026-09-03");
-    const warnings = lateStarts({ hiredOn: new Map([["a@w", localMidnight]]) });
+    // The day itself is ../calendar-day.ts's job; what this checks is that the
+    // warning carries the local calendar day and not a UTC-shifted one.
+    const warnings = lateStarts({ hiredOn: new Map([["a@w", new Date(2026, 8, 3)]]) });
     expect(warnings[0]!.hiredOn).toBe("2026-09-03");
-  });
-
-  it("pads single-digit months and days", () => {
-    expect(localDay(new Date(2026, 0, 5))).toBe("2026-01-05");
-  });
-
-  it("reads the local calendar day whichever side of UTC the host sits", () => {
-    // Midnight catches the bug east of UTC and a late evening catches it west,
-    // so between them this fails on any host that reads the UTC frame instead.
-    expect(localDay(new Date(2026, 8, 3, 0, 0))).toBe("2026-09-03");
-    expect(localDay(new Date(2026, 8, 3, 23, 30))).toBe("2026-09-03");
   });
 });
 
