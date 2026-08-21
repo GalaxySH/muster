@@ -5,6 +5,50 @@ of every session. Read the relevant section before editing a subsystem, and **up
 it alongside code changes** (same rule as PLAN.md). PLAN.md remains the authoritative
 spec; these notes describe how the implementation is layered.
 
+## Module boundaries (PLAN 1.21)
+
+Muster is **three peer modules with an admin console composing them**. This is the
+layering every other section in this file sits inside, so read it first.
+
+```
+              admin console   lib/admin, src/components, app/admin
+                 |  |  |      may depend on all three
+                 v  v  v      nothing depends upward on it
+    form core   generator    W2W
+        ^            |        |
+        |____________|________|   both read form data through published
+                                  readers; the form core never reads them
+```
+
+- **Form core** — `lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,
+  the student routes, and the shared `lib/domain` root. Knows nothing about the other
+  two, and has **zero** import-path edges into them.
+- **Generator** — `lib/domain/scheduling` (pure) over `lib/schedule` (I/O shell).
+- **W2W** — `lib/domain/w2w-plan` (pure) over `lib/w2w` (I/O shell).
+- **Console** — composes the three. Its dependence on all of them is correct, not
+  contamination; the mistake to avoid is the reverse edge.
+
+The **schema has always encoded this correctly**: all three cross-boundary foreign keys
+(`schedule_assignments.student_email`, `schedule_assignments.shift_block_id`,
+`w2w_position_map.muster_position_id`) point outward from the generator and W2W into
+form and config, and no form table points back. Imports had no equivalent rule for 48
+commits and drifted the other way, which is what `eslint.config.mjs` now prevents.
+
+The lint allowlist holds the edges that already existed, each naming the plan item that
+removes it: the generator's repair-seed import from W2W and W2W's read of the current
+run (A5), the Drive-sync calls out of the generation and manual-edit paths (A8), and one
+view model on the wrong side of the console line (A16). **The allowlist only shrinks.**
+It sees import paths only, so table-level coupling (`positions/actions.ts` reaching
+generator and W2W tables via `@/lib/db/schema`) is invisible to it and is tracked as A7.
+
+**Deliberate duplication.** `domain/scheduling/validate.ts` is a second derivation of
+the labor rules, written from the spec by an author who did not read `labor.ts`, so a
+divergence between them is a bug report rather than drift. It must not be folded in or
+share helpers. `submissions.scheduled` as the generator's student-freeze primitive and
+target staffing riding the positions config path are likewise intentional cross-module
+couplings. `docs/module-separation-plan.md` §7 is the full register, and §3 is the item
+backlog behind the allowlist entries above.
+
 ## Tier 2 features (roadmap 2.1–2.5, PLAN 0.42)
 
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
@@ -510,7 +554,11 @@ floors its columns at `min(420px, 100%)`, and the group-progress table opts out 
 generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
 private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
 `masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
-both surfaces import them. `StudentQuickSearch` is a client island: the roster is small
+both surfaces import them. That file is no longer purely presentational: it also holds
+generator-shaped helpers (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`) and type-imports
+`HealthBar`/`HealthTone` from `admin/schedule-health-view` and `FrozenReason` from
+`schedule/run-warnings`, so seven admin pages now type-depend on the generator through it.
+Plan item A2 in `docs/module-separation-plan.md` splits those helpers back out. `StudentQuickSearch` is a client island: the roster is small
 enough to filter locally, so results are instant and there is no request per keystroke
 (`/` focuses it).
 
@@ -1179,7 +1227,10 @@ coverage view, no generator yet. Standard layering:
 - **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
   summary `StatTile` row, then per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
-  "N people short" readout. No client island; the page is read-only.
+  "N people short" readout. Read-only when this section was written; the page has
+  since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,
+  `RestoreRunButton`, `PinRunButton`, `SaveRunButton`, `ScheduleHealth`) — see the
+  Phase C and 1.19 sections below.
 
 ## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
 
@@ -1363,8 +1414,9 @@ styled after `RestoreRunButton` and `GenerateScheduleButton` respectively —
 neither needs a confirm step, since both actions are purely additive/
 reversible and never touch the live current run.
 
-**The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
-*persisted* protection concept. Frozen students' rows carry forward verbatim
+**The freeze model:** `submissions.scheduled` (PLAN §10a) is the only *persisted*
+way to protect a **student** from regeneration. (`schedule_runs.pinned`, added in
+1.19, is a separate concept: it protects a **run** from retention pruning.) Frozen students' rows carry forward verbatim
 through every run and consume capacity first; marking scheduled still never
 changes response status or the non-response list (both key on `confirmedAt`).
 With Phase C above, `docs/schedule-generation-plan.md` is fully built.

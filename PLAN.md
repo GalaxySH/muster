@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.20
+- **Version:** 1.21
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1365,8 +1365,9 @@ under-18 test (deferred → fallback, §11).
   restore, the run diff, the staleness banner, the `Muster Schedule` sheet
   (`docs/schedule-generation-plan.md`; roadmap 5.2).
 - **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
-  consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
-  W2W interop per §17.
+  consolidation. The **W2W-importable schedule document** (roadmap 5.3), the ceiling on
+  W2W interop per §17, shipped in 1.09 — see §17 and
+  `docs/w2w-shift-plan-roundtrip.md`.
 
 ### 18a. Shift-Lead weekend-close pickup — ✅ DONE (0.46)
 A **claim/inventory subsystem**, architecturally distinct from the rest of Muster
@@ -1475,6 +1476,28 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.21 (2026-08-21)** — **Module boundaries, written down and enforced.** Three
+  separability audits over commits `6c88001`..`af97ca8` found the same thing each
+  time: the schema had the architecture right (all three cross-boundary foreign keys
+  point outward from the generator and W2W into form and config, and always have)
+  while imports drifted the other way for 48 commits, because nothing ever stated a
+  direction and no rule ever checked one. `eslint.config.mjs` now enforces the
+  layering — form core imports neither the generator nor W2W, those two do not import
+  each other, and neither imports upward into the admin console — with a shrinking
+  allowlist of seven pre-existing edges that each name the plan item removing them.
+  The form core turned out to have **zero** import-path violations, so the rule is a
+  guard on a property the codebase already has. `CLAUDE.md` and
+  `docs/architecture.md` carry the rule and the register of *deliberate* duplication
+  that must not be collapsed (chiefly `scheduling/validate.ts`, written blind from
+  the spec so a divergence from `labor.ts` reports a bug). Documentation
+  contradictions fixed: roadmap 5.3 shipped in 1.09 but four places still called it
+  unbuilt, including §18 contradicting §17 thirty-six lines away; the W2W round-trip
+  doc listed "the generator never reads the plan" as an invariant while repair mode
+  does exactly that; and three descriptions had drifted from their code. Bug fixes:
+  the annealing pass could silently drop deferred cells when reconstructing its best
+  state, breaking its own "never worse than the seed" guarantee; the position-delete
+  cascade guards ran outside their transaction; and test-account deletion had no
+  saved-run guard. Full backlog and sequencing in `docs/module-separation-plan.md`.
 - **1.20 (2026-08-20)** — **An optimizer that trades seats between students,
   shipped switched off.** The greedy engine places students one at a time and
   never revisits a placement, so a seat taken early by somebody who did not need

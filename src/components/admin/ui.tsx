@@ -3,8 +3,13 @@
  * view established, lifted out of that page so the hub speaks the same language
  * instead of re-inventing one.
  *
- * Everything here is presentational and hook-free, so server pages and client
- * components can both import it. Colors go through the globals.css tokens.
+ * Everything here is hook-free, so server pages and client components can both
+ * import it. Colors go through the globals.css tokens.
+ *
+ * Not everything here is purely presentational any more: the frozen/health helpers
+ * below type-depend on the generator, which makes the seven admin pages that import
+ * this file depend on it too. Plan item A2 in docs/module-separation-plan.md splits
+ * those out into a generator-owned UI module. Do not add more of them here.
  */
 import Link from "next/link";
 import type { HealthBar, HealthTone } from "@/lib/admin/schedule-health-view";

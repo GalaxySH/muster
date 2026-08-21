@@ -454,13 +454,12 @@ hand. Layering in `docs/architecture.md` (Schedule generation). Shipped:
 one-off measured that re-seeding permutes who gets which hours but never changes
 the spread, so restarts would buy nothing. Event and blackout modeling is 5.6.
 
-### 5.3 W2W-importable schedule document — **future, not scheduled**
+### 5.3 W2W-importable schedule document — ✅ DONE (1.09)
 
-The ceiling on W2W interop (PLAN §17). Muster would emit a file in whatever
-format W2W's importer accepts; a human uploads it. **Not built, not designed** —
-the format is dictated by W2W, so the first real work is finding out what its
-importer takes, and whether the scheduler's workflow actually wants a bulk
-import over reading `/admin/schedule` and typing. Explicitly **not** an
+The ceiling on W2W interop (PLAN §17). Muster emits a file in the format W2W's
+importer accepts; a human uploads it. **Built in 1.09** as the shift-plan
+round-trip: plan import, employee mapping, and a filled A/B export. See
+`docs/w2w-shift-plan-roundtrip.md` for the design and layering. Explicitly **not** an
 integration: no API, no credentials, no automated transfer. Pairs with PLAN §16
 open question #6 (what layout the scheduler wants to read from).
 
