@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { W2W_POSITION_MAP_SEED } from "./w2w-position-map";
-import { POSITION_CONFIGS } from "./positions";
-import { TITLE_TO_POSITION } from "../roster/position-mapping";
+import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
+import { POSITION_CONFIGS } from "@/lib/config/positions";
+import { TITLE_TO_POSITION } from "@/lib/roster/position-mapping";
 
 const SEEDED_POSITION_IDS = new Set(POSITION_CONFIGS.map((c) => c.position.id));
 

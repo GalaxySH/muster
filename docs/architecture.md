@@ -1787,7 +1787,7 @@ and repair mode was never turned on.
 **Seed fixture.** `W2W_POSITION_MAP_SEED`'s `GDEC - R&C TM` row named
 `retail-and-cafe-team-member`, a position id that never existed, so **both** seed paths
 filtered it out in silence and those shifts could never be filled. Fixed to `barista`,
-matching `TITLE_TO_POSITION`, and `config/w2w-position-map.test.ts` now asserts every
+matching `TITLE_TO_POSITION`, and `w2w/position-map-seed.test.ts` now asserts every
 seed row targets a real position, that the two fixtures agree, and that shared-position
 rows carry distinct fill orders. Note this only helps a **fresh** database: the importer
 self-seeds only into an entirely empty map and deploys run migrations without `db:seed`,

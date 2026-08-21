@@ -24,7 +24,7 @@ import { decodeCp1252 } from "@/lib/text/cp1252";
 import { parseW2wPlan } from "@/lib/domain/w2w-plan/parse";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName, parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
-import { W2W_POSITION_MAP_SEED } from "@/lib/config/w2w-position-map";
+import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
 import { validateW2wCsvUpload } from "./upload-validation";
 import { loadPlanMatchInputs } from "./plan-data";
 
