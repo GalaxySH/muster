@@ -9,14 +9,14 @@ import "server-only";
  * The plan is read as a per-position aggregate rather than by loading its
  * rows: a week is ~1000 of them and nothing here needs more than the counts.
  */
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
+import { currentPlanRowQuery } from "./plan-data";
 import {
   positions,
   shiftBlocks,
   shiftPlanRows,
-  shiftPlans,
   students,
   w2wEmployees,
   w2wPositionMap,
@@ -96,14 +96,9 @@ async function loadMapHealthInputs(): Promise<MapHealthInputs> {
       .from(shiftBlocks)
       .where(liveBlocksOnly())
       .groupBy(shiftBlocks.positionId),
-    // Newest current plan. There is no unique constraint on status, so order
-    // rather than trusting there to be exactly one.
-    db
-      .select()
-      .from(shiftPlans)
-      .where(eq(shiftPlans.status, "current"))
-      .orderBy(desc(shiftPlans.importedAt))
-      .limit(1),
+    // The same query the plan page uses, so the two surfaces can never name
+    // different plans.
+    currentPlanRowQuery(),
   ]);
 
   const planRow = planRows[0];

@@ -497,6 +497,14 @@ function assign(
   let cohort: Cohort = "weekday";
   if (block.dayType === "weekend") {
     if (state.cohort === null) {
+      // Which rotation week a student with none yet joins. Three passes answer
+      // this and they answer it DIFFERENTLY on purpose, because they optimize
+      // different things (plan §7): here it is run-level fortnight balance, so
+      // the two weeks carry similar total weekend minutes. `SeatLedger
+      // .emptierWeek` picks by headcount in the one cell, because that is what
+      // moves graded fill for the annealer. `manualWeekendCohort` has nothing
+      // to optimize and just defaults. Do not "unify" these without deciding
+      // which objective wins; each changes generated schedules.
       const open = ledger.openCohorts(block, day);
       if (open.a && open.b) {
         state.cohort = weekendMinutes.b < weekendMinutes.a ? "b" : "a";

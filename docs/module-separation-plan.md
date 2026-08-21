@@ -1,6 +1,6 @@
 # Module separation overhaul — implementation plan
 
-**Status: in progress on `worktree-module-boundary-repair` (PLAN 1.21).**
+**Status: Phase 0, Phase 1 and Phase 2 built on `worktree-module-boundary-repair` (PLAN 1.21), draft PR #61.**
 Phase 0 (enforcement and doc truth) and Phase 1 (correctness bugs) are the first
 shippable unit and land as a draft PR. Phase 2 (collapsing duplicated rules)
 follows on the same branch. Phases 3 and 4 are scoped here but are deliberately
@@ -101,13 +101,13 @@ duplicated or contradictory rule, **A** architecture, **E** enforcement.
 | | Item | Effort |
 |---|---|---|
 | R1 | Effective availability has four implementations; the seam resolves cells but not rotation | M |
-| R2 | Three disagreeing answers to "which rotation week" | S |
+| R2 | ~~Three disagreeing answers to "which rotation week"~~ — **resolved as deliberate**, cross-referenced at each site (§7) | — |
 | R3 | Four ways to derive a cohort from rows | S |
 | R4 | Two `EPSILON_MINUTES` constants | XS |
 | R5 | The retired-block filter is copied at five or more sites | XS |
 | R6 | Two near-duplicate "current plan" queries | S |
 | R8 | `MatchBlock` hand-copies a `shift_blocks` slice | XS |
-| R9 | Dead `schedule_email_sent_at` column | XS |
+| R9 | ~~Dead `schedule_email_sent_at` column~~ — **closed, no action needed** | — |
 | R10 | W2W gates admin two different ways inside one module | XS |
 
 ### Phase 3 — restore separability (later branches)
@@ -198,6 +198,50 @@ branches collide on migration indexes and dropping a column from a live database
 is not worth the risk for a dead field. That keeps the whole branch
 migration-free and safe to merge in any order.
 
+## 5a. Items closed without a change
+
+**R9, the dead `schedule_email_sent_at` column.** The audit was right that nothing
+reads or writes it, and wrong that it was untracked debt. `db/schema.ts` already
+marks it deprecated and says why the drop is deferred, and `docs/roadmap.md` §6.1
+records step one as shipped 2026-07-30 with step two explicitly conditional: drop
+the column once a full schedule cycle has passed and the scheduler is confirmed not
+mid-cycle. That condition is not met today, and dropping it now would contradict both
+the roadmap and CLAUDE.md's production rule. Left exactly as it is.
+
+Worth noting as a pattern: "dead code" found by a static audit is not automatically
+debt. This one was a deliberate, documented, time-gated deferral, and the honest
+outcome of the item was to confirm that and close it.
+
+## 5b. Where execution corrected this plan
+
+Five things this plan got wrong, recorded because the corrections are the useful
+part.
+
+**B2 was under-specified.** "Move the guard counts inside the transaction" does not
+close the race. Under REPEATABLE READ a plain `count(*)` is a snapshot read, so a
+generation can still commit between the count and the delete. It needs locking
+reads; the guards now take `FOR UPDATE` on the position row and its blocks, and
+InnoDB's shared lock on a parent row for each child FK check is what actually
+blocks new rows from arriving.
+
+**R5 was five sites in this plan and eighteen in the code**, across fourteen files.
+Six of them deliberately read retired blocks and were correctly left alone.
+
+**R10 was half done already.** `map-actions.ts` used `requireAdmin()` at all three
+of its sites; only `w2w/actions.ts` hand-rolled the gate.
+
+**R3's file list was wrong.** `schedule/data.ts` does per-cell A/B seat counting,
+not cohort derivation, so the sequencing constraint "R3 after R1 because both edit
+`schedule/data.ts`" never bound. The real sites were `engine.ts` (twice),
+`stats.ts`, `anneal.ts`, `improve.ts` and `scheduling/manual.ts` — six, not four,
+and they gave three different answers rather than four spellings of one.
+
+**R9 was not debt at all** (see §5a).
+
+The pattern: a static audit reliably finds *where* something is duplicated and is
+unreliable about *why*, whether the duplication is deliberate, and how many
+instances exist. Every item here needed the code read before it could be fixed.
+
 ## 6. What R7 corrects
 
 The W2W-importable document shipped in 1.09. Four places still say it did not:
@@ -237,6 +281,14 @@ register into the repo so that Phase 2 cannot destroy any of it in good faith.
   does not remove the knowledge.
 - **The single-student internal-copy limitation.** Tracked in the roadmap, out of
   scope here.
+- **The three rotation-week criteria (R2, resolved as deliberate).** The greedy
+  pass balances weekend minutes across the whole run, `SeatLedger.emptierWeek`
+  picks by headcount in one cell because that is what moves graded fill for the
+  annealer, and `manualWeekendCohort` has nothing to optimize and defaults. Unlike
+  R3, where six sites answered the *same* question three ways, these answer three
+  different questions, and unifying them would change generated schedules for no
+  gain. Each site now cross-references the other two so the divergence is visible
+  rather than silent, which was the actual complaint.
 
 ## 8. Sequencing constraints
 

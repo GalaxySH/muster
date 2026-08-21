@@ -152,6 +152,11 @@ export function weekMinutesForRows(rows: readonly RowSpan[], everyWeekendOptIn: 
  * current-run weekend rows already fix their rotation, so reuse it; otherwise
  * "every" for every-weekend opt-ins; otherwise default to "a".
  */
+// The admin placed someone with no rotation yet and there is nothing here to
+// optimize, so this defaults rather than choosing: reuse whatever rotation their
+// rows already carry, else "every" for an opt-in, else "a". The greedy pass and
+// the annealer pick a week on real criteria (run-level minute balance and
+// per-cell headcount respectively); see plan §7 on why the three differ.
 export function manualWeekendCohort(
   existing: readonly ExistingAssignment[],
   everyWeekendOptIn: boolean,

@@ -74,16 +74,27 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
   };
 }
 
-export async function getCurrentPlan(): Promise<CurrentPlan | null> {
-  const db = getDb();
-  // Newest first: nothing constrains `status` to a single `current` row, and
-  // an unordered pick would let this and the map page name different plans.
-  const [meta] = await db
+/**
+ * The current plan row, newest first. Nothing constrains `status` to a single
+ * `current` row, so this orders rather than trusting there to be exactly one.
+ *
+ * Shared because both W2W surfaces need it and an unordered or differently
+ * ordered pick would let them name different plans. Returns the query rather
+ * than the row so callers can put it in a Promise.all; drizzle builders are
+ * thenable, so `await currentPlanRowQuery()` works too.
+ */
+export function currentPlanRowQuery() {
+  return getDb()
     .select()
     .from(shiftPlans)
     .where(eq(shiftPlans.status, "current"))
     .orderBy(desc(shiftPlans.importedAt))
     .limit(1);
+}
+
+export async function getCurrentPlan(): Promise<CurrentPlan | null> {
+  const db = getDb();
+  const [meta] = await currentPlanRowQuery();
   if (!meta) return null;
 
   const rows = await db
