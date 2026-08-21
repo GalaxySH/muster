@@ -1,6 +1,6 @@
 /**
- * Pure derivations behind a run's warnings, kept out of the I/O in ./data.ts
- * and ./actions.ts.
+ * Pure derivations behind a run's warnings, kept out of the I/O in
+ * schedule/data.ts and schedule/actions.ts that read them.
  *
  * Two things live here. `lateStartWarnings` compares a student's hire date
  * against the day their position goes back to work, both as `yyyy-mm-dd`
@@ -9,24 +9,19 @@
  * a Date from it. `students.hired_on` is a `date` column the driver hands back
  * as a Date pinned to LOCAL midnight, so its day is read with local getters
  * (`localDay`). The rest wires the independent validator
- * (domain/scheduling/validate.ts) to a stored run: assignment rows in,
+ * (./validate.ts) to a stored run: assignment rows in,
  * display-ready findings out, and never a throw, since a run whose report or
  * blocks are unreadable must still render its page.
  */
-import { storedSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
+import { storedSchedulingParams, type SchedulingParams } from "./params";
 import {
   validateRunLabor,
   type StudentLaborFinding,
   type ValidatorLimits,
   type ValidatorRow,
-} from "@/lib/domain/scheduling/validate";
-import type {
-  AssignmentSource,
-  Cohort,
-  EngineReport,
-  LateStartWarning,
-} from "@/lib/domain/scheduling/types";
-import type { Day } from "@/lib/domain/types";
+} from "./validate";
+import type { AssignmentSource, Cohort, EngineReport, LateStartWarning } from "./types";
+import type { Day } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 

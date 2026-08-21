@@ -8,6 +8,7 @@
  */
 import type { Day, Position, SelectedShift, ShiftBlock } from "../types";
 import type { SchedulingParams } from "./params";
+import type { RunStats } from "./stats";
 
 /**
  * Which weekly template an assignment belongs to. Weekday cells are the same
@@ -212,6 +213,25 @@ export interface EngineReport {
    */
   lateStarts?: LateStartWarning[];
 }
+
+/**
+ * The report shape stored in schedule_runs.summary_json: the engine report,
+ * plus the repair stamp a repair-only run adds (how many students were kept in
+ * place from the imported W2W plan; those show as frozen in the report but are
+ * not admin-frozen), plus the statistics snapshot the caller stamps on.
+ *
+ * Both halves are engine output, so the shape lives here rather than in the
+ * reader that happens to parse it. `RunStats` is a type-only import, which
+ * erases at build time, so ./stats importing this module back is not a cycle.
+ */
+export type StoredRunReport = EngineReport & {
+  repaired?: { students: number };
+  /**
+   * The run's health figures as generated (./stats.ts). Absent on runs from
+   * before they existed, which render without the section.
+   */
+  stats?: RunStats;
+};
 
 /** One student who starts after the date their position's shifts resume. */
 export interface LateStartWarning {

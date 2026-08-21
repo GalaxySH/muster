@@ -10,7 +10,7 @@
  */
 import { AB_WEEKEND_FACTOR } from "../capacity";
 import { hourCap } from "../caps";
-import { assignedCellCount, latenessTier } from "../coverage";
+import { assignedCellCount, latenessTier } from "./coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
 import type { TimeRange } from "../time";

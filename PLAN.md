@@ -2537,7 +2537,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   number field per block row; `validateDesiredCapacity` allows 1–99 or blank = no
   target; a capacity-only save skips the picked-shift time confirm). New
   `/admin/schedule` (hub nav: Review) shows supply vs target per (block × day) cell
-  from submitted on-roster availability: pure `domain/coverage.ts` (ok/short/severe
+  from submitted on-roster availability: pure `domain/scheduling/coverage.ts` (ok/short/severe
   grading against the target, severe = under half; lateness tiers Night ≥ 8p /
   Evening ≥ 5p off the block end; derived Close tag; shortfall summaries) + loader
   `schedule/data.ts`. Coverage counts **include** the auto-assigned weekend cell,

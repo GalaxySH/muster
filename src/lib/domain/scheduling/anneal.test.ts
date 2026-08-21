@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "../time";
 import { coveredMinutes } from "../intervals";
-import { assignedCellCount } from "../coverage";
+import { assignedCellCount } from "./coverage";
 import {
   WEEKDAY_DAYS,
   WEEKEND_DAYS,

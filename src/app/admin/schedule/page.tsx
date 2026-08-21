@@ -45,7 +45,7 @@ import {
   laborFindingSections,
   type LaborFindingSection,
   type LaborFindingView,
-} from "@/lib/schedule/run-warnings";
+} from "@/lib/domain/scheduling/run-warnings";
 import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
@@ -56,7 +56,7 @@ import {
   type CoverageRow,
   type CoverageStatus,
   type CoverageSummary,
-} from "@/lib/domain/coverage";
+} from "@/lib/domain/scheduling/coverage";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";

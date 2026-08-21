@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { problemGroups } from "@/lib/domain/scheduling/problems";
-import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "@/lib/domain/scheduling/params";
-import type { EngineReport, StudentScheduleReport } from "@/lib/domain/scheduling/types";
+import { problemGroups } from "./problems";
+import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
+import type { EngineReport, StoredRunReport, StudentScheduleReport } from "./types";
 // Type only: ./data is server-only, and the import is erased before it runs.
-import type { StoredRunReport } from "./data";
 import {
   laborFindingSections,
   lateStartWarnings,

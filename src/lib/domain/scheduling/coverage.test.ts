@@ -7,9 +7,9 @@ import {
   summarizeAssignedCoverage,
   summarizeCoverage,
 } from "./coverage";
-import type { CellCount } from "./demand";
-import { parseTime } from "./time";
-import type { DayType, ShiftBlock } from "./types";
+import type { CellCount } from "../demand";
+import { parseTime } from "../time";
+import type { DayType, ShiftBlock } from "../types";
 
 function block(
   id: string,
@@ -18,7 +18,14 @@ function block(
   end: string,
   desiredCapacity: number | null = null,
 ): ShiftBlock {
-  return { id, positionId: "ca", dayType, start: parseTime(start), end: parseTime(end), desiredCapacity };
+  return {
+    id,
+    positionId: "ca",
+    dayType,
+    start: parseTime(start),
+    end: parseTime(end),
+    desiredCapacity,
+  };
 }
 
 describe("latenessTier", () => {
@@ -85,7 +92,13 @@ describe("buildCoverageRows", () => {
 
   it("grades each cell against the block target", () => {
     const openRow = buildCoverageRows(blocks, counts)[0]!;
-    expect(openRow.cells.map((c) => c.status)).toEqual(["ok", "severe", "severe", "severe", "severe"]);
+    expect(openRow.cells.map((c) => c.status)).toEqual([
+      "ok",
+      "severe",
+      "severe",
+      "severe",
+      "severe",
+    ]);
   });
 
   it("leaves untargeted blocks status none", () => {

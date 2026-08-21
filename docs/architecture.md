@@ -1221,7 +1221,7 @@ seams where they meet are worth naming:
 The first slice of the schedule-generation plan: per-block target staffing plus a
 coverage view, no generator yet. Standard layering:
 
-- **Pure domain** `domain/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
+- **Pure domain** `domain/scheduling/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
   produces one row per block (weekday rows first, then by start) with one cell per
   applicable day; `coverageStatus` grades a cell against the block target (`ok` /
   `short` / `severe` = under half / `none` when no target), `latenessTier` tiers a
@@ -1332,7 +1332,7 @@ The generator itself, layered exactly like the rest of the app:
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto
-  the run report). `domain/coverage.ts` grew `assignedCellCount` (weekend cells
+  the run report). `domain/scheduling/coverage.ts` grew `assignedCellCount` (weekend cells
   grade on the needier week) and `summarizeAssignedCoverage` so the page's
   totals switch from selection supply to assigned seats once a run exists
   (since 1.15 the `?grid=` switch can put the grids and those two totals back on
@@ -1580,7 +1580,7 @@ version; this is the seam map.
   count, share, or
   distribution except `stretch.overLimit`, which is judged against the run's own
   `maxConsecutiveDays` and stores it as `overLimitAt`.
-- **`schedule/run-warnings.ts`** is the pure seam between the stored run and its
+- **`domain/scheduling/run-warnings.ts`** is the pure seam between the stored run and its
   warnings, kept out of the I/O in `data.ts` and `actions.ts`. `lateStartWarnings`
   compares `students.hired_on` against `positions.return_date` as `yyyy-mm-dd`
   **strings**, never as Dates: the return date is stored as a string and stays
@@ -1646,7 +1646,7 @@ and setting the knob back to 0 is the kill switch.
 
 - **The objective is `stats.ts`'s `filledOfTarget`, not a copy of it.**
   `SeatLedger.gradedFill` (new, in `seats.ts`) imports `assignedCellCount` from
-  `domain/coverage.ts`, so weekend cells grade on the needier rotation week
+  `domain/scheduling/coverage.ts`, so weekend cells grade on the needier rotation week
   exactly as every other surface grades them. A test pins the pass's own
   `gainedSeats` to an independent recomputation. An early prototype optimized a
   laxer week-seat count and quietly disagreed with the admin views; that is the

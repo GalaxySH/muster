@@ -13,7 +13,7 @@
  */
 import Link from "next/link";
 import type { HealthBar, HealthTone } from "@/lib/admin/schedule-health-view";
-import type { FrozenReason } from "@/lib/schedule/run-warnings";
+import type { FrozenReason } from "@/lib/domain/scheduling/run-warnings";
 
 export const panelStyle: React.CSSProperties = {
   background: "var(--color-background-primary)",

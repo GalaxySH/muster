@@ -31,7 +31,7 @@ import {
   summarizeCoverage,
   type CoverageRow,
   type CoverageSummary,
-} from "@/lib/domain/coverage";
+} from "@/lib/domain/scheduling/coverage";
 import { demandCellKey, type CellCount } from "@/lib/domain/demand";
 import {
   diffRuns,
@@ -47,29 +47,18 @@ import {
   type ProblemGroup,
 } from "@/lib/domain/scheduling/problems";
 import { isInScope, parseScope, type ScheduleScope } from "@/lib/domain/scheduling/scope";
-import type { RunStats } from "@/lib/domain/scheduling/stats";
-import { runLaborFindings, type FrozenReason, type LaborFindingView } from "./run-warnings";
+import {
+  runLaborFindings,
+  type FrozenReason,
+  type LaborFindingView,
+} from "@/lib/domain/scheduling/run-warnings";
 import type {
   AssignmentSource,
   Cohort,
   EngineReport,
+  StoredRunReport,
   StudentScheduleReport,
 } from "@/lib/domain/scheduling/types";
-
-/**
- * The report shape stored in schedule_runs.summary_json: the engine's report,
- * plus the repair stamp a repair-only run adds (how many students were kept
- * in place from the imported W2W plan; those show as frozen in the report but
- * are not admin-frozen), plus the statistics snapshot the caller stamps on.
- */
-export type StoredRunReport = EngineReport & {
-  repaired?: { students: number };
-  /**
-   * The run's health figures as generated (domain/scheduling/stats.ts). Absent
-   * on runs from before they existed, which render without the section.
-   */
-  stats?: RunStats;
-};
 import {
   ALL_DAYS,
   type Day,

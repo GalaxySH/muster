@@ -41,7 +41,7 @@
  *
  * Pure and deterministic: no clock, no randomness, every ordering explicit.
  */
-import { assignedCellCount } from "../coverage";
+import { assignedCellCount } from "./coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes, mergeRanges } from "../intervals";
 import type { TimeRange } from "../time";

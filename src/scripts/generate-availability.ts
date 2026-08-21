@@ -20,7 +20,7 @@ import { positions, shiftBlocks, shiftSelections, students, submissions } from "
 import { liveBlocksOnly } from "../lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
 import { deriveOpenClose } from "../lib/domain/blocks";
-import { EVENING_END_MINUTES } from "../lib/domain/coverage";
+import { EVENING_END_MINUTES } from "../lib/domain/scheduling/coverage";
 import { checkDesiredHours, validateAvailability } from "../lib/domain/validation";
 import {
   WEEKDAY_DAYS,

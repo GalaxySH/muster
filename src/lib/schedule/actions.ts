@@ -53,6 +53,7 @@ import type {
   EngineReport,
   ScheduleAssignment,
   ScheduleStudent,
+  StoredRunReport,
 } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
 import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
@@ -62,9 +63,8 @@ import {
   loadCellAvailability,
   loadCurrentRunRow,
   type CellAvailability,
-  type StoredRunReport,
 } from "./data";
-import { lateStartWarnings } from "./run-warnings";
+import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
 
 /** A drizzle transaction handle. */
 type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];

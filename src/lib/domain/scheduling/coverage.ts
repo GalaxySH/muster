@@ -13,15 +13,9 @@
  * priority the future generator gives late shifts. Pure: callers supply
  * blocks and aggregate counts.
  */
-import { deriveOpenClose } from "./blocks";
-import { demandCellKey, type CellCount } from "./demand";
-import {
-  WEEKDAY_DAYS,
-  WEEKEND_DAYS,
-  type Day,
-  type DayType,
-  type ShiftBlock,
-} from "./types";
+import { deriveOpenClose } from "../blocks";
+import { demandCellKey, type CellCount } from "../demand";
+import { WEEKDAY_DAYS, WEEKEND_DAYS, type Day, type DayType, type ShiftBlock } from "../types";
 
 /** Blocks ending at or after 8pm: the shifts hardest to keep staffed. */
 export const NIGHT_END_MINUTES = 20 * 60;
@@ -160,7 +154,10 @@ export function summarizeAssignedCoverage(
     for (const cell of row.cells) {
       if (cell.target === null) continue;
       summary.targetedCells += 1;
-      const count = assignedCellCount(row.dayType, assigned.get(demandCellKey(row.blockId, cell.day)));
+      const count = assignedCellCount(
+        row.dayType,
+        assigned.get(demandCellKey(row.blockId, cell.day)),
+      );
       if (count < cell.target) {
         summary.shortCells += 1;
         summary.missing += cell.target - count;
