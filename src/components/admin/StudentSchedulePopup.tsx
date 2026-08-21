@@ -14,7 +14,7 @@ import { fetchStudentSchedule } from "@/lib/schedule/student-schedule-actions";
 import type { StudentScheduleView } from "@/lib/schedule/student-schedule-data";
 import type { StudentGridRow, StudentGridSub } from "@/lib/admin/student-schedule-view";
 import { DAY_LABEL } from "@/lib/domain/types";
-import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-colors";
+import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-ui";
 
 function useStudentSchedule(email: string) {
   const [view, setView] = useState<StudentScheduleView | null>(null);
@@ -264,7 +264,9 @@ function SubGridTable({ sub }: { sub: StudentGridSub }) {
               <td key={cell.day}>
                 <span
                   style={cellBox(cell.source ? sourceColor(cell.source) : null)}
-                  title={cell.source ? cellTitle(row, cell.day, cell.rotation, cell.source) : undefined}
+                  title={
+                    cell.source ? cellTitle(row, cell.day, cell.rotation, cell.source) : undefined
+                  }
                 >
                   {cell.rotation ?? ""}
                 </span>

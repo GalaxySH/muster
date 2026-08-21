@@ -10,7 +10,7 @@ import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { removeOrphanedSelection } from "@/lib/admin/actions";
 import type { OrphanedCell } from "@/lib/positions/orphans";
 import { applyScheduleEdits } from "@/lib/schedule/manual";
-import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-colors";
+import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-ui";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import { EPSILON_MINUTES, formatTime } from "@/lib/domain/time";

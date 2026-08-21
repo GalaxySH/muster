@@ -4,7 +4,6 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import {
-  FROZEN_LABEL,
   SectionLabel,
   StatTile,
   bannerStyle,
@@ -15,6 +14,7 @@ import {
   panelStyle,
   successPillStyle,
 } from "@/components/admin/ui";
+import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
 import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
 import { PinRunButton } from "@/components/admin/PinRunButton";

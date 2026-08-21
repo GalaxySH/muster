@@ -554,11 +554,12 @@ floors its columns at `min(420px, 100%)`, and the group-progress table opts out 
 generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
 private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
 `masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
-both surfaces import them. That file is no longer purely presentational: it also holds
-generator-shaped helpers (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`) and type-imports
-`HealthBar`/`HealthTone` from `admin/schedule-health-view` and `FrozenReason` from
-`schedule/run-warnings`, so seven admin pages now type-depend on the generator through it.
-Plan item A2 in `docs/module-separation-plan.md` splits those helpers back out. `StudentQuickSearch` is a client island: the roster is small
+both surfaces import them. That file is presentational only. The helpers shaped by the
+generator (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`, plus the engine/manual fill
+colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the one admin
+UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
+A2). The split is what lets a travel or responses page import the shared kit without
+taking on the engine's vocabulary. `StudentQuickSearch` is a client island: the roster is small
 enough to filter locally, so results are instant and there is no request per keystroke
 (`/` focuses it).
 

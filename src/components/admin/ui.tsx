@@ -6,14 +6,11 @@
  * Everything here is hook-free, so server pages and client components can both
  * import it. Colors go through the globals.css tokens.
  *
- * Not everything here is purely presentational any more: the frozen/health helpers
- * below type-depend on the generator, which makes the seven admin pages that import
- * this file depend on it too. Plan item A2 in docs/module-separation-plan.md splits
- * those out into a generator-owned UI module. Do not add more of them here.
+ * Everything here is presentational and knows no module: a page can import it
+ * without taking on a dependency it has no use for. Anything shaped by the
+ * generator goes in ./schedule-ui.tsx instead.
  */
 import Link from "next/link";
-import type { HealthBar, HealthTone } from "@/lib/admin/schedule-health-view";
-import type { FrozenReason } from "@/lib/domain/scheduling/run-warnings";
 
 export const panelStyle: React.CSSProperties = {
   background: "var(--color-background-primary)",
@@ -123,13 +120,6 @@ export const manualTagStyle: React.CSSProperties = {
   color: "#8a4fd3",
 };
 
-/** Why a student's shifts did not move. See FrozenReason for the split. */
-export const FROZEN_LABEL: Record<FrozenReason, string> = {
-  marked: "kept",
-  "out-of-scope": "not in this update",
-  kept: "kept",
-};
-
 /**
  * A stored `yyyy-mm-dd` as "Sep 2". Read as UTC so the day never shifts, and
  * pinned to en-US so the server and the client render the same string.
@@ -217,50 +207,6 @@ export const footnoteStyle: React.CSSProperties = {
   color: "var(--color-text-tertiary)",
   margin: 0,
 };
-
-/** Text color for a health tone: red for danger, amber for warning, plain otherwise. */
-export const toneColor = (tone: HealthTone): string =>
-  tone === "danger"
-    ? "var(--color-text-danger)"
-    : tone === "warning"
-      ? "var(--color-text-warning)"
-      : "var(--color-text-primary)";
-
-/** The same three tones as a bar fill, where the warning reads better as a wash. */
-export const barColor = (tone: HealthTone): string =>
-  tone === "danger"
-    ? "var(--color-text-danger)"
-    : tone === "warning"
-      ? "var(--color-background-warning)"
-      : "var(--color-text-info)";
-
-/**
- * One hand-rolled bar: label and figure on a line, the track under them. Shared
- * with the analytics funnel's shape on purpose, and hand-rolled on purpose:
- * these pages carry no chart library.
- */
-export function Bar({ bar }: { bar: HealthBar }) {
-  return (
-    <div style={{ padding: "6px 0", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
-      <div
-        style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}
-      >
-        <span style={{ color: toneColor(bar.tone) }}>{bar.label}</span>
-        <span style={{ color: "var(--color-text-secondary)" }}>{bar.caption}</span>
-      </div>
-      <div style={barTrackStyle}>
-        <div
-          style={{
-            width: `${bar.percent}%`,
-            height: "100%",
-            borderRadius: 3,
-            background: barColor(bar.tone),
-          }}
-        />
-      </div>
-    </div>
-  );
-}
 
 /** A panel's heading, with an optional control parked on the right. */
 export function SectionLabel({
