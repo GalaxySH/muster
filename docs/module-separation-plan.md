@@ -109,24 +109,25 @@ duplicated or contradictory rule, **A** architecture, **E** enforcement.
 | R8 | `MatchBlock` hand-copies a `shift_blocks` slice | XS |
 | R9 | ~~Dead `schedule_email_sent_at` column~~ — **closed, no action needed** | — |
 | R10 | W2W gates admin two different ways inside one module | XS |
+| R11 | **Found in wave 3.** Three copies of the local-calendar-day read | XS |
 
-### Phase 3 — restore separability (later branches)
+### Phase 3 — restore separability (A2 and A9 on this branch)
 
 | | Item | Effort |
 |---|---|---|
-| A2 | Split the shared admin UI kit; it imports generator types and seven pages import it | S |
+| A2 | ~~Split the shared admin UI kit~~ — **done**, `components/admin/schedule-ui.tsx` | S |
 | A1 | Build `loadEligibleStudents()`; move `eligibleSubmittedFilter()` to the form side | L |
 | A12 | Contain the engine vocabulary and pull `seats.ts` internals out of UI | M |
-| A9 | Re-home `domain/coverage.ts` and `schedule/run-warnings.ts` | XS |
+| A9 | ~~Re-home `domain/coverage.ts` and `schedule/run-warnings.ts`~~ — **done** | XS |
 | A4 | Decouple the admin hub; replace the hardcoded nav with a registry | L |
 | A3 | Split `PrefGridCalculator.tsx` into form and generator components | L |
 | A10 | Give `components/admin/` subdirectories | S |
 
-### Phase 4 — cut the cycles and cross-writes (later branches)
+### Phase 4 — cut the cycles and cross-writes (A16 and A18 on this branch)
 
 | | Item | Effort |
 |---|---|---|
-| A16 | Formalize the admin console as the fourth module | M |
+| A16 | ~~Formalize the admin console as the fourth module~~ — **done** | M |
 | A5 | Break the generator/W2W cycle with a `RepairSeedProvider` port | M |
 | A6 | Put an adapter in front of the `desired_capacity` write | S |
 | A7 | Decontaminate `lib/positions/` | M |
@@ -136,7 +137,8 @@ duplicated or contradictory rule, **A** architecture, **E** enforcement.
 | A8 | Split the 699-line generation god-file | M |
 | A11 | Consolidate the W2W admin surface, now spread over five locations | M |
 | A17 | Split the 611-line schema file, keeping one database and one lineage | M |
-| A18 | Turn the W2W domain's `roster/csv` import around | XS |
+| A18 | ~~Turn the W2W domain's `roster/csv` import around~~ — **done**, `domain/csv.ts` | XS |
+| A19 | **Found in A16.** Break the `admin/sheet-sync` cycle with a matrix-builder registry | M |
 
 ## 4. Delegation timeline
 
@@ -304,6 +306,7 @@ Most items are independent. These are not.
 | A2 before A3 and A4 | Both touch admin UI that imports the shared kit. |
 | A16 before A4 and A14 | Naming the console decides which hub edges are violations. |
 | B2 before A7 | Both edit the position delete and merge paths. |
+| A16 before A19 | The console has to be named before its cycle can be called one. |
 
 ## 9. Status reporting
 
@@ -328,12 +331,12 @@ changes a rule that currently has several spellings, so it needs a deliberate
 check that every consumer still agrees after the collapse. That check is the
 point of the item.
 
-## 11. Completion record (2026-08-21)
+## 11. Completion record
 
-Phases 0, 1 and 2 shipped on `worktree-module-boundary-repair` as draft PR #61,
-six commits, 53 files, +1943/-308. `npm run typecheck` clean, `npm run lint`
-reports no warnings or errors, `npm test` at **90 files / 1306 tests** (branch
-point was 85/1259). No migration on this branch, so it merges in any order.
+### Wave 1-2 (2026-08-21): Phases 0, 1 and 2
+
+Shipped on `worktree-module-boundary-repair` as draft PR #61, six commits, 53
+files, +1943/-308. No migration on this branch, so it merges in any order.
 
 | Item | Outcome |
 |---|---|
@@ -352,6 +355,47 @@ point was 85/1259). No migration on this branch, so it merges in any order.
 | R10 | All W2W admin gates go through `requireAdmin()` |
 | R2, R9 | Investigated, closed **without** a change (§5a, §7) |
 
+### Wave 3 (2026-08-21): the four cheapest separability items
+
+Five more commits on the same branch. `npm run typecheck` clean, `npm run lint`
+reports no warnings or errors, `npm test` at **91 files / 1310 tests** (branch
+point was 85/1259). Still no migration.
+
+| Item | Outcome |
+|---|---|
+| A9 | `domain/coverage.ts` and `schedule/run-warnings.ts` move into `domain/scheduling/`; `StoredRunReport` moves with them |
+| A2 | `schedule-colors.ts` becomes `components/admin/schedule-ui.tsx` and takes `FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`; `ui.tsx` imports only `next/link` again |
+| A18 | `parseCsv` moves to `domain/csv.ts`; the W2W plan parser stops importing the form module |
+| R11 | One `localDay`, in `domain/calendar-day.ts`, which also takes `matchesStarted` |
+| A16 | Console named in the lint; popup seam moves to `lib/admin`; form core may no longer import the console; `closes/admin-actions.ts` reclassified |
+| A19 | **New.** The `admin/sheet-sync` cycle, found while sizing A16 |
+
+**Allowlist movement.** `scheduleStudentData` removed (A16). The two `sheet-sync`
+entries that said A8 now say A19, which is the item that actually removes them.
+Two new entries appeared, `availabilityActions` and `closesActions`, and they are
+not growth: they cover a rule that did not exist before this wave, and they name
+edges the audits had already found. The allowlist still only shrinks against a
+fixed rule.
+
+### What wave 3 found that the plan did not have
+
+1. **A19, the one real cycle.** `admin/sheet-sync.ts` is called by the form core
+   after a student submits or claims, and it reaches down into `lib/schedule` to
+   build the schedule matrix. So the form core depends on the generator through
+   the console. The fix is a registry each module registers its own matrix builder
+   with, leaving sheet-sync knowing only how to push a matrix. Deliberately not
+   attempted in this wave: it touches the student submit path, which is live.
+2. **R11, a third copy of the local-day read.** `students.hired_on` comes back at
+   local midnight and its day has to come off the local getters. That reasoning was
+   written out three times. Folded into `domain/calendar-day.ts`.
+3. **`StoredRunReport` was misfiled** the same way `run-warnings.ts` was: pure
+   engine output declared inside the reader that parses it, which forced a domain
+   test to type-import a `server-only` module.
+4. **Folder is not layer.** `closes/admin-actions.ts` is console code in a
+   form-core folder. A16 names it in the config rather than moving it or weakening
+   the rule around it.
+5. **`matchesStarted` had no tests.** It has six now.
+
 ### Behavior changes a reviewer must weigh
 
 1. Deleting a test account holding shifts in the **current** run now fails where it
@@ -365,25 +409,49 @@ point was 85/1259). No migration on this branch, so it merges in any order.
    1000 edit batches, with a perturbed control proving the harness worked.
 4. The new `FOR UPDATE` reads add a theoretical deadlock against
    `applyScheduleEdits`. MySQL detects it and rolls one back; no retry logic added.
-5. Not verified in a browser. The only UI change is one error string on
-   `/admin/test-users`.
+5. **Wave 3 is behavior-neutral by construction.** Every item is a path change, a
+   fold of identical implementations, or a lint rule. The one exception worth
+   naming is `toLocalInput` in `GroupWindowsTable`, which now calls `localDay`
+   instead of its own copy of the same four lines.
+6. **Browser check is partial.** `/admin/analytics` renders correctly, which
+   exercises the half of A2 that matters most: it imports the stripped-down
+   `components/admin/ui.tsx` and its tiles, labels, panels and funnel all draw.
+   `/admin/schedule` and `/admin/groups` could not be checked, for a reason that
+   has nothing to do with this branch, see below.
+
+### The local dev database is broken, on every branch
+
+Worth knowing before anyone tries to reproduce the browser check. The dev DB on
+`localhost:3306` is missing two columns its own migration history says it has:
+`positions.return_date` (0028) and `schedule_runs.pinned` (0030). Its
+`__drizzle_migrations` table records 29 applied against 31 journal entries, but the
+29 do not line up with the first 29 files, which is what parallel worktrees minting
+colliding migration numbers looks like.
+
+Every page that lists positions therefore 500s locally, `/me` included, on this
+branch and on `main` alike. The repair is the two `ADD COLUMN` statements from
+`drizzle/0028_add_position_return_date.sql` and
+`drizzle/0030_swift_steve_rogers.sql`, run by hand; `npm run db:migrate` will not
+do it, because the counter already believes 0028 ran. Nothing was written to that
+database from this branch.
 
 ## 12. Next steps
 
-**Before merging #61:** decide on the current-run scoping in change 1 above, and
-confirm you are happy with 3 and 4. Nothing else blocks it.
+**Before merging #61:** decide on the current-run scoping in behavior change 1,
+and confirm you are happy with 3 and 4. Nothing else blocks it.
 
-**Immediately after merge**, cheapest first:
+**Next, in this order:**
 
-1. **A2 — split `components/admin/ui.tsx`** (S). Move `FROZEN_LABEL`, `Bar`,
-   `toneColor`, `barColor` into a generator-owned UI module. Highest structural
-   payoff per hour left in the plan, and it removes the only reason a pure form
-   page type-depends on the generator.
-2. **A9 — re-home `domain/coverage.ts` and `schedule/run-warnings.ts`** (XS).
-   Both are mechanical moves; `run-warnings.ts` is already pure and misfiled.
-3. **A18 — turn the W2W domain's `roster/csv` import around** (XS).
-4. **A16 — formalize the admin console as the fourth module** (M). Do this before
-   A4 and A14; it decides which remaining edges are violations at all.
+1. **A19 — break the `sheet-sync` cycle** (M). It is now the only cycle the lint
+   has to hold its nose about, and it sits on the live student submit path, so it
+   wants its own branch and a careful read. Give each module a
+   `registerSheetTarget(name, builder)` call and leave sheet-sync knowing only how
+   to push a matrix; the four allowlist entries come out with it.
+2. **A12 — contain the engine vocabulary** (M), and **A10 — subdirectories under
+   `components/admin`** (S). A2 made both cheaper: there is now an obvious
+   generator-side UI module for things to move into.
+3. **A14** (move the W2W seed fixture out of shared config) and **A6** (adapter in
+   front of the `desired_capacity` write) are both S and both unblocked.
 
 **Then the large ones**, in this order because each shrinks the next: **A1**
 (`loadEligibleStudents`, collapses ~12 of 29 generator raw reads) → **A8** (split
@@ -393,7 +461,9 @@ benchmark each against a realistic roster before merge.
 
 **Standing rule:** every one of these removes an `eslint.config.mjs` allowlist
 entry. The allowlist only shrinks. If a change needs a new cross-module edge, add
-a port on the owning side instead.
+a port on the owning side instead. And a rule that has not been seen to fire on an
+injected violation has not been tested: flat config resolves one rule name per file
+by last-match-wins, so a green run is also what a silently-dropped rule looks like.
 
 **Known gap the lint cannot see:** table-level coupling. `positions/actions.ts`
 reaches generator and W2W tables through `@/lib/db/schema`, which no import-path
