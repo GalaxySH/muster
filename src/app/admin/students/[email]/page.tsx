@@ -11,7 +11,11 @@ import {
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
 import { buildAdminGrid } from "@/lib/admin/summary";
-import { diffInternalFromStudent, type InternalDiff } from "@/lib/availability/effective";
+import {
+  diffInternalFromStudent,
+  effectiveRotation,
+  type InternalDiff,
+} from "@/lib/availability/effective";
 import { hourCap } from "@/lib/domain/caps";
 import { validateAvailability } from "@/lib/domain/validation";
 import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
@@ -245,9 +249,10 @@ export default async function StudentDetailPage({
   // layer empties out when one is loaded.
   const gridSelection = internal ? internal.selection : selection;
   const gridAutoAssigned = internal ? [] : autoAssigned;
-  const gridOptIn = internal
-    ? internal.everyWeekendOptIn
-    : (submission?.everyWeekendOptIn ?? false);
+  const gridOptIn = effectiveRotation(
+    internal?.everyWeekendOptIn ?? null,
+    submission?.everyWeekendOptIn,
+  );
   // How the saved copy differs from the student's own answers: the banner
   // summary, and per-cell rings in the grid below.
   const internalDiff = internal

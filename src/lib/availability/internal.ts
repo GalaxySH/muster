@@ -25,6 +25,13 @@ import type { SelectedShift } from "@/lib/domain/types";
  * schedules. Resolution stays in SQL rather than fanning out per student in JS
  * (the v0.96 lesson); the NOT EXISTS probe is a PK lookup on
  * internal_availability.
+ *
+ * This resolves which CELLS apply and deliberately not the weekend rotation
+ * flag: cells are per (submission, block, day) and the flag is per submission,
+ * so carrying it through this union would denormalize it onto every row.
+ * `effectiveRotation` in ./effective.ts is the rotation half. Callers that need
+ * both take this subquery and that function; callers that need only the flag
+ * left-join internal_availability and pass the two columns to it.
  */
 export function effectiveSelections() {
   const db = getDb();

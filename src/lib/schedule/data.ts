@@ -23,6 +23,7 @@ import {
   submissions,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
+import { effectiveRotation } from "@/lib/availability/effective";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
@@ -469,11 +470,11 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     }
   >();
   if (emails.length > 0) {
-    // The internal-availability join is the effective rotation seam (PLAN §10a):
-    // an admin's internal copy overrides the student's own answer, which is the
-    // rule the per-student page's scheduled-hours figure resolves and the one
-    // the generator schedules on. Weekend rows halve or not on this flag, so the
-    // two surfaces would report different hours for the same rows without it.
+    // Effective rotation (PLAN §10a): an admin's internal copy overrides the
+    // student's own answer. The join brings the copy's flag alongside; the rule
+    // itself lives in `effectiveRotation` so every surface resolves it the same
+    // way. Weekend rows halve or not on this flag, so two surfaces spelling it
+    // differently would report different hours for identical rows.
     const infoRows = await db
       .select({
         email: students.email,
@@ -500,7 +501,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: r.minDays,
         minHours: r.minHours,
         international: r.international,
-        everyWeekendOptIn: r.internalOptIn ?? r.everyWeekendOptIn ?? false,
+        everyWeekendOptIn: effectiveRotation(r.internalOptIn, r.everyWeekendOptIn),
         scheduled: r.scheduled ?? false,
       });
     }

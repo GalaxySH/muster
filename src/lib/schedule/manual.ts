@@ -49,6 +49,7 @@ import type { EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
+import { effectiveRotation } from "@/lib/availability/effective";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
@@ -109,8 +110,8 @@ export async function applyScheduleEdits(
   if (!run) return fail(NO_RUN_MESSAGE);
 
   // The student's rotation and their cap context, in one read. Effective
-  // rotation (PLAN §10a): the internal copy's rotation wins over the student's
-  // own answer when an admin saved one. Driven off `students` rather than
+  // rotation (PLAN §10a) is resolved by `effectiveRotation`, the one place that
+  // rule lives; the join here just brings the internal copy's flag alongside. Driven off `students` rather than
   // `submissions`, so somebody an admin is scheduling before they have answered
   // still yields their `international` flag.
   const [profile] = await db
@@ -124,7 +125,7 @@ export async function applyScheduleEdits(
     .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);
-  const everyWeekendOptIn = profile?.internalOptIn ?? profile?.everyWeekendOptIn ?? false;
+  const everyWeekendOptIn = effectiveRotation(profile?.internalOptIn, profile?.everyWeekendOptIn);
   const international = profile?.international ?? false;
 
   let rows: ExistingAssignment[];

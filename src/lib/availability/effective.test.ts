@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyInternalOverrides, diffInternalFromStudent, type InternalCopy } from "./effective";
+import {
+  applyInternalOverrides,
+  diffInternalFromStudent,
+  type InternalCopy,
+  effectiveRotation,
+} from "./effective";
 
 const student = (email: string) => ({
   email,
@@ -115,5 +120,32 @@ describe("diffInternalFromStudent", () => {
     });
     expect(diff.added).toEqual([{ blockId: "cul-open", day: "tue" }]);
     expect(diff.removed).toEqual([{ blockId: "cul-open", day: "mon" }]);
+  });
+});
+
+describe("effectiveRotation", () => {
+  // The rule: an admin's internal copy wins, the student's own answer is the
+  // fallback, neither means no opt-in. Spelled in one place because weekend
+  // cells halve on this flag, so two surfaces resolving it differently report
+  // different hours for identical rows (PLAN §10a).
+  it("takes the internal copy's answer when one exists", () => {
+    expect(effectiveRotation(true, false)).toBe(true);
+  });
+
+  // The case a `||` instead of a `??` would get wrong: an admin who explicitly
+  // turned the opt-in OFF must beat a student who had turned it on.
+  it("lets the internal copy turn the opt-in off", () => {
+    expect(effectiveRotation(false, true)).toBe(false);
+  });
+
+  it("falls back to the student's own answer with no internal copy", () => {
+    expect(effectiveRotation(null, true)).toBe(true);
+    expect(effectiveRotation(undefined, true)).toBe(true);
+  });
+
+  it("is false when neither exists", () => {
+    expect(effectiveRotation(null, null)).toBe(false);
+    expect(effectiveRotation(undefined, undefined)).toBe(false);
+    expect(effectiveRotation(null, undefined)).toBe(false);
   });
 });
