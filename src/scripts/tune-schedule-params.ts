@@ -4,9 +4,18 @@
  *
  *   npm run dev:tune-params -- --snapshot <path-to-export.json>
  *   npm run dev:tune-params                # seeded synthetic population
+ *   npm run dev:tune-params -- --anneal 300000   # sweep with the optimizer too
  *
  * Sweeps `repeatStartPenalty` over a fixed ladder, runs the PURE engine path
- * for each value, and prints one table row per value. Nothing here touches a
+ * for each value, and prints one table row per value.
+ *
+ * `--anneal <rounds>` sweeps the whole ladder a SECOND time with the annealing
+ * pass on at that round count, and prints both tables and both verdicts. The
+ * shipped default was tuned before that pass existed, and the pass moves the
+ * same numbers the decision rule reads, so the value that wins with the
+ * optimizer off is not automatically the value that wins with it on. The
+ * optimizer-on verdict is the one the shipped default follows; the off table
+ * is there to show whether the two agree. Nothing here touches a
  * database or a server action: it calls `generateAssignments` (which runs the
  * improvement pass itself) exactly the way `schedule/actions.ts` does, so the
  * numbers describe a real generation without needing one.
@@ -76,10 +85,12 @@ interface Args {
   count: number;
   fill: number;
   bias: Bias;
+  /** Annealing rounds for the second pass over the ladder; 0 sweeps once. */
+  anneal: number;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { snapshot: null, seed: 42, count: 400, fill: 0.8, bias: "none" };
+  const args: Args = { snapshot: null, seed: 42, count: 400, fill: 0.8, bias: "none", anneal: 0 };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--snapshot") args.snapshot = argv[++i] ?? null;
@@ -87,6 +98,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--students") args.count = Number(argv[++i]);
     else if (arg === "--fill") args.fill = Number(argv[++i]);
     else if (arg === "--bias") args.bias = argv[++i] as Bias;
+    else if (arg === "--anneal") args.anneal = Number(argv[++i]);
     else throw new Error(`Unknown argument "${arg}"`);
   }
   if (args.snapshot !== null && args.snapshot.trim() === "") {
@@ -96,6 +108,9 @@ function parseArgs(argv: string[]): Args {
     throw new Error("Bad --seed or --students value");
   }
   if (!(args.fill > 0 && args.fill <= 1)) throw new Error("--fill must be in (0, 1]");
+  if (!Number.isInteger(args.anneal) || args.anneal < 0) {
+    throw new Error("--anneal must be a whole number of rounds, 0 or more");
+  }
   if (!["none", "evening", "morning"].includes(args.bias)) {
     throw new Error('--bias must be "evening", "morning", or "none"');
   }
@@ -458,7 +473,11 @@ function deferredBlockIds(blocks: readonly ShiftBlock[]): string[] {
 }
 
 interface RunOutcome {
+  /** Assignment rows. Context only: the optimizer trims above-target hours by
+   *  design, so this falls while the seats that are actually asked for rise. */
   seats: number;
+  /** Graded targeted fill, the number every admin surface reports. */
+  filled: number;
   report: EngineReport;
   stats: RunStats;
   ms: number;
@@ -466,8 +485,12 @@ interface RunOutcome {
   fingerprint: string;
 }
 
-function runOnce(pop: Population, penalty: number): RunOutcome {
-  const params = { ...DEFAULT_SCHEDULING_PARAMS, repeatStartPenalty: penalty };
+function runOnce(pop: Population, penalty: number, annealRounds: number): RunOutcome {
+  const params = {
+    ...DEFAULT_SCHEDULING_PARAMS,
+    repeatStartPenalty: penalty,
+    annealIterations: annealRounds,
+  };
   const started = performance.now();
   const result = generateAssignments({
     students: pop.students,
@@ -499,6 +522,7 @@ function runOnce(pop: Population, penalty: number): RunOutcome {
 
   return {
     seats: result.assignments.length,
+    filled: stats.positions.reduce((sum, p) => sum + p.filledOfTarget, 0),
     report: result.report,
     stats,
     ms,
@@ -510,6 +534,7 @@ function runOnce(pop: Population, penalty: number): RunOutcome {
 interface Row {
   penalty: number;
   seats: number;
+  filled: number;
   shortOfTarget: number;
   belowMinHours: number;
   modalStartShare: number;
@@ -528,6 +553,7 @@ function printTable(rows: readonly Row[]): void {
   const headers = [
     ["penalty", 7],
     ["seats", 6],
+    ["filled", 6],
     ["short", 6],
     ["belowMin", 8],
     ["modalStart", 10],
@@ -545,6 +571,7 @@ function printTable(rows: readonly Row[]): void {
       [
         pad(String(r.penalty), 7),
         pad(String(r.seats), 6),
+        pad(String(r.filled), 6),
         pad(String(r.shortOfTarget), 6),
         pad(String(r.belowMinHours), 8),
         pad(r.modalStartShare.toFixed(4), 10),
@@ -563,8 +590,27 @@ function printTable(rows: readonly Row[]): void {
  * The flip rule, applied mechanically so the choice is auditable rather than
  * argued: the smallest penalty that improves at least two of the four fairness
  * metrics by a meaningful margin (better than 2% relative, or by more than 1
- * where the metric is a count of people), while seats filled falls by no more
- * than 0.5% relative and neither shortfall counter rises.
+ * where the metric is a count of people), while GRADED targeted fill falls by
+ * no more than 0.5% relative and neither shortfall counter rises.
+ *
+ * The guard reads graded fill rather than the raw assignment count it used to.
+ * Graded fill is what every admin surface reports and what the optimizer
+ * optimizes. Raw rows also count seats that fill nothing: a row landing in a
+ * cell already at its target, or on the fuller of a weekend cell two rotation
+ * weeks. And the two part company outright once the optimizer is on, since it
+ * trims hours above target on purpose, dropping rows while raising the seats
+ * anyone actually asked for; judged on rows, the rule would penalize the pass
+ * for doing its job.
+ *
+ * This changes what the rule says on one of the two populations, so it is
+ * recorded rather than glossed. On the SYNTHETIC population penalty 20 still
+ * qualifies outright, on all four fairness metrics, losing 0.16% of graded
+ * fill. On the 2026-08-20 production SNAPSHOT it no longer does: it adds 6
+ * rows over penalty 0 but LOSES 4 graded seats (708 to 704, 0.56%), just past
+ * the cap, where the row count had it gaining 0.72% and passing. Nothing else
+ * on the ladder qualifies on the snapshot under either optimizer setting, and
+ * "nothing qualified" leaves the shipped 20 where it is, so the value does not
+ * move either way.
  */
 const MEANINGFUL_RELATIVE = 0.02;
 const MEANINGFUL_ABSOLUTE = 1;
@@ -594,16 +640,16 @@ function judgeMetric(name: string, base: number, value: number, isCount: boolean
   return { name, base, value, relative, improved };
 }
 
-function evaluate(rows: readonly Row[], trustworthy: boolean): number {
+function evaluate(rows: readonly Row[], trustworthy: boolean): number | null {
   const base = rows[0]!;
   console.log("");
   console.log(`Decision rule against penalty ${base.penalty} as the baseline.`);
   console.log("Qualifies when >= 2 of {modalStart, welded, lockstep people, spread} improve by");
-  console.log("  >2% relative (or by >1 person for the counts), seats filled falls <= 0.5%,");
+  console.log("  >2% relative (or by >1 person for the counts), graded fill falls <= 0.5%,");
   console.log("  and neither shortOfTarget nor belowMinHours rises.");
   console.log("");
 
-  let chosen = base.penalty;
+  let chosen: number | null = null;
   for (const row of rows.slice(1)) {
     const metrics = [
       judgeMetric("modalStart", base.modalStartShare, row.modalStartShare, false),
@@ -612,7 +658,7 @@ function evaluate(rows: readonly Row[], trustworthy: boolean): number {
       judgeMetric("spread", base.spread, row.spread, false),
     ];
     const improvedCount = metrics.filter((m) => m.improved).length;
-    const seatLoss = base.seats === 0 ? 0 : (base.seats - row.seats) / base.seats;
+    const seatLoss = base.filled === 0 ? 0 : (base.filled - row.filled) / base.filled;
     const seatsOk = seatLoss <= SEAT_LOSS_LIMIT;
     const shortfallOk =
       row.shortOfTarget <= base.shortOfTarget && row.belowMinHours <= base.belowMinHours;
@@ -627,7 +673,7 @@ function evaluate(rows: readonly Row[], trustworthy: boolean): number {
     }
     console.log(`  improved metrics ${improvedCount} of 4 (need 2)`);
     console.log(
-      `  seats ${base.seats} -> ${row.seats} ` +
+      `  filled ${base.filled} -> ${row.filled} ` +
         `(${seatLoss >= 0 ? `${(seatLoss * 100).toFixed(2)}% lost` : `${(-seatLoss * 100).toFixed(2)}% gained`}` +
         `, loss cap 0.50%) ${seatsOk ? "ok" : "FAILS"}`,
     );
@@ -636,7 +682,7 @@ function evaluate(rows: readonly Row[], trustworthy: boolean): number {
         `belowMinHours ${base.belowMinHours} -> ${row.belowMinHours} ${shortfallOk ? "ok" : "FAILS"}`,
     );
     console.log(`  => ${qualifies ? "QUALIFIES" : "does not qualify"}`);
-    if (qualifies && chosen === base.penalty) chosen = row.penalty;
+    if (qualifies && chosen === null) chosen = row.penalty;
   }
 
   console.log("");
@@ -645,7 +691,7 @@ function evaluate(rows: readonly Row[], trustworthy: boolean): number {
     // verdict line is withheld rather than printed with a caveat beside it.
     console.log("NO VALUE CHOSEN: at least one penalty differed between its two runs, so");
     console.log("the table above decides nothing. Fix the nondeterminism and re-run.");
-  } else if (chosen === base.penalty) {
+  } else if (chosen === null) {
     console.log(
       `No penalty qualified against the sweep baseline ${base.penalty}. ` +
         `repeatStartPenalty stays at its shipped default, ` +
@@ -660,18 +706,27 @@ function evaluate(rows: readonly Row[], trustworthy: boolean): number {
   return chosen;
 }
 
-function main(): void {
-  const args = parseArgs(process.argv.slice(2));
-  const pop = args.snapshot ? snapshotPopulation(args.snapshot) : syntheticPopulation(args);
-
-  console.log(`repeatStartPenalty sweep over ${pop.label}`);
-  console.log("All other knobs at DEFAULT_SCHEDULING_PARAMS. No emails are printed.");
+/**
+ * One full pass over the ladder at one optimizer setting: every penalty run
+ * twice, the table, and the decision rule. Returns what it chose so a caller
+ * running both settings can say whether they agree.
+ */
+function sweep(
+  pop: Population,
+  annealRounds: number,
+): { chosen: number | null; trustworthy: boolean } {
   console.log("");
+  console.log(
+    annealRounds > 0
+      ? `Optimizer ON: ${annealRounds.toLocaleString("en-US")} rounds, ` +
+          `seed ${DEFAULT_SCHEDULING_PARAMS.annealSeed}.`
+      : "Optimizer OFF.",
+  );
 
   const rows: Row[] = [];
   for (const penalty of PENALTIES) {
-    const first = runOnce(pop, penalty);
-    const second = runOnce(pop, penalty);
+    const first = runOnce(pop, penalty, annealRounds);
+    const second = runOnce(pop, penalty, annealRounds);
     const deterministic = first.fingerprint === second.fingerprint;
     if (!deterministic) {
       console.error(`penalty ${penalty}: TWO RUNS DIFFERED. The sweep is not trustworthy.`);
@@ -679,6 +734,7 @@ function main(): void {
     rows.push({
       penalty,
       seats: first.seats,
+      filled: first.filled,
       shortOfTarget: first.report.shortOfTarget,
       belowMinHours: first.report.belowMinHours ?? 0,
       modalStartShare: first.stats.fairness.modalStartShareMean,
@@ -705,7 +761,38 @@ function main(): void {
       : "Determinism: AT LEAST ONE PENALTY DIFFERED BETWEEN RUNS. Table is untrustworthy.",
   );
   if (!trustworthy) process.exitCode = 1;
-  evaluate(rows, trustworthy);
+  return { chosen: evaluate(rows, trustworthy), trustworthy };
+}
+
+function main(): void {
+  const args = parseArgs(process.argv.slice(2));
+  const pop = args.snapshot ? snapshotPopulation(args.snapshot) : syntheticPopulation(args);
+
+  console.log(`repeatStartPenalty sweep over ${pop.label}`);
+  console.log("All other knobs at DEFAULT_SCHEDULING_PARAMS. No emails are printed.");
+
+  const off = sweep(pop, 0);
+  if (args.anneal === 0) return;
+  const on = sweep(pop, args.anneal);
+
+  const shipped = DEFAULT_SCHEDULING_PARAMS.repeatStartPenalty;
+  const say = (chosen: number | null) =>
+    chosen === null ? `nothing (keeps ${shipped})` : String(chosen);
+
+  console.log("");
+  if (!off.trustworthy || !on.trustworthy) {
+    console.log("A sweep could not reproduce itself, so the two cannot be compared.");
+  } else if (off.chosen === on.chosen) {
+    console.log(
+      `Both sweeps chose ${say(on.chosen)}, so the optimizer does not change the answer.`,
+    );
+  } else {
+    console.log(
+      `The sweeps disagree: ${say(off.chosen)} with the optimizer off, ` +
+        `${say(on.chosen)} with it on. The shipped default follows the optimizer-on ` +
+        `sweep, and moves off ${shipped} only when that sweep names a value outright.`,
+    );
+  }
 }
 
 main();

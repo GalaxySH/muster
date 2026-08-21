@@ -1,8 +1,9 @@
 # Generator annealing pass — implementation plan
 
-**Status: P1 and P2 built** (the pure module, its params, and the wiring into
+**Status: P1, P2, and P3 built** (the pure module, its params, and the wiring into
 `generateAssignments`), shipping **off by default** (`annealIterations: 0`).
-P3 (surfaces beyond the params form) and P4 (enabling it in production) remain.
+P3 is done (params form, run-panel note, docs, and the tuning harness retuned
+against the pass); P4, enabling it in production, remains.
 This doc is the design record for a seeded, exchange-capable optimization pass
 (simulated annealing) that runs after the existing greedy engine and
 improvement pass. `docs/schedule-generation-plan.md` §3 describes the engine
@@ -201,7 +202,7 @@ same commit as behavior (house rule).
 |---|---|---|
 | **P1** ✅ | `anneal.ts` + tests; params fields + form validation. No wiring; nothing behavioral changes. | Determinism (same seed twice, byte-identical); every §2 invariant as a property test over seeded synthetic populations; objective-equals-stats pinning test; the labor oracle is labor.ts and validate.ts stays unimported (grep-able). |
 | **P2** ✅ | Wire into `generateAssignments` between improve and fill-ins, gated on `annealIterations > 0`; report field. | Full suite green with the default 0, plus a test pinning that a run with the pass off is byte-identical to one generated without the parameter at all; frozen and fill-in rows pass through verbatim; double-generation determinism; the §7 acceptance run on the snapshot. |
-| **P3** | Surfaces + docs: run-panel note, PLAN §9/§17 touch-ups + changelog, architecture.md section, this doc's statuses; extend `tune-schedule-params.ts` to sweep with anneal on/off so `repeatStartPenalty` can be re-judged in the annealed world. | Docs/code drift review; old-run fixture parses; tuning script still deterministic twice-and-compare. |
+| **P3** ✅ | Surfaces + docs: run-panel note, PLAN §9/§17 touch-ups + changelog, architecture.md section, this doc's statuses; extend `tune-schedule-params.ts` to sweep with anneal on/off so `repeatStartPenalty` can be re-judged in the annealed world. | Docs/code drift review; old-run fixture parses; tuning script still deterministic twice-and-compare. |
 | **P4** | Enable and measure: tuning harness against a fresh production snapshot with anneal on; then set the params in prod, generate, inspect the diff view before marking anyone scheduled. | Acceptance bar (§7) met on the snapshot; `validateRunLabor` clean of hard findings on the annealed run (the independent check earning its keep); rollback rehearsed = params to 0 + one-click restore. |
 
 Sizing, calibrated against the labor overhaul (~42 h wall for a larger scope):
@@ -219,6 +220,29 @@ beat what the prototype demonstrated, from the same FCFS seed:
 - no student below `min(seed hours, target)`, none below their day floor, all
   cells inside their own selections (audited, not assumed)
 - identical output across two runs with identical inputs and params
+
+## 7a. Retuning against the optimizer (T15, done)
+
+`src/scripts/tune-schedule-params.ts --anneal <rounds>` sweeps the
+`repeatStartPenalty` ladder a second time with the pass on and prints both
+tables, both verdicts, and whether they agree. The shipped default follows the
+optimizer-on sweep, and moves only when that sweep names a value outright.
+
+Doing it surfaced a flaw in the harness that predates this work. Its seat guard
+counted **assignment rows**, not graded fill, and the two disagree: a row landing
+in a cell already at its target, or on the fuller of a weekend cell's two
+rotation weeks, is a row that fills nothing. With the optimizer on they disagree
+by construction, since it trims above-target hours on purpose, so a rows-based
+rule would have marked the pass down for working. The guard now reads graded fill
+in both modes.
+
+Result on the production snapshot: nothing on the ladder qualifies with the
+optimizer off or on, so `repeatStartPenalty` stays at 20. Under the corrected
+guard 20 no longer qualifies on the snapshot the way it did on rows (it adds 6
+rows over penalty 0 but loses 4 graded seats, 708 to 704, 0.56% against a 0.50%
+cap); it still qualifies outright on the synthetic population, on all four
+fairness metrics. The value does not move either way, since the rule only
+displaces the default when something qualifies.
 
 ## 8. Deferred, recorded so nobody rediscovers them
 
