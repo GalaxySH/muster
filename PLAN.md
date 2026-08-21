@@ -1497,7 +1497,22 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   the annealing pass could silently drop deferred cells when reconstructing its best
   state, breaking its own "never worse than the seed" guarantee; the position-delete
   cascade guards ran outside their transaction; and test-account deletion had no
-  saved-run guard. Full backlog and sequencing in `docs/module-separation-plan.md`.
+  saved-run guard. Then the four cheapest separability items: the engine's coverage
+  and warning rules move out of the shared domain root and the generator's I/O shell
+  into `domain/scheduling/` where their callers already were; the generator's
+  vocabulary (`FROZEN_LABEL`, `Bar`, the health tones) comes out of the shared admin
+  UI kit into `components/admin/schedule-ui.tsx`, so a travel or responses page can
+  import a pill without taking the engine's type graph with it; `parseCsv` moves down
+  to `domain/csv.ts`, ending the W2W plan parser's import of a form module for a
+  string function; and the **admin console is named as a module the lint can see**,
+  which also moved the one-student popup seam to `lib/admin` and forbade the form core
+  from importing the console. Naming it surfaced the one genuine cycle left:
+  `admin/sheet-sync.ts` is called by the form core after a student submits and reaches
+  down into `lib/schedule` for the schedule matrix, so the form core depends on the
+  generator through the console. It wants a matrix-builder registry and its own
+  branch. One more duplicated rule fell on the way: the local-calendar-day read of
+  `students.hired_on` had been written out three times, and is now `domain/calendar-day.ts`.
+  Full backlog and sequencing in `docs/module-separation-plan.md`.
 - **1.20 (2026-08-20)** — **An optimizer that trades seats between students,
   shipped switched off.** The greedy engine places students one at a time and
   never revisits a placement, so a seat taken early by somebody who did not need
