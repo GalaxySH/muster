@@ -169,8 +169,17 @@ export interface CellPerson {
    * never offered it.
    */
   autoAssigned: boolean;
+  /**
+   * They offered this cell, so they are part of the number the grid shows.
+   * False means the run puts them here anyway: an admin placed them by hand,
+   * or a fill-in pass used them. Those people are real coverage and the
+   * scheduler needs to see them, but they are NOT part of the count.
+   */
+  offered: boolean;
   /** Already holds this cell in the current run. */
   assignedHere: boolean;
+  /** How the assignment got here, when there is one. */
+  source: AssignmentSource | null;
   /** The live "mark scheduled" toggle (PLAN §10a: W2W-entry progress). */
   scheduled: boolean;
 }
@@ -184,12 +193,19 @@ export interface CellAvailability {
 /**
  * The people behind one coverage cell's number.
  *
- * This deliberately mirrors `loadCoverage`'s cell query exactly: the same
- * effective-selections seam, the same eligibility filter, no extra conditions.
- * The list and the number it explains must never disagree, so any change to one
- * belongs in the other. Note the grid counts auto-assigned weekend cells, so
- * this returns those people too rather than quietly filtering them out; they
- * carry `autoAssigned` for the UI to mark.
+ * The supply half deliberately mirrors `loadCoverage`'s cell query exactly:
+ * the same effective-selections seam, the same eligibility filter, no extra
+ * conditions. The list and the number it explains must never disagree, so any
+ * change to one belongs in the other. Note the grid counts auto-assigned
+ * weekend cells, so this returns those people too rather than quietly
+ * filtering them out; they carry `autoAssigned` for the UI to mark.
+ *
+ * On top of that it returns anyone the current run puts on this cell who did
+ * NOT offer it: a manual placement, or a fill-in of someone who never
+ * responded. They are `offered: false`, which is what keeps the count honest
+ * while still showing the scheduler who is actually working the shift. Asking
+ * "who is on this?" and being shown only the people who volunteered for it was
+ * the bug this closes.
  */
 export async function loadCellAvailability(blockId: string, day: Day): Promise<CellAvailability> {
   const db = getDb();
@@ -210,9 +226,20 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       .leftJoin(positions, eq(students.positionId, positions.id))
       .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
-      ? db
-          .select({ email: scheduleAssignments.studentEmail })
+      ? // Students, not submissions: a fill-in can be assigned here without ever
+        // having responded, so the submission join has to be optional.
+        db
+          .select({
+            email: scheduleAssignments.studentEmail,
+            source: scheduleAssignments.source,
+            displayName: students.displayName,
+            positionName: positions.name,
+            scheduled: submissions.scheduled,
+          })
           .from(scheduleAssignments)
+          .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
+          .leftJoin(positions, eq(students.positionId, positions.id))
+          .leftJoin(submissions, eq(submissions.studentEmail, students.email))
           .where(
             and(
               eq(scheduleAssignments.runId, currentRun.id),
@@ -223,7 +250,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       : Promise.resolve([]),
   ]);
 
-  const assigned = new Set(assignedRows.map((r) => r.email));
+  const assignedBy = new Map(assignedRows.map((r) => [r.email, r]));
   // The count is distinct per submission and a student holds one, so collapse
   // to one row per person and the two stay in step.
   const byEmail = new Map<string, CellPerson>();
@@ -234,13 +261,31 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       displayName: row.displayName,
       positionName: row.positionName,
       autoAssigned: row.autoAssigned,
-      assignedHere: assigned.has(row.email),
+      offered: true,
+      assignedHere: assignedBy.has(row.email),
+      source: assignedBy.get(row.email)?.source ?? null,
+      scheduled: row.scheduled ?? false,
+    });
+  }
+  // Assigned without offering. Added after the supply pass so a student who did
+  // both keeps the richer row above.
+  for (const [email, row] of assignedBy) {
+    if (byEmail.has(email)) continue;
+    byEmail.set(email, {
+      email,
+      displayName: row.displayName,
+      positionName: row.positionName,
+      autoAssigned: false,
+      offered: false,
+      assignedHere: true,
+      source: row.source,
       scheduled: row.scheduled ?? false,
     });
   }
 
   const people = [...byEmail.values()].sort(
     (a, b) =>
+      Number(b.offered) - Number(a.offered) ||
       Number(b.assignedHere) - Number(a.assignedHere) ||
       a.displayName.localeCompare(b.displayName) ||
       a.email.localeCompare(b.email),
