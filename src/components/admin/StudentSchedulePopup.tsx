@@ -10,8 +10,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
-import { fetchStudentSchedule } from "@/lib/schedule/student-schedule-actions";
-import type { StudentScheduleView } from "@/lib/schedule/student-schedule-data";
+import { fetchStudentSchedule } from "@/lib/admin/student-schedule-actions";
+import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import type { StudentGridRow, StudentGridSub } from "@/lib/admin/student-schedule-view";
 import { DAY_LABEL } from "@/lib/domain/types";
 import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-ui";

@@ -262,18 +262,20 @@ than embedding logic in routes or components.
 
 **Module boundaries (hard rule):** Muster is three peer modules with an admin console
 composing them. **The form core** (`lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,
-the student routes, and the shared `lib/domain` root) **must not import the generator or
-W2W.** The **generator** (`lib/schedule`, `lib/domain/scheduling`) and **W2W**
-(`lib/w2w`, `lib/domain/w2w-plan`) must not import each other, and neither may import
-upward into the console (`lib/admin`, `src/components`, `app/admin`). The console may
-depend on all three; nothing depends upward on it. Scheduling surfaces read form data
-through a published reader, never the reverse.
+the student routes and their components, and the shared `lib/domain` root) **must not
+import the generator, W2W, or the console.** The **generator** (`lib/schedule`,
+`lib/domain/scheduling`) and **W2W** (`lib/w2w`, `lib/domain/w2w-plan`) must not import
+each other, and neither may import any component or anything in `lib/admin`. The
+**console** (`lib/admin`, `components/admin`, `app/admin`) may depend on all three and
+carries no restriction of its own; nothing depends upward on it. Scheduling surfaces
+read form data through a published reader, never the reverse.
 
 `eslint.config.mjs` enforces this, with a shrinking allowlist of pre-existing edges that
 each name the plan item removing them. **The allowlist only shrinks.** If you need a new
 cross-module edge, add a port on the owning side instead. Note the rule sees import paths
-only, not table access. Full rationale and the item register:
-`docs/module-separation-plan.md`.
+only, not table access, and that a file's folder does not always decide its layer:
+`closes/admin-actions.ts` is console code living in a form-core folder, and the config
+names it. Full rationale and the item register: `docs/module-separation-plan.md`.
 
 **Deliberate duplication (do not "fix"):** some repetition here is load-bearing.
 `domain/scheduling/validate.ts` is a second derivation of the labor rules written from

@@ -3,16 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-vi.mock("@/lib/schedule/student-schedule-actions", () => ({
+vi.mock("@/lib/admin/student-schedule-actions", () => ({
   fetchStudentSchedule: vi.fn(),
 }));
 
-import {
-  StudentScheduleModalLink,
-  StudentScheduleHover,
-} from "./StudentSchedulePopup";
-import { fetchStudentSchedule } from "@/lib/schedule/student-schedule-actions";
-import type { StudentScheduleView } from "@/lib/schedule/student-schedule-data";
+import { StudentScheduleModalLink, StudentScheduleHover } from "./StudentSchedulePopup";
+import { fetchStudentSchedule } from "@/lib/admin/student-schedule-actions";
+import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import { buildStudentScheduleGrid } from "@/lib/admin/student-schedule-view";
 import { parseTime } from "@/lib/domain/time";
 
@@ -21,8 +18,20 @@ const fetchMock = vi.mocked(fetchStudentSchedule);
 function view(overrides: Partial<StudentScheduleView> = {}): StudentScheduleView {
   const grid = buildStudentScheduleGrid(
     [
-      { id: "wd", dayType: "weekday", start: parseTime("8a"), end: parseTime("12p"), retired: false },
-      { id: "we", dayType: "weekend", start: parseTime("9a"), end: parseTime("1p"), retired: false },
+      {
+        id: "wd",
+        dayType: "weekday",
+        start: parseTime("8a"),
+        end: parseTime("12p"),
+        retired: false,
+      },
+      {
+        id: "we",
+        dayType: "weekend",
+        start: parseTime("9a"),
+        end: parseTime("1p"),
+        retired: false,
+      },
     ],
     [
       { blockId: "wd", day: "mon", cohort: "weekday", source: "engine" },

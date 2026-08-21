@@ -21,12 +21,16 @@ layering every other section in this file sits inside, so read it first.
 ```
 
 - **Form core** — `lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,
-  the student routes, and the shared `lib/domain` root. Knows nothing about the other
-  two, and has **zero** import-path edges into them.
+  the student routes, their components (`src/components` outside `admin/`), and the
+  shared `lib/domain` root. Knows nothing about the other two, and has **zero**
+  import-path edges into them.
 - **Generator** — `lib/domain/scheduling` (pure) over `lib/schedule` (I/O shell).
 - **W2W** — `lib/domain/w2w-plan` (pure) over `lib/w2w` (I/O shell).
-- **Console** — composes the three. Its dependence on all of them is correct, not
-  contamination; the mistake to avoid is the reverse edge.
+- **Console** — `lib/admin`, `components/admin`, `app/admin`. Composes the three. Its
+  dependence on all of them is correct, not contamination; the mistake to avoid is the
+  reverse edge, which is why the console alone carries no import restriction. Folder is
+  not layer: `closes/admin-actions.ts` is console code inside a form-core folder, and
+  `eslint.config.mjs` names it rather than pretending otherwise.
 
 The **schema has always encoded this correctly**: all three cross-boundary foreign keys
 (`schedule_assignments.student_email`, `schedule_assignments.shift_block_id`,
@@ -36,8 +40,14 @@ commits and drifted the other way, which is what `eslint.config.mjs` now prevent
 
 The lint allowlist holds the edges that already existed, each naming the plan item that
 removes it: the generator's repair-seed import from W2W and W2W's read of the current
-run (A5), the Drive-sync calls out of the generation and manual-edit paths (A8), and one
-view model on the wrong side of the console line (A16). **The allowlist only shrinks.**
+run (A5), and the four callers of `admin/sheet-sync` (A19). **The allowlist only
+shrinks.**
+
+`admin/sheet-sync.ts` is the one genuine cycle left. The form core calls it after a
+student submits or claims, and it reaches down into `lib/schedule` to build the schedule
+matrix, so the form core depends on the generator through it. The fix is a registry each
+module registers its own matrix builder with, which is item **A19**; until then its four
+callers are allowlisted.
 It sees import paths only, so table-level coupling (`positions/actions.ts` reaching
 generator and W2W tables via `@/lib/db/schema`) is invisible to it and is tracked as A7.
 

@@ -1,8 +1,11 @@
 /**
  * Server-side read behind the one-student schedule popup: the student's block
  * layout plus their current-run rows, assembled into the pure grid model in
- * admin/student-schedule-view.ts. Separate from ./data so the popup seam stays
- * small; the run row itself still comes from loadCurrentRunRow there.
+ * ./student-schedule-view.ts.
+ *
+ * Console-side, not generator-side: the popup is an admin surface that reads a
+ * generated run, so it composes `schedule/data.ts` rather than living inside it
+ * (plan item A16). The run row itself still comes from loadCurrentRunRow.
  */
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
@@ -22,7 +25,7 @@ import {
 } from "@/lib/admin/student-schedule-view";
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
-import { loadCurrentRunRow } from "./data";
+import { loadCurrentRunRow } from "@/lib/schedule/data";
 
 export interface StudentScheduleView {
   email: string;
