@@ -5,7 +5,7 @@
  * with only the employee identity written.
  */
 import { describe, expect, it } from "vitest";
-import { parseCsv } from "@/lib/roster/csv";
+import { parseCsv } from "../csv";
 import { parseW2wPlan } from "./parse";
 import { matchPlan } from "./match";
 import { fillPlan, type ExportIdentity } from "./fill";
