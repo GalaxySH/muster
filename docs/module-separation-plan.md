@@ -327,3 +327,74 @@ authorization and wants a careful review despite being an XS change, and R1
 changes a rule that currently has several spellings, so it needs a deliberate
 check that every consumer still agrees after the collapse. That check is the
 point of the item.
+
+## 11. Completion record (2026-08-21)
+
+Phases 0, 1 and 2 shipped on `worktree-module-boundary-repair` as draft PR #61,
+six commits, 53 files, +1943/-308. `npm run typecheck` clean, `npm run lint`
+reports no warnings or errors, `npm test` at **90 files / 1306 tests** (branch
+point was 85/1259). No migration on this branch, so it merges in any order.
+
+| Item | Outcome |
+|---|---|
+| E1 | Boundary lint rule live, every rule verified to fire by injected violation |
+| E2, E3 | Direction rule + do-not-collapse register in `CLAUDE.md` and `architecture.md` |
+| R7 | Nine prose corrections across five files |
+| B1 | Annealer best-state snapshot keeps deferred cells; net -2 lines |
+| B2 | Delete guards moved inside the transaction **behind `FOR UPDATE`** |
+| B3 | Test-account delete guarded, scoped to the current run |
+| R1 | `effectiveRotation` is the only spelling of the rotation rule |
+| R3 | `weekendCohortOf` replaces six sites that gave three answers |
+| R4 | One `EPSILON_MINUTES`, in `domain/time.ts` |
+| R5 | One `liveBlocksOnly()`, 18 sites converted, 6 deliberate reads left |
+| R6 | One `currentPlanRowQuery()` |
+| R8 | `MatchBlock` is a `Pick`; duplicate `toDomainBlock` deleted |
+| R10 | All W2W admin gates go through `requireAdmin()` |
+| R2, R9 | Investigated, closed **without** a change (§5a, §7) |
+
+### Behavior changes a reviewer must weigh
+
+1. Deleting a test account holding shifts in the **current** run now fails where it
+   silently succeeded. Scoped to the current run so such an account never becomes
+   undeletable; reverse to all-runs if that trade is wrong.
+2. `shiftPlans.importedBy` now sourced from `requireAdmin()` rather than
+   `getAppSession()`. Same value, same seam; pinned by a test.
+3. B1 and R3 can change generated schedules only in cases proven unreachable today
+   (optimizer off by default; no writer produces mixed-cohort rows). R3 was A/B
+   tested against a byte-for-byte copy of the pre-change domain over 160 runs and
+   1000 edit batches, with a perturbed control proving the harness worked.
+4. The new `FOR UPDATE` reads add a theoretical deadlock against
+   `applyScheduleEdits`. MySQL detects it and rolls one back; no retry logic added.
+5. Not verified in a browser. The only UI change is one error string on
+   `/admin/test-users`.
+
+## 12. Next steps
+
+**Before merging #61:** decide on the current-run scoping in change 1 above, and
+confirm you are happy with 3 and 4. Nothing else blocks it.
+
+**Immediately after merge**, cheapest first:
+
+1. **A2 — split `components/admin/ui.tsx`** (S). Move `FROZEN_LABEL`, `Bar`,
+   `toneColor`, `barColor` into a generator-owned UI module. Highest structural
+   payoff per hour left in the plan, and it removes the only reason a pure form
+   page type-depends on the generator.
+2. **A9 — re-home `domain/coverage.ts` and `schedule/run-warnings.ts`** (XS).
+   Both are mechanical moves; `run-warnings.ts` is already pure and misfiled.
+3. **A18 — turn the W2W domain's `roster/csv` import around** (XS).
+4. **A16 — formalize the admin console as the fourth module** (M). Do this before
+   A4 and A14; it decides which remaining edges are violations at all.
+
+**Then the large ones**, in this order because each shrinks the next: **A1**
+(`loadEligibleStudents`, collapses ~12 of 29 generator raw reads) → **A8** (split
+the 699-line generation god-file) → **A4** (hub registry) → **A3** (split
+`PrefGridCalculator`). A1, A4 and A17 touch the paths the v0.96 outage touched, so
+benchmark each against a realistic roster before merge.
+
+**Standing rule:** every one of these removes an `eslint.config.mjs` allowlist
+entry. The allowlist only shrinks. If a change needs a new cross-module edge, add
+a port on the owning side instead.
+
+**Known gap the lint cannot see:** table-level coupling. `positions/actions.ts`
+reaches generator and W2W tables through `@/lib/db/schema`, which no import-path
+rule can catch. A7 is the item; until then it needs human review.
