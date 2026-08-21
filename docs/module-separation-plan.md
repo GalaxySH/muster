@@ -413,27 +413,44 @@ fixed rule.
    fold of identical implementations, or a lint rule. The one exception worth
    naming is `toLocalInput` in `GroupWindowsTable`, which now calls `localDay`
    instead of its own copy of the same four lines.
-6. **Browser check is partial.** `/admin/analytics` renders correctly, which
-   exercises the half of A2 that matters most: it imports the stripped-down
-   `components/admin/ui.tsx` and its tiles, labels, panels and funnel all draw.
-   `/admin/schedule` and `/admin/groups` could not be checked, for a reason that
-   has nothing to do with this branch, see below.
+6. **Checked in a browser**, against the real dev roster, after repairing the local
+   database described below. `/admin/schedule` draws its run panel, every
+   position's coverage grid and the per-student table (which reads the moved
+   `FROZEN_LABEL`); `/admin/groups` shows its window dates correctly padded through
+   the folded `localDay` (`2026-06-14`, `2099-12-31`, `2026-09-01`);
+   `/admin/students/[email]` renders, "alternating weekends" included, which is the
+   rotation coming through `effectiveRotation`; `/admin/analytics` exercises the
+   stripped-down shared kit. No console errors or warnings on any of them.
 
-### The local dev database is broken, on every branch
+   One gap left: `ScheduleHealth`, which owns `Bar`, `toneColor` and `barColor`,
+   only draws for a run carrying a stats snapshot, and every stored local run
+   predates those. Generating one would write to the DB **and push to the live
+   Muster Schedule Google Sheet**, so it was not done. Those three are covered by
+   `ScheduleHealth.test.tsx` instead.
 
-Worth knowing before anyone tries to reproduce the browser check. The dev DB on
-`localhost:3306` is missing two columns its own migration history says it has:
-`positions.return_date` (0028) and `schedule_runs.pinned` (0030). Its
-`__drizzle_migrations` table records 29 applied against 31 journal entries, but the
-29 do not line up with the first 29 files, which is what parallel worktrees minting
+### The local dev database was broken, on every branch
+
+The dev DB on `localhost:3306` was missing two columns its own migration history
+said it had: `positions.return_date` (0028) and `schedule_runs.pinned` (0030). Its
+`__drizzle_migrations` table recorded 29 applied against 31 journal entries, but the
+29 did not line up with the first 29 files, which is what parallel worktrees minting
 colliding migration numbers looks like.
 
-Every page that lists positions therefore 500s locally, `/me` included, on this
-branch and on `main` alike. The repair is the two `ADD COLUMN` statements from
-`drizzle/0028_add_position_return_date.sql` and
-`drizzle/0030_swift_steve_rogers.sql`, run by hand; `npm run db:migrate` will not
-do it, because the counter already believes 0028 ran. Nothing was written to that
-database from this branch.
+Every page that lists positions therefore 500'd locally, `/me` included, on this
+branch and on `main` alike. **Repaired** by running the two `ADD COLUMN` statements
+from `drizzle/0028_add_position_return_date.sql` and
+`drizzle/0030_swift_steve_rogers.sql` by hand, after probing
+`information_schema.columns` to confirm which were actually absent. `npm run
+db:migrate` will not do it, because the counter already believes 0028 ran. Row
+counts were unchanged either side (6 positions, 125 students, 5 runs), and nothing
+else was written to that database from this branch.
+
+Two things that cost time and are worth knowing next time. A dev server started
+before the repair keeps a poisoned module graph and fails with a bare "Jest worker
+encountered 2 child process exceptions" and no application stack; killing it,
+deleting `.next` and restarting cleared it. And a `TaskStop` on the `npm run dev`
+job does not always free the port, so check with `netstat` before concluding a
+second server is running.
 
 ## 12. Next steps
 
