@@ -12,12 +12,15 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
+  internalAvailability,
   positions,
   scheduleAssignments,
   shiftBlocks,
   students,
   submissions,
 } from "@/lib/db/schema";
+import { effectiveRotation } from "@/lib/availability/effective";
+import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import {
   buildStudentScheduleGrid,
   type StudentScheduleBlock,
@@ -33,6 +36,13 @@ export interface StudentScheduleView {
   positionName: string | null;
   /** The live "mark scheduled" toggle (PLAN §10a). */
   scheduled: boolean;
+  /**
+   * What the run comes to per week, cycle-averaged on the student's effective
+   * rotation. Measured with `weekMinutesForRows`, the same measure the schedule
+   * page's student table and the per-student grid read, so the three surfaces
+   * never quote different hours for the same rows.
+   */
+  weeklyMinutes: number;
   grid: StudentScheduleGrid;
 }
 
@@ -54,10 +64,13 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       positionId: students.positionId,
       positionName: positions.name,
       scheduled: submissions.scheduled,
+      ownOptIn: submissions.everyWeekendOptIn,
+      internalOptIn: internalAvailability.everyWeekendOptIn,
     })
     .from(students)
     .leftJoin(positions, eq(students.positionId, positions.id))
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);
   if (!student) return { kind: "unknown-student" };
@@ -108,6 +121,16 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
     })),
   );
 
+  // Measured off the assignment rows rather than the grid, so a shift carried on
+  // a retired block still counts: `blocks` holds those too, the grid does not
+  // always have a cell for them.
+  const spans = cellRows.flatMap((r) => {
+    const block = blocks.get(r.blockId);
+    return block
+      ? [{ blockId: r.blockId, day: r.day as Day, start: block.start, end: block.end }]
+      : [];
+  });
+
   return {
     kind: "ok",
     view: {
@@ -115,6 +138,10 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       displayName: student.displayName,
       positionName: student.positionName,
       scheduled: student.scheduled ?? false,
+      weeklyMinutes: weekMinutesForRows(
+        spans,
+        effectiveRotation(student.internalOptIn, student.ownOptIn),
+      ),
       grid,
     },
   };

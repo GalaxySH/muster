@@ -14,6 +14,7 @@ import { fetchStudentSchedule } from "@/lib/admin/student-schedule-actions";
 import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import type { StudentGridRow, StudentGridSub } from "@/lib/admin/student-schedule-view";
 import { DAY_LABEL } from "@/lib/domain/types";
+import { hoursLabel } from "@/lib/domain/config-validation";
 import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-ui";
 import { placeHoverCard, type Rect } from "./hover-placement";
 
@@ -220,6 +221,14 @@ export function StudentScheduleCard({ view }: { view: StudentScheduleView }) {
         {view.positionName && (
           <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
             {view.positionName}
+          </span>
+        )}
+        {view.grid.assignedCount > 0 && (
+          <span
+            style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-info)" }}
+            title="Hours a week, averaged over the weekend rotation"
+          >
+            {hoursLabel(view.weeklyMinutes)}h
           </span>
         )}
         {view.scheduled && (
