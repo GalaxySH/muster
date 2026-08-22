@@ -4,7 +4,6 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import {
-  FROZEN_LABEL,
   SectionLabel,
   StatTile,
   bannerStyle,
@@ -15,6 +14,7 @@ import {
   panelStyle,
   successPillStyle,
 } from "@/components/admin/ui";
+import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
 import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
 import { PinRunButton } from "@/components/admin/PinRunButton";
@@ -45,7 +45,7 @@ import {
   laborFindingSections,
   type LaborFindingSection,
   type LaborFindingView,
-} from "@/lib/schedule/run-warnings";
+} from "@/lib/domain/scheduling/run-warnings";
 import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
@@ -56,7 +56,7 @@ import {
   type CoverageRow,
   type CoverageStatus,
   type CoverageSummary,
-} from "@/lib/domain/coverage";
+} from "@/lib/domain/scheduling/coverage";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
@@ -406,10 +406,7 @@ function SchedulePanel({
       />
       <LaborFindings findings={schedule.laborFindings} />
       {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
-        <SaveRunButton />
-      </div>
+      <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
       <div style={{ marginTop: 12, marginBottom: -14 }}>
         <SheetControls
           sheetUrl={sheetUrl}
@@ -632,7 +629,7 @@ const fmtRunTime = (d: Date) =>
 function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
-      <SectionLabel>Run history</SectionLabel>
+      <SectionLabel action={<SaveRunButton />}>Run history</SectionLabel>
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
         replaced run stays here. Pinned runs are kept regardless of age.

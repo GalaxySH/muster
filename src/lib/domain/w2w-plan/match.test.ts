@@ -35,8 +35,8 @@ const STOCKER_AM: MatchBlock = {
   id: "stk-wd-am",
   positionId: "stocker",
   dayType: "weekday",
-  startMinutes: 7 * 60,
-  endMinutes: 10 * 60 + 30,
+  start: 7 * 60,
+  end: 10 * 60 + 30,
   desiredCapacity: 1,
 };
 
@@ -44,8 +44,8 @@ const SL_CLOSE: MatchBlock = {
   id: "sl-we-close",
   positionId: "shift-lead",
   dayType: "weekend",
-  startMinutes: 19 * 60,
-  endMinutes: 23 * 60 + 30,
+  start: 19 * 60,
+  end: 23 * 60 + 30,
   desiredCapacity: null,
 };
 

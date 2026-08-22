@@ -1,8 +1,6 @@
 import {
-  Bar,
   SectionLabel,
   StatTile,
-  barColor,
   barTrackStyle,
   cardsGridStyle,
   dangerPillStyle,
@@ -10,9 +8,9 @@ import {
   hintStyle,
   panelStyle,
   successPillStyle,
-  toneColor,
   warningPillStyle,
 } from "@/components/admin/ui";
+import { Bar, barColor, toneColor } from "@/components/admin/schedule-ui";
 import { buildScheduleHealthView, type HealthTone } from "@/lib/admin/schedule-health-view";
 import type { RunStats } from "@/lib/domain/scheduling/stats";
 

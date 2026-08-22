@@ -7,16 +7,11 @@
  * the rows and the pages read/write the query. Search + sort stay client-side in
  * the list table.
  */
+import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
 import type { DbFlagType } from "@/lib/db/schema";
 
 /** A flag filter: "any" = at least one flag, or a specific flag type. */
 export type FlagFilter = "any" | DbFlagType;
-
-/**
- * How a start-date filter compares against the roster hire date. Also used by
- * the group-assignment student picker's "Hired on" filter (`groups/data.ts`).
- */
-export type StartedMode = "before" | "after" | "on";
 
 /**
  * The admin's own progress through the pile: a submission they haven't marked
@@ -197,30 +192,6 @@ export function applyResponseFilters<T extends FilterableResponse>(
     if (filters.review === "done" && !(r.status === "submitted" && r.scheduled)) return false;
     return true;
   });
-}
-
-/**
- * Calendar-day comparison against the roster start date (ISO strings sort).
- * Shared with the group-assignment picker (`groups/data.ts`), which filters
- * the same `hiredOn` field with the same 3 compare options.
- */
-export function matchesStarted(
-  hiredOn: Date | null,
-  started: { mode: StartedMode; date: string },
-): boolean {
-  if (!hiredOn) return false;
-  // `students.hired_on` is a `date` column, handed back at local midnight, so
-  // its calendar day has to be read with the local getters too.
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = `${hiredOn.getFullYear()}-${pad(hiredOn.getMonth() + 1)}-${pad(hiredOn.getDate())}`;
-  switch (started.mode) {
-    case "before":
-      return day < started.date;
-    case "after":
-      return day > started.date;
-    case "on":
-      return day === started.date;
-  }
 }
 
 /**

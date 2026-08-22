@@ -13,7 +13,7 @@
  * affected.
  */
 import { hourCap } from "../caps";
-import { EPSILON_MINUTES } from "./seats";
+import { EPSILON_MINUTES } from "../time";
 import type { EngineReport } from "./types";
 
 export type ProblemKind =

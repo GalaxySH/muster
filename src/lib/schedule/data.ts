@@ -13,6 +13,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
   internalAvailability,
   positions,
@@ -23,13 +24,14 @@ import {
   submissions,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
+import { effectiveRotation } from "@/lib/availability/effective";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
   summarizeCoverage,
   type CoverageRow,
   type CoverageSummary,
-} from "@/lib/domain/coverage";
+} from "@/lib/domain/scheduling/coverage";
 import { demandCellKey, type CellCount } from "@/lib/domain/demand";
 import {
   diffRuns,
@@ -45,29 +47,18 @@ import {
   type ProblemGroup,
 } from "@/lib/domain/scheduling/problems";
 import { isInScope, parseScope, type ScheduleScope } from "@/lib/domain/scheduling/scope";
-import type { RunStats } from "@/lib/domain/scheduling/stats";
-import { runLaborFindings, type FrozenReason, type LaborFindingView } from "./run-warnings";
+import {
+  runLaborFindings,
+  type FrozenReason,
+  type LaborFindingView,
+} from "@/lib/domain/scheduling/run-warnings";
 import type {
   AssignmentSource,
   Cohort,
   EngineReport,
+  StoredRunReport,
   StudentScheduleReport,
 } from "@/lib/domain/scheduling/types";
-
-/**
- * The report shape stored in schedule_runs.summary_json: the engine's report,
- * plus the repair stamp a repair-only run adds (how many students were kept
- * in place from the imported W2W plan; those show as frozen in the report but
- * are not admin-frozen), plus the statistics snapshot the caller stamps on.
- */
-export type StoredRunReport = EngineReport & {
-  repaired?: { students: number };
-  /**
-   * The run's health figures as generated (domain/scheduling/stats.ts). Absent
-   * on runs from before they existed, which render without the section.
-   */
-  stats?: RunStats;
-};
 import {
   ALL_DAYS,
   type Day,
@@ -103,7 +94,7 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
       .from(positions)
       .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)))
       .orderBy(asc(positions.name)),
-    db.select().from(shiftBlocks).where(isNull(shiftBlocks.retiredAt)),
+    db.select().from(shiftBlocks).where(liveBlocksOnly()),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)
@@ -178,8 +169,17 @@ export interface CellPerson {
    * never offered it.
    */
   autoAssigned: boolean;
+  /**
+   * They offered this cell, so they are part of the number the grid shows.
+   * False means the run puts them here anyway: an admin placed them by hand,
+   * or a fill-in pass used them. Those people are real coverage and the
+   * scheduler needs to see them, but they are NOT part of the count.
+   */
+  offered: boolean;
   /** Already holds this cell in the current run. */
   assignedHere: boolean;
+  /** How the assignment got here, when there is one. */
+  source: AssignmentSource | null;
   /** The live "mark scheduled" toggle (PLAN §10a: W2W-entry progress). */
   scheduled: boolean;
 }
@@ -193,12 +193,19 @@ export interface CellAvailability {
 /**
  * The people behind one coverage cell's number.
  *
- * This deliberately mirrors `loadCoverage`'s cell query exactly: the same
- * effective-selections seam, the same eligibility filter, no extra conditions.
- * The list and the number it explains must never disagree, so any change to one
- * belongs in the other. Note the grid counts auto-assigned weekend cells, so
- * this returns those people too rather than quietly filtering them out; they
- * carry `autoAssigned` for the UI to mark.
+ * The supply half deliberately mirrors `loadCoverage`'s cell query exactly:
+ * the same effective-selections seam, the same eligibility filter, no extra
+ * conditions. The list and the number it explains must never disagree, so any
+ * change to one belongs in the other. Note the grid counts auto-assigned
+ * weekend cells, so this returns those people too rather than quietly
+ * filtering them out; they carry `autoAssigned` for the UI to mark.
+ *
+ * On top of that it returns anyone the current run puts on this cell who did
+ * NOT offer it: a manual placement, or a fill-in of someone who never
+ * responded. They are `offered: false`, which is what keeps the count honest
+ * while still showing the scheduler who is actually working the shift. Asking
+ * "who is on this?" and being shown only the people who volunteered for it was
+ * the bug this closes.
  */
 export async function loadCellAvailability(blockId: string, day: Day): Promise<CellAvailability> {
   const db = getDb();
@@ -219,9 +226,20 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       .leftJoin(positions, eq(students.positionId, positions.id))
       .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
-      ? db
-          .select({ email: scheduleAssignments.studentEmail })
+      ? // Students, not submissions: a fill-in can be assigned here without ever
+        // having responded, so the submission join has to be optional.
+        db
+          .select({
+            email: scheduleAssignments.studentEmail,
+            source: scheduleAssignments.source,
+            displayName: students.displayName,
+            positionName: positions.name,
+            scheduled: submissions.scheduled,
+          })
           .from(scheduleAssignments)
+          .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
+          .leftJoin(positions, eq(students.positionId, positions.id))
+          .leftJoin(submissions, eq(submissions.studentEmail, students.email))
           .where(
             and(
               eq(scheduleAssignments.runId, currentRun.id),
@@ -232,7 +250,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       : Promise.resolve([]),
   ]);
 
-  const assigned = new Set(assignedRows.map((r) => r.email));
+  const assignedBy = new Map(assignedRows.map((r) => [r.email, r]));
   // The count is distinct per submission and a student holds one, so collapse
   // to one row per person and the two stay in step.
   const byEmail = new Map<string, CellPerson>();
@@ -243,13 +261,31 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       displayName: row.displayName,
       positionName: row.positionName,
       autoAssigned: row.autoAssigned,
-      assignedHere: assigned.has(row.email),
+      offered: true,
+      assignedHere: assignedBy.has(row.email),
+      source: assignedBy.get(row.email)?.source ?? null,
+      scheduled: row.scheduled ?? false,
+    });
+  }
+  // Assigned without offering. Added after the supply pass so a student who did
+  // both keeps the richer row above.
+  for (const [email, row] of assignedBy) {
+    if (byEmail.has(email)) continue;
+    byEmail.set(email, {
+      email,
+      displayName: row.displayName,
+      positionName: row.positionName,
+      autoAssigned: false,
+      offered: false,
+      assignedHere: true,
+      source: row.source,
       scheduled: row.scheduled ?? false,
     });
   }
 
   const people = [...byEmail.values()].sort(
     (a, b) =>
+      Number(b.offered) - Number(a.offered) ||
       Number(b.assignedHere) - Number(a.assignedHere) ||
       a.displayName.localeCompare(b.displayName) ||
       a.email.localeCompare(b.email),
@@ -469,11 +505,11 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     }
   >();
   if (emails.length > 0) {
-    // The internal-availability join is the effective rotation seam (PLAN §10a):
-    // an admin's internal copy overrides the student's own answer, which is the
-    // rule the per-student page's scheduled-hours figure resolves and the one
-    // the generator schedules on. Weekend rows halve or not on this flag, so the
-    // two surfaces would report different hours for the same rows without it.
+    // Effective rotation (PLAN §10a): an admin's internal copy overrides the
+    // student's own answer. The join brings the copy's flag alongside; the rule
+    // itself lives in `effectiveRotation` so every surface resolves it the same
+    // way. Weekend rows halve or not on this flag, so two surfaces spelling it
+    // differently would report different hours for identical rows.
     const infoRows = await db
       .select({
         email: students.email,
@@ -500,7 +536,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: r.minDays,
         minHours: r.minHours,
         international: r.international,
-        everyWeekendOptIn: r.internalOptIn ?? r.everyWeekendOptIn ?? false,
+        everyWeekendOptIn: effectiveRotation(r.internalOptIn, r.everyWeekendOptIn),
         scheduled: r.scheduled ?? false,
       });
     }
@@ -801,9 +837,10 @@ export interface PositionLedgerRow {
   positionId: string;
   positionName: string;
   /**
-   * When a kept run last re-solved this position: the newest run that was
-   * either unscoped or named it. Null when no kept run covers it, which after
-   * pruning can also mean the covering run has aged out.
+   * When a kept run last re-solved this position: the newest **generated** run
+   * that was either unscoped or named it. Null when no kept run covers it,
+   * which after pruning can also mean the covering run has aged out. `Save run`
+   * snapshots are excluded, since they solve nothing.
    */
   lastSolvedAt: Date | null;
   /** Eligible responses first submitted since then (all of them when never solved). */
@@ -831,6 +868,10 @@ export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
     db
       .select({ generatedAt: scheduleRuns.generatedAt, scopeJson: scheduleRuns.scopeJson })
       .from(scheduleRuns)
+      // Generated runs only. A `Save run` snapshot is stamped now and carries
+      // the current run's scope, so counting it would silently mark that slice
+      // re-solved when nothing had been.
+      .where(eq(scheduleRuns.kind, "generated"))
       .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
     db
       .select({

@@ -3,6 +3,10 @@
  * (docs/w2w-shift-plan-roundtrip.md §4). Insert-only-when-empty, same as the
  * position config: after seeding the DB row set is authoritative.
  *
+ * W2W's own fixture, so it lives in W2W rather than in shared config where it
+ * started (plan item A14). It names Muster position ids, which is W2W reading
+ * config, the direction that is allowed; nothing in config knows it exists.
+ *
  * Dock Stocker is a W2W-only position: Muster has no dock role, its rows ride
  * the Stocker 7:00-10:30 weekday block, and fillOrder 1 puts them after the
  * plain Stocker rows when a shared block cell is filled.

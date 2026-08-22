@@ -5,6 +5,7 @@
  * scheduler. This is a pure function of the selection + position config so it
  * can run identically on the client (live feedback) and the server (authority).
  */
+import { EPSILON_MINUTES } from "./time";
 import { dayTypeOf, type Position, type SelectedShift, type ShiftBlock } from "./types";
 import { deriveOpenClose } from "./blocks";
 import {
@@ -37,9 +38,6 @@ export interface SubmissionValidation {
   /** true when every hard check passes. */
   canSubmit: boolean;
 }
-
-// Capacity is float-valued (×0.5 weekend factor); compare with a small tolerance.
-const EPSILON_MINUTES = 1e-6;
 
 const hours = (minutes: number) => (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
 

@@ -10,7 +10,7 @@
  */
 import { AB_WEEKEND_FACTOR } from "../capacity";
 import { hourCap } from "../caps";
-import { assignedCellCount, latenessTier } from "../coverage";
+import { assignedCellCount, latenessTier } from "./coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes } from "../intervals";
 import type { TimeRange } from "../time";
@@ -20,9 +20,6 @@ import type { Cohort, ScheduleStudent } from "./types";
 
 /** The default day ceiling in engine units (DEFAULT_SCHEDULING_PARAMS.dayCapHours). */
 export const DAY_CAP_MINUTES = DEFAULT_SCHEDULING_PARAMS.dayCapHours * 60;
-
-/** Averaged minutes are float-valued (×0.5 weekend factor); compare with tolerance. */
-export const EPSILON_MINUTES = 1e-6;
 
 export const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 
@@ -154,6 +151,10 @@ export class SeatLedger {
    * what the labor rules say (labor.ts symmetry lemma), so this is purely a
    * capacity choice.
    */
+  // Deliberately not the same criterion the greedy pass uses (plan §7): that one
+  // balances weekend minutes across the whole run, this one looks at headcount in
+  // this single cell, because a weekend cell grades on its needier week and that
+  // is what the annealer is trying to move. Both are correct for their caller.
   emptierWeek(blockId: string, day: Day): "a" | "b" {
     const c = this.cell(blockId, day);
     return c.b < c.a ? "b" : "a";

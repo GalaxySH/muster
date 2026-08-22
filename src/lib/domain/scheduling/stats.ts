@@ -41,7 +41,7 @@
  *
  * Pure and deterministic: no clock, no randomness, every ordering explicit.
  */
-import { assignedCellCount } from "../coverage";
+import { assignedCellCount } from "./coverage";
 import { demandCellKey } from "../demand";
 import { coveredMinutes, mergeRanges } from "../intervals";
 import type { TimeRange } from "../time";
@@ -56,7 +56,7 @@ import {
 import { WEEK_CAP_MINUTES, slotIndices } from "./labor";
 import { isOverMaxHours } from "./problems";
 import { averagedAssignedMinutes } from "./seats";
-import type { Cohort, ScheduleAssignment } from "./types";
+import { weekendCohortOf, type Cohort, type ScheduleAssignment } from "./types";
 
 /** Slots in the fortnight: [Sun1, Mon1..Fri1, Sat1, Sun2, Mon2..Fri2, Sat2]. */
 const FORTNIGHT_SLOTS = 14;
@@ -496,18 +496,6 @@ function rangesByDay(seats: readonly Seat[]): Map<Day, TimeRange[]> {
   return out;
 }
 
-/** Which rotation the person is on: every beats a beats b; none means weekday only. */
-function personCohort(seats: readonly Seat[]): Cohort {
-  let found: Cohort = "weekday";
-  for (const s of seats) {
-    if (dayTypeOf(s.day) !== "weekend") continue;
-    if (s.cohort === "every") return "every";
-    if (s.cohort === "a") found = "a";
-    else if (s.cohort === "b" && found !== "a") found = "b";
-  }
-  return found;
-}
-
 /**
  * Cycle-averaged weekly minutes for one person, on the ONE measure the engine
  * caps against and the student table flags against (`averagedAssignedMinutes`
@@ -810,7 +798,8 @@ function stretchStats(
     const run = longestRun(occupied);
     runs.push(run);
     days.push(occupied.filter(Boolean).length);
-    runsByCohort.get(personCohort(seats))!.push(run);
+    // No weekend row means weekday only, which is its own bucket here.
+    runsByCohort.get(weekendCohortOf(seats) ?? "weekday")!.push(run);
   }
 
   return {

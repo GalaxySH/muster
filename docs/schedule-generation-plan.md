@@ -53,9 +53,9 @@ never see a generated schedule).
 The W2W half of the boundary stands and is now stated precisely: **no
 programmatic integration, ever** — no API, no credentials, no push or pull. The
 **ceiling** is a **document Muster produces and a human uploads** into W2W, in
-whatever format its importer accepts. That is a possible future feature
-(roadmap 5.3), **not built and not designed**; today the scheduler reads
-`/admin/schedule` or its CSV and types into W2W by hand.
+whatever format its importer accepts. That shipped in **1.09 (roadmap 5.3)** as
+the W2W shift-plan round-trip (`docs/w2w-shift-plan-roundtrip.md`); the scheduler
+can also still read `/admin/schedule` or its CSV and type into W2W by hand.
 
 Feasibility study: 2026-07-16. Problem size at fall peak (~400 students, 65 blocks,
 ~244 block×day cells, ≈6,000 binary assignment variables) is small enough for a

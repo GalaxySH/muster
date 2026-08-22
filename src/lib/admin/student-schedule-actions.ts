@@ -6,10 +6,7 @@
  * loaded only when an admin actually opens it.
  */
 import { requireAdmin } from "@/lib/auth/require-admin";
-import {
-  loadStudentScheduleView,
-  type StudentScheduleView,
-} from "./student-schedule-data";
+import { loadStudentScheduleView, type StudentScheduleView } from "./student-schedule-data";
 
 export type StudentScheduleResult =
   | { ok: true; data: StudentScheduleView }

@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { RosterFormatError } from "./parse";
-import { parseCsv } from "./csv";
+import { parseCsv } from "@/lib/domain/csv";
 
 /** A workbook to read: a path on disk (CLI) or the uploaded bytes (admin UI). */
 export type WorkbookSource = string | Buffer;

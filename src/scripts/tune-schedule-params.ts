@@ -48,7 +48,7 @@ import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
 import type { positions as positionsTable, shiftBlocks as blocksTable } from "../lib/db/schema";
 import { deriveOpenClose } from "../lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "../lib/domain/close-claims";
-import { EVENING_END_MINUTES } from "../lib/domain/coverage";
+import { EVENING_END_MINUTES } from "../lib/domain/scheduling/coverage";
 import { generateAssignments } from "../lib/domain/scheduling/engine";
 import { DEFAULT_SCHEDULING_PARAMS } from "../lib/domain/scheduling/params";
 import { computeRunStats, type RunStats } from "../lib/domain/scheduling/stats";

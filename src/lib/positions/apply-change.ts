@@ -19,7 +19,7 @@
  * calls it from the CLI as well as from the admin upload action.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
   flags,
@@ -30,6 +30,7 @@ import {
   students,
   submissions,
 } from "@/lib/db/schema";
+import { isLiveBlock, liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
@@ -89,7 +90,7 @@ export async function applyPositionChange(
         await tx
           .select()
           .from(shiftBlocks)
-          .where(and(eq(shiftBlocks.positionId, input.toPositionId), isNull(shiftBlocks.retiredAt)))
+          .where(and(eq(shiftBlocks.positionId, input.toPositionId), liveBlocksOnly()))
       ).map(toDomainBlock)
     : [];
   const deferred = targetBlocks.length === 0;
@@ -149,7 +150,7 @@ async function carryOverSubmission(
       .select()
       .from(shiftBlocks)
       .where(inArray(shiftBlocks.id, referencedIds));
-    const liveSource = sourceRows.filter((b) => b.retiredAt === null);
+    const liveSource = sourceRows.filter(isLiveBlock);
     const liveSourceIds = new Set(liveSource.map((b) => b.id));
     const liveRows = rows.filter((r) => liveSourceIds.has(r.blockId));
     const result = carryOverSelections(liveRows, liveSource.map(toDomainBlock), targetBlocks);
@@ -203,7 +204,7 @@ export async function resolveDeferredCarryOver(tx: DbTx, positionId: string): Pr
     await tx
       .select()
       .from(shiftBlocks)
-      .where(and(eq(shiftBlocks.positionId, positionId), isNull(shiftBlocks.retiredAt)))
+      .where(and(eq(shiftBlocks.positionId, positionId), liveBlocksOnly()))
   ).map(toDomainBlock);
   if (targetBlocks.length === 0) return 0;
 
@@ -294,7 +295,7 @@ export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Prom
     await tx
       .select()
       .from(shiftBlocks)
-      .where(and(eq(shiftBlocks.positionId, position.id), isNull(shiftBlocks.retiredAt)))
+      .where(and(eq(shiftBlocks.positionId, position.id), liveBlocksOnly()))
   ).map(toDomainBlock);
 
   const selRows = await tx

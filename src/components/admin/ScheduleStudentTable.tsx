@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ScheduleStudentRow } from "@/lib/schedule/data";
-import { FROZEN_LABEL, formatDayLabel, keptTagStyle } from "@/components/admin/ui";
+import { formatDayLabel, keptTagStyle } from "@/components/admin/ui";
+import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import {
   StudentScheduleHover,
   StudentScheduleModalLink,
@@ -43,7 +44,10 @@ export function ScheduleStudentTable({ students }: { students: ScheduleStudentRo
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table className="zebra-table" style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+      <table
+        className="zebra-table"
+        style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}
+      >
         <thead>
           <tr>
             <Th onClick={() => toggleSort("name")} align="left">

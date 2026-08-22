@@ -1,13 +1,26 @@
 /**
  * Server-side read behind the one-student schedule popup: the student's block
  * layout plus their current-run rows, assembled into the pure grid model in
- * admin/student-schedule-view.ts. Separate from ./data so the popup seam stays
- * small; the run row itself still comes from loadCurrentRunRow there.
+ * ./student-schedule-view.ts.
+ *
+ * Console-side, not generator-side: the popup is an admin surface that reads a
+ * generated run, so it composes `schedule/data.ts` rather than living inside it
+ * (plan item A16). The run row itself still comes from loadCurrentRunRow.
  */
 import "server-only";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, scheduleAssignments, shiftBlocks, students, submissions } from "@/lib/db/schema";
+import { liveBlocksOnly } from "@/lib/db/blocks";
+import {
+  internalAvailability,
+  positions,
+  scheduleAssignments,
+  shiftBlocks,
+  students,
+  submissions,
+} from "@/lib/db/schema";
+import { effectiveRotation } from "@/lib/availability/effective";
+import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import {
   buildStudentScheduleGrid,
   type StudentScheduleBlock,
@@ -15,7 +28,7 @@ import {
 } from "@/lib/admin/student-schedule-view";
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
-import { loadCurrentRunRow } from "./data";
+import { loadCurrentRunRow } from "@/lib/schedule/data";
 
 export interface StudentScheduleView {
   email: string;
@@ -23,6 +36,13 @@ export interface StudentScheduleView {
   positionName: string | null;
   /** The live "mark scheduled" toggle (PLAN §10a). */
   scheduled: boolean;
+  /**
+   * What the run comes to per week, cycle-averaged on the student's effective
+   * rotation. Measured with `weekMinutesForRows`, the same measure the schedule
+   * page's student table and the per-student grid read, so the three surfaces
+   * never quote different hours for the same rows.
+   */
+  weeklyMinutes: number;
   grid: StudentScheduleGrid;
 }
 
@@ -44,10 +64,13 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       positionId: students.positionId,
       positionName: positions.name,
       scheduled: submissions.scheduled,
+      ownOptIn: submissions.everyWeekendOptIn,
+      internalOptIn: internalAvailability.everyWeekendOptIn,
     })
     .from(students)
     .leftJoin(positions, eq(students.positionId, positions.id))
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);
   if (!student) return { kind: "unknown-student" };
@@ -70,9 +93,7 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       ? db
           .select()
           .from(shiftBlocks)
-          .where(
-            and(eq(shiftBlocks.positionId, student.positionId), isNull(shiftBlocks.retiredAt)),
-          )
+          .where(and(eq(shiftBlocks.positionId, student.positionId), liveBlocksOnly()))
       : Promise.resolve([]),
     assignedIds.length > 0
       ? db.select().from(shiftBlocks).where(inArray(shiftBlocks.id, assignedIds))
@@ -100,6 +121,16 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
     })),
   );
 
+  // Measured off the assignment rows rather than the grid, so a shift carried on
+  // a retired block still counts: `blocks` holds those too, the grid does not
+  // always have a cell for them.
+  const spans = cellRows.flatMap((r) => {
+    const block = blocks.get(r.blockId);
+    return block
+      ? [{ blockId: r.blockId, day: r.day as Day, start: block.start, end: block.end }]
+      : [];
+  });
+
   return {
     kind: "ok",
     view: {
@@ -107,6 +138,10 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
       displayName: student.displayName,
       positionName: student.positionName,
       scheduled: student.scheduled ?? false,
+      weeklyMinutes: weekMinutesForRows(
+        spans,
+        effectiveRotation(student.internalOptIn, student.ownOptIn),
+      ),
       grid,
     },
   };

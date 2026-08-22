@@ -1,11 +1,16 @@
 /**
- * Minimal RFC 4180 CSV reader for the roster tracker export (PLAN.md §4.2).
+ * Minimal RFC 4180 CSV reader, shared by the roster tracker export (PLAN.md
+ * §4.2) and the W2W shift-plan export.
  *
  * The tracker is exported per sheet as a CSV whose header spans two rows and
  * whose name fields contain commas, so the values must be split with real
  * quote handling rather than a plain `split(",")`. Pure and unit-tested; the
  * bytes-to-text step (which has to cope with a non-UTF-8 export) lives in
  * @/lib/text/cp1252.
+ *
+ * Pure and dependency-free, so it sits here rather than inside either reader.
+ * It used to live in `roster/`, which had the W2W plan parser importing a form
+ * module for a string function (plan item A18).
  */
 
 /** Split CSV text into a grid of raw cell strings. Quotes, embedded commas/newlines, CRLF. */

@@ -5,6 +5,63 @@ of every session. Read the relevant section before editing a subsystem, and **up
 it alongside code changes** (same rule as PLAN.md). PLAN.md remains the authoritative
 spec; these notes describe how the implementation is layered.
 
+## Module boundaries (PLAN 1.21)
+
+Muster is **three peer modules with an admin console composing them**. This is the
+layering every other section in this file sits inside, so read it first.
+
+```
+              admin console   lib/admin, src/components, app/admin
+                 |  |  |      may depend on all three
+                 v  v  v      nothing depends upward on it
+    form core   generator    W2W
+        ^            |        |
+        |____________|________|   both read form data through published
+                                  readers; the form core never reads them
+```
+
+- **Form core** — `lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,
+  the student routes, their components (`src/components` outside `admin/`), and the
+  shared `lib/domain` root. Knows nothing about the other two, and has **zero**
+  import-path edges into them.
+- **Generator** — `lib/domain/scheduling` (pure) over `lib/schedule` (I/O shell).
+- **W2W** — `lib/domain/w2w-plan` (pure) over `lib/w2w` (I/O shell).
+- **Console** — `lib/admin`, `components/admin`, `app/admin`. Composes the three. Its
+  dependence on all of them is correct, not contamination; the mistake to avoid is the
+  reverse edge, which is why the console alone carries no import restriction. Folder is
+  not layer: `closes/admin-actions.ts` is console code inside a form-core folder, and
+  `eslint.config.mjs` names it rather than pretending otherwise.
+
+The **schema has always encoded this correctly**: all three cross-boundary foreign keys
+(`schedule_assignments.student_email`, `schedule_assignments.shift_block_id`,
+`w2w_position_map.muster_position_id`) point outward from the generator and W2W into
+form and config, and no form table points back. Imports had no equivalent rule for 48
+commits and drifted the other way, which is what `eslint.config.mjs` now prevents.
+
+The lint allowlist holds the edges that already existed, each naming the plan item that
+removes it: the generator's repair-seed import from W2W and W2W's read of the current
+run (A5), and the four callers of `admin/sheet-sync` (A19). **The allowlist only
+shrinks.**
+
+`admin/sheet-sync.ts` is the one genuine cycle left. The form core calls it after a
+student submits or claims, and it reaches down into `lib/schedule` to build the schedule
+matrix, so the form core depends on the generator through it. The fix is a registry each
+module registers its own matrix builder with, which is item **A19**; until then its four
+callers are allowlisted.
+It sees import paths only, so table-level coupling (`positions/actions.ts` reaching
+generator and W2W tables via `@/lib/db/schema`) is invisible to it and is tracked as A7.
+One such edge is already gone: W2W used to write `shift_blocks.desired_capacity`
+straight into the table and unvalidated, and now goes through `positions/capacity.ts`,
+which checks the whole batch before writing any of it (A6).
+
+**Deliberate duplication.** `domain/scheduling/validate.ts` is a second derivation of
+the labor rules, written from the spec by an author who did not read `labor.ts`, so a
+divergence between them is a bug report rather than drift. It must not be folded in or
+share helpers. `submissions.scheduled` as the generator's student-freeze primitive and
+target staffing riding the positions config path are likewise intentional cross-module
+couplings. `docs/module-separation-plan.md` §7 is the full register, and §3 is the item
+backlog behind the allowlist entries above.
+
 ## Tier 2 features (roadmap 2.1–2.5, PLAN 0.42)
 
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
@@ -246,7 +303,7 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
 count from one grouped query over `change_requests.status = "open"`),
-`getResponseNeighbors(email, filters)` (prev/next + the
+`getResponseNeighbors(email, filters, sort)` (prev/next + the
 filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
 `listResponses` is **roster-wide**: `FROM students LEFT
 JOIN submissions`, so a student with no response is a row with null submission fields.
@@ -258,7 +315,16 @@ submission row alone means nothing (an admin action can create an empty draft), 
 off-roster + all-students + start-date filters** are a pure
 seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
-`ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the
+`ResponseFilterBar` drives the URL. **Sort travels with the filters** (1.23,
+`response-sort.ts`): it used to be client-only state inside the table, so it stopped at
+the row you clicked and the walk was always in name order, which made "next" a student
+nowhere near the one under the cursor. The order now rides in the URL (`sort` + `dir`,
+absent while it is the default name-ascending) on the row links, the prev/next links,
+the jump dropdown, and the crumb back to the list, and the server orders the walk with
+the **same comparator** the table sorts by rather than a second one kept in step by hand.
+`sortResponses` breaks ties on name so the order is total: without that, two students
+with equal flag counts could swap between the table and the walk and "next" would not be
+the row underneath. Visibility lives in this seam too (not the
 `listResponses` SQL): off-roster responders are hidden unless `roster=all`, and
 never-started students unless the submission-state select asks for them (`status` =
 submitted|draft|missing|all, empty being the default view that keeps the dashboard a list
@@ -276,7 +342,14 @@ and in stacked mobile rows, the compact count + alert pills between); an open
 change-request count pill sits next to the name (nothing at zero); a `missing` row shows
 the red status badge, dashes for its submission-only cells, and no delete control. The
 Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
-that writes through the student evidence actions; see the evidence/Drive section.
+that writes through the student evidence actions; travel entries additionally carry
+**Edit** and **Remove** (`TravelEntryActions`, 1.23), through `updateTravelRequest` and
+the existing `removeTravelRequest` on the same on-behalf seam. Editing covers the dates
+and the note only: the proof is the evidence for the trip and `excused` records how the
+entry arrived relative to the cutoff, so neither is something a date correction should
+rewrite (swap a proof by removing and re-adding). Both statements are scoped to the named
+student's submission, so an id from someone else's entry cannot be driven through them.
+See the evidence/Drive section.
 `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
 `ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
@@ -354,21 +427,32 @@ in the same batch can make it legal and the save-time check on the final state i
 truth. Pending cells carry the amber dashed ring the grid already uses for "deviates",
 with a matching legend entry, a pending add showing the manual violet in its schedule
 half and a pending removal showing that half empty.
-Since 1.15 the readout line carries **two** figures and the mode decides their sizes: the
-preferred hours above and the student's **scheduled** hours from the current run, whichever
-the mode is about at full size with the status line, the other as a labelled miniature
-("12.5h scheduled", "10h preferred") so the two can never be read as one number. The
-scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
+Since 1.15 the readout line carries **two** figures: the preferred hours above and the
+student's **scheduled** hours from the current run. They render in a fixed order, preferred
+then scheduled, and the mode changes only which one is full size with its status line beside
+it and which collapses to a labelled miniature ("12.5h scheduled", "10h preferred") so the
+two can never be read as one number. Order is fixed on purpose (1.22): a figure that changed
+sides as well as size on every mode click had to be re-found each time. The shared `Readout`
+component holds both forms.
+The scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
 `averagedAssignedMinutes` the schedule page's student table uses and off the run's own
 rows, so a row carried on a retired shift still counts and every `router.refresh()` after
 a schedule edit moves it. While the schedule trial is dirty the figure follows it, as
 `scheduledMinutes` plus a **delta** between the trial's grid cells and the persisted ones
 (both `computeCapacity` under the student's effective rotation): a delta rather than a
-fresh total precisely so the retired-shift rows above stay counted. Its status line reads
-"scheduled", "trial schedule" while dirty, "nothing scheduled" at zero, or "over Nh cap"
-in the danger accent, matching the over-max pill on `/admin/schedule`; with the cap a hard
-generation rule since 1.15, the trial is where an over-cap composition should get loud,
-before it lands.
+fresh total precisely so the retired-shift rows above stay counted.
+**Which figure answers to which rule** was corrected in 1.22. The **cap** is now judged on
+the scheduled figure alone: selecting past it is expected and allowed (PLAN §5 #3), so a
+red "over Nh cap" on a preference total was reporting a rule that does not exist. The
+scheduled figure carries both verdicts the schedule page's student-table pills carry, on the
+same predicates (`isOverMaxHours`, `isBelowMinHours`) so the two surfaces never disagree:
+"over Nh cap" in the danger accent, "below Nh floor" in the warning accent, else "scheduled",
+"trial schedule" while dirty, or "nothing scheduled" at zero (zero reads as its own state
+rather than a floor miss). A verdict survives the miniature form, appended after the noun
+("21h scheduled · over 20h cap"), so leaving schedule mode is not what silences it. The
+preferred figure keeps the **floor** alone, since that rule is about whether the picks can
+reach the minimum, and it is the live cue while the admin composes a trial that the
+server-rendered flags panel below cannot be.
 Preference saves that fail hard rules warn and need an explicit Save anyway (see the
 availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
@@ -510,7 +594,12 @@ floors its columns at `min(420px, 100%)`, and the group-progress table opts out 
 generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
 private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
 `masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
-both surfaces import them. `StudentQuickSearch` is a client island: the roster is small
+both surfaces import them. That file is presentational only. The helpers shaped by the
+generator (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`, plus the engine/manual fill
+colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the one admin
+UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
+A2). The split is what lets a travel or responses page import the shared kit without
+taking on the engine's vocabulary. `StudentQuickSearch` is a client island: the roster is small
 enough to filter locally, so results are instant and there is no request per keystroke
 (`/` focuses it).
 
@@ -885,8 +974,13 @@ to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
 (never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
 test-group membership AND the synthetic domain);
-delete only ever removes test-group members and also cleans up relayed Drive proofs
-(shared `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
+delete only ever removes test-group members, refuses while the account still holds
+shifts in the **current** run (`schedule_assignments` cascades off `students`, and the
+per-student grid applies no on-roster check, so an admin can hand-place a test account
+into it). The guard is scoped to the current run deliberately: the grid edits only that
+run, so guarding over superseded runs too would leave such an account permanently
+undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
+`collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
 be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
 (and before that, `/admin/preview`).
 
@@ -1071,6 +1165,18 @@ because the FK behavior differs and so does what the row means:
   the delete still takes the mappings, but the admin can add them back. The confirm
   still names the count, because the cost is real between the delete and the re-map.
 
+Every one of those checks runs **inside** the delete transaction, behind two locking
+reads (the position row, then its blocks, both `FOR UPDATE`). Counted outside it they
+only describe a moment that has passed: a schedule generation committing between the
+count and the delete lands assignments the cascade then strips away, which is the exact
+hazard the checks exist to close. The parent-row locks are what make the counts hold,
+since InnoDB takes a shared lock on the parent row for every child insert's FK check, so
+nothing can move a student onto the position or land a pick or an assignment on its
+blocks until the delete commits. A refusal aborts the transaction (`DeleteRefused`,
+caught outside and turned back into the `fail(...)` result), so no partial delete is
+ever left behind. `deleteBlock` does the same, off the one locking read of the block
+row it already needed.
+
 ### Block retirement & orphaned picks (PLAN §6.2a, v1.10)
 
 Selections point at a block **id**, so the two block edits diverge. A **time edit** is
@@ -1156,7 +1262,7 @@ seams where they meet are worth naming:
 The first slice of the schedule-generation plan: per-block target staffing plus a
 coverage view, no generator yet. Standard layering:
 
-- **Pure domain** `domain/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
+- **Pure domain** `domain/scheduling/coverage.ts` (TDD): `buildCoverageRows(blocks, counts)`
   produces one row per block (weekday rows first, then by start) with one cell per
   applicable day; `coverageStatus` grades a cell against the block target (`ok` /
   `short` / `severe` = under half / `none` when no target), `latenessTier` tiers a
@@ -1179,7 +1285,10 @@ coverage view, no generator yet. Standard layering:
 - **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
   summary `StatTile` row, then per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
-  "N people short" readout. No client island; the page is read-only.
+  "N people short" readout. Read-only when this section was written; the page has
+  since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,
+  `RestoreRunButton`, `PinRunButton`, `SaveRunButton`, `ScheduleHealth`) — see the
+  Phase C and 1.19 sections below.
 
 ## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
 
@@ -1264,7 +1373,7 @@ The generator itself, layered exactly like the rest of the app:
 - **Loaders** `schedule/data.ts`: `loadCurrentRunRow` (shared by action and
   page) and `loadCurrentSchedule` (parsed report, per-cell assigned counts
   split A/B, and per-student rows joining live names/positions/scheduled onto
-  the run report). `domain/coverage.ts` grew `assignedCellCount` (weekend cells
+  the run report). `domain/scheduling/coverage.ts` grew `assignedCellCount` (weekend cells
   grade on the needier week) and `summarizeAssignedCoverage` so the page's
   totals switch from selection supply to assigned seats once a run exists
   (since 1.15 the `?grid=` switch can put the grids and those two totals back on
@@ -1363,8 +1472,9 @@ styled after `RestoreRunButton` and `GenerateScheduleButton` respectively —
 neither needs a confirm step, since both actions are purely additive/
 reversible and never touch the live current run.
 
-**The freeze model:** `submissions.scheduled` (PLAN §10a) is the only
-*persisted* protection concept. Frozen students' rows carry forward verbatim
+**The freeze model:** `submissions.scheduled` (PLAN §10a) is the only *persisted*
+way to protect a **student** from regeneration. (`schedule_runs.pinned`, added in
+1.19, is a separate concept: it protects a **run** from retention pruning.) Frozen students' rows carry forward verbatim
 through every run and consume capacity first; marking scheduled still never
 changes response status or the non-response list (both key on `confirmedAt`).
 With Phase C above, `docs/schedule-generation-plan.md` is fully built.
@@ -1409,13 +1519,33 @@ persisted:
   chip misleading under scoping. `loadScheduleForRun` splits it into `marked`
   (admin toggle, the durable one, and it wins when both apply), `out-of-scope`,
   and `kept` (repair seed, or unmarked since the run).
-- **The scope ledger** (`loadScopeLedger`). Per position: the newest run that was
-  unscoped or named it, plus how many eligible responses are new or edited since.
-  Aggregated in JS over one flat query rather than a per-position subquery, since
-  each position needs a different cutoff.
+- **The scope ledger** (`loadScopeLedger`). Per position: the newest **generated**
+  run that was unscoped or named it, plus how many eligible responses are new or
+  edited since. Aggregated in JS over one flat query rather than a per-position
+  subquery, since each position needs a different cutoff.
+  `schedule_runs.kind` is what keeps `Save run` out of it (1.23): a snapshot is
+  stamped now and copies the current run's scope, so before the column existed it
+  read as a fresh solve of exactly that slice. Clicking Save run silently cleared
+  the whole panel and backdated every "Last updated" to the moment of the click,
+  while nothing had been re-solved.
 
 **Known gap:** the staleness banner stays global, so new Barista responses still
 make a Shift-Lead-scoped run look stale. The ledger is the per-slice answer.
+
+**Open issue: a count on a scoped-away slice never clears.** `newSubmissions` is
+`submittedAt > lastSolvedAt`, so it stands until a run *covers that position*
+again. Generate only for Shift Lead and every other position keeps its old date
+and an accumulating "N new", in the warning colour, with no way to acknowledge it;
+an unscoped run is the only thing that clears it. The number is true (that slice
+really has not been re-solved since those people answered) but it reads as a
+fault, and it is easy to misread as the generator refusing to schedule someone,
+which is unrelated: nothing in this panel looks at who got assigned. Left as is on
+2026-08-21 pending a decision on what it should say instead. Two smaller things sit
+with it: the comparison is a strict `>` on second-precision columns, so a response
+landing in the same second as a run reads as older; and `loadScopeLedger` selects
+positions with no `active`/`mergedIntoId` filter, unlike `loadCoverage` beside it,
+so a deactivated or merged-away position holding old responders would show a
+permanent row here and nowhere else in the app.
 
 ### Returner-first ordering (v1.13)
 
@@ -1511,7 +1641,7 @@ version; this is the seam map.
   count, share, or
   distribution except `stretch.overLimit`, which is judged against the run's own
   `maxConsecutiveDays` and stores it as `overLimitAt`.
-- **`schedule/run-warnings.ts`** is the pure seam between the stored run and its
+- **`domain/scheduling/run-warnings.ts`** is the pure seam between the stored run and its
   warnings, kept out of the I/O in `data.ts` and `actions.ts`. `lateStartWarnings`
   compares `students.hired_on` against `positions.return_date` as `yyyy-mm-dd`
   **strings**, never as Dates: the return date is stored as a string and stays
@@ -1577,7 +1707,7 @@ and setting the knob back to 0 is the kill switch.
 
 - **The objective is `stats.ts`'s `filledOfTarget`, not a copy of it.**
   `SeatLedger.gradedFill` (new, in `seats.ts`) imports `assignedCellCount` from
-  `domain/coverage.ts`, so weekend cells grade on the needier rotation week
+  `domain/scheduling/coverage.ts`, so weekend cells grade on the needier rotation week
   exactly as every other surface grades them. A test pins the pass's own
   `gainedSeats` to an independent recomputation. An early prototype optimized a
   laxer week-seat count and quietly disagreed with the admin views; that is the
@@ -1707,7 +1837,7 @@ and repair mode was never turned on.
 **Seed fixture.** `W2W_POSITION_MAP_SEED`'s `GDEC - R&C TM` row named
 `retail-and-cafe-team-member`, a position id that never existed, so **both** seed paths
 filtered it out in silence and those shifts could never be filled. Fixed to `barista`,
-matching `TITLE_TO_POSITION`, and `config/w2w-position-map.test.ts` now asserts every
+matching `TITLE_TO_POSITION`, and `w2w/position-map-seed.test.ts` now asserts every
 seed row targets a real position, that the two fixtures agree, and that shared-position
 rows carry distinct fill orders. Note this only helps a **fresh** database: the importer
 self-seeds only into an entirely empty map and deploys run migrations without `db:seed`,

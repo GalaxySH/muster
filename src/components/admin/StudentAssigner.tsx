@@ -9,7 +9,8 @@ import {
   unassignStudents,
 } from "@/lib/groups/actions";
 import type { PickerStudent, PickerFilters } from "@/lib/groups/data";
-import { STARTED_MODE_OPTIONS, type StartedMode } from "@/lib/admin/response-filters";
+import { STARTED_MODE_OPTIONS } from "@/lib/admin/response-filters";
+import type { StartedMode } from "@/lib/domain/calendar-day";
 
 interface Option {
   id: string;
@@ -50,7 +51,8 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
     if (posSel) filters.positionId = posSel as PickerFilters["positionId"];
     if (rosterSel) filters.onRoster = rosterSel === "yes";
     if (groupSel) filters.groupId = groupSel as PickerFilters["groupId"];
-    if (hiredMode && hiredDate) filters.hiredOn = { mode: hiredMode as StartedMode, date: hiredDate };
+    if (hiredMode && hiredDate)
+      filters.hiredOn = { mode: hiredMode as StartedMode, date: hiredDate };
     if (appliedSearch.trim()) filters.search = appliedSearch.trim();
     setLoading(true);
     startTransition(async () => {
@@ -121,8 +123,10 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
         return;
       }
       const parts = [`Assigned ${res.assigned}.`];
-      if (res.unmatched.length) parts.push(`${res.unmatched.length} not on roster: ${res.unmatched.join(", ")}`);
-      if (res.invalid.length) parts.push(`${res.invalid.length} invalid: ${res.invalid.join(", ")}`);
+      if (res.unmatched.length)
+        parts.push(`${res.unmatched.length} not on roster: ${res.unmatched.join(", ")}`);
+      if (res.invalid.length)
+        parts.push(`${res.invalid.length} invalid: ${res.invalid.join(", ")}`);
       setMsg({ ok: true, text: parts.join(" ") });
       setPaste("");
       load();
@@ -137,7 +141,15 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Assign students</h2>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: 10,
+        }}
+      >
         <select value={posSel} onChange={(e) => setPosSel(e.target.value)} style={ctrl}>
           <option value="">Any position</option>
           {positions.map((p) => (
@@ -197,12 +209,24 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
       </div>
 
       {/* Student list */}
-      <div style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", maxHeight: 320, overflow: "auto" }}>
+      <div
+        style={{
+          border: "0.5px solid var(--color-border-secondary)",
+          borderRadius: "var(--border-radius-md)",
+          maxHeight: 320,
+          overflow: "auto",
+        }}
+      >
         <table style={{ width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-secondary)" }}>
               <th style={th}>
-                <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="select all" />
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={toggleAll}
+                  aria-label="select all"
+                />
               </th>
               <th style={th}>Name</th>
               <th style={th}>Email</th>
@@ -225,7 +249,10 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
               </tr>
             ) : (
               students.map((s) => (
-                <tr key={s.email} style={{ borderTop: "0.5px solid var(--color-border-secondary)" }}>
+                <tr
+                  key={s.email}
+                  style={{ borderTop: "0.5px solid var(--color-border-secondary)" }}
+                >
                   <td style={td}>
                     <input
                       type="checkbox"
@@ -238,9 +265,14 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
                   <td style={td}>{s.email}</td>
                   <td style={td}>{s.positionName ?? "—"}</td>
                   <td style={td}>
-                    {s.groupName ?? <span style={{ color: "var(--color-text-tertiary)" }}>none</span>}
+                    {s.groupName ?? (
+                      <span style={{ color: "var(--color-text-tertiary)" }}>none</span>
+                    )}
                     {s.groupAssignedAuto && s.groupName && (
-                      <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}> (auto)</span>
+                      <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>
+                        {" "}
+                        (auto)
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -250,7 +282,9 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
         </table>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+      <div
+        style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}
+      >
         <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
           {selected.size} selected →
         </span>
@@ -261,7 +295,11 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
             </option>
           ))}
         </select>
-        <button type="button" onClick={assignSelected} disabled={pending || selected.size === 0 || !target}>
+        <button
+          type="button"
+          onClick={assignSelected}
+          disabled={pending || selected.size === 0 || !target}
+        >
           Assign to group
         </button>
         <button type="button" onClick={unassignSelected} disabled={pending || selected.size === 0}>
@@ -277,9 +315,17 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
           onChange={(e) => setPaste(e.target.value)}
           rows={3}
           placeholder="a@wisc.edu, b@wisc.edu  c@wisc.edu …"
-          style={{ width: "100%", boxSizing: "border-box", padding: 8, fontFamily: "var(--font-sans)", fontSize: 13 }}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: 8,
+            fontFamily: "var(--font-sans)",
+            fontSize: 13,
+          }}
         />
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+        <div
+          style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}
+        >
           <select value={pasteTarget} onChange={(e) => setPasteTarget(e.target.value)} style={ctrl}>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
@@ -287,7 +333,11 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
               </option>
             ))}
           </select>
-          <button type="button" onClick={assignPasted} disabled={pending || !paste.trim() || !pasteTarget}>
+          <button
+            type="button"
+            onClick={assignPasted}
+            disabled={pending || !paste.trim() || !pasteTarget}
+          >
             Assign pasted emails
           </button>
         </div>
@@ -323,5 +373,11 @@ const ctrl: React.CSSProperties = {
   fontFamily: "var(--font-sans)",
   fontSize: 13,
 };
-const th: React.CSSProperties = { padding: "6px 8px", fontWeight: 500, position: "sticky", top: 0, background: "var(--color-background-primary)" };
+const th: React.CSSProperties = {
+  padding: "6px 8px",
+  fontWeight: 500,
+  position: "sticky",
+  top: 0,
+  background: "var(--color-background-primary)",
+};
 const td: React.CSSProperties = { padding: "6px 8px" };

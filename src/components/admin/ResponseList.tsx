@@ -4,12 +4,17 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResponseRow } from "@/lib/admin/data";
 import { FLAG_LABELS } from "@/lib/admin/response-filters";
+import {
+  compareResponses,
+  joinQuery,
+  serializeResponseSort,
+  type ResponseSort,
+  type SortKey,
+} from "@/lib/admin/response-sort";
 import { DeleteResponseButton } from "./DeleteResponseButton";
 
 /** Flag types that keep their own red pill even in the compact count view. */
 const ALERT_FLAGS = ["position_change", "revalidation_failed", "orphaned_selection"] as const;
-
-type SortKey = "name" | "position" | "status" | "requested" | "flags" | "scheduled" | "updated";
 
 /**
  * The response dashboard table (PLAN §10): the students the filters selected,
@@ -24,17 +29,23 @@ type SortKey = "name" | "position" | "status" | "requested" | "flags" | "schedul
 export function ResponseList({
   rows,
   filterQuery = "",
+  initialSort,
 }: {
   rows: ResponseRow[];
   /** Active group/flag filter as a query string; carried onto row links so the
    *  per-student view keeps the same filter for its prev/next walk (roadmap 2.2). */
   filterQuery?: string;
+  /** The order from the URL, so a link back into the list restores it. */
+  initialSort: ResponseSort;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("name");
-  const [dir, setDir] = useState<1 | -1>(1);
-  const suffix = filterQuery ? `?${filterQuery}` : "";
+  const [sort, setSort] = useState<SortKey>(initialSort.key);
+  const [dir, setDir] = useState<1 | -1>(initialSort.dir);
+  // Row links carry the order as well as the filters, so the per-student view
+  // walks and jumps through the list as it is on screen, not in name order.
+  const linkQuery = joinQuery(filterQuery, serializeResponseSort({ key: sort, dir }));
+  const suffix = linkQuery ? `?${linkQuery}` : "";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -46,7 +57,7 @@ export function ResponseList({
             (r.positionName ?? "").toLowerCase().includes(q),
         )
       : rows;
-    const sorted = [...base].sort((a, b) => dir * compare(a, b, sort));
+    const sorted = [...base].sort((a, b) => dir * compareResponses(a, b, sort));
     return sorted;
   }, [rows, query, sort, dir]);
 
@@ -234,28 +245,6 @@ export function ResponseList({
     </div>
   );
 }
-
-function compare(a: ResponseRow, b: ResponseRow, key: SortKey): number {
-  switch (key) {
-    case "name":
-      return a.displayName.localeCompare(b.displayName);
-    case "position":
-      return (a.positionName ?? "").localeCompare(b.positionName ?? "");
-    case "status":
-      return a.status.localeCompare(b.status);
-    case "requested":
-      return (a.desiredHours ?? 0) - (b.desiredHours ?? 0);
-    case "flags":
-      return a.flagCount - b.flagCount;
-    case "scheduled":
-      return Number(a.scheduled) - Number(b.scheduled);
-    case "updated":
-      // Students with no submission have no date; they sort to the top.
-      return stamp(a) - stamp(b);
-  }
-}
-
-const stamp = (r: ResponseRow) => (r.submittedAt ?? r.updatedAt)?.getTime() ?? 0;
 
 const fmtDate = (d: Date | null) =>
   d

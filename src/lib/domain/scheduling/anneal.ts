@@ -43,21 +43,25 @@
  */
 import { demandCellKey } from "../demand";
 import { redundantRangeIndex } from "../intervals";
-import type { TimeRange } from "../time";
+import { EPSILON_MINUTES, type TimeRange } from "../time";
 import { WEEKDAY_DAYS, WEEKEND_DAYS, type Day, type Position, type ShiftBlock } from "../types";
 import { laborLimits, laborViolations, type LaborLimits } from "./labor";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
-  EPSILON_MINUTES,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
   byHashedEmail,
   targetMinutes,
 } from "./seats";
-import type { Cohort, ScheduleAssignment, ScheduleStudent } from "./types";
+import {
+  weekendCohortOf,
+  type Cohort,
+  type ScheduleAssignment,
+  type ScheduleStudent,
+} from "./types";
 
 /**
  * Acceptance temperature, in seats: at the start a one-seat loss is taken
@@ -311,15 +315,14 @@ export function annealAssignments(
       (a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || byEmail(a.block.id, b.block.id),
     );
 
-    // The rotation the seed put them on: any weekend row's cohort, else
-    // "every" for opt-ins, else none (weekday-only, or nobody placed them on a
-    // weekend). None is a starting point, not a verdict; the search fills it in
-    // the first time it puts them on a weekend.
-    const weekendRow = rows.find((r) => r.cohort !== "weekday");
-    const cohort = (weekendRow?.cohort ?? (student.everyWeekendOptIn ? "every" : null)) as Exclude<
-      Cohort,
-      "weekday"
-    > | null;
+    // The rotation the seed put them on (./types.ts), else "every" for opt-ins,
+    // else none (weekday-only, or nobody placed them on a weekend). None is a
+    // starting point, not a verdict; the search fills it in the first time it
+    // puts them on a weekend. Movable students never carry mixed rows: greedy
+    // fixes one rotation per student and the improvement pass moves a row's
+    // block, never its cohort, so there is nothing here for a rule to break a
+    // tie on and the seed is the same one this pass has always started from.
+    const cohort = weekendCohortOf(rows) ?? (student.everyWeekendOptIn ? "every" : null);
 
     const ranges = rangesOf(held);
     const minutes = averagedAssignedMinutes(ranges, student.everyWeekendOptIn);
@@ -372,7 +375,9 @@ export function annealAssignments(
   const seedFilled = filled;
   let bestFilled = filled;
   let bestSecondary = secondary;
-  let bestHeld = states.map((s) => [...s.held.keys()]);
+  // Cells rather than keys: a deferred cell the walk later vacates is in
+  // neither `held` nor `options` by the end, so a key alone cannot name it.
+  let bestHeld = states.map((s) => [...s.held.values()]);
   let bestCohort = states.map((s) => s.cohort);
   let accepted = 0;
 
@@ -465,7 +470,7 @@ export function annealAssignments(
     ) {
       bestFilled = filled;
       bestSecondary = secondary;
-      bestHeld = states.map((s) => [...s.held.keys()]);
+      bestHeld = states.map((s) => [...s.held.values()]);
       bestCohort = states.map((s) => s.cohort);
     }
   }
@@ -478,11 +483,7 @@ export function annealAssignments(
 
   let trimmedStudents = 0;
   for (const [index, state] of states.entries()) {
-    const held = new Map<string, Cell>();
-    for (const key of bestHeld[index]!) {
-      const cell = state.held.get(key) ?? state.options.find((o) => o.key === key);
-      if (cell) held.set(key, cell);
-    }
+    const held = new Map<string, Cell>(bestHeld[index]!.map((cell) => [cell.key, cell]));
     const cells = [...held.values()].sort(
       (a, b) => DAY_INDEX.get(a.day)! - DAY_INDEX.get(b.day)! || byEmail(a.block.id, b.block.id),
     );

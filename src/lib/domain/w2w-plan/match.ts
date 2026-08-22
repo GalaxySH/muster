@@ -75,8 +75,8 @@ export function matchPlan(
         (b) =>
           b.positionId === musterPositionId &&
           b.dayType === dayType &&
-          b.startMinutes === row.startMinutes &&
-          b.endMinutes === row.endMinutes,
+          b.start === row.startMinutes &&
+          b.end === row.endMinutes,
       );
       matchedBlockId = block?.id ?? null;
     }
@@ -167,9 +167,9 @@ export function matchPlan(
         blockId,
         positionId: block.positionId,
         dayType: block.dayType,
-        startMinutes: block.startMinutes,
-        endMinutes: block.endMinutes,
-        desiredCapacity: block.desiredCapacity,
+        startMinutes: block.start,
+        endMinutes: block.end,
+        desiredCapacity: block.desiredCapacity ?? null,
         planSeats: Math.max(...perDay),
         unevenDays: perDay.some((count) => count !== perDay[0]),
       };

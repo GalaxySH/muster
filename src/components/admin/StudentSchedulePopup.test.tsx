@@ -1,18 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-vi.mock("@/lib/schedule/student-schedule-actions", () => ({
+vi.mock("@/lib/admin/student-schedule-actions", () => ({
   fetchStudentSchedule: vi.fn(),
 }));
 
-import {
-  StudentScheduleModalLink,
-  StudentScheduleHover,
-} from "./StudentSchedulePopup";
-import { fetchStudentSchedule } from "@/lib/schedule/student-schedule-actions";
-import type { StudentScheduleView } from "@/lib/schedule/student-schedule-data";
+import { StudentScheduleModalLink, StudentScheduleHover } from "./StudentSchedulePopup";
+import { fetchStudentSchedule } from "@/lib/admin/student-schedule-actions";
+import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import { buildStudentScheduleGrid } from "@/lib/admin/student-schedule-view";
 import { parseTime } from "@/lib/domain/time";
 
@@ -21,8 +18,20 @@ const fetchMock = vi.mocked(fetchStudentSchedule);
 function view(overrides: Partial<StudentScheduleView> = {}): StudentScheduleView {
   const grid = buildStudentScheduleGrid(
     [
-      { id: "wd", dayType: "weekday", start: parseTime("8a"), end: parseTime("12p"), retired: false },
-      { id: "we", dayType: "weekend", start: parseTime("9a"), end: parseTime("1p"), retired: false },
+      {
+        id: "wd",
+        dayType: "weekday",
+        start: parseTime("8a"),
+        end: parseTime("12p"),
+        retired: false,
+      },
+      {
+        id: "we",
+        dayType: "weekend",
+        start: parseTime("9a"),
+        end: parseTime("1p"),
+        retired: false,
+      },
     ],
     [
       { blockId: "wd", day: "mon", cohort: "weekday", source: "engine" },
@@ -34,6 +43,8 @@ function view(overrides: Partial<StudentScheduleView> = {}): StudentScheduleView
     displayName: "Amy Ames",
     positionName: "Cashier",
     scheduled: true,
+    // The two cells above: a 4h weekday plus a 4h weekend one halved by A/B.
+    weeklyMinutes: 360,
     grid,
     ...overrides,
   };
@@ -107,6 +118,53 @@ describe("StudentScheduleHover", () => {
     expect(fetchMock).toHaveBeenCalledWith("amy@wisc.edu");
     await screen.findByRole("tooltip");
     await waitFor(() => expect(screen.getByText("8a–12p")).toBeInTheDocument());
+  });
+
+  it("carries the run's weekly hours for that student", async () => {
+    const user = userEvent.setup();
+    render(
+      <StudentScheduleHover email="amy@wisc.edu">
+        <a href="/admin/students/amy%40wisc.edu">Amy Ames</a>
+      </StudentScheduleHover>,
+    );
+    await user.hover(screen.getByText("Amy Ames"));
+    const card = await screen.findByRole("tooltip");
+    await waitFor(() => expect(within(card).getByText("6h")).toBeInTheDocument());
+  });
+
+  it("leaves the hours out when the run gave them nothing", async () => {
+    // Zero would read as a measurement; "No shifts in the current run" already
+    // says it, and says it better.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      data: view({
+        weeklyMinutes: 0,
+        grid: buildStudentScheduleGrid(
+          [
+            {
+              id: "wd",
+              dayType: "weekday",
+              start: parseTime("8a"),
+              end: parseTime("12p"),
+              retired: false,
+            },
+          ],
+          [],
+        ),
+      }),
+    });
+    const user = userEvent.setup();
+    render(
+      <StudentScheduleHover email="amy@wisc.edu">
+        <a href="/admin/students/amy%40wisc.edu">Amy Ames</a>
+      </StudentScheduleHover>,
+    );
+    await user.hover(screen.getByText("Amy Ames"));
+    const card = await screen.findByRole("tooltip");
+    await waitFor(() =>
+      expect(within(card).getByText("No shifts in the current run.")).toBeInTheDocument(),
+    );
+    expect(within(card).queryByText("0h")).not.toBeInTheDocument();
   });
 
   it("hides the card again on unhover", async () => {

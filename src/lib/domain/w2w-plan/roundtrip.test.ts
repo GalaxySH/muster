@@ -5,7 +5,7 @@
  * with only the employee identity written.
  */
 import { describe, expect, it } from "vitest";
-import { parseCsv } from "@/lib/roster/csv";
+import { parseCsv } from "../csv";
 import { parseW2wPlan } from "./parse";
 import { matchPlan } from "./match";
 import { fillPlan, type ExportIdentity } from "./fill";
@@ -51,24 +51,24 @@ const BLOCKS: MatchBlock[] = [
     id: "ca-we",
     positionId: "ca",
     dayType: "weekend",
-    startMinutes: 480,
-    endMinutes: 660,
+    start: 480,
+    end: 660,
     desiredCapacity: 2,
   },
   {
     id: "ca-wd",
     positionId: "ca",
     dayType: "weekday",
-    startMinutes: 480,
-    endMinutes: 660,
+    start: 480,
+    end: 660,
     desiredCapacity: 1,
   },
   {
     id: "st-wd",
     positionId: "stocker",
     dayType: "weekday",
-    startMinutes: 420,
-    endMinutes: 630,
+    start: 420,
+    end: 630,
     desiredCapacity: 2,
   },
 ];

@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_runs` ADD `kind` enum('generated','snapshot') DEFAULT 'generated' NOT NULL;

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.20
+- **Version:** 1.23
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1365,8 +1365,9 @@ under-18 test (deferred → fallback, §11).
   restore, the run diff, the staleness banner, the `Muster Schedule` sheet
   (`docs/schedule-generation-plan.md`; roadmap 5.2).
 - **Phase 7+ — Future:** dynamic high-demand flags (✅ roadmap 2.5); position
-  consolidation; a **W2W-importable schedule document** (roadmap 5.3) — the ceiling on
-  W2W interop per §17.
+  consolidation. The **W2W-importable schedule document** (roadmap 5.3), the ceiling on
+  W2W interop per §17, shipped in 1.09 — see §17 and
+  `docs/w2w-shift-plan-roundtrip.md`.
 
 ### 18a. Shift-Lead weekend-close pickup — ✅ DONE (0.46)
 A **claim/inventory subsystem**, architecturally distinct from the rest of Muster
@@ -1475,6 +1476,107 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.23 (2026-08-21)** — **Travel entries are editable, the sort follows you, and
+  `Save run` stops lying to the scope ledger (§8, §10, §10a).** Travel entries on the
+  per-student page now carry **Edit** and **Remove** beside the resolved checkbox,
+  through the same on-behalf evidence seam the **Add** link already used. Editing covers
+  the dates and the note; the proof and the `excused` standing are left alone, since one
+  is the evidence for the trip and the other records how the entry arrived relative to
+  the cutoff. Removal was already written but the cutoff locked it for *everyone*,
+  admins included, so after 9/1 nobody could fix a wrong entry; the deadline is a rule
+  for students, and it no longer binds an admin acting for one (adding already worked
+  that way). Fixing this surfaced a **date bug on the way in**: `new Date("2026-09-10")`
+  is midnight UTC, so west of UTC the `date` column stored the day *before* the one
+  typed, on adds as well as edits. `domain/calendar-day.ts` gains `calendarDate`, the
+  inverse of the `localDay` it already owned, and both write paths use it. **No stored
+  data is wrong and no backfill is needed:** the bug needs Node itself to be west of
+  UTC, and the app container is not. The box is CDT but `node:22-alpine` carries no
+  tzdata and nothing sets `TZ` or mounts `/etc/localtime`, so the container reports UTC
+  (`network_mode: host` shares the network namespace, not the environment). It only ever
+  reproduced on a developer machine. The fix removes the dependency on the container's
+  timezone rather than relying on it staying UTC.
+  The response list's **sort now travels with its filters** (`admin/response-sort.ts`).
+  It was client-only state inside the table, so it stopped at the row you clicked: the
+  per-student prev/next walk and the jump dropdown were always in name order, which made
+  "next" a student nowhere near the one under the cursor in the list actually on screen.
+  The order rides in the URL and the server walks it with the *same* comparator the table
+  sorts by, rather than a second copy kept in step by hand.
+  Finally, `schedule_runs.kind` (`generated` | `snapshot`, defaulting to `generated`, one
+  additive migration) tells a real generation from a **Save run** checkpoint. A snapshot
+  is stamped *now* and copies the current run's scope, and the scope ledger read every
+  run row, so clicking Save run silently cleared the whole "Updated by position" panel
+  and backdated every "Last updated" to the moment of the click while nothing had been
+  re-solved. The ledger now counts generated runs only. The related **open issue** is
+  recorded, not fixed: a slice that later runs are scoped away from keeps an
+  accumulating "N new" until an unscoped run covers it again, which is true but reads as
+  a fault (`docs/architecture.md`, scope ledger).
+- **1.22 (2026-08-21)** — **Six admin-surface bugs, mostly about hours meaning what
+  they say (§10a, §17).** The per-student readout judged the **preferences** figure
+  against the 30h cap and painted it red, but selecting past the cap is expected and
+  allowed (§5 #3), so it was reporting a rule that does not exist and doing it on the
+  figure that lands first on the page. The cap now belongs to the **scheduled** figure
+  alone, together with the below-floor verdict, both on the same predicates as the
+  student-table pills on `/admin/schedule` (`isOverMaxHours`, `isBelowMinHours`) so the
+  two surfaces cannot disagree about somebody; a verdict now also survives the miniature
+  form, so leaving schedule mode is not what silences an over-cap schedule. The
+  preferred figure keeps the floor, which is genuinely its rule. The two figures also
+  stop swapping sides when the mode toggle is clicked: order is fixed, and only the
+  emphasis moves. The one-student schedule card gained the week it comes to, measured
+  through the same `weekMinutesForRows` as everything else. Before those: the coverage
+  cell dialog listed only who **offered** a shift, so a hand placement or a fill-in who
+  never responded was missing from the list of people actually working it; they now
+  appear under their own heading, outside the count the header explains, and hand
+  placements carry a `manual` pill. The hover card could be laid over the name being
+  hovered when it fitted neither below nor above, eating the click on it; placement is
+  now the pure `components/admin/hover-placement.ts`, whose one invariant is that the
+  card never overlaps its anchor (it goes beside it when it must). And `Save run` moved
+  out of the current-run panel, where it read as another way to change the schedule,
+  into the `Run history` heading it writes to.
+- **1.21 (2026-08-21)** — **Module boundaries, written down and enforced.** Three
+  separability audits over commits `6c88001`..`af97ca8` found the same thing each
+  time: the schema had the architecture right (all three cross-boundary foreign keys
+  point outward from the generator and W2W into form and config, and always have)
+  while imports drifted the other way for 48 commits, because nothing ever stated a
+  direction and no rule ever checked one. `eslint.config.mjs` now enforces the
+  layering — form core imports neither the generator nor W2W, those two do not import
+  each other, and neither imports upward into the admin console — with a shrinking
+  allowlist of seven pre-existing edges that each name the plan item removing them.
+  The form core turned out to have **zero** import-path violations, so the rule is a
+  guard on a property the codebase already has. `CLAUDE.md` and
+  `docs/architecture.md` carry the rule and the register of *deliberate* duplication
+  that must not be collapsed (chiefly `scheduling/validate.ts`, written blind from
+  the spec so a divergence from `labor.ts` reports a bug). Documentation
+  contradictions fixed: roadmap 5.3 shipped in 1.09 but four places still called it
+  unbuilt, including §18 contradicting §17 thirty-six lines away; the W2W round-trip
+  doc listed "the generator never reads the plan" as an invariant while repair mode
+  does exactly that; and three descriptions had drifted from their code. Bug fixes:
+  the annealing pass could silently drop deferred cells when reconstructing its best
+  state, breaking its own "never worse than the seed" guarantee; the position-delete
+  cascade guards ran outside their transaction; and test-account deletion had no
+  saved-run guard. Then the four cheapest separability items: the engine's coverage
+  and warning rules move out of the shared domain root and the generator's I/O shell
+  into `domain/scheduling/` where their callers already were; the generator's
+  vocabulary (`FROZEN_LABEL`, `Bar`, the health tones) comes out of the shared admin
+  UI kit into `components/admin/schedule-ui.tsx`, so a travel or responses page can
+  import a pill without taking the engine's type graph with it; `parseCsv` moves down
+  to `domain/csv.ts`, ending the W2W plan parser's import of a form module for a
+  string function; and the **admin console is named as a module the lint can see**,
+  which also moved the one-student popup seam to `lib/admin` and forbade the form core
+  from importing the console. Naming it surfaced the one genuine cycle left:
+  `admin/sheet-sync.ts` is called by the form core after a student submits and reaches
+  down into `lib/schedule` for the schedule matrix, so the form core depends on the
+  generator through the console. It wants a matrix-builder registry and its own
+  branch. One more duplicated rule fell on the way: the local-calendar-day read of
+  `students.hired_on` had been written out three times, and is now `domain/calendar-day.ts`.
+  Two smaller separability items followed: W2W's position-map seed moves out of
+  shared config into `lib/w2w`, and the W2W plan import stops writing
+  `shift_blocks.desired_capacity` straight into the table. That second one was not
+  only a layering fix. Target staffing is position config and the admin form
+  validates every value it writes there, while the plan import validated nothing, so
+  a plan could put a number in config that the form itself would have refused. Both
+  writers now agree on what a legal target is, and W2W no longer references the
+  `shift_blocks` table at all. Full backlog and sequencing in
+  `docs/module-separation-plan.md`.
 - **1.20 (2026-08-20)** — **An optimizer that trades seats between students,
   shipped switched off.** The greedy engine places students one at a time and
   never revisits a placement, so a seat taken early by somebody who did not need
@@ -2514,7 +2616,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   number field per block row; `validateDesiredCapacity` allows 1–99 or blank = no
   target; a capacity-only save skips the picked-shift time confirm). New
   `/admin/schedule` (hub nav: Review) shows supply vs target per (block × day) cell
-  from submitted on-roster availability: pure `domain/coverage.ts` (ok/short/severe
+  from submitted on-roster availability: pure `domain/scheduling/coverage.ts` (ok/short/severe
   grading against the target, severe = under half; lateness tiers Night ≥ 8p /
   Evening ≥ 5p off the block end; derived Close tag; shortfall summaries) + loader
   `schedule/data.ts`. Coverage counts **include** the auto-assigned weekend cell,

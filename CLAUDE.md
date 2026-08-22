@@ -178,8 +178,9 @@ generated schedule).
 The boundary that remains is W2W: **no programmatic integration, ever** — no API, no
 credentials, no push or pull. The scheduler still enters the schedule in W2W by hand.
 The **ceiling** on that side is a **document Muster produces and a human uploads**, in
-whatever format W2W's importer takes; that is a possible future feature (roadmap 5.3),
-**not built**. Anything that talks to W2W directly is out of scope.
+whatever format W2W's importer takes; that shipped in **1.09 (roadmap 5.3)** as the W2W
+shift-plan round-trip (`docs/w2w-shift-plan-roundtrip.md`). Anything that talks to W2W
+directly is still out of scope.
 
 **Wish / known gap — the app doesn't hold the final schedule.** The batch
 "your schedule has been created" email (roadmap 2.4) was **removed in 0.99 (roadmap
@@ -258,6 +259,32 @@ These are non-obvious and pervade the data model — internalize them before edi
 
 When adding rules, extend the domain layer test-first; wire DB/UI around it rather
 than embedding logic in routes or components.
+
+**Module boundaries (hard rule):** Muster is three peer modules with an admin console
+composing them. **The form core** (`lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,
+the student routes and their components, and the shared `lib/domain` root) **must not
+import the generator, W2W, or the console.** The **generator** (`lib/schedule`,
+`lib/domain/scheduling`) and **W2W** (`lib/w2w`, `lib/domain/w2w-plan`) must not import
+each other, and neither may import any component or anything in `lib/admin`. The
+**console** (`lib/admin`, `components/admin`, `app/admin`) may depend on all three and
+carries no restriction of its own; nothing depends upward on it. Scheduling surfaces
+read form data through a published reader, never the reverse.
+
+`eslint.config.mjs` enforces this, with a shrinking allowlist of pre-existing edges that
+each name the plan item removing them. **The allowlist only shrinks.** If you need a new
+cross-module edge, add a port on the owning side instead. Note the rule sees import paths
+only, not table access, and that a file's folder does not always decide its layer:
+`closes/admin-actions.ts` is console code living in a form-core folder, and the config
+names it. Full rationale and the item register: `docs/module-separation-plan.md`.
+
+**Deliberate duplication (do not "fix"):** some repetition here is load-bearing.
+`domain/scheduling/validate.ts` is a second derivation of the labor rules written from
+the spec by an author who did not read `labor.ts`; a divergence between them is the
+safety net reporting a bug in one of them. Its header forbids folding it in or sharing
+helpers, and that stands. The same applies to `submissions.scheduled` as the generator's
+freeze primitive and to target staffing living on the positions config path: both are
+documented cross-module couplings that are intentional. `docs/module-separation-plan.md`
+§7 is the full register.
 
 **Refactoring rule (hard rule):** any refactoring done while implementing a task must
 leave the touched code **simpler and better** than before — deduplicate, extract a pure

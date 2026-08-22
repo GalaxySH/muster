@@ -38,7 +38,11 @@ and the position map self-seeds on first import so prod needs no manual seed.
   An assignment present in the imported file but absent from the current run does
   not survive to the export. A repair-only mode exists as an explicit run option
   (§7).
-- The generator itself never reads the plan; it sees only `desired_capacity` (§8).
+- A normal run never reads the plan; it sees only `desired_capacity` (§8). Repair
+  mode is the one exception, and it is opt-in per run: `schedule/actions.ts` loads
+  plan-derived seeds from `w2w/repair` only when the run asks for it (§7). That
+  import is the generator's single dependency on W2W and is tracked as plan item
+  A5 in `docs/module-separation-plan.md`.
 
 ## 2. Input format (what W2W exports)
 

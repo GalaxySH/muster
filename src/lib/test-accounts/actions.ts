@@ -9,12 +9,19 @@
  * issued by signInAsTestAccount below. All three are form actions: failures
  * surface as ?error=<code> on the manager page.
  */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { getDb } from "@/lib/db";
-import { students, submissions, groups, magicLinks } from "@/lib/db/schema";
+import {
+  students,
+  submissions,
+  groups,
+  magicLinks,
+  scheduleAssignments,
+  scheduleRuns,
+} from "@/lib/db/schema";
 import { signIn } from "@/lib/auth";
 import { MAGIC_LINK_PROVIDER } from "@/lib/auth/config";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -39,6 +46,7 @@ export type TestAccountError =
   | "invalid-position"
   | "exists"
   | "not-found"
+  | "in-schedule"
   | "signin";
 
 function fail(code: TestAccountError): never {
@@ -119,6 +127,27 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
   // never a real roster student. Group-only (not domain) so legacy dev-created
   // @wisc.edu accounts stay deletable.
   if (!stu || stu.groupId !== TEST_GROUP_ID) fail("not-found");
+
+  // schedule_assignments cascades off students, so deleting the account would
+  // strip its shifts out of the schedule with no warning. Nothing keeps a test
+  // account off it: the per-student grid applies no on-roster check
+  // (schedule/manual.ts), so an admin can hand-place one. Refused rather than
+  // reported, the same way a position with run rows on its blocks is
+  // (positions/actions.ts), and checked before anything else is deleted so a
+  // refusal costs no rows and no Drive files.
+  //
+  // Scoped to the current run on purpose. Superseded runs can also hold rows for
+  // this account, but the grid only edits the current one, so guarding on those
+  // would leave the account permanently undeletable with no way to clear it. The
+  // run the scheduler is working from is the one worth protecting; older runs
+  // lose a synthetic row from their history, which is what a test account is.
+  const [assigned] = await db
+    .select({ runId: scheduleAssignments.runId })
+    .from(scheduleAssignments)
+    .innerJoin(scheduleRuns, eq(scheduleAssignments.runId, scheduleRuns.id))
+    .where(and(eq(scheduleAssignments.studentEmail, email), eq(scheduleRuns.status, "current")))
+    .limit(1);
+  if (assigned) fail("in-schedule");
 
   const [sub] = await db
     .select({ id: submissions.id })

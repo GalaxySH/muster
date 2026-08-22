@@ -3,7 +3,7 @@
  * blocks-by-days grid, filled with the shifts the current run gives that
  * student. Pure so the modal and the hover card render the same model and the
  * shapes are unit-testable; the DB read lives in
- * schedule/student-schedule-data.ts.
+ * admin/student-schedule-data.ts.
  *
  * Rows are the student's position's block layout plus any retired blocks their
  * carried rows still sit on, so the grid always shows every shift they hold,

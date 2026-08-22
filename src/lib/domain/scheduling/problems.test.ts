@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTime } from "../time";
+import { EPSILON_MINUTES, parseTime } from "../time";
 import type { Position, SelectedShift, ShiftBlock } from "../types";
 import { generateAssignments } from "./engine";
 import {
@@ -9,7 +9,6 @@ import {
   type ProblemKind,
   type ProblemLookup,
 } from "./problems";
-import { EPSILON_MINUTES } from "./seats";
 import type {
   EngineReport,
   ScheduleAssignment,

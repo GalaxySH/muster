@@ -6,7 +6,7 @@
  * is surfaced as an export warning because a name W2W does not recognize
  * silently leaves the shift unassigned on upload.
  */
-import { parseCsv } from "@/lib/roster/csv";
+import { parseCsv } from "../csv";
 
 /**
  * Derive a W2W-style display name from a roster display name. The roster

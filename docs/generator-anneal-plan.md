@@ -112,7 +112,7 @@ Primary, in whole seats: the run's **graded targeted fill**, on exactly the
 definition `stats.ts` reports — per targeted (block, day) cell, the assigned
 count for weekday cells and the **needier rotation week** for weekend cells,
 capped at the cell's target. The pass shares that definition through
-`assignedCellCount` (`domain/coverage.ts`) rather than restating it, and a
+`assignedCellCount` (`domain/scheduling/coverage.ts`) rather than restating it, and a
 test pins the pass's internal objective equal to `computeRunStats`'s
 `filledOfTarget` on generated fixtures. (The prototype briefly optimized a
 laxer week-seat count before this was caught; the pinning test makes that

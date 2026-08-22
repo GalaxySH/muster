@@ -1,44 +1,28 @@
 /**
- * Pure derivations behind a run's warnings, kept out of the I/O in ./data.ts
- * and ./actions.ts.
+ * Pure derivations behind a run's warnings, kept out of the I/O in
+ * schedule/data.ts and schedule/actions.ts that read them.
  *
  * Two things live here. `lateStartWarnings` compares a student's hire date
  * against the day their position goes back to work, both as `yyyy-mm-dd`
  * strings. The two sides reach that form differently. `positions.return_date`
  * is stored as a string and stays one (see the schema comment), so never build
  * a Date from it. `students.hired_on` is a `date` column the driver hands back
- * as a Date pinned to LOCAL midnight, so its day is read with local getters
- * (`localDay`). The rest wires the independent validator
- * (domain/scheduling/validate.ts) to a stored run: assignment rows in,
+ * as a Date pinned to LOCAL midnight, so its day is read through `localDay`
+ * (../calendar-day.ts). The rest wires the independent validator
+ * (./validate.ts) to a stored run: assignment rows in,
  * display-ready findings out, and never a throw, since a run whose report or
  * blocks are unreadable must still render its page.
  */
-import { storedSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
+import { storedSchedulingParams, type SchedulingParams } from "./params";
 import {
   validateRunLabor,
   type StudentLaborFinding,
   type ValidatorLimits,
   type ValidatorRow,
-} from "@/lib/domain/scheduling/validate";
-import type {
-  AssignmentSource,
-  Cohort,
-  EngineReport,
-  LateStartWarning,
-} from "@/lib/domain/scheduling/types";
-import type { Day } from "@/lib/domain/types";
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/**
- * The `yyyy-mm-dd` of a Date read in the local frame. A `date` column comes
- * back from the driver as `new Date(y, m - 1, d)`, midnight local time, so the
- * local getters are the exact inverse of how it was built. `toISOString` would
- * read the UTC frame instead and land a day early anywhere east of UTC.
- */
-export function localDay(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+} from "./validate";
+import type { AssignmentSource, Cohort, EngineReport, LateStartWarning } from "./types";
+import { localDay } from "../calendar-day";
+import type { Day } from "../types";
 
 export interface LateStartInput {
   /** Every assignment row the run holds, including frozen and manual carries. */

@@ -4,7 +4,7 @@
  * The access resolver is the heart of the gate: a student with no group is
  * denied; otherwise their group's window decides editability. The picker/list
  * helpers back the admin assignment surface, including a hire-date filter that
- * reuses the response dashboard's start-date matcher (`admin/response-filters.ts`).
+ * shares its matcher with the response dashboard (`domain/calendar-day.ts`).
  * Pure window math lives in `domain/window.ts`; this layer only loads + joins.
  */
 import "server-only";
@@ -19,7 +19,7 @@ import {
   isLockedAfterSubmit,
   type WindowState,
 } from "@/lib/domain/window";
-import { matchesStarted, type StartedMode } from "@/lib/admin/response-filters";
+import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
 
 export interface GroupRow {
   id: string;
@@ -200,9 +200,9 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(asc(students.displayName), asc(students.email));
 
-  // The hire-date compare (before/after/on) mirrors the response dashboard's
-  // start-date filter, so it's applied in memory with the same pure matcher
-  // rather than duplicated as a SQL date comparison.
+  // The hire-date compare (before/after/on) is the same rule the response
+  // dashboard filters by, so it runs in memory through the shared matcher
+  // rather than as a second SQL date comparison.
   const filtered = filters.hiredOn
     ? rows.filter((r) => matchesStarted(r.hiredOn, filters.hiredOn!))
     : rows;

@@ -42,7 +42,7 @@
  */
 import { demandCellKey } from "../demand";
 import { coveredMinutes, redundantRangeIndex } from "../intervals";
-import type { TimeRange } from "../time";
+import { EPSILON_MINUTES, type TimeRange } from "../time";
 import type { Day, Position, ShiftBlock } from "../types";
 import { annealAssignments } from "./anneal";
 import { improveAssignments } from "./improve";
@@ -51,7 +51,6 @@ import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "./params";
 import { isOverMaxHours } from "./problems";
 import {
   DAY_INDEX,
-  EPSILON_MINUTES,
   SeatLedger,
   averagedAssignedMinutes,
   byEmail,
@@ -59,13 +58,14 @@ import {
   targetMinutes,
   tierBonus,
 } from "./seats";
-import type {
-  Cohort,
-  EngineInput,
-  EngineResult,
-  ScheduleAssignment,
-  ScheduleStudent,
-  StudentScheduleReport,
+import {
+  weekendCohortOf,
+  type Cohort,
+  type EngineInput,
+  type EngineResult,
+  type ScheduleAssignment,
+  type ScheduleStudent,
+  type StudentScheduleReport,
 } from "./types";
 
 export { DAY_CAP_MINUTES, targetMinutes } from "./seats";
@@ -135,7 +135,6 @@ export function generateAssignments(input: EngineInput): EngineResult {
   // anyone else competes for capacity.
   for (const student of fcfs.filter((s) => s.scheduled)) {
     const ranges = new Map<Day, TimeRange[]>();
-    let cohort: StudentScheduleReport["cohort"] = null;
     const rows = (previousByStudent.get(student.email) ?? []).filter((row) => {
       if (!blockById.has(row.blockId)) {
         droppedBlockGone += 1;
@@ -154,7 +153,6 @@ export function generateAssignments(input: EngineInput): EngineResult {
       list.push({ start: block.start, end: block.end });
       ranges.set(row.day, list);
       if (row.cohort !== "weekday") {
-        cohort = row.cohort;
         addWeekendMinutes(weekendMinutes, row.cohort, coveredMinutes(list) - before);
       }
       assignments.push(row);
@@ -165,7 +163,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       targetMinutes: position ? targetMinutes(student, position) : 0,
       assignedMinutes: averagedAssignedMinutes(ranges, student.everyWeekendOptIn),
       daysUsed: ranges.size,
-      cohort,
+      cohort: weekendCohortOf(rows),
       frozen: true,
       // Kept in step with the active branch: `previousFillIns` is read off this
       // field, so a fill-in that ever became freezable must still carry it.
@@ -233,10 +231,12 @@ export function generateAssignments(input: EngineInput): EngineResult {
   // reflect the relocations the improvement pass made and the rotation the
   // annealing pass hands a student greedy left off the weekend.
   const finalRanges = new Map<string, Map<Day, TimeRange[]>>();
-  const finalCohorts = new Map<string, Exclude<Cohort, "weekday">>();
+  const finalRows = new Map<string, ScheduleAssignment[]>();
   for (const row of finalAssignments) {
     const block = blockById.get(row.blockId)!;
-    if (row.cohort !== "weekday") finalCohorts.set(row.studentEmail, row.cohort);
+    const held = finalRows.get(row.studentEmail);
+    if (held) held.push(row);
+    else finalRows.set(row.studentEmail, [row]);
     let byDay = finalRanges.get(row.studentEmail);
     if (!byDay) {
       byDay = new Map();
@@ -267,7 +267,7 @@ export function generateAssignments(input: EngineInput): EngineResult {
       targetMinutes: state.target,
       assignedMinutes: assigned,
       daysUsed: ranges.size,
-      cohort: finalCohorts.get(state.student.email) ?? null,
+      cohort: weekendCohortOf(finalRows.get(state.student.email) ?? []),
       frozen: false,
       fillIn: state.student.fillIn === true,
     });
@@ -497,6 +497,14 @@ function assign(
   let cohort: Cohort = "weekday";
   if (block.dayType === "weekend") {
     if (state.cohort === null) {
+      // Which rotation week a student with none yet joins. Three passes answer
+      // this and they answer it DIFFERENTLY on purpose, because they optimize
+      // different things (plan §7): here it is run-level fortnight balance, so
+      // the two weeks carry similar total weekend minutes. `SeatLedger
+      // .emptierWeek` picks by headcount in the one cell, because that is what
+      // moves graded fill for the annealer. `manualWeekendCohort` has nothing
+      // to optimize and just defaults. Do not "unify" these without deciding
+      // which objective wins; each changes generated schedules.
       const open = ledger.openCohorts(block, day);
       if (open.a && open.b) {
         state.cohort = weekendMinutes.b < weekendMinutes.a ? "b" : "a";

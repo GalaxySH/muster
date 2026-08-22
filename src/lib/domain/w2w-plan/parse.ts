@@ -7,7 +7,7 @@
  * invariant the export side depends on (budget safety). Pure; the bytes-to-text
  * step lives with the upload handler.
  */
-import { parseCsv } from "@/lib/roster/csv";
+import { parseCsv } from "../csv";
 import type { Day } from "../types";
 import type { W2wParseIssue, W2wParseResult, W2wPlanRow } from "./types";
 

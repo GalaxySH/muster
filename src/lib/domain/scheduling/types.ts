@@ -8,6 +8,7 @@
  */
 import type { Day, Position, SelectedShift, ShiftBlock } from "../types";
 import type { SchedulingParams } from "./params";
+import type { RunStats } from "./stats";
 
 /**
  * Which weekly template an assignment belongs to. Weekday cells are the same
@@ -15,6 +16,43 @@ import type { SchedulingParams } from "./params";
  * both ("every") for every-weekend opt-ins.
  */
 export type Cohort = "weekday" | "a" | "b" | "every";
+
+/**
+ * The one weekend rotation a person's assignment rows come to, or null when
+ * none of them is a weekend row.
+ *
+ * Five call sites used to spell this out by hand and they gave three different
+ * answers: the engine took the last non-weekday row it walked, the annealing
+ * and improvement passes took the first, and the run statistics ranked the
+ * values. Row order is not a property of the schedule, it is a property of
+ * whichever loop built the array, so the first two answers moved whenever a
+ * sort did. This reads the cohort values and nothing else, so every surface
+ * labels the same rows the same way.
+ *
+ * "every" wins outright: that student works both rotation weeks, and calling
+ * them "a" would halve their weekend hours and judge them against one week of
+ * a fortnight they work twice. Under-reporting is the direction that hurts.
+ * "a" before "b" is arbitrary but has to be something, and it is the tie the
+ * engine's own rotation pick already breaks that way (`assign` in ./engine.ts)
+ * and the order every list shows them in.
+ *
+ * Collapsing to one answer is lossy on purpose. Rows that mix "a" and "b" have
+ * no single rotation, and callers that must not guess do not come here:
+ * `laborWarningsForRows` in ./manual.ts spots the mix and declines to warn, and
+ * ./validate.ts maps every row by its own cohort so it can see what a collapse
+ * would hide.
+ */
+export function weekendCohortOf(
+  rows: readonly { readonly cohort: Cohort }[],
+): Exclude<Cohort, "weekday"> | null {
+  let found: Exclude<Cohort, "weekday"> | null = null;
+  for (const row of rows) {
+    if (row.cohort === "every") return "every";
+    if (row.cohort === "a") found = "a";
+    else if (row.cohort === "b" && found === null) found = "b";
+  }
+  return found;
+}
 
 /** Who wrote an assignment row: the engine's solver, or an admin's manual edit. */
 export type AssignmentSource = "engine" | "manual";
@@ -175,6 +213,25 @@ export interface EngineReport {
    */
   lateStarts?: LateStartWarning[];
 }
+
+/**
+ * The report shape stored in schedule_runs.summary_json: the engine report,
+ * plus the repair stamp a repair-only run adds (how many students were kept in
+ * place from the imported W2W plan; those show as frozen in the report but are
+ * not admin-frozen), plus the statistics snapshot the caller stamps on.
+ *
+ * Both halves are engine output, so the shape lives here rather than in the
+ * reader that happens to parse it. `RunStats` is a type-only import, which
+ * erases at build time, so ./stats importing this module back is not a cycle.
+ */
+export type StoredRunReport = EngineReport & {
+  repaired?: { students: number };
+  /**
+   * The run's health figures as generated (./stats.ts). Absent on runs from
+   * before they existed, which render without the section.
+   */
+  stats?: RunStats;
+};
 
 /** One student who starts after the date their position's shifts resume. */
 export interface LateStartWarning {

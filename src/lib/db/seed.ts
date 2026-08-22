@@ -8,7 +8,7 @@ import { count, eq, sql } from "drizzle-orm";
 import { createDb } from "./client";
 import { positions, shiftBlocks, groups, rosterTitleMappings, w2wPositionMap } from "./schema";
 import { POSITION_CONFIGS } from "../config/positions";
-import { W2W_POSITION_MAP_SEED } from "../config/w2w-position-map";
+import { W2W_POSITION_MAP_SEED } from "../w2w/position-map-seed";
 import { TITLE_TO_POSITION } from "../roster/position-mapping";
 import { DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME } from "../groups/constants";
 
