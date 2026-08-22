@@ -5,6 +5,7 @@ import { listResponses } from "@/lib/admin/data";
 import { listGroups } from "@/lib/groups/data";
 import { listPositions } from "@/lib/positions/data";
 import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
+import { parseResponseSort } from "@/lib/admin/response-sort";
 import { getSheetUrl, getLastSheetSync, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildResponsesSheet } from "@/lib/admin/actions";
 import { ResponseList } from "@/components/admin/ResponseList";
@@ -35,6 +36,9 @@ export default async function ResponsesPage({
     started?: string;
     startedDate?: string;
     review?: string;
+    /** Sort order carried from the response list (see admin/response-sort.ts). */
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const session = await getAppSession();
@@ -43,6 +47,7 @@ export default async function ResponsesPage({
 
   const sp = await searchParams;
   const filters = parseResponseFilters(sp);
+  const sort = parseResponseSort(sp);
   const filterQuery = serializeResponseFilters(filters);
 
   const [rows, groups, positions, sheetUrl, lastSync] = await Promise.all([
@@ -88,7 +93,7 @@ export default async function ResponsesPage({
           {filtered ? "No one matches this filter." : "No submissions yet."}
         </p>
       ) : (
-        <ResponseList rows={rows} filterQuery={filterQuery} />
+        <ResponseList rows={rows} filterQuery={filterQuery} initialSort={sort} />
       )}
     </Page>
   );

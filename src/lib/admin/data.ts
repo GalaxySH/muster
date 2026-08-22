@@ -38,6 +38,7 @@ import {
   neighborFallbackFilters,
   type ResponseFilters,
 } from "./response-filters";
+import { DEFAULT_SORT, sortResponses, type ResponseSort } from "./response-sort";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 
@@ -441,15 +442,18 @@ export interface ResponseNeighbors {
 export async function getResponseNeighbors(
   emailRaw: string,
   filters: ResponseFilters = {},
+  sort: ResponseSort = DEFAULT_SORT,
 ): Promise<ResponseNeighbors> {
   const email = normalizeEmail(emailRaw);
-  let list = await listResponses(filters);
+  // Ordered the same way the dashboard table is, so "next" is the row under the
+  // one the admin clicked rather than the next name alphabetically.
+  let list = sortResponses(await listResponses(filters), sort);
   // When the active filters hide the student you are looking at, redo the list
   // with the visibility switches open. A chosen submission state survives that,
   // so the arrows keep walking the list the dashboard actually showed; see
   // `neighborFallbackFilters` for which parts widen and why.
   if (!list.some((r) => r.email === email)) {
-    list = await listResponses(neighborFallbackFilters(filters));
+    list = sortResponses(await listResponses(neighborFallbackFilters(filters)), sort);
   }
   const people = list.map((r) => ({ email: r.email, displayName: r.displayName }));
   const i = list.findIndex((r) => r.email === email);
