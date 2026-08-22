@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.22
+- **Version:** 1.23
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1476,6 +1476,34 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.23 (2026-08-21)** — **Travel entries are editable, the sort follows you, and
+  `Save run` stops lying to the scope ledger (§8, §10, §10a).** Travel entries on the
+  per-student page now carry **Edit** and **Remove** beside the resolved checkbox,
+  through the same on-behalf evidence seam the **Add** link already used. Editing covers
+  the dates and the note; the proof and the `excused` standing are left alone, since one
+  is the evidence for the trip and the other records how the entry arrived relative to
+  the cutoff. Removal was already written but the cutoff locked it for *everyone*,
+  admins included, so after 9/1 nobody could fix a wrong entry; the deadline is a rule
+  for students, and it no longer binds an admin acting for one (adding already worked
+  that way). Fixing this surfaced a **date bug on the way in**: `new Date("2026-09-10")`
+  is midnight UTC, so west of UTC the `date` column stored the day *before* the one
+  typed, on adds as well as edits. `domain/calendar-day.ts` gains `calendarDate`, the
+  inverse of the `localDay` it already owned, and both write paths use it.
+  The response list's **sort now travels with its filters** (`admin/response-sort.ts`).
+  It was client-only state inside the table, so it stopped at the row you clicked: the
+  per-student prev/next walk and the jump dropdown were always in name order, which made
+  "next" a student nowhere near the one under the cursor in the list actually on screen.
+  The order rides in the URL and the server walks it with the *same* comparator the table
+  sorts by, rather than a second copy kept in step by hand.
+  Finally, `schedule_runs.kind` (`generated` | `snapshot`, defaulting to `generated`, one
+  additive migration) tells a real generation from a **Save run** checkpoint. A snapshot
+  is stamped *now* and copies the current run's scope, and the scope ledger read every
+  run row, so clicking Save run silently cleared the whole "Updated by position" panel
+  and backdated every "Last updated" to the moment of the click while nothing had been
+  re-solved. The ledger now counts generated runs only. The related **open issue** is
+  recorded, not fixed: a slice that later runs are scoped away from keeps an
+  accumulating "N new" until an unscoped run covers it again, which is true but reads as
+  a fault (`docs/architecture.md`, scope ledger).
 - **1.22 (2026-08-21)** — **Six admin-surface bugs, mostly about hours meaning what
   they say (§10a, §17).** The per-student readout judged the **preferences** figure
   against the 30h cap and painted it red, but selecting past the cap is expected and

@@ -303,7 +303,7 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
 count from one grouped query over `change_requests.status = "open"`),
-`getResponseNeighbors(email, filters)` (prev/next + the
+`getResponseNeighbors(email, filters, sort)` (prev/next + the
 filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
 `listResponses` is **roster-wide**: `FROM students LEFT
 JOIN submissions`, so a student with no response is a row with null submission fields.
@@ -315,7 +315,16 @@ submission row alone means nothing (an admin action can create an empty draft), 
 off-roster + all-students + start-date filters** are a pure
 seam (`response-filters.ts`, TDD) parsed from the URL on both `/admin/responses` and the
 per-student page, so the filter follows you and the neighbor walk stays in lockstep;
-`ResponseFilterBar` drives the URL. Visibility lives in this seam too (not the
+`ResponseFilterBar` drives the URL. **Sort travels with the filters** (1.23,
+`response-sort.ts`): it used to be client-only state inside the table, so it stopped at
+the row you clicked and the walk was always in name order, which made "next" a student
+nowhere near the one under the cursor. The order now rides in the URL (`sort` + `dir`,
+absent while it is the default name-ascending) on the row links, the prev/next links,
+the jump dropdown, and the crumb back to the list, and the server orders the walk with
+the **same comparator** the table sorts by rather than a second one kept in step by hand.
+`sortResponses` breaks ties on name so the order is total: without that, two students
+with equal flag counts could swap between the table and the walk and "next" would not be
+the row underneath. Visibility lives in this seam too (not the
 `listResponses` SQL): off-roster responders are hidden unless `roster=all`, and
 never-started students unless the submission-state select asks for them (`status` =
 submitted|draft|missing|all, empty being the default view that keeps the dashboard a list
@@ -333,7 +342,14 @@ and in stacked mobile rows, the compact count + alert pills between); an open
 change-request count pill sits next to the name (nothing at zero); a `missing` row shows
 the red status badge, dashes for its submission-only cells, and no delete control. The
 Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
-that writes through the student evidence actions; see the evidence/Drive section.
+that writes through the student evidence actions; travel entries additionally carry
+**Edit** and **Remove** (`TravelEntryActions`, 1.23), through `updateTravelRequest` and
+the existing `removeTravelRequest` on the same on-behalf seam. Editing covers the dates
+and the note only: the proof is the evidence for the trip and `excused` records how the
+entry arrived relative to the cutoff, so neither is something a date correction should
+rewrite (swap a proof by removing and re-adding). Both statements are scoped to the named
+student's submission, so an id from someone else's entry cannot be driven through them.
+See the evidence/Drive section.
 `actions.ts` ("use server", **admin-gated**) owns
 `setScheduled` / `saveSchedulerNotes`, both through one `updateSubmission` that calls
 `ensureSubmissionId`: the draft row is **created on demand**, so the scheduler can put
@@ -1503,13 +1519,33 @@ persisted:
   chip misleading under scoping. `loadScheduleForRun` splits it into `marked`
   (admin toggle, the durable one, and it wins when both apply), `out-of-scope`,
   and `kept` (repair seed, or unmarked since the run).
-- **The scope ledger** (`loadScopeLedger`). Per position: the newest run that was
-  unscoped or named it, plus how many eligible responses are new or edited since.
-  Aggregated in JS over one flat query rather than a per-position subquery, since
-  each position needs a different cutoff.
+- **The scope ledger** (`loadScopeLedger`). Per position: the newest **generated**
+  run that was unscoped or named it, plus how many eligible responses are new or
+  edited since. Aggregated in JS over one flat query rather than a per-position
+  subquery, since each position needs a different cutoff.
+  `schedule_runs.kind` is what keeps `Save run` out of it (1.23): a snapshot is
+  stamped now and copies the current run's scope, so before the column existed it
+  read as a fresh solve of exactly that slice. Clicking Save run silently cleared
+  the whole panel and backdated every "Last updated" to the moment of the click,
+  while nothing had been re-solved.
 
 **Known gap:** the staleness banner stays global, so new Barista responses still
 make a Shift-Lead-scoped run look stale. The ledger is the per-slice answer.
+
+**Open issue: a count on a scoped-away slice never clears.** `newSubmissions` is
+`submittedAt > lastSolvedAt`, so it stands until a run *covers that position*
+again. Generate only for Shift Lead and every other position keeps its old date
+and an accumulating "N new", in the warning colour, with no way to acknowledge it;
+an unscoped run is the only thing that clears it. The number is true (that slice
+really has not been re-solved since those people answered) but it reads as a
+fault, and it is easy to misread as the generator refusing to schedule someone,
+which is unrelated: nothing in this panel looks at who got assigned. Left as is on
+2026-08-21 pending a decision on what it should say instead. Two smaller things sit
+with it: the comparison is a strict `>` on second-precision columns, so a response
+landing in the same second as a run reads as older; and `loadScopeLedger` selects
+positions with no `active`/`mergedIntoId` filter, unlike `loadCoverage` beside it,
+so a deactivated or merged-away position holding old responders would show a
+permanent row here and nowhere else in the app.
 
 ### Returner-first ordering (v1.13)
 
