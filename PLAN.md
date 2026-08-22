@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.21
+- **Version:** 1.22
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1476,6 +1476,28 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.22 (2026-08-21)** — **Six admin-surface bugs, mostly about hours meaning what
+  they say (§10a, §17).** The per-student readout judged the **preferences** figure
+  against the 30h cap and painted it red, but selecting past the cap is expected and
+  allowed (§5 #3), so it was reporting a rule that does not exist and doing it on the
+  figure that lands first on the page. The cap now belongs to the **scheduled** figure
+  alone, together with the below-floor verdict, both on the same predicates as the
+  student-table pills on `/admin/schedule` (`isOverMaxHours`, `isBelowMinHours`) so the
+  two surfaces cannot disagree about somebody; a verdict now also survives the miniature
+  form, so leaving schedule mode is not what silences an over-cap schedule. The
+  preferred figure keeps the floor, which is genuinely its rule. The two figures also
+  stop swapping sides when the mode toggle is clicked: order is fixed, and only the
+  emphasis moves. The one-student schedule card gained the week it comes to, measured
+  through the same `weekMinutesForRows` as everything else. Before those: the coverage
+  cell dialog listed only who **offered** a shift, so a hand placement or a fill-in who
+  never responded was missing from the list of people actually working it; they now
+  appear under their own heading, outside the count the header explains, and hand
+  placements carry a `manual` pill. The hover card could be laid over the name being
+  hovered when it fitted neither below nor above, eating the click on it; placement is
+  now the pure `components/admin/hover-placement.ts`, whose one invariant is that the
+  card never overlaps its anchor (it goes beside it when it must). And `Save run` moved
+  out of the current-run panel, where it read as another way to change the schedule,
+  into the `Run history` heading it writes to.
 - **1.21 (2026-08-21)** — **Module boundaries, written down and enforced.** Three
   separability audits over commits `6c88001`..`af97ca8` found the same thing each
   time: the schema had the architecture right (all three cross-boundary foreign keys
