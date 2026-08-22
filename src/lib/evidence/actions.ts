@@ -24,6 +24,7 @@ import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { ensureSubmissionId } from "./data";
 import { isAtEvidenceCap, MAX_EXTRACURRICULAR_FILES, MAX_TRAVEL_REQUESTS } from "./limits";
 import { decideTravelSubmission } from "@/lib/domain/travel";
+import { calendarDate } from "@/lib/domain/calendar-day";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 
 export interface ActionResult {
@@ -245,8 +246,8 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       id: randomUUID(),
       submissionId,
       proofFileId,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: calendarDate(startDate),
+      endDate: calendarDate(endDate),
       note,
       excused,
     });
@@ -258,16 +259,72 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   }
 }
 
+/**
+ * Change an existing entry's dates or note, leaving its proof and its `excused`
+ * standing alone: the proof is the evidence for the trip and `excused` records
+ * how the entry arrived relative to the cutoff, neither of which a correction to
+ * the dates should quietly rewrite. Swap a proof by removing the entry and
+ * adding it again.
+ */
+export async function updateTravelRequest(formData: FormData): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf(formData));
+  if ("error" in who) return { ok: false, error: who.error };
+
+  // Same cutoff rule as adding: it binds the student, and an admin correcting an
+  // entry for them is the excusal call, so it does not bind the admin.
+  if (!(await travelUnlocked(who))) {
+    return { ok: false, error: "The travel deadline has passed. Travel entries are locked." };
+  }
+
+  const id = String(formData.get("id") ?? "");
+  const startDate = String(formData.get("startDate") ?? "");
+  const endDate = String(formData.get("endDate") ?? "");
+  const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+  if (!startDate || !endDate) return { ok: false, error: "Enter both a start and end date." };
+  if (endDate < startDate) return { ok: false, error: "End date can't be before the start date." };
+
+  const db = getDb();
+  const submissionId = await ensureSubmissionId(who.email);
+  // Existence is checked directly rather than through affectedRows, which counts
+  // CHANGED rows: saving the box without touching a field would otherwise come
+  // back as "Entry not found". Both statements are scoped to this student's
+  // submission, so an id belonging to someone else cannot be edited through it.
+  const [row] = await db
+    .select({ id: travelRequests.id })
+    .from(travelRequests)
+    .where(and(eq(travelRequests.id, id), eq(travelRequests.submissionId, submissionId)))
+    .limit(1);
+  if (!row) return { ok: false, error: "Entry not found." };
+
+  await db
+    .update(travelRequests)
+    .set({ startDate: calendarDate(startDate), endDate: calendarDate(endDate), note })
+    .where(and(eq(travelRequests.id, id), eq(travelRequests.submissionId, submissionId)));
+
+  await touchSubmission(submissionId, who);
+  revalidateEvidence("/travel", who);
+  return { ok: true };
+}
+
+/**
+ * Under the "refuse" policy travel locks entirely after the cutoff, removal and
+ * edits too, since a removed entry could never be re-added. Under
+ * "accept-and-flag" entries stay addable (as late), so both stay open with them.
+ * An admin acting on behalf is never locked out: the deadline is a rule for
+ * students, and fixing what a student handed in is the admin's job after it.
+ */
+async function travelUnlocked(who: { onBehalf: boolean }): Promise<boolean> {
+  if (who.onBehalf) return true;
+  const now = new Date();
+  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  return decideTravelSubmission(now, cutoff, policy).allowed;
+}
+
 export async function removeTravelRequest(id: string, onBehalfOf?: string): Promise<ActionResult> {
   const who = await requireStudent(onBehalfOf);
   if ("error" in who) return { ok: false, error: who.error };
 
-  // Under the "refuse" policy travel locks entirely after the cutoff, removal
-  // too, since a removed entry could never be re-added. Under "accept-and-flag"
-  // entries stay addable (as late), so removal stays open with them.
-  const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
-  if (!decideTravelSubmission(now, cutoff, policy).allowed) {
+  if (!(await travelUnlocked(who))) {
     return { ok: false, error: "The travel deadline has passed. Travel entries are locked." };
   }
 

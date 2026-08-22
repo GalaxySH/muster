@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { localDay, matchesStarted } from "./calendar-day";
+import { calendarDate, localDay, matchesStarted } from "./calendar-day";
 
 describe("localDay", () => {
   it("reads the day in the frame the driver built it in", () => {
@@ -42,5 +42,22 @@ describe("matchesStarted", () => {
     for (const mode of ["before", "after", "on"] as const) {
       expect(matchesStarted(null, { mode, date: "2026-09-03" })).toBe(false);
     }
+  });
+});
+
+describe("calendarDate", () => {
+  it("round-trips a date input through localDay unchanged", () => {
+    // The bug it exists for: `new Date("2026-09-10")` is midnight UTC, which is
+    // still the 9th anywhere west of UTC, so the column stored the day before
+    // the one the admin typed.
+    for (const iso of ["2026-01-01", "2026-09-10", "2026-12-31", "2027-03-14"]) {
+      expect(localDay(calendarDate(iso))).toBe(iso);
+    }
+  });
+
+  it("lands on local midnight, not UTC midnight", () => {
+    const d = calendarDate("2026-09-10");
+    expect([d.getHours(), d.getMinutes(), d.getSeconds()]).toEqual([0, 0, 0]);
+    expect(d.getDate()).toBe(10);
   });
 });

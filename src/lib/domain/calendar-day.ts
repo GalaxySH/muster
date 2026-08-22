@@ -20,6 +20,19 @@ export function localDay(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * The inverse: a `yyyy-mm-dd` from a date input, as midnight LOCAL time, which
+ * is the frame a `date` column is written back in.
+ *
+ * `new Date("2026-09-10")` is midnight UTC, so west of UTC it is still the 9th
+ * locally and the column stores the day before the one that was typed. Adding
+ * the time makes it parse in the local frame, and `localDay` returns exactly
+ * what went in.
+ */
+export function calendarDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00`);
+}
+
 /** How a start-date filter compares against the roster hire date. */
 export type StartedMode = "before" | "after" | "on";
 

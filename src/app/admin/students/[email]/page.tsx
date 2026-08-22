@@ -10,6 +10,7 @@ import {
   serializeResponseFilters,
   FLAG_LABELS,
 } from "@/lib/admin/response-filters";
+import { joinQuery, parseResponseSort, serializeResponseSort } from "@/lib/admin/response-sort";
 import { buildAdminGrid } from "@/lib/admin/summary";
 import {
   diffInternalFromStudent,
@@ -31,6 +32,7 @@ import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
 import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
+import { TravelEntryActions } from "@/components/admin/TravelEntryActions";
 import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
@@ -174,6 +176,9 @@ export default async function StudentDetailPage({
     started?: string;
     startedDate?: string;
     review?: string;
+    /** Sort order carried from the response list (see admin/response-sort.ts). */
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const session = await getAppSession();
@@ -184,9 +189,13 @@ export default async function StudentDetailPage({
   const email = decodeURIComponent(emailParam);
   // The group/flag filter follows the admin from the list (roadmap 2.2): it
   // scopes the prev/next walk + the jump menu, and is preserved on every link.
-  const filters = parseResponseFilters(await searchParams);
-  const filterQuery = serializeResponseFilters(filters);
-  const suffix = filterQuery ? `?${filterQuery}` : "";
+  const sp = await searchParams;
+  const filters = parseResponseFilters(sp);
+  // The list's order rides along with its filters, so the walk and the jump
+  // dropdown follow the list the admin was actually reading.
+  const sort = parseResponseSort(sp);
+  const linkQuery = joinQuery(serializeResponseFilters(filters), serializeResponseSort(sort));
+  const suffix = linkQuery ? `?${linkQuery}` : "";
   const detail = await loadStudentDetail(email);
 
   if (!detail) {
@@ -201,7 +210,7 @@ export default async function StudentDetailPage({
     );
   }
 
-  const nav = await getResponseNeighbors(email, filters);
+  const nav = await getResponseNeighbors(email, filters, sort);
   const changeRequests = await listChangeRequests(detail.email);
   const changeFiles = await changeRequestFilesByRequest(detail.email);
   // Thumbnails fetch bytes through the Drive proxy, so only the newest few
@@ -545,6 +554,13 @@ export default async function StudentDetailPage({
                     {t.note && <div style={{ color: "var(--color-text-secondary)" }}>{t.note}</div>}
                     <div style={{ marginTop: 5 }}>
                       <TravelResolvedCheckbox id={t.id} resolved={t.resolved} />
+                      <TravelEntryActions
+                        id={t.id}
+                        studentEmail={detail.email}
+                        startDate={t.startDate}
+                        endDate={t.endDate}
+                        note={t.note}
+                      />
                     </div>
                   </div>
                 </div>
