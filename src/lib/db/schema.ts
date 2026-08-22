@@ -416,6 +416,7 @@ export const closeClaims = mysqlTable(
 );
 
 export const scheduleRunStatusEnum = ["current", "superseded"] as const;
+export const scheduleRunKindEnum = ["generated", "snapshot"] as const;
 export const cohortEnum = ["weekday", "a", "b", "every"] as const;
 export const assignmentSourceEnum = ["engine", "manual"] as const;
 
@@ -436,6 +437,16 @@ export const scheduleRuns = mysqlTable("schedule_runs", {
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   generatedBy: varchar("generated_by", { length: 255 }).notNull(),
   status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
+  /**
+   * Whether the engine actually solved for this row, or an admin copied the
+   * current run into it with `Save run`. Both are real rows in the history and
+   * both can be restored, but only a `generated` one re-solved anything, which
+   * is what the scope ledger reads: a snapshot must not make a slice look
+   * freshly solved. Defaults to `generated`, so every pre-1.23 row (all of
+   * which came from a generate, bar any snapshots taken before this column
+   * existed) reads as one.
+   */
+  kind: mysqlEnum("kind", scheduleRunKindEnum).notNull().default("generated"),
   summaryJson: mediumtext("summary_json").notNull(),
   /**
    * Restore flips a superseded run back to current in place (no new run row)

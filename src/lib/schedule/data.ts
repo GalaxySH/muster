@@ -837,9 +837,10 @@ export interface PositionLedgerRow {
   positionId: string;
   positionName: string;
   /**
-   * When a kept run last re-solved this position: the newest run that was
-   * either unscoped or named it. Null when no kept run covers it, which after
-   * pruning can also mean the covering run has aged out.
+   * When a kept run last re-solved this position: the newest **generated** run
+   * that was either unscoped or named it. Null when no kept run covers it,
+   * which after pruning can also mean the covering run has aged out. `Save run`
+   * snapshots are excluded, since they solve nothing.
    */
   lastSolvedAt: Date | null;
   /** Eligible responses first submitted since then (all of them when never solved). */
@@ -867,6 +868,10 @@ export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
     db
       .select({ generatedAt: scheduleRuns.generatedAt, scopeJson: scheduleRuns.scopeJson })
       .from(scheduleRuns)
+      // Generated runs only. A `Save run` snapshot is stamped now and carries
+      // the current run's scope, so counting it would silently mark that slice
+      // re-solved when nothing had been.
+      .where(eq(scheduleRuns.kind, "generated"))
       .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
     db
       .select({

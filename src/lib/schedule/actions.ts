@@ -611,6 +611,10 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
       id: runId,
       generatedBy: gate.email,
       status: "superseded",
+      // Nothing was solved here, only copied. The scope ledger reads this so a
+      // checkpoint cannot make a slice look re-solved (it carries the current
+      // run's scope, which would otherwise re-stamp exactly that slice).
+      kind: "snapshot",
       scopeJson: current.scopeJson,
       summaryJson: current.summaryJson,
     });
