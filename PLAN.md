@@ -1488,7 +1488,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   that way). Fixing this surfaced a **date bug on the way in**: `new Date("2026-09-10")`
   is midnight UTC, so west of UTC the `date` column stored the day *before* the one
   typed, on adds as well as edits. `domain/calendar-day.ts` gains `calendarDate`, the
-  inverse of the `localDay` it already owned, and both write paths use it.
+  inverse of the `localDay` it already owned, and both write paths use it. **No stored
+  data is wrong and no backfill is needed:** the bug needs Node itself to be west of
+  UTC, and the app container is not. The box is CDT but `node:22-alpine` carries no
+  tzdata and nothing sets `TZ` or mounts `/etc/localtime`, so the container reports UTC
+  (`network_mode: host` shares the network namespace, not the environment). It only ever
+  reproduced on a developer machine. The fix removes the dependency on the container's
+  timezone rather than relying on it staying UTC.
   The response list's **sort now travels with its filters** (`admin/response-sort.ts`).
   It was client-only state inside the table, so it stopped at the row you clicked: the
   per-student prev/next walk and the jump dropdown were always in name order, which made
