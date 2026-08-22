@@ -12,6 +12,7 @@ import type { OrphanedCell } from "@/lib/positions/orphans";
 import { applyScheduleEdits } from "@/lib/schedule/manual";
 import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-ui";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
+import { isBelowMinHours } from "@/lib/domain/scheduling/problems";
 import type { AssignmentSource } from "@/lib/domain/scheduling/types";
 import { EPSILON_MINUTES, formatTime } from "@/lib/domain/time";
 import {
@@ -287,8 +288,11 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     [showAutoRange, selection, autoWeekend, props.blocks, optIn, hours],
   );
 
+  // The floor is the one hours rule preferences answer to: it asks whether the
+  // picks can REACH the minimum. The cap is deliberately not judged here, since
+  // selecting past it is expected (PLAN §5 #3); it is judged on the scheduled
+  // figure below, which is the one it constrains.
   const belowFloor = mock.size > 0 && hours < props.position.minHours;
-  const overCap = hours > props.cap;
   // The rotation no longer matches the student's answer: the pill is a trial override.
   const rotationDeviates = optIn !== props.everyWeekendOptIn;
   const dirty =
@@ -481,20 +485,14 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
 
   // Untouched, the readout is just the student's own selection; it only becomes a
   // "trial schedule" once the admin edits a cell or the rotation.
-  const statusText = overCap
-    ? `over ${props.cap}h cap`
-    : belowFloor
-      ? `below ${props.position.minHours}h floor`
-      : mock.size === 0
-        ? "no shifts picked"
-        : dirty
-          ? "trial schedule"
-          : "preferred";
-  const accent = overCap
-    ? "var(--color-text-danger)"
-    : belowFloor
-      ? "var(--color-text-warning)"
-      : "var(--color-text-info)";
+  const statusText = belowFloor
+    ? `below ${props.position.minHours}h floor`
+    : mock.size === 0
+      ? "no shifts picked"
+      : dirty
+        ? "trial schedule"
+        : "preferred";
+  const accent = belowFloor ? "var(--color-text-warning)" : "var(--color-text-info)";
 
   /**
    * The scheduled figure follows the trial while schedule mode is dirty. It is
@@ -531,19 +529,31 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // disagree with the over-max flag the schedule page will raise afterwards.
   // The figure beside it is rounded for reading; the comparison is not.
   const scheduledOverCap = trialMinutes !== null && trialMinutes - EPSILON_MINUTES > props.cap * 60;
+  // The same pair of judgements the schedule page's student table pills carry,
+  // on the same predicates, so the two surfaces never disagree about somebody.
+  // Nothing scheduled at all reads as its own state rather than as a floor
+  // miss: the admin can see there is nothing there.
+  const scheduledBelowFloor =
+    trialMinutes !== null &&
+    scheduledHours !== 0 &&
+    isBelowMinHours(trialMinutes, props.position.minHours);
+  const scheduledJudged = scheduledOverCap || scheduledBelowFloor;
   const scheduledAccent = scheduledOverCap
     ? "var(--color-text-danger)"
-    : scheduledHours === 0
-      ? "var(--color-text-secondary)"
-      : "var(--color-text-info)";
-  // Same wording as the schedule page's over-max pill, so the two agree.
-  const scheduledStatus = scheduledOverCap
-    ? `over ${props.cap}h cap`
-    : scheduleIsTrial
-      ? "trial schedule"
+    : scheduledBelowFloor
+      ? "var(--color-text-warning)"
       : scheduledHours === 0
-        ? "nothing scheduled"
-        : "scheduled";
+        ? "var(--color-text-secondary)"
+        : "var(--color-text-info)";
+  // Same wording as the schedule page's pills, so the two agree.
+  const scheduledNote = scheduledOverCap
+    ? `over ${props.cap}h cap`
+    : scheduledBelowFloor
+      ? `below ${props.position.minHours}h floor`
+      : null;
+  const scheduledStatus =
+    scheduledNote ??
+    (scheduleIsTrial ? "trial schedule" : scheduledHours === 0 ? "nothing scheduled" : "scheduled");
   // Mini form of the preferred figure: the auto-weekend range survives, since
   // dropping it here would quietly restate an upper bound as a single number.
   const preferredMini = showAutoRange
@@ -589,69 +599,56 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
             Updating the schedule can replace these shifts unless the student is marked scheduled.
           </p>
         )}
+        {/* Preferred always first, scheduled always second, whichever mode is on.
+            Switching modes only moves the emphasis between them: a figure that
+            jumped sides as well would have to be re-found on every click. */}
         <div style={badge} aria-live="polite">
-          {scheduleIsBig ? (
-            <>
-              <div style={readoutGroup}>
-                <div style={{ ...bigFigure, color: scheduledAccent }}>
-                  {fmtHours(scheduledHours!)}
-                </div>
-                <div
-                  style={{
-                    ...statusLine,
-                    color: scheduledOverCap ? scheduledAccent : "var(--color-text-secondary)",
-                  }}
+          <Readout
+            big={!scheduleIsBig}
+            accent={accent}
+            judged={belowFloor}
+            status={
+              <>
+                {statusText}
+                {mock.size > 0 && !belowFloor && (
+                  <span style={{ color: "var(--color-text-tertiary)" }}>
+                    {" "}
+                    · {dayCount} day{dayCount === 1 ? "" : "s"}
+                  </span>
+                )}
+              </>
+            }
+            mini={preferredMini}
+          >
+            {showAutoRange ? (
+              <>
+                {fmtNum(hours)}
+                <span
+                  style={{ color: "var(--color-text-auto)" }}
+                  title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                    .map((s) => describeCell(s, props.blocks))
+                    .join(", ")}`}
                 >
-                  {scheduledStatus}
-                </div>
-              </div>
-              <div style={miniReadout}>{preferredMini}</div>
-            </>
-          ) : (
-            <>
-              <div style={readoutGroup}>
-                <div style={{ ...bigFigure, color: accent }}>
-                  {showAutoRange ? (
-                    <>
-                      {fmtNum(hours)}
-                      <span
-                        style={{ color: "var(--color-text-auto)" }}
-                        title={`Includes the auto-assigned weekend shift: ${autoWeekend
-                          .map((s) => describeCell(s, props.blocks))
-                          .join(", ")}`}
-                      >
-                        –{fmtHours(hoursWithAuto)}
-                      </span>
-                    </>
-                  ) : (
-                    fmtHours(hours)
-                  )}
-                </div>
-                <div
-                  style={{
-                    ...statusLine,
-                    color: belowFloor || overCap ? accent : "var(--color-text-secondary)",
-                  }}
-                >
-                  {statusText}
-                  {mock.size > 0 && !belowFloor && !overCap && (
-                    <span style={{ color: "var(--color-text-tertiary)" }}>
-                      {" "}
-                      · {dayCount} day{dayCount === 1 ? "" : "s"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {scheduledHours !== null && (
-                <div
-                  style={
-                    scheduledOverCap ? { ...miniReadout, color: scheduledAccent } : miniReadout
-                  }
-                >
-                  {fmtHours(scheduledHours)} scheduled
-                </div>
-              )}
-            </>
+                  –{fmtHours(hoursWithAuto)}
+                </span>
+              </>
+            ) : (
+              fmtHours(hours)
+            )}
+          </Readout>
+          {scheduledHours !== null && (
+            <Readout
+              big={scheduleIsBig}
+              accent={scheduledAccent}
+              judged={scheduledJudged}
+              status={scheduledStatus}
+              // Shrunk, the figure still has to carry its own verdict, or an
+              // over-cap schedule goes quiet the moment the admin leaves
+              // schedule mode.
+              mini={`${fmtHours(scheduledHours)} scheduled${scheduledNote ? ` · ${scheduledNote}` : ""}`}
+            >
+              {fmtHours(scheduledHours)}
+            </Readout>
           )}
         </div>
       </div>
@@ -844,6 +841,42 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
  * mirroring the split in the student grid (AvailabilityForm). The 3px
  * borderSpacing sits on the Sun side of the rule, hence the smaller padding.
  */
+/**
+ * One of the two hour figures. Both are always on screen in the same order;
+ * `big` is the only thing the mode toggle changes, so the admin's eye keeps the
+ * place it had. Big shows the figure with its status beside it, mini collapses
+ * to a single quiet line, and `judged` is what lets a verdict keep its colour in
+ * either form while an ordinary status stays grey.
+ */
+function Readout({
+  big,
+  accent,
+  judged,
+  status,
+  mini,
+  children,
+}: {
+  big: boolean;
+  accent: string;
+  judged: boolean;
+  status: React.ReactNode;
+  mini: string;
+  /** The figure itself, since the preferred one can be a two-tone range. */
+  children: React.ReactNode;
+}) {
+  if (!big) {
+    return <div style={judged ? { ...miniReadout, color: accent } : miniReadout}>{mini}</div>;
+  }
+  return (
+    <div style={readoutGroup}>
+      <div style={{ ...bigFigure, color: accent }}>{children}</div>
+      <div style={{ ...statusLine, color: judged ? accent : "var(--color-text-secondary)" }}>
+        {status}
+      </div>
+    </div>
+  );
+}
+
 function weekSplit(sub: AdminSubGrid, day: Day): React.CSSProperties {
   if (sub.dayType !== "weekend") return {};
   if (day === "sun") return { paddingRight: 7 };

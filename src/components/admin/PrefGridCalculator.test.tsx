@@ -381,12 +381,62 @@ describe("PrefGridCalculator", () => {
     it("flags a scheduled week over the cap, in either size", async () => {
       const user = userEvent.setup();
       renderCalc({ cap: 20, hasCurrentRun: true, scheduledMinutes: 21 * 60 });
-      expect(screen.getByText("21h scheduled").style.color).toBe("var(--color-text-danger)");
+      // Shrunk it still has to say why it is red: leaving preference mode must
+      // not be what silences an over-cap schedule.
+      const mini = screen.getByText("21h scheduled · over 20h cap");
+      expect(mini.style.color).toBe("var(--color-text-danger)");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       const figure = screen.getByText("21h");
       expect(figure.style.color).toBe("var(--color-text-danger)");
       expect(within(figure.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
+    });
+
+    it("never judges preferences against the hour cap", () => {
+      // Selecting past the cap is expected and allowed (PLAN §5 #3), so the cap
+      // belongs to the scheduled figure alone. These 10h of picks clear a cap of
+      // 8 and the readout must not call that a problem.
+      renderCalc({ cap: 8 });
+      expect(sizeOf("10h")).toBe("22px");
+      expect(screen.queryByText(/over 8h cap/i)).not.toBeInTheDocument();
+    });
+
+    it("flags a schedule that lands under the position floor, in either size", async () => {
+      // The picks reach 10h exactly, so the only floor miss on screen is the
+      // run's, which is the figure that has to carry it.
+      const user = userEvent.setup();
+      renderCalc({ minHours: 10, hasCurrentRun: true, scheduledMinutes: 6 * 60 });
+      const mini = screen.getByText("6h scheduled · below 10h floor");
+      expect(mini.style.color).toBe("var(--color-text-warning)");
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      const figure = screen.getByText("6h");
+      expect(within(figure.parentElement!).getByText("below 10h floor")).toBeInTheDocument();
+    });
+
+    it("calls an empty schedule nothing scheduled rather than a floor miss", async () => {
+      const user = userEvent.setup();
+      renderCalc({ minHours: 10, hasCurrentRun: true, scheduledMinutes: 0 });
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+      expect(screen.getByText("nothing scheduled")).toBeInTheDocument();
+      expect(screen.queryByText(/below 10h floor/i)).not.toBeInTheDocument();
+    });
+
+    it("holds both figures in place across the switch, moving only the emphasis", async () => {
+      // Preferred first, scheduled second, in both modes. A figure that changed
+      // sides as well would have to be re-found on every click.
+      const user = userEvent.setup();
+      const { container } = renderCalc({ hasCurrentRun: true, scheduledMinutes: 12 * 60 });
+      const order = () => container.querySelector('[aria-live="polite"]')!.textContent ?? "";
+
+      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
+      expect(sizeOf("10h")).toBe("22px");
+
+      await user.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
+      expect(sizeOf("12h")).toBe("22px");
+      expect(sizeOf("10h preferred")).toBe("12px");
     });
 
     it("says so when the run holds nothing for the student", async () => {

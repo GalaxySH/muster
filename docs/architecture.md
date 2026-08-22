@@ -411,21 +411,32 @@ in the same batch can make it legal and the save-time check on the final state i
 truth. Pending cells carry the amber dashed ring the grid already uses for "deviates",
 with a matching legend entry, a pending add showing the manual violet in its schedule
 half and a pending removal showing that half empty.
-Since 1.15 the readout line carries **two** figures and the mode decides their sizes: the
-preferred hours above and the student's **scheduled** hours from the current run, whichever
-the mode is about at full size with the status line, the other as a labelled miniature
-("12.5h scheduled", "10h preferred") so the two can never be read as one number. The
-scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
+Since 1.15 the readout line carries **two** figures: the preferred hours above and the
+student's **scheduled** hours from the current run. They render in a fixed order, preferred
+then scheduled, and the mode changes only which one is full size with its status line beside
+it and which collapses to a labelled miniature ("12.5h scheduled", "10h preferred") so the
+two can never be read as one number. Order is fixed on purpose (1.22): a figure that changed
+sides as well as size on every mode click had to be re-found each time. The shared `Readout`
+component holds both forms.
+The scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
 `averagedAssignedMinutes` the schedule page's student table uses and off the run's own
 rows, so a row carried on a retired shift still counts and every `router.refresh()` after
 a schedule edit moves it. While the schedule trial is dirty the figure follows it, as
 `scheduledMinutes` plus a **delta** between the trial's grid cells and the persisted ones
 (both `computeCapacity` under the student's effective rotation): a delta rather than a
-fresh total precisely so the retired-shift rows above stay counted. Its status line reads
-"scheduled", "trial schedule" while dirty, "nothing scheduled" at zero, or "over Nh cap"
-in the danger accent, matching the over-max pill on `/admin/schedule`; with the cap a hard
-generation rule since 1.15, the trial is where an over-cap composition should get loud,
-before it lands.
+fresh total precisely so the retired-shift rows above stay counted.
+**Which figure answers to which rule** was corrected in 1.22. The **cap** is now judged on
+the scheduled figure alone: selecting past it is expected and allowed (PLAN §5 #3), so a
+red "over Nh cap" on a preference total was reporting a rule that does not exist. The
+scheduled figure carries both verdicts the schedule page's student-table pills carry, on the
+same predicates (`isOverMaxHours`, `isBelowMinHours`) so the two surfaces never disagree:
+"over Nh cap" in the danger accent, "below Nh floor" in the warning accent, else "scheduled",
+"trial schedule" while dirty, or "nothing scheduled" at zero (zero reads as its own state
+rather than a floor miss). A verdict survives the miniature form, appended after the noun
+("21h scheduled · over 20h cap"), so leaving schedule mode is not what silences it. The
+preferred figure keeps the **floor** alone, since that rule is about whether the picks can
+reach the minimum, and it is the live cue while the admin composes a trial that the
+server-rendered flags panel below cannot be.
 Preference saves that fail hard rules warn and need an explicit Save anyway (see the
 availability section). The flags & checks
 panel is **recomputed live** from `validateAvailability` + the evidence, not read from
