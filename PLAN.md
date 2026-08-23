@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.23
+- **Version:** 1.24
 - **Last updated:** 2026-08-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -876,7 +876,11 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     one continuous double; a cell outside
     the student's picks is allowed (the scheduler owns the schedule) and renders as the
     visible mismatch; regeneration replaces a non-frozen student's manual rows, and the
-    grid says so. See §17 and `docs/schedule-generation-plan.md`.
+    grid says so. The weekend header's rotation control follows the mode (1.24): in
+    Edit preferences it is the student's own A/B ↔ every-weekend answer, in Edit
+    schedule it is **the run's** rotation, moving every weekend row they hold, with an
+    **A / B** pair beside it while the plan is alternating. See §17 and
+    `docs/schedule-generation-plan.md`.
 - **Course schedule:** rendered beside the grid for **visual** conflict-checking —
   *not auto-detected* (image only, §12). Clickable → lightbox.
 - **Evidence (all three the same pattern):** course schedule, **extracurricular
@@ -1476,6 +1480,34 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.24 (2026-08-23)** — **The weekend rotation is editable in the schedule, not only
+  in the availability behind it (§10a).** The per-student grid's weekend pill only ever
+  moved the *preference* rotation and the preferred hours with it, in Edit schedule mode
+  as well, so an admin who wanted somebody working every weekend in the run they were
+  looking at had no way to say so: the pill changed an answer the engine reads on the
+  next generation, and left the run's own rows on the A/B week they were already in.
+  There was also no way at all to move somebody between week A and week B by hand.
+  In schedule mode the pill now edits **the plan**: it moves every weekend row the
+  student holds in the current run, and while the plan is alternating a small **A / B**
+  pair beside it picks which week. It is part of the schedule trial like everything else
+  in that mode, so nothing is written until Save, Reset drops it, and the amber dashed
+  ring marks it pending; Save carries the rotation in the same batch as the cell edits
+  (`applyScheduleEdits`, `planScheduleEdits`), so the rows and the week they land in
+  move in one transaction or not at all. New weekend rows in the same batch land in the
+  chosen week. A batch that never touched the control sends no rotation and every
+  standing row keeps the one it has, which is what stops ordinary cell edits from
+  quietly normalizing rows that carry a mix of A and B. The row's `source` is left
+  alone: which week a shift falls in moved, not who put the student on that shift.
+  **Scheduled hours now read the rotation off the rows** (`weekMinutesForRows`) instead
+  of off the student's rotation flag, since those rows *are* the schedule and moving
+  somebody onto every weekend has to show up in what the schedule comes to. Nothing the
+  engine generated reads differently for it, because the engine only ever writes "every"
+  for an every-weekend opt-in and a student with no weekend row has no weekend minutes
+  to weight. The schedule page's **Rotation** column is measured off the live rows for
+  the same reason its hours already were, so a hand-moved rotation shows there rather
+  than staying frozen at generation time. Two reads got simpler on the way: neither the
+  student-table load nor the schedule popup needs to join the internal availability copy
+  any more.
 - **1.23 (2026-08-21)** — **Travel entries are editable, the sort follows you, and
   `Save run` stops lying to the scope ledger (§8, §10, §10a).** Travel entries on the
   per-student page now carry **Edit** and **Remove** beside the resolved checkbox,

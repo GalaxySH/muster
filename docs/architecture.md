@@ -427,6 +427,19 @@ in the same batch can make it legal and the save-time check on the final state i
 truth. Pending cells carry the amber dashed ring the grid already uses for "deviates",
 with a matching legend entry, a pending add showing the manual violet in its schedule
 half and a pending removal showing that half empty.
+**The weekend header carries a rotation control per mode** (1.24), because the two modes
+ask different questions of it: in preference mode it is the pill above, the student's own
+A/B ↔ every-weekend answer; in schedule mode it is **the run's rotation**, read off the
+student's current-run rows (`weekendCohortOf`, the `scheduleCohort` prop) rather than off
+their answer. Flipping it there moves every weekend row they hold, and while the plan is
+alternating a small **A / B** pair beside it picks the week. It is part of the schedule
+trial: nothing is written until Save, Reset drops it, the pill takes the same amber dashed
+ring, and Save sends the chosen rotation as a fourth argument to `applyScheduleEdits` so
+the rows and their week move in one transaction. The argument goes only when the admin
+actually moved it, which is what keeps a batch of cell edits from normalizing rows that
+carry a mix of A and B (see the schedule generation section). A rotation with no weekend
+shift to put in it is not a change and offers no Save; leaving every-weekend lands on the
+week the run recorded, else A.
 Since 1.15 the readout line carries **two** figures: the preferred hours above and the
 student's **scheduled** hours from the current run. They render in a fixed order, preferred
 then scheduled, and the mode changes only which one is full size with its status line beside
@@ -435,12 +448,18 @@ two can never be read as one number. Order is fixed on purpose (1.22): a figure 
 sides as well as size on every mode click had to be re-found each time. The shared `Readout`
 component holds both forms.
 The scheduled figure is the `scheduledMinutes` prop, totalled on the server with the same
-`averagedAssignedMinutes` the schedule page's student table uses and off the run's own
+`weekMinutesForRows` the schedule page's student table uses and off the run's own
 rows, so a row carried on a retired shift still counts and every `router.refresh()` after
-a schedule edit moves it. While the schedule trial is dirty the figure follows it, as
+a schedule edit moves it. Since 1.24 that measure weights the weekend by **the rows' own
+cohorts**, not by the student's rotation flag: those rows are the schedule, so moving
+somebody onto every weekend in it has to move what it comes to. Nothing the engine
+generated reads differently, since it only ever writes "every" for an every-weekend
+opt-in. While the schedule trial is dirty the figure follows it, as
 `scheduledMinutes` plus a **delta** between the trial's grid cells and the persisted ones
-(both `computeCapacity` under the student's effective rotation): a delta rather than a
-fresh total precisely so the retired-shift rows above stay counted.
+(both `computeCapacity`, each under its own rotation, so a rotation move re-weights here
+too): a delta rather than a fresh total precisely so the retired-shift rows above stay
+counted. Neither side reads the preference trial's pill, which answers a different
+question.
 **Which figure answers to which rule** was corrected in 1.22. The **cap** is now judged on
 the scheduled figure alone: selecting past it is expected and allowed (PLAN §5 #3), so a
 red "over Nh cap" on a preference total was reporting a rule that does not exist. The
@@ -1415,7 +1434,14 @@ The generator itself, layered exactly like the rest of the app:
   this refusal cannot drift apart — `manualWeekendCohort` — reuse the student's
   current-run cohort, else `every` for opt-ins, else `a`), cells outside the
   student's picks allowed (the scheduler owns the schedule; the grid renders
-  the mismatch). Labor and over-cap warnings are computed once on the state the
+  the mismatch). A batch can also carry **the rotation week the admin picked**
+  (1.24, the optional fourth argument and `EditPlanContext.weekendCohort`): the
+  plan moves every weekend row the batch leaves standing to it (`retarget`,
+  applied as UPDATEs in the same transaction, `source` untouched since only the
+  week moved) and lands the batch's new weekend rows there instead of asking
+  `manualWeekendCohort`. Sent only when the admin moved the control, so an
+  ordinary batch of cell edits cannot normalize rows that carry a mix of A and
+  B. Labor and over-cap warnings are computed once on the state the
   batch landed on (`laborWarningsForRows`, `weekMinutesForRows`), still warning
   and never blocking. Edits mutate the current run in place and never create a run.
   `generateSchedule`'s carry-forward preserves `source` on frozen students'

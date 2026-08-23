@@ -15,7 +15,6 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import {
-  internalAvailability,
   positions,
   scheduleAssignments,
   scheduleRuns,
@@ -24,7 +23,6 @@ import {
   submissions,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
-import { effectiveRotation } from "@/lib/availability/effective";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
@@ -39,7 +37,7 @@ import {
   type RunCell,
   type RunDiff,
 } from "@/lib/domain/scheduling/diff";
-import { weekMinutesForRows, type RowSpan } from "@/lib/domain/scheduling/manual";
+import { weekMinutesForRows, type ExistingAssignment } from "@/lib/domain/scheduling/manual";
 import {
   isBelowMinHours,
   isOverMaxHours,
@@ -52,12 +50,13 @@ import {
   type FrozenReason,
   type LaborFindingView,
 } from "@/lib/domain/scheduling/run-warnings";
-import type {
-  AssignmentSource,
-  Cohort,
-  EngineReport,
-  StoredRunReport,
-  StudentScheduleReport,
+import {
+  weekendCohortOf,
+  type AssignmentSource,
+  type Cohort,
+  type EngineReport,
+  type StoredRunReport,
+  type StudentScheduleReport,
 } from "@/lib/domain/scheduling/types";
 import {
   ALL_DAYS,
@@ -446,9 +445,9 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
 
   const assignedCells = new Map<string, AssignedCellCounts>();
   const cellsByStudent = new Map<string, AssignedCell[]>();
-  // The same rows keyed for the hours measure below, which needs the block id
-  // the display cells drop.
-  const spansByStudent = new Map<string, RowSpan[]>();
+  // The same rows keyed for the hours and rotation measures below, which need
+  // the block id the display cells drop.
+  const spansByStudent = new Map<string, ExistingAssignment[]>();
   for (const row of rows) {
     const key = demandCellKey(row.blockId, row.day);
     let counts = assignedCells.get(key);
@@ -474,7 +473,13 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     cellsByStudent.set(row.studentEmail, list);
 
     const spans = spansByStudent.get(row.studentEmail) ?? [];
-    spans.push({ blockId: row.blockId, day: row.day, start: row.start, end: row.end });
+    spans.push({
+      blockId: row.blockId,
+      day: row.day,
+      cohort: row.cohort,
+      start: row.start,
+      end: row.end,
+    });
     spansByStudent.set(row.studentEmail, spans);
   }
   for (const list of cellsByStudent.values()) {
@@ -499,17 +504,10 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       minDays: number | null;
       minHours: number | null;
       international: boolean;
-      /** Effective rotation: the internal copy's when an admin saved one. */
-      everyWeekendOptIn: boolean;
       scheduled: boolean;
     }
   >();
   if (emails.length > 0) {
-    // Effective rotation (PLAN §10a): an admin's internal copy overrides the
-    // student's own answer. The join brings the copy's flag alongside; the rule
-    // itself lives in `effectiveRotation` so every surface resolves it the same
-    // way. Weekend rows halve or not on this flag, so two surfaces spelling it
-    // differently would report different hours for identical rows.
     const infoRows = await db
       .select({
         email: students.email,
@@ -519,14 +517,11 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: positions.minDays,
         minHours: positions.minHours,
         international: students.international,
-        everyWeekendOptIn: submissions.everyWeekendOptIn,
-        internalOptIn: internalAvailability.everyWeekendOptIn,
         scheduled: submissions.scheduled,
       })
       .from(students)
       .leftJoin(positions, eq(students.positionId, positions.id))
       .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-      .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
       infoByEmail.set(r.email, {
@@ -536,7 +531,6 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: r.minDays,
         minHours: r.minHours,
         international: r.international,
-        everyWeekendOptIn: effectiveRotation(r.internalOptIn, r.everyWeekendOptIn),
         scheduled: r.scheduled ?? false,
       });
     }
@@ -544,22 +538,23 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
 
   const scope = parseScope(run.scopeJson);
   const lateStartByEmail = new Map((report.lateStarts ?? []).map((w) => [w.email, w]));
-  // Hours are MEASURED HERE rather than read from the report, because the
-  // report is the run as generated and the schedule editor writes its edits
-  // straight into these rows: taking the stored figure would leave the hours
-  // column, the two pills, and the warning lines frozen at generation time and
-  // blind to exactly the hand edits they exist to catch. Same measure the
-  // engine reported with (`averagedAssignedMinutes`, through
-  // `weekMinutesForRows`) on the same effective rotation, so a run nobody has
-  // touched reads precisely as it did when it was generated. Only the minutes
-  // are re-measured; `daysUsed` and `cohort` stay as the run recorded them.
-  const liveStudents = report.students.map((s) => ({
-    ...s,
-    assignedMinutes: weekMinutesForRows(
-      spansByStudent.get(s.email) ?? [],
-      infoByEmail.get(s.email)?.everyWeekendOptIn ?? false,
-    ),
-  }));
+  // Hours and rotation are MEASURED HERE rather than read from the report,
+  // because the report is the run as generated and the schedule editor writes
+  // its edits straight into these rows: taking the stored figures would leave
+  // the hours column, the rotation column, the two pills, and the warning lines
+  // frozen at generation time and blind to exactly the hand edits they exist to
+  // catch. Same measures the engine reported with (`averagedAssignedMinutes`
+  // through `weekMinutesForRows`, and `weekendCohortOf`), so a run nobody has
+  // touched reads precisely as it did when it was generated. `daysUsed` still
+  // stays as the run recorded it.
+  const liveStudents = report.students.map((s) => {
+    const spans = spansByStudent.get(s.email) ?? [];
+    return {
+      ...s,
+      assignedMinutes: weekMinutesForRows(spans),
+      cohort: weekendCohortOf(spans),
+    };
+  });
   const studentRows: ScheduleStudentRow[] = liveStudents.map((s) => {
     const info = infoByEmail.get(s.email);
     const scheduled = info?.scheduled ?? false;

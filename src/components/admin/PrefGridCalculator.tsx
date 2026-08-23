@@ -13,7 +13,7 @@ import { applyScheduleEdits } from "@/lib/schedule/manual";
 import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-ui";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
 import { isBelowMinHours } from "@/lib/domain/scheduling/problems";
-import type { AssignmentSource } from "@/lib/domain/scheduling/types";
+import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { EPSILON_MINUTES, formatTime } from "@/lib/domain/time";
 import {
   DAY_LABEL,
@@ -51,6 +51,14 @@ import {
  * state is still the truth. Pending cells carry the amber dashed ring the grid
  * already uses for "deviates". Rows are added as source "manual"; removing an
  * engine row is allowed. Disabled until a run exists.
+ *
+ * The weekend header's rotation control belongs to whichever mode is on (1.24),
+ * because the two modes ask different questions of it. In preferences it is the
+ * student's own answer, re-weighting the preferred hours. In schedule it is the
+ * RUN's rotation, read off their current-run rows: flipping it moves every
+ * weekend row they hold, and while the plan is alternating an A/B pair beside it
+ * picks the week. It rides the same trial as the cells, so Save carries it in
+ * the same batch and Reset drops it with them.
  *
  * The header carries BOTH hour figures at once, because the question the admin
  * is asking changes with the mode and the other number is still worth a glance:
@@ -106,6 +114,14 @@ export interface PrefGridCalculatorProps {
    * carried on a retired shift has no cell and would go missing.
    */
   scheduledMinutes: number | null;
+  /**
+   * The rotation week the current run puts this student's weekend on, or null
+   * when they hold no weekend row (and before any generation). Schedule mode's
+   * rotation control edits this; preference mode's pill edits
+   * `everyWeekendOptIn` beside it, which is a different question about a
+   * different table.
+   */
+  scheduleCohort: Exclude<Cohort, "weekday"> | null;
   /** False before any generation: schedule mode stays disabled. */
   hasCurrentRun: boolean;
   /**
@@ -197,6 +213,12 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // the schedule; after a save the refreshed props come back equal to it,
   // which is what drops `scheduleDirty` again.
   const [trial, setTrial] = useState<Set<string>>(() => new Set(assigned.keys()));
+  // The rotation week the trial puts their weekend on. Seeded the same way the
+  // cells are, from what is persisted, so a clean trial is exactly the schedule;
+  // with no weekend row to read it from, it starts where a new one would land.
+  const savedCohort: Exclude<Cohort, "weekday"> =
+    props.scheduleCohort ?? (props.everyWeekendOptIn ? "every" : "a");
+  const [schedCohort, setSchedCohort] = useState(savedCohort);
   const [schedSaveState, setSchedSaveState] = useSaveState();
   const [assignError, setAssignError] = useState<string | null>(null);
   // Labor notes from the last saved batch; the shifts are placed anyway.
@@ -251,7 +273,15 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     () => [...assigned.keys()].filter((k) => !trial.has(k)),
     [trial, assigned],
   );
-  const scheduleDirty = schedAdds.length > 0 || schedRemoves.length > 0;
+  // A rotation with no weekend shift to put in it is not a change: there is
+  // nothing for it to move, and counting it would leave Save offering to write
+  // nothing and never settling afterwards.
+  const trialWeekendRows = useMemo(
+    () => keysToSelection(trial).some((s) => dayTypeOf(s.day) === "weekend"),
+    [trial],
+  );
+  const rotationMoves = schedCohort !== savedCohort && trialWeekendRows;
+  const scheduleDirty = schedAdds.length > 0 || schedRemoves.length > 0 || rotationMoves;
   // The trial's rows in the shape the coverage rule reads, for the per-click cue.
   const trialRows = useMemo<RowSpan[]>(
     () =>
@@ -394,12 +424,21 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
    * An add that breaks the coverage rule against the trial as it stands is
    * refused right here, in the words the server would use.
    */
-  function toggleAssignment(blockId: string, day: Day) {
-    if (busyCell || schedSaveState === "saving") return;
-    const key = selectionKey(blockId, day);
+  /**
+   * The schedule-trial counterpart of `touchTrial`: the refusal, the warnings
+   * and the "Saved" receipt all describe the trial as it was, so any edit drops
+   * them before changing it.
+   */
+  function touchSchedule() {
     setAssignError(null);
     setAssignWarnings(null);
     setSchedSaveState("idle");
+  }
+
+  function toggleAssignment(blockId: string, day: Day) {
+    if (busyCell || schedSaveState === "saving") return;
+    const key = selectionKey(blockId, day);
+    touchSchedule();
     if (trial.has(key)) {
       setTrial((prev) => {
         const next = new Set(prev);
@@ -420,10 +459,25 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   }
 
   function resetSchedule() {
-    setAssignError(null);
-    setAssignWarnings(null);
-    setSchedSaveState("idle");
+    touchSchedule();
     setTrial(new Set(assigned.keys()));
+    setSchedCohort(savedCohort);
+  }
+
+  /**
+   * Which rotation week the run puts their weekend shifts on. Every weekend
+   * means both weeks; otherwise it is one of them, and the A/B buttons beside
+   * the pill pick which. Leaving every-weekend lands on the week the run
+   * recorded if it had one, since that is the change the admin is undoing.
+   */
+  function flipScheduleRotation() {
+    touchSchedule();
+    setSchedCohort((v) => (v === "every" ? (props.scheduleCohort === "b" ? "b" : "a") : "every"));
+  }
+
+  function setRotationWeek(week: "a" | "b") {
+    touchSchedule();
+    setSchedCohort(week);
   }
 
   /** Send the whole diff as one batch; the server applies all of it or none. */
@@ -437,6 +491,10 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           props.studentEmail,
           keysToSelection(schedRemoves),
           keysToSelection(schedAdds),
+          // Sent only when the admin actually moved it. Left out, the server
+          // keeps each standing row where it is, which is what stops a batch
+          // of cell edits from quietly normalizing rows that carry a mix.
+          rotationMoves ? schedCohort : undefined,
         );
         if (!res.ok) {
           // The trial survives a refusal: the error names a cell, and the admin
@@ -499,26 +557,32 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
    * the server's total plus a DELTA between the trial's grid cells and the
    * persisted ones, never a fresh total over the trial: `scheduledMinutes`
    * counts rows carried on retired shifts, which have no cell here, and a delta
-   * leaves them counted. Both sides use the student's effective rotation, the
-   * one the server's figure used, not the preference trial's pill.
+   * leaves them counted. Each side is weighted by its own rotation, the trial's
+   * against the run's, so moving somebody onto every weekend re-weights the
+   * weekend here as well as in the rows the save writes. Neither side reads the
+   * preference trial's pill, which answers a different question.
    *
    * One case the delta cannot get right: a trialed cell that overlaps a retired
    * shift's row on the same day. The server merges the two spans into one
    * clock-in; the delta counts the trialed cell whole, so the preview can read
-   * high until the save comes back. Accepted, because retired rows have no
-   * spans on this side to merge against, and the figure it lands on and the
-   * server's over-cap warning are both computed from the merged truth.
+   * high until the save comes back. A rotation move is the same shape, since a
+   * retired row re-weights on the server and has no cell here to re-weight.
+   * Accepted, because the figure it lands on and the server's over-cap warning
+   * are both computed from the merged truth.
    */
-  const gridMinutes = (keys: Iterable<string>) =>
+  const gridMinutes = (keys: Iterable<string>, everyWeekend: boolean) =>
     computeCapacity(
       keysToSelection(keys).filter((s) => validIds.has(s.blockId)),
       props.blocks,
-      { everyWeekendOptIn: props.everyWeekendOptIn },
+      { everyWeekendOptIn: everyWeekend },
     ).weeklyAverageMinutes;
   // Schedule mode only: in preference mode the scheduled figure is an unlabelled
   // miniature, so it stays the run as it stands rather than quietly reading as a trial.
   const scheduleIsTrial = mode === "schedule" && scheduleDirty;
-  const trialDelta = scheduleIsTrial ? gridMinutes(trial) - gridMinutes(assigned.keys()) : 0;
+  const trialDelta = scheduleIsTrial
+    ? gridMinutes(trial, schedCohort === "every") -
+      gridMinutes(assigned.keys(), savedCohort === "every")
+    : 0;
   const trialMinutes = props.scheduledMinutes === null ? null : props.scheduledMinutes + trialDelta;
   const scheduledHours = trialMinutes === null ? null : trialMinutes / 60;
   // The cap is a hard generation rule since 1.15, so a composition that breaks
@@ -677,21 +741,58 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           <div>
             <SubHead>
               Weekend
-              <button
-                type="button"
-                aria-pressed={optIn}
-                onClick={flipRotation}
-                style={weekendModeBadge(optIn, rotationDeviates)}
-                title={
-                  rotationDeviates
-                    ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
-                    : optIn
-                      ? "Every weekend. Click to try alternating (A/B)."
-                      : "Alternating (A/B). Click to try every weekend."
-                }
-              >
-                {optIn ? "EVERY weekend" : "alternating (A/B)"}
-              </button>
+              {/* Two rotations, one per mode, because they are two different
+                  facts: what the student is available for, and which week the
+                  schedule actually puts them on. */}
+              {mode === "schedule" ? (
+                <>
+                  <button
+                    type="button"
+                    aria-pressed={schedCohort === "every"}
+                    onClick={flipScheduleRotation}
+                    style={weekendModeBadge(schedCohort === "every", rotationMoves)}
+                    title={
+                      schedCohort === "every"
+                        ? "They work both weeks. Click to put them on one."
+                        : "They work every other week. Click to put them on both."
+                    }
+                  >
+                    {schedCohort === "every" ? "EVERY weekend" : "alternating (A/B)"}
+                  </button>
+                  {schedCohort !== "every" && (
+                    <span role="group" aria-label="Rotation week" style={weekGroup}>
+                      {(["a", "b"] as const).map((week) => (
+                        <button
+                          key={week}
+                          type="button"
+                          aria-pressed={schedCohort === week}
+                          onClick={() => setRotationWeek(week)}
+                          style={weekBtn(schedCohort === week)}
+                          title={`Put their weekend shifts in week ${week.toUpperCase()}`}
+                        >
+                          {week.toUpperCase()}
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  aria-pressed={optIn}
+                  onClick={flipRotation}
+                  style={weekendModeBadge(optIn, rotationDeviates)}
+                  title={
+                    rotationDeviates
+                      ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
+                      : optIn
+                        ? "Every weekend. Click to try alternating (A/B)."
+                        : "Alternating (A/B). Click to try every weekend."
+                  }
+                >
+                  {optIn ? "EVERY weekend" : "alternating (A/B)"}
+                </button>
+              )}
             </SubHead>
             <CalcTable
               sub={props.grid.weekend}
@@ -1501,6 +1602,33 @@ const weekendModeBadge = (every: boolean, deviates: boolean): React.CSSPropertie
         border: "1px solid var(--color-border-tertiary)",
       }),
   ...(deviates ? { border: "1.5px dashed var(--color-border-warning)" } : null),
+});
+
+/**
+ * Which of the two rotation weeks a student's weekend shifts fall in, offered
+ * only in schedule mode and only while the schedule is alternating (under every
+ * weekend they work both, so there is nothing to pick). Shaped like the Edit
+ * mode toggle above rather than the pill beside it: it is a two-way choice, not
+ * something that flips.
+ */
+const weekGroup: React.CSSProperties = {
+  display: "inline-flex",
+  marginLeft: 5,
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  overflow: "hidden",
+  verticalAlign: "middle",
+};
+const weekBtn = (active: boolean): React.CSSProperties => ({
+  fontSize: 11,
+  fontWeight: 600,
+  fontFamily: "inherit",
+  lineHeight: 1.6,
+  padding: "1px 8px",
+  border: "none",
+  cursor: "pointer",
+  background: active ? "var(--color-text-info)" : "var(--color-background-primary)",
+  color: active ? "#fff" : "var(--color-text-secondary)",
 });
 
 /** The preference half's fill (the whole cell when there is no schedule to split). */

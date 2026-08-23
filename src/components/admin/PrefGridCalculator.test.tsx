@@ -26,6 +26,7 @@ import { applyScheduleEdits } from "@/lib/schedule/manual";
 import { buildAdminGrid, type AssignedCellRef } from "@/lib/admin/summary";
 import { demandCellKey } from "@/lib/domain/demand";
 import { parseTime } from "@/lib/domain/time";
+import type { Cohort } from "@/lib/domain/scheduling/types";
 import type { DayType, Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 
 function b(id: string, dt: DayType, s: string, e: string): ShiftBlock {
@@ -72,6 +73,7 @@ function renderCalc(
     desiredHours?: number | null;
     cap?: number;
     scheduledMinutes?: number | null;
+    scheduleCohort?: Exclude<Cohort, "weekday"> | null;
     hasCurrentRun?: boolean;
     hasSchedule?: boolean;
     isInternal?: boolean;
@@ -96,6 +98,7 @@ function renderCalc(
       everyWeekendOptIn={opts.everyWeekendOptIn ?? false}
       cap={opts.cap ?? 30}
       scheduledMinutes={opts.scheduledMinutes === undefined ? null : opts.scheduledMinutes}
+      scheduleCohort={opts.scheduleCohort ?? null}
       hasCurrentRun={opts.hasCurrentRun ?? false}
       hasSchedule={opts.hasSchedule ?? (opts.assignments?.length ?? 0) > 0}
       isInternal={opts.isInternal ?? false}
@@ -512,6 +515,7 @@ describe("PrefGridCalculator", () => {
           everyWeekendOptIn={false}
           cap={30}
           scheduledMinutes={null}
+          scheduleCohort={null}
           hasCurrentRun={false}
           hasSchedule={false}
           isInternal={false}
@@ -665,6 +669,8 @@ describe("PrefGridCalculator", () => {
         "stu@wisc.edu",
         [{ blockId: "wd-a", day: "mon" }],
         [{ blockId: "wd-b", day: "wed" }],
+        // No rotation named: the admin left that control alone.
+        undefined,
       );
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
@@ -914,6 +920,110 @@ describe("PrefGridCalculator", () => {
 
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
       expect(applyScheduleEdits).not.toHaveBeenCalled();
+    });
+
+    // The rotation the run puts their weekend on, which is a different fact
+    // from the rotation their availability is offered under: the pill here
+    // moves the schedule, the one in preference mode moves the answer.
+    describe("the weekend rotation", () => {
+      /** One engine weekday row plus a Sat row in the given rotation week. */
+      const withWeekend = (cohort: Exclude<Cohort, "weekday">) => ({
+        assignments: [
+          { blockId: "wd-a", day: "mon", source: "engine" } as const,
+          { blockId: "we-a", day: "sat", source: "engine" } as const,
+        ],
+        scheduleCohort: cohort,
+      });
+      const pill = () => screen.getByRole("button", { name: /alternating|EVERY weekend/i });
+      const week = (name: "A" | "B") =>
+        within(screen.getByRole("group", { name: "Rotation week" })).getByRole("button", { name });
+
+      it("reads the run's own rotation, not the student's answer", async () => {
+        const user = userEvent.setup();
+        // The student answered alternating; the run put them on every weekend.
+        await inScheduleMode(user, { ...withWeekend("every"), everyWeekendOptIn: false });
+        expect(pill()).toHaveTextContent("EVERY weekend");
+        expect(screen.queryByRole("group", { name: "Rotation week" })).not.toBeInTheDocument();
+
+        // And the preference pill beside it still reads their own answer.
+        await user.click(screen.getByRole("button", { name: "Edit preferences" }));
+        expect(pill()).toHaveTextContent("alternating");
+      });
+
+      it("offers the A and B weeks only while the schedule is alternating", async () => {
+        const user = userEvent.setup();
+        await inScheduleMode(user, withWeekend("b"));
+        expect(week("B")).toHaveAttribute("aria-pressed", "true");
+        expect(week("A")).toHaveAttribute("aria-pressed", "false");
+
+        await user.click(pill()); // to every weekend: both weeks, nothing to pick
+        expect(screen.queryByRole("group", { name: "Rotation week" })).not.toBeInTheDocument();
+
+        // Back off every-weekend lands on the week the run recorded.
+        await user.click(pill());
+        expect(week("B")).toHaveAttribute("aria-pressed", "true");
+      });
+
+      it("counts the weekend whole once the schedule moves to every weekend", async () => {
+        const user = userEvent.setup();
+        await inScheduleMode(user, { ...withWeekend("a"), scheduledMinutes: 12 * 60 });
+        expect(screen.getByText("12h").style.fontSize).toBe("22px");
+
+        // Their 4h Sat row counted half under A/B and counts whole under every.
+        await user.click(pill());
+        const figure = screen.getByText("14h");
+        expect(within(figure.parentElement!).getByText("trial schedule")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Reset" }));
+        const clean = screen.getByText("12h");
+        expect(within(clean.parentElement!).getByText("scheduled")).toBeInTheDocument();
+      });
+
+      it("leaves the preferred figure alone, since it answers a different question", async () => {
+        const user = userEvent.setup();
+        await inScheduleMode(user, { ...withWeekend("a"), scheduledMinutes: 12 * 60 });
+        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+
+        await user.click(pill());
+        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+      });
+
+      it("saves the rotation with the batch and rings the pill until it lands", async () => {
+        const user = userEvent.setup();
+        await inScheduleMode(user, withWeekend("a"));
+        expect(pill().style.border).not.toContain("dashed");
+
+        await user.click(week("B"));
+        expect(pill().style.border).toContain("dashed");
+        await user.click(save()!);
+
+        expect(applyScheduleEdits).toHaveBeenCalledWith("stu@wisc.edu", [], [], "b");
+        await waitFor(() => expect(refresh).toHaveBeenCalled());
+      });
+
+      it("names the rotation for the new weekend rows of the same batch", async () => {
+        const user = userEvent.setup();
+        await inScheduleMode(user, withWeekend("a"));
+
+        await user.click(pill()); // every weekend
+        await user.click(screen.getByRole("button", { name: "9a–1p Sun" })); // and a new row
+        await user.click(save()!);
+
+        expect(applyScheduleEdits).toHaveBeenCalledWith(
+          "stu@wisc.edu",
+          [],
+          [{ blockId: "we-a", day: "sun" }],
+          "every",
+        );
+      });
+
+      it("is not a change when the run has no weekend shift to move", async () => {
+        const user = userEvent.setup();
+        // Weekday rows only, so the pill has nothing to put in either week.
+        await inScheduleMode(user);
+        await user.click(pill());
+        expect(save()).not.toBeInTheDocument();
+      });
     });
   });
 
