@@ -46,7 +46,7 @@ import {
 } from "@/lib/domain/scheduling/manual";
 import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import { isOverMaxHours } from "@/lib/domain/scheduling/problems";
-import type { EngineReport } from "@/lib/domain/scheduling/types";
+import type { Cohort, EngineReport } from "@/lib/domain/scheduling/types";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
@@ -61,6 +61,9 @@ const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
  */
 const RUN_MOVED_MESSAGE =
   "The schedule was regenerated while you were editing. Reload the page and make these changes again.";
+
+/** The rotation weeks a weekend row can sit in; the enum minus "weekday". */
+const WEEKEND_COHORTS: readonly Cohort[] = ["a", "b", "every"];
 
 export interface AssignmentEditResult {
   ok: boolean;
@@ -95,16 +98,27 @@ async function refreshAfterEdit(studentEmail: string): Promise<void> {
  * trial rather than discovering half a save landed. A run that stopped being
  * the current one between the read and the transaction refuses the same way:
  * writing into a superseded run would report success over nothing.
+ *
+ * `weekendCohort` is the rotation week the admin picked in the grid (1.24), sent
+ * only when they actually changed it. It moves every weekend row the batch
+ * leaves standing, so "every weekend" and "week A/B" are things the schedule
+ * itself records rather than only the availability behind it.
  */
 export async function applyScheduleEdits(
   studentEmail: string,
   removes: readonly ScheduleEditCell[],
   adds: readonly ScheduleEditCell[],
+  weekendCohort?: Exclude<Cohort, "weekday">,
 ): Promise<AssignmentEditResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   const email = normalizeEmail(studentEmail);
   if (!email) return fail("No student was named.");
+  // Comes off a client action boundary, and it is written straight into an enum
+  // column; anything else is a bug on the way in, not a rotation.
+  if (weekendCohort !== undefined && !WEEKEND_COHORTS.includes(weekendCohort)) {
+    return fail("That is not a weekend rotation.");
+  }
 
   const db = getDb();
   const run = await loadCurrentRunRow();
@@ -183,6 +197,7 @@ export async function applyScheduleEdits(
       const plan = planScheduleEdits(current, removes, adds, {
         blocks: blockById,
         everyWeekendOptIn,
+        weekendCohort,
       });
       if (!plan.ok) throw new EditRefused(plan.error);
 
@@ -197,6 +212,22 @@ export async function applyScheduleEdits(
               eq(scheduleAssignments.studentEmail, email),
               eq(scheduleAssignments.shiftBlockId, cell.blockId),
               eq(scheduleAssignments.day, cell.day),
+            ),
+          );
+      }
+      // The rotation move. Only rows that are actually changing weeks are here,
+      // and `source` is deliberately left alone: which week a shift falls in
+      // moved, not who put the student on that shift.
+      for (const row of plan.retarget) {
+        await tx
+          .update(scheduleAssignments)
+          .set({ cohort: row.cohort })
+          .where(
+            and(
+              eq(scheduleAssignments.runId, run.id),
+              eq(scheduleAssignments.studentEmail, email),
+              eq(scheduleAssignments.shiftBlockId, row.blockId),
+              eq(scheduleAssignments.day, row.day),
             ),
           );
       }
@@ -242,7 +273,7 @@ export async function applyScheduleEdits(
   // Its own try/catch keeps the warn-never-block posture: a range this cannot
   // measure yields no line rather than a rolled-back save.
   try {
-    if (isOverMaxHours(weekMinutesForRows(rows, everyWeekendOptIn), international)) {
+    if (isOverMaxHours(weekMinutesForRows(rows), international)) {
       warnings.push(`This puts them over their ${hourCap(international)}h weekly cap.`);
     }
   } catch {

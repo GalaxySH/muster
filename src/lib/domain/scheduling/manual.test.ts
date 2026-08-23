@@ -206,16 +206,18 @@ describe("weekMinutesForRows", () => {
       row("tue", "tue", "weekday", 8 * 60, 16 * 60),
       row("wed", "wed", "weekday", 8 * 60, 16 * 60),
     ];
-    expect(weekMinutesForRows(rows, false)).toBe(3 * 8 * 60);
+    expect(weekMinutesForRows(rows)).toBe(3 * 8 * 60);
   });
 
   it("halves a weekend row under A/B and counts it whole under every", () => {
-    const rows = [
-      row("mon", "mon", "weekday", 8 * 60, 16 * 60),
-      row("sat", "sat", "a", 9 * 60, 17 * 60),
-    ];
-    expect(weekMinutesForRows(rows, false)).toBe(480 + 240);
-    expect(weekMinutesForRows(rows, true)).toBe(480 + 480);
+    const weekday = row("mon", "mon", "weekday", 8 * 60, 16 * 60);
+    expect(weekMinutesForRows([weekday, row("sat", "sat", "a", 9 * 60, 17 * 60)])).toBe(480 + 240);
+    expect(weekMinutesForRows([weekday, row("sat", "sat", "b", 9 * 60, 17 * 60)])).toBe(480 + 240);
+    // The rows' own rotation decides it, so an admin moving somebody onto every
+    // weekend in the schedule moves this figure with them.
+    expect(weekMinutesForRows([weekday, row("sat", "sat", "every", 9 * 60, 17 * 60)])).toBe(
+      480 + 480,
+    );
   });
 
   it("counts a staggered same-day double once over its merged span", () => {
@@ -224,7 +226,7 @@ describe("weekMinutesForRows", () => {
       row("am", "mon", "weekday", 8 * 60, 12 * 60),
       row("mid", "mon", "weekday", 11 * 60, 15 * 60),
     ];
-    expect(weekMinutesForRows(rows, false)).toBe(7 * 60);
+    expect(weekMinutesForRows(rows)).toBe(7 * 60);
   });
 });
 
@@ -428,5 +430,77 @@ describe("planScheduleEdits", () => {
       ),
     );
     expect(plan.inserts).toEqual([{ blockId: "sun-shift", day: "sun", cohort: "b" }]);
+  });
+
+  it("leaves the rotation alone when the batch does not name one", () => {
+    // Including a mix of A and B, which manual edits across runs can leave: a
+    // batch of cell edits must not quietly normalize it.
+    const plan = applied(
+      planScheduleEdits(
+        [row("old-sat", "sat", "a", 9 * 60, 13 * 60), row("old-sun", "sun", "b", 10 * 60, 14 * 60)],
+        [],
+        [{ blockId: "morning", day: "mon" }],
+        ctx([morning]),
+      ),
+    );
+    expect(plan.retarget).toEqual([]);
+    expect(plan.rows.map((r) => r.cohort)).toEqual(["a", "b", "weekday"]);
+  });
+
+  it("moves every standing weekend row to the rotation the batch names", () => {
+    const current = [
+      row("wd", "mon", "weekday", 8 * 60, 12 * 60),
+      row("old-sat", "sat", "a", 9 * 60, 13 * 60),
+      row("old-sun", "sun", "b", 10 * 60, 14 * 60),
+    ];
+    const plan = applied(
+      planScheduleEdits(current, [], [], { ...ctx([]), weekendCohort: "every" }),
+    );
+    expect(plan.retarget).toEqual([
+      { blockId: "old-sat", day: "sat", cohort: "every" },
+      { blockId: "old-sun", day: "sun", cohort: "every" },
+    ]);
+    // The weekday row is not a rotation, and the caller's rows carry the move.
+    expect(plan.rows.map((r) => r.cohort)).toEqual(["weekday", "every", "every"]);
+    // The caller's own array is untouched; only the plan's copy moved.
+    expect(current.map((r) => r.cohort)).toEqual(["weekday", "a", "b"]);
+  });
+
+  it("only lists the rows the move actually changes", () => {
+    const plan = applied(
+      planScheduleEdits([row("old-sat", "sat", "b", 9 * 60, 13 * 60)], [], [], {
+        ...ctx([]),
+        weekendCohort: "b",
+      }),
+    );
+    expect(plan.retarget).toEqual([]);
+  });
+
+  it("does not move a weekend row the batch removes", () => {
+    const plan = applied(
+      planScheduleEdits(
+        [row("old-sat", "sat", "a", 9 * 60, 13 * 60)],
+        [{ blockId: "old-sat", day: "sat" }],
+        [],
+        { ...ctx([]), weekendCohort: "every" },
+      ),
+    );
+    expect(plan.retarget).toEqual([]);
+    expect(plan.rows).toEqual([]);
+  });
+
+  it("lands new weekend rows in the named rotation, over what they already hold", () => {
+    const plan = applied(
+      planScheduleEdits(
+        [row("old-sat", "sat", "a", 9 * 60, 13 * 60)],
+        [],
+        [{ blockId: "sun-shift", day: "sun" }],
+        { ...ctx([satShift, sunShift], true), weekendCohort: "b" },
+      ),
+    );
+    expect(plan.inserts).toEqual([{ blockId: "sun-shift", day: "sun", cohort: "b" }]);
+    expect(plan.retarget).toEqual([{ blockId: "old-sat", day: "sat", cohort: "b" }]);
+    // What the caller's warnings are judged on: one rotation, both rows in it.
+    expect(weekMinutesForRows(plan.rows)).toBe(0.5 * (4 * 60 + 4 * 60));
   });
 });

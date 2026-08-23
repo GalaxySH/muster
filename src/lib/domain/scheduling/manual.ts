@@ -17,7 +17,9 @@
  * `weekMinutesForRows` is for. `dayConflictMessage` lives here too, so the
  * grid's client-side cue and the server's refusal say the same sentence.
  * `planScheduleEdits` is the whole batch decision in one pure pass, so the
- * sequence a save applies can be tested without a database behind it.
+ * sequence a save applies can be tested without a database behind it. A batch
+ * can also carry the rotation week the admin picked (1.24), which moves every
+ * standing weekend row as well as deciding where the new ones land.
  */
 import { redundantRangeIndex } from "../intervals";
 import { formatSpan, type TimeRange } from "../time";
@@ -142,9 +144,16 @@ function rangesForRows(rows: readonly RowSpan[]): Map<Day, TimeRange[]> {
  * rotation, count whole under every, weekday rows count whole), so a caller's
  * over-cap warning and the read-time over-max flag can never disagree about
  * the number they are judging.
+ *
+ * The weekend factor comes from the ROWS' own cohorts (`weekendCohortOf`), not
+ * from the student's rotation flag: these rows are the schedule, and since 1.24
+ * an admin can move somebody onto every weekend in the schedule itself, which
+ * has to show up in their hours. Nothing the engine generated reads differently
+ * for it, since the engine only ever writes "every" for an every-weekend
+ * opt-in, and a student with no weekend rows has no weekend minutes to weight.
  */
-export function weekMinutesForRows(rows: readonly RowSpan[], everyWeekendOptIn: boolean): number {
-  return averagedAssignedMinutes(rangesForRows(rows), everyWeekendOptIn);
+export function weekMinutesForRows(rows: readonly ExistingAssignment[]): number {
+  return averagedAssignedMinutes(rangesForRows(rows), weekendCohortOf(rows) === "every");
 }
 
 /**
@@ -185,6 +194,8 @@ export type ScheduleEditPlan =
   | {
       ok: true;
       removes: readonly EditCell[];
+      /** Standing rows the batch moves to another rotation week; see `weekendCohort`. */
+      retarget: readonly PlannedInsert[];
       inserts: readonly PlannedInsert[];
       rows: ExistingAssignment[];
     }
@@ -195,6 +206,15 @@ export interface EditPlanContext {
   /** Live (non-retired) blocks by id; a missing id reads as "shift is gone". */
   blocks: ReadonlyMap<string, ShiftBlock>;
   everyWeekendOptIn: boolean;
+  /**
+   * The rotation week the admin picked for this batch (1.24), or absent when
+   * they left the control alone. Present, it governs the whole weekend: every
+   * weekend row the batch leaves standing moves to it, and new weekend rows
+   * land in it. Absent, standing rows keep the rotation they have and
+   * `manualWeekendCohort` picks for new ones, so a batch that never touched the
+   * control cannot quietly normalize rows that carry a mix of A and B.
+   */
+  weekendCohort?: Exclude<Cohort, "weekday">;
 }
 
 /**
@@ -226,12 +246,28 @@ export function planScheduleEdits(
   adds: readonly EditCell[],
   ctx: EditPlanContext,
 ): ScheduleEditPlan {
+  // Row by row rather than one shallow copy: a rotation move below rewrites
+  // `cohort` on the survivors, and that must not reach back into the caller's
+  // rows.
+  const rows: ExistingAssignment[] = current.map((r) => ({ ...r }));
   // A removal with no row is a no-op here; the caller still issues its delete,
   // so a cell the admin let go of is gone whatever the read found.
-  const rows: ExistingAssignment[] = [...current];
   for (const cell of removes) {
     const at = rows.findIndex((r) => r.blockId === cell.blockId && r.day === cell.day);
     if (at >= 0) rows.splice(at, 1);
+  }
+
+  // The rotation move comes before the adds are judged, so `rows` is already
+  // the week the additions join. The coverage rule reads spans and never
+  // cohorts, so moving a rotation cannot change any verdict below; what it does
+  // change is the hours the batch lands on, which is the point of it.
+  const retarget: PlannedInsert[] = [];
+  if (ctx.weekendCohort) {
+    for (const row of rows) {
+      if (row.cohort === "weekday" || row.cohort === ctx.weekendCohort) continue;
+      row.cohort = ctx.weekendCohort;
+      retarget.push({ blockId: row.blockId, day: row.day, cohort: ctx.weekendCohort });
+    }
   }
 
   const ordered = [...adds].sort(
@@ -264,10 +300,12 @@ export function planScheduleEdits(
     }
 
     const cohort: Cohort =
-      block.dayType === "weekend" ? manualWeekendCohort(rows, ctx.everyWeekendOptIn) : "weekday";
+      block.dayType === "weekend"
+        ? (ctx.weekendCohort ?? manualWeekendCohort(rows, ctx.everyWeekendOptIn))
+        : "weekday";
     inserts.push({ blockId: cell.blockId, day: cell.day, cohort });
     rows.push({ blockId: cell.blockId, day: cell.day, cohort, start: block.start, end: block.end });
   }
 
-  return { ok: true, removes, inserts, rows };
+  return { ok: true, removes, retarget, inserts, rows };
 }

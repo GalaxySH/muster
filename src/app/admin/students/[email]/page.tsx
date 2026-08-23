@@ -20,9 +20,10 @@ import {
 import { hourCap } from "@/lib/domain/caps";
 import { validateAvailability } from "@/lib/domain/validation";
 import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
-import { averagedAssignedMinutes } from "@/lib/domain/scheduling/seats";
-import { formatTime, type TimeRange } from "@/lib/domain/time";
-import { DAY_LABEL, type Day, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
+import { weekendCohortOf } from "@/lib/domain/scheduling/types";
+import { formatTime } from "@/lib/domain/time";
+import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
@@ -126,27 +127,6 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
   if (!block) return DAY_LABEL[cell.day];
   return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
-}
-
-/**
- * The current run's rows for this student as one cycle-averaged weekly figure:
- * the same `averagedAssignedMinutes` measure the schedule page's student table
- * reads, so the two surfaces never disagree about somebody's hours. Computed
- * here rather than in the grid because the run's rows carry their own block
- * spans, which keeps a row on a retired block counted; the grid only holds
- * cells for blocks that still run.
- */
-function scheduledWeeklyMinutes(
-  cells: readonly { day: Day; start: number; end: number }[],
-  everyWeekendOptIn: boolean,
-): number {
-  const byDay = new Map<Day, TimeRange[]>();
-  for (const cell of cells) {
-    const list = byDay.get(cell.day) ?? [];
-    list.push({ start: cell.start, end: cell.end });
-    byDay.set(cell.day, list);
-  }
-  return averagedAssignedMinutes(byDay, everyWeekendOptIn);
 }
 
 /** One sentence for the banner: how the saved copy differs from the student. */
@@ -275,8 +255,14 @@ export default async function StudentDetailPage({
     : null;
   const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
   const cap = hourCap(detail.international);
-  // Null before any generation, which is also when schedule mode is off.
-  const scheduledMinutes = schedule ? scheduledWeeklyMinutes(schedule.cells, gridOptIn) : null;
+  // Both null before any generation, which is also when schedule mode is off.
+  // Measured off the run's own rows rather than the grid: a row carried on a
+  // retired shift has no cell here and would otherwise go missing.
+  const scheduledMinutes = schedule ? weekMinutesForRows(schedule.cells) : null;
+  // The rotation week the run puts this student's weekend on, which schedule
+  // mode edits. Null when they hold no weekend row and the control has nothing
+  // to read yet.
+  const scheduleCohort = schedule ? weekendCohortOf(schedule.cells) : null;
 
   const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}${suffix}`;
 
@@ -424,6 +410,7 @@ export default async function StudentDetailPage({
               everyWeekendOptIn={gridOptIn}
               cap={cap}
               scheduledMinutes={scheduledMinutes}
+              scheduleCohort={scheduleCohort}
               hasCurrentRun={schedule !== null}
               hasSchedule={(schedule?.cells.length ?? 0) > 0}
               isInternal={internal !== null}
