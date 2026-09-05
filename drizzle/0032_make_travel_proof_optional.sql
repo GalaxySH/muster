@@ -1,0 +1,1 @@
+ALTER TABLE `travel_requests` MODIFY COLUMN `proof_file_id` varchar(255);

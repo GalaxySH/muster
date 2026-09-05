@@ -115,6 +115,26 @@ describe("buildExportMatrix", () => {
     expect(cell("Travel")).toBe("");
   });
 
+  it("leaves the travel cell without a link when an admin added the entry with no proof", () => {
+    const [, row] = buildExportMatrix([
+      aggregate({
+        travel: [
+          {
+            startDate: "2026-09-06",
+            endDate: "2026-09-08",
+            excused: true,
+            note: null,
+            proofFileId: null,
+          },
+        ],
+      }),
+    ]);
+    const cell = (h: (typeof EXPORT_HEADERS)[number]) => row![EXPORT_HEADERS.indexOf(h)];
+    // No empty id smuggled into a drive.google.com URL, and no trailing space
+    // where the link would have been.
+    expect(cell("Travel")).toBe("2026-09-06→2026-09-08 (excused)");
+  });
+
   it("marks internally adjusted responses", () => {
     const [, row] = buildExportMatrix([aggregate({ internalAdjusted: true })]);
     const cell = (h: (typeof EXPORT_HEADERS)[number]) => row![EXPORT_HEADERS.indexOf(h)];

@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { getHighDemandMarksEnabled } from "@/lib/settings";
 import { loadWizardNav } from "@/lib/flow/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
@@ -55,10 +56,13 @@ export default async function AvailabilityPage() {
   // Window gate (PLAN §13): only an open window permits edits, and if the group
   // locks after submit, an already-submitted student is read-only too.
   const editable = access.canEdit;
-  const [nav, highDemand] = await Promise.all([
+  // The busiest-shift marks are admin-switchable (/admin/groups). Off, the set
+  // is empty, which drops the red bars and their legend from the grid.
+  const [nav, marksEnabled] = await Promise.all([
     loadWizardNav(form.student.email),
-    loadHighDemandCells(form.position.id),
+    getHighDemandMarksEnabled(),
   ]);
+  const highDemand = marksEnabled ? await loadHighDemandCells(form.position.id) : new Set<string>();
 
   return (
     <Page width="wide">

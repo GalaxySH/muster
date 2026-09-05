@@ -7,8 +7,9 @@ import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
 import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPanel";
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
 import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
+import { PopularShiftsPanel } from "@/components/admin/PopularShiftsPanel";
 import { Page } from "@/components/ui";
-import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
+import { getTravelCutoff, getLateTravelPolicy, getHighDemandMarksEnabled } from "@/lib/settings";
 
 /**
  * Admin: groups & form windows (PLAN §13). Define groups, schedule their
@@ -20,13 +21,15 @@ export default async function AdminGroupsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/groups");
   if (!session.isAdmin) redirect("/me");
 
-  const [groups, autoAssignEnabled, travelCutoff, lateTravelPolicy, positions] = await Promise.all([
-    listGroups(),
-    getDefaultAutoAssignEnabled(),
-    getTravelCutoff(),
-    getLateTravelPolicy(),
-    positionOptions(),
-  ]);
+  const [groups, autoAssignEnabled, travelCutoff, lateTravelPolicy, highDemandMarks, positions] =
+    await Promise.all([
+      listGroups(),
+      getDefaultAutoAssignEnabled(),
+      getTravelCutoff(),
+      getLateTravelPolicy(),
+      getHighDemandMarksEnabled(),
+      positionOptions(),
+    ]);
 
   // Dates → epoch ms so the client can render them in the admin's local timezone.
   const groupViews = groups.map((g) => ({
@@ -60,6 +63,7 @@ export default async function AdminGroupsPage() {
         isCustom={travelCutoff.isCustom}
         lateAccepted={lateTravelPolicy === "accept-and-flag"}
       />
+      <PopularShiftsPanel initialEnabled={highDemandMarks} />
       <DefaultAssignmentPanel initialEnabled={autoAssignEnabled} />
       <StudentAssigner groups={groupOptions} positions={positions} />
     </Page>

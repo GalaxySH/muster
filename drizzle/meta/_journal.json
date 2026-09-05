@@ -225,6 +225,13 @@
       "when": 1787370162855,
       "tag": "0031_overrated_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1788645038147,
+      "tag": "0032_make_travel_proof_optional",
+      "breakpoints": true
     }
   ]
 }

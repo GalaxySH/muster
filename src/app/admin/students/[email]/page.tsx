@@ -4,7 +4,11 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors, responseStatus } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
-import { loadStudentCurrentAssignments } from "@/lib/schedule/data";
+import {
+  loadCoverage,
+  loadPositionAssignedCells,
+  loadStudentCurrentAssignments,
+} from "@/lib/schedule/data";
 import {
   parseResponseFilters,
   serializeResponseFilters,
@@ -36,6 +40,7 @@ import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbo
 import { TravelEntryActions } from "@/components/admin/TravelEntryActions";
 import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
+import { CoverageGrid, CoverageLegend } from "@/components/admin/CoverageGrid";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
@@ -231,6 +236,17 @@ export default async function StudentDetailPage({
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
   const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
+  // The same coverage grid /admin/schedule shows, narrowed to this student's
+  // position: how staffed each of their shifts is. Only once a run exists, since
+  // the numbers on it are that run's seats.
+  const [coveragePositions, assignedCells] =
+    schedule && position
+      ? await Promise.all([
+          loadCoverage(position.id),
+          loadPositionAssignedCells(schedule.runId, position.id),
+        ])
+      : [null, null];
+  const coverageRows = coveragePositions?.[0]?.rows ?? null;
   // The grid shows and edits the EFFECTIVE availability (PLAN §10a): the
   // internal copy when an admin saved one, the student's own answers
   // otherwise. The validation card above keeps reading the student's data.
@@ -530,7 +546,11 @@ export default async function StudentDetailPage({
                     ...(t.resolved ? travelEntryResolved : null),
                   }}
                 >
-                  <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                  {t.proofFileId ? (
+                    <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                  ) : (
+                    <span style={noProofThumb}>No proof</span>
+                  )}
                   <div style={{ fontSize: 13, flex: 1 }}>
                     <div>
                       {t.startDate} → {t.endDate}{" "}
@@ -731,6 +751,26 @@ export default async function StudentDetailPage({
           </div>
         </section>
       </div>
+
+      {/* Coverage for this student's position, the same grid the schedule page
+          shows. Full width under the dashboard: the weekday table is far wider
+          than a masonry column. */}
+      {coverageRows && position && (
+        <section style={panelStyle}>
+          <SectionLabel action={<Link href="/admin/schedule">Open the schedule</Link>}>
+            {position.name} coverage
+          </SectionLabel>
+          <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+            How many students the current schedule puts on each shift, against the target staffing
+            where one is set. Weekend cells show both rotation weeks as A·B. Click a cell to see
+            everyone who could work it.
+          </p>
+          <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+            <CoverageLegend />
+          </p>
+          <CoverageGrid rows={coverageRows} assignedCells={assignedCells} />
+        </section>
+      )}
     </Page>
   );
 }
@@ -782,6 +822,21 @@ const travelEntryLate: React.CSSProperties = {
 /** A resolved travel entry reads as done: the same green tint as resolved requests. */
 const travelEntryResolved: React.CSSProperties = {
   background: "#f3faf5",
+};
+/** Stands in for a thumbnail on an entry added here, keeping the rows aligned. */
+const noProofThumb: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flex: "0 0 auto",
+  width: 56,
+  height: 56 * 0.78,
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: "var(--border-radius-md)",
+  background: "var(--color-background-secondary)",
+  color: "var(--color-text-tertiary)",
+  fontSize: 11,
+  textAlign: "center",
 };
 
 // --- presentational helpers (server) ---

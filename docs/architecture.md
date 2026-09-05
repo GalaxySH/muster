@@ -98,7 +98,12 @@ field. The mark renders **per (block × day) cell** (`grid.ts` `BlockRow.highDem
 one flag per day) on both the student grid (`AvailabilityForm`, with a steering hint;
 the bar is a full-height rule down the cell's right edge, `.avail-hot`) and the admin
 per-student grid (`PrefGridCalculator`, its own inline `hotTick`). The two share the
-loader and cell set but not the bar styling.
+loader and cell set but not the bar styling. **The student half is switchable** (v1.25):
+`getHighDemandMarksEnabled` (`app_settings.high_demand_marks`, on when absent) gates the
+loader call in `app/availability/page.tsx`, so off means an empty cell set, no bars, no
+legend, and no demand queries. The admin grids never consult it, since the signal is
+scheduler context there. The toggle is `PopularShiftsPanel` on `/admin/groups`, over
+`setHighDemandMarksEnabled` in `admin/actions.ts`.
 
 ## SL weekend-close picking (roadmap 3.2, PLAN §18a, v0.46)
 
@@ -715,6 +720,28 @@ backdrop margin and the rounded corners so it runs **edge to edge on a phone**, 
 is the scarce axis. Children of a modal therefore size in percentages, never fixed pixel
 widths.
 
+**A travel entry may have no proof (1.26).** `travel_requests.proof_file_id` is nullable
+(migration 0032) and `addTravelRequest` skips `readUpload`/`relayUpload` entirely when the
+caller is on-behalf and supplied no file, so an admin-recorded trip relays nothing to
+Drive. A student still must upload one, and both of `readUpload`'s refusals are unchanged
+for them: a missing field ("No file was provided.") and the size-0 `File` a browser sends
+for an untouched input ("The file is empty."). The null is carried as **null**, never an
+empty-string stand-in, because `EvidenceThumb` would otherwise link `/api/evidence/` and
+the export would emit `.../file/d//view`; `TravelEntry.proofFileId` is `string | null` and
+the guards live at each render and export site, with `relayDelete` skipped on removal.
+`collectSubmissionDriveFileIds` already dropped falsy ids, so the proxy gate needed no
+change.
+
+Both travel forms share `components/evidence/TravelDateRange.tsx`: Start defaults to
+today, End follows Start when empty or earlier, and an End the user set is never
+overridden. It uses **uncontrolled inputs with a ref**, because `useEvidenceRunner` calls
+`form.reset()` after a successful add and controlled inputs would stop resetting; and it
+reads the date in an effect after mount rather than during render, since the form is SSR'd
+and the server's clock would otherwise decide the student's "today". The local calendar
+date comes from the existing `localDay()` in `domain/calendar-day.ts` rather than a second
+formatter. The console imports this form-side component, which is the allowed direction;
+`components/evidence` never imports `components/admin`.
+
 ## Availability form layering
 
 `src/lib/availability/` has the pure grid view-model
@@ -1296,11 +1323,22 @@ coverage view, no generator yet. Standard layering:
   `createBlock`/`updateBlock` and the `BlockEditor` island (which grew a number input
   per row; a capacity-only save skips the picked-shift time confirm because times did
   not move).
-- **Loader** `schedule/data.ts` `loadCoverage()`: active non-alias positions, all
-  blocks, on-roster/responder counts, and per-cell distinct-submission counts filtered
+- **Loader** `schedule/data.ts` `loadCoverage(positionId?)`: active non-alias positions,
+  all blocks, on-roster/responder counts, and per-cell distinct-submission counts filtered
   to submitted + on-roster. Deliberate difference from `loadHighDemandCells`: coverage
   **includes** `autoAssigned` cells, because it asks who *can* work a cell, while
-  demand ranks what students *chose*.
+  demand ranks what students *chose*. Passing a position id narrows every query behind it
+  (v1.25, for the per-student card) and **replaces** the active/non-alias filter: naming a
+  position is itself the filter, so a student holding a merged or retired one still gets
+  a grid.
+- **The grid component** `components/admin/CoverageGrid.tsx` (v1.25): one table per
+  day-type, `SlotCell` per cell, plus `CoverageLegend`. Rendered by `/admin/schedule` for
+  every position and by the per-student page for that student's position, so the cell
+  grading exists once. `assignedCells` picks which number a cell shows: a run's seats
+  (`demandCellKey` → `AssignedCellCounts`, weekend as `A·B`), or null for the
+  availability supply. The per-student page fills it from `loadPositionAssignedCells(runId,
+  positionId)` rather than a whole `loadCurrentSchedule`; both that and the whole-run
+  loader tally rows through the same `tallyAssignedCells`.
 - **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
   summary `StatTile` row, then per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
@@ -1308,6 +1346,22 @@ coverage view, no generator yet. Standard layering:
   since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,
   `RestoreRunButton`, `PinRunButton`, `SaveRunButton`, `ScheduleHealth`) — see the
   Phase C and 1.19 sections below.
+- **Roster membership (1.26).** `onRosterStudent()` in `lib/roster/lookup.ts` is the one
+  definition of "still on the roster", and `eligibleSubmittedFilter()` composes from it
+  rather than repeating the clause (first slice of module item A1). The supply side was
+  always filtered; 1.26 filtered the assignment side too, which is where a departed
+  student used to keep counting: the slot dialog's assigned half, `loadPositionAssignedCells`,
+  and `loadScheduleForRun`'s assignment rows **and** its report student list, which must
+  move together or a departed student keeps a row whose display name falls back to their
+  email while their cells stay. `loadScheduleForRun` returns `offRosterStudents`, and
+  `/admin/schedule` renders one line saying how many are hidden, so a seat never simply
+  disappears. Two deliberate exceptions: `listScheduleRuns` still counts **stored** rows,
+  so run history stays reproducible and will legitimately differ from the filtered run
+  view; and the name lookup behind the report is left unfiltered, because the existing
+  "N left the roster and were dropped" warning has to keep naming those people. Known
+  gap: `schedule/manual.ts` can still hand-place a departed student. It is a write path,
+  where filtering would silently default a missing profile rather than refuse, so it
+  needs an explicit refusal instead.
 
 ## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
 
@@ -1479,10 +1533,32 @@ The generator itself, layered exactly like the rest of the app:
 run always excluded and any pinned run excluded from the ranking pool
 entirely (a pin removes a run from competition for a retention slot rather
 than granting it a protected one, so pinning can never displace an unpinned
-run's spot). `schedule/actions.ts`'s local `pruneStaleRuns(tx)` wraps the
+run's spot). `pruneStaleRuns(tx)` wraps the
 select/delete plumbing around it and is called from both `generateSchedule`
 and the new `saveScheduleRunSnapshot`, so the two never disagree about what's
-stale. `setRunPinned(runId, pinned)` is a plain status-independent toggle
+stale. Since 1.26 it lives in `schedule/run-write.ts` beside
+`writeRunAsCurrent(tx, {assignments, report, generatedBy, kind, scopeJson})`, the
+**single** writer for "a new run becomes current": supersede, insert the run row,
+chunk-insert assignments at 500, prune. `generateSchedule`, `clearScheduleRun` and the
+W2W plan import all go through it, so none can drift on write order or skip retention.
+The pair sits in its own module rather than in `actions.ts` because that file is
+`"use server"`, where every export becomes a callable endpoint; a run writer taking
+arbitrary assignments must not be one.
+
+**Clearing (1.26).** `clearScheduleRun(alsoUnmarkScheduled)` empties the schedule by
+**appending an empty current run**, never by deleting: earlier runs keep their rows and
+stay restorable through the untouched `restoreScheduleRun`, and the still-current-run
+guard `manual.ts` relies on keeps meaning something. It is stamped `kind: "snapshot"`
+(a cleared run stamped `generated` with `scopeJson: null` would tell `loadScopeLedger`
+every position had just been solved while holding nothing) and carries no `stats`, so
+Schedule health falls back to its existing message instead of reporting zeros as
+findings. `StoredRunReport.origin` (`cleared` | `w2w-plan`, optional so old runs still
+parse) is what run history labels these with. The optional bulk clear of
+`submissions.scheduled` runs in the same transaction: those marks are the generator's
+freeze, and a frozen student with no rows to carry gets nothing from the next run. It
+does not bump `submissions.updatedAt` (that column is deliberately not `onUpdateNow()`),
+which is what stops a clear from making every student read as edited-since-the-run in
+`loadScheduleStaleness`. `setRunPinned(runId, pinned)` is a plain status-independent toggle
 (allowed on the current run too, so an admin can pin the moment it's
 generated). `saveScheduleRunSnapshot()` copies the current run's row and its
 `schedule_assignments` (source and cohort included, so manual edits keep
@@ -1810,6 +1886,50 @@ every read so `/admin/positions` edits and mapping refreshes reflect
 immediately and nothing stale persists. `w2w_position_map` seeds itself on
 first import when `db:seed` never ran (prod runs only migrations); `db:seed`
 backfills missing entries without touching existing rows.
+
+**Two-phase import (1.26).** `w2w/plan-import.ts`'s `analyzePlanUpload(bytes, rotationWeek)`
+does the parse, match, name resolution and run build and **writes nothing**; the
+position-map self-seed above is returned as data for the commit to persist rather than
+performed during analysis, so a cancelled preview leaves the database untouched. One
+action serves both phases behind a `confirm` flag: without it the panel renders the delta,
+with it the same file is re-read and re-analysed and then written. Assignments are never
+taken from the browser, which holds only the `File` between the two calls.
+
+That action lives in **`src/lib/admin/plan-import-actions.ts`**, not in `lib/w2w`: it
+composes W2W with the generator (it calls `writeRunAsCurrent`), and W2W and the generator
+may not import each other, so only the console can own it. Moving it rather than adding a
+console wrapper kept a single import path and needed no new eslint allowlist entry;
+`closes/admin-actions.ts` is the existing precedent for console code outside `app/admin`.
+
+**Template as schedule (1.26).** `domain/w2w-plan/repair-seeds.ts` now holds two builders
+over one shared `resolvePlanCells` (name to email, cohort, per-cell dedupe):
+`buildRepairSeeds`, which seeds the generator and must stay feasible, and
+`buildPlanRunAssignments`, a **literal transcription** of the template with none of the
+feasibility refusals, because those rows are the scheduler's stated intent rather than a
+proposal. Only rows with a matched block become assignments (`source: "manual"`), so a
+template time that equals no existing block is reported and never becomes config; off-roster
+names are skipped. The delta the confirmation screen renders is the existing
+`PlanMatchReport.unmatched`/`unknownPositions` plus the builder's own three buckets, not a
+second matching pass.
+
+The transcribed run's report is **measured, not stubbed**: hours come from the generator's
+own `weekMinutesForRows` (the covered-hours union with weekend cycle-averaging, so two
+overlapping shifts credit their combined span once) and goals from its `targetMinutes`, so
+"short of hours" means the same thing on an imported run as on a generated one and the
+problems section names the students the W2W template under-books. Reporting zeros there
+would have read as findings rather than as silence. `stats` stays absent and `origin`
+stays `w2w-plan`: those are the honest markers that no engine ran. To let the console ask
+for a target without holding an engine student, `targetMinutes` (`domain/scheduling/seats.ts`)
+now takes only the three fields it actually reads; every existing caller passes full
+objects unchanged.
+
+Weekend rotation on a transcribed run comes from the **effective** every-weekend flag
+(`effectiveRotation`, PLAN §10a), so an admin's internal copy overrides the student's own
+answer **in both directions**: a copy set to alternating beats a student who asked for
+every weekend, which is what the copy's literal semantics require. Only when no copy
+exists does the student's submission decide, and a student on alternating still falls to
+the rotation week picked at upload. `effectiveRotation` rather than
+`applyInternalOverrides`, because the transcription reads no selections at all.
 
 ### The position map surface (`/admin/w2w`, v1.11)
 

@@ -58,8 +58,15 @@ export function tierBonus(block: ShiftBlock, params: SchedulingParams): number {
  * Lives here rather than in ./engine.ts so the passes that run after placement
  * (./improve.ts, ./anneal.ts) can read a student's target without importing the
  * engine that calls them.
+ *
+ * Takes only the three fields it reads, so a caller holding those numbers and
+ * nothing else (the W2W plan transcription, which has no engine student) can
+ * still ask the one place that answers this rather than restating the rule.
  */
-export function targetMinutes(student: ScheduleStudent, position: Position): number {
+export function targetMinutes(
+  student: Pick<ScheduleStudent, "desiredHours" | "international">,
+  position: Pick<Position, "minHours">,
+): number {
   const desired = student.desiredHours ?? position.minHours;
   return Math.max(Math.min(desired, hourCap(student.international)), position.minHours) * 60;
 }

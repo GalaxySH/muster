@@ -9,6 +9,7 @@ import "server-only";
  */
 import { getDb } from "@/lib/db";
 import { students, w2wEmployees } from "@/lib/db/schema";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
 import {
@@ -33,7 +34,13 @@ export async function loadRepairSeeds(
   const [inputs, mappedRows, rosterRows] = await Promise.all([
     loadPlanMatchInputs(),
     db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
-    db.select({ email: students.email, displayName: students.displayName }).from(students),
+    // Current roster only: a name on the plan must not resolve to somebody who
+    // has left, whether by seeding them shifts or by making the lookup
+    // ambiguous enough to seed nobody.
+    db
+      .select({ email: students.email, displayName: students.displayName })
+      .from(students)
+      .where(onRosterStudent()),
   ]);
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
 

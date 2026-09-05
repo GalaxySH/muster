@@ -223,8 +223,13 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   if (!startDate || !endDate) return { ok: false, error: "Enter both a start and end date." };
   if (endDate < startDate) return { ok: false, error: "End date can't be before the start date." };
 
-  const upload = await readUpload(formData);
-  if ("error" in upload) return { ok: false, error: upload.error };
+  // Proof stays required of students. An admin recording an excusal for someone
+  // IS the excusal, so they may enter one with nothing attached; an untouched
+  // file input still submits an empty File, so size decides, not presence.
+  const file = formData.get("file");
+  const hasProof = file instanceof File && file.size > 0;
+  const upload = hasProof || !who.onBehalf ? await readUpload(formData) : null;
+  if (upload && "error" in upload) return { ok: false, error: upload.error };
 
   // Cap before relaying so a rejected upload never orphans a Drive file.
   const db = getDb();
@@ -241,7 +246,9 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   }
 
   try {
-    const proofFileId = await relayUpload({ studentEmail: who.email, kind: "travel", ...upload });
+    const proofFileId = upload
+      ? await relayUpload({ studentEmail: who.email, kind: "travel", ...upload })
+      : null;
     await db.insert(travelRequests).values({
       id: randomUUID(),
       submissionId,
@@ -338,7 +345,8 @@ export async function removeTravelRequest(id: string, onBehalfOf?: string): Prom
   if (!row) return { ok: false, error: "Entry not found." };
 
   await db.delete(travelRequests).where(eq(travelRequests.id, id));
-  await relayDelete(row.proofFileId);
+  // An admin-entered entry can have no proof, so there may be nothing to clean up.
+  if (row.proofFileId) await relayDelete(row.proofFileId);
   await touchSubmission(submissionId, who);
   revalidateEvidence("/travel", who);
   return { ok: true };

@@ -26,6 +26,7 @@ import {
   lateBadge,
   CONTACT_EMAIL,
 } from "./shared";
+import { TravelDateRange } from "./TravelDateRange";
 import { ActionButton, InfoCard } from "@/components/ui";
 
 export function TravelForm({
@@ -114,7 +115,11 @@ export function TravelForm({
         <div style={{ display: "grid", gap: 10, margin: "12px 0" }}>
           {initial.travel.map((t) => (
             <div key={t.id} style={t.excused ? travelRow : { ...travelRow, ...travelRowLate }}>
-              <Thumb fileId={t.proofFileId} label="Travel proof" small />
+              {t.proofFileId ? (
+                <Thumb fileId={t.proofFileId} label="Travel proof" small />
+              ) : (
+                <span style={noProof}>No proof</span>
+              )}
               <div style={{ flex: 1, fontSize: 14 }}>
                 <div>
                   {t.startDate} → {t.endDate}{" "}
@@ -142,14 +147,7 @@ export function TravelForm({
       {canAddTravel && (
         <form onSubmit={onUpload("travel", addTravelRequest)} style={{ display: "grid", gap: 8 }}>
           <OnBehalfField onBehalfOf={onBehalfOf} />
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <label style={{ fontSize: 14 }}>
-              Start <input type="date" name="startDate" required disabled={!editable} />
-            </label>
-            <label style={{ fontSize: 14 }}>
-              End <input type="date" name="endDate" required disabled={!editable} />
-            </label>
-          </div>
+          <TravelDateRange layout="inline" disabled={!editable} />
           <input
             type="text"
             name="note"
@@ -175,3 +173,18 @@ export function TravelForm({
     </div>
   );
 }
+
+/** Stands in for a thumbnail on an entry an admin added, keeping the rows aligned. */
+const noProof: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flex: "0 0 auto",
+  width: 56,
+  height: 56,
+  border: "1px solid #ccc",
+  borderRadius: 6,
+  fontSize: 11,
+  color: "#777",
+  textAlign: "center",
+};

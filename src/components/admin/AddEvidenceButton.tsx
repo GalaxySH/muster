@@ -16,6 +16,7 @@ import {
   uploadCourseSchedule,
 } from "@/lib/evidence/actions";
 import { ACCEPT, FORMAT_HINT } from "@/components/evidence/shared";
+import { TravelDateRange } from "@/components/evidence/TravelDateRange";
 import { Modal } from "@/components/Modal";
 import { ActionButton } from "@/components/ui";
 
@@ -43,6 +44,8 @@ export function AddEvidenceButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Travel can go in without proof, so the button says what it is actually doing.
+  const [hasFile, setHasFile] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const title = replaces ? "Replace course schedule" : TITLES[kind];
@@ -51,6 +54,7 @@ export function AddEvidenceButton({
   function close() {
     setOpen(false);
     setError(null);
+    setHasFile(false);
   }
 
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -104,16 +108,7 @@ export function AddEvidenceButton({
                 )
               ) : kind === "travel" ? (
                 <>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <label style={field}>
-                      Start
-                      <input type="date" name="startDate" required />
-                    </label>
-                    <label style={field}>
-                      End
-                      <input type="date" name="endDate" required />
-                    </label>
-                  </div>
+                  <TravelDateRange />
                   <label style={field}>
                     Note (optional)
                     <input type="text" name="note" style={{ padding: 6 }} />
@@ -133,8 +128,16 @@ export function AddEvidenceButton({
               )}
 
               <label style={field}>
-                Proof
-                <input type="file" name="file" accept={ACCEPT} required />
+                {kind === "travel" ? "Proof (optional)" : "Proof"}
+                {/* Students must attach proof. An admin entering an excusal for
+                    someone is the excusal, so theirs may go in without one. */}
+                <input
+                  type="file"
+                  name="file"
+                  accept={ACCEPT}
+                  required={kind !== "travel"}
+                  onChange={(e) => setHasFile(Boolean(e.currentTarget.files?.length))}
+                />
                 <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{FORMAT_HINT}</span>
               </label>
             </div>
@@ -148,7 +151,11 @@ export function AddEvidenceButton({
               <ActionButton variant="secondary" disabled={pending} onClick={close}>
                 Cancel
               </ActionButton>
-              <ActionButton type="submit" pending={pending} pendingLabel="Uploading…">
+              <ActionButton
+                type="submit"
+                pending={pending}
+                pendingLabel={hasFile ? "Uploading…" : "Saving…"}
+              >
                 {title}
               </ActionButton>
             </div>

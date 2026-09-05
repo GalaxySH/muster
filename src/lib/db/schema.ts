@@ -264,7 +264,11 @@ export const travelRequests = mysqlTable("travel_requests", {
   submissionId: varchar("submission_id", { length: 36 })
     .notNull()
     .references(() => submissions.id, { onDelete: "cascade" }),
-  proofFileId: varchar("proof_file_id", { length: 255 }).notNull(),
+  /**
+   * Drive fileId of the proof. Required of students; null on an entry an admin
+   * recorded on their behalf, where the admin is the excusal.
+   */
+  proofFileId: varchar("proof_file_id", { length: 255 }),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   note: text("note"),

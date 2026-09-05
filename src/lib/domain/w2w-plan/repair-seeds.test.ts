@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildNameIndex, buildRepairSeeds, type RepairStudent } from "./repair-seeds";
+import {
+  buildNameIndex,
+  buildPlanRunAssignments,
+  buildRepairSeeds,
+  type PlanRunStudent,
+  type RepairStudent,
+} from "./repair-seeds";
+import { matchPlan } from "./match";
+import { parseW2wPlan } from "./parse";
+import { PLAN_BLOCKS, PLAN_MAP, PLAN_SOURCE } from "./plan-fixture";
 import type { MatchedPlanRow } from "./types";
 import type { Day } from "../types";
 
@@ -221,5 +230,147 @@ describe("buildRepairSeeds", () => {
     expect(res.skippedNames).toEqual(["Unknown Person"]);
     expect(res.skippedCells).toBe(1);
     expect(res.brokenStudents).toEqual([]);
+  });
+});
+
+describe("buildPlanRunAssignments", () => {
+  const roster = (pairs: [string, Partial<PlanRunStudent>][] = []) =>
+    new Map<string, PlanRunStudent>(
+      pairs.map(([email, over]) => [email, { everyWeekendOptIn: false, ...over }]),
+    );
+
+  it("transcribes a placement even when the student never picked it", () => {
+    // The template is what the scheduler decided, not a proposal: repair mode
+    // would break this student, transcription keeps them.
+    const res = buildPlanRunAssignments(
+      [planRow({ day: "tue", employeeName: "Ada" })],
+      names([["Ada", "ada@x.edu"]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    expect(res.assignments).toEqual([
+      {
+        studentEmail: "ada@x.edu",
+        blockId: "blk",
+        day: "tue",
+        cohort: "weekday",
+        source: "manual",
+      },
+    ]);
+    expect(res.studentsWithNoAssignments).toEqual([]);
+  });
+
+  it("separates names nobody answers to from names two students share", () => {
+    const res = buildPlanRunAssignments(
+      [
+        planRow({ day: "mon", employeeName: "Nobody Here" }),
+        planRow({ day: "mon", employeeName: "John Smith" }),
+      ],
+      names([["John Smith", null]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    expect(res.unassociatedNames).toEqual([
+      { name: "Nobody Here", reason: "unknown" },
+      { name: "John Smith", reason: "ambiguous" },
+    ]);
+    expect(res.assignments).toEqual([]);
+  });
+
+  it("skips a name belonging to someone off the roster and reports them", () => {
+    const res = buildPlanRunAssignments(
+      [planRow({ day: "mon", employeeName: "Gone Person" })],
+      names([["Gone Person", "gone@x.edu"]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    expect(res.assignments).toEqual([]);
+    expect(res.skippedOffRoster).toEqual([{ name: "Gone Person", email: "gone@x.edu" }]);
+    // Off-roster people are not counted as students the plan forgot.
+    expect(res.studentsWithNoAssignments).toEqual(["ada@x.edu"]);
+  });
+
+  it("lists every roster student the plan gives nothing", () => {
+    const res = buildPlanRunAssignments(
+      [planRow({ day: "mon", employeeName: "Ada" })],
+      names([["Ada", "ada@x.edu"]]),
+      roster([
+        ["ada@x.edu", {}],
+        ["zoe@x.edu", {}],
+        ["bob@x.edu", {}],
+      ]),
+      "a",
+    );
+    expect(res.studentsWithNoAssignments).toEqual(["bob@x.edu", "zoe@x.edu"]);
+  });
+
+  it("takes weekend rotation from the uploaded week, with opt-ins on every", () => {
+    const satRow = (name: string) =>
+      planRow({ day: "sat", employeeName: name, matchedBlockId: "we-blk" });
+    const rows = [satRow("Opt In"), satRow("Plain")];
+    const nameMap = names([
+      ["Opt In", "opt@x.edu"],
+      ["Plain", "plain@x.edu"],
+    ]);
+    const students = roster([
+      ["opt@x.edu", { everyWeekendOptIn: true }],
+      ["plain@x.edu", {}],
+    ]);
+    const cohortOf = (week: "a" | "b", email: string) =>
+      buildPlanRunAssignments(rows, nameMap, students, week).assignments.find(
+        (a) => a.studentEmail === email,
+      )?.cohort;
+    expect(cohortOf("a", "opt@x.edu")).toBe("every");
+    expect(cohortOf("b", "opt@x.edu")).toBe("every");
+    expect(cohortOf("a", "plain@x.edu")).toBe("a");
+    expect(cohortOf("b", "plain@x.edu")).toBe("b");
+  });
+
+  it("makes one assignment out of two seats of the same cell", () => {
+    const res = buildPlanRunAssignments(
+      [planRow({ day: "mon", employeeName: "Ada" }), planRow({ day: "mon", employeeName: "Ada" })],
+      names([["Ada", "ada@x.edu"]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    expect(res.assignments).toHaveLength(1);
+  });
+
+  it("never invents an assignment for a shift with no Muster block", () => {
+    const res = buildPlanRunAssignments(
+      [
+        planRow({ day: "mon", employeeName: "Ada", matchedBlockId: null }),
+        planRow({ day: "tue", employeeName: "Ada" }),
+      ],
+      names([["Ada", "ada@x.edu"]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    expect(res.assignments).toEqual([
+      {
+        studentEmail: "ada@x.edu",
+        blockId: "blk",
+        day: "tue",
+        cohort: "weekday",
+        source: "manual",
+      },
+    ]);
+  });
+
+  it("holds the line on a real week: unmatched shifts and a stale name", () => {
+    const parsed = parseW2wPlan(PLAN_SOURCE);
+    if (!parsed.ok) throw new Error("fixture must parse");
+    const report = matchPlan(parsed.rows, PLAN_MAP, PLAN_BLOCKS);
+    const res = buildPlanRunAssignments(
+      report.rows,
+      names([["Gone, Person", "gone@x.edu"]]),
+      roster([["ada@x.edu", {}]]),
+      "a",
+    );
+    // The unmapped Mystery row and the SL meeting row match no block, and the
+    // only name on the week belongs to somebody who has left.
+    expect(res.assignments).toEqual([]);
+    expect(res.skippedOffRoster).toEqual([{ name: "Gone, Person", email: "gone@x.edu" }]);
+    expect(res.unassociatedNames).toEqual([]);
   });
 });
