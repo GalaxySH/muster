@@ -18,7 +18,8 @@ export interface ExportTravel {
   endDate: string;
   excused: boolean;
   note: string | null;
-  proofFileId: string;
+  /** Null on an entry an admin recorded for the student, which needs no proof. */
+  proofFileId: string | null;
 }
 
 export interface ExportAggregate {
@@ -141,7 +142,8 @@ export function buildExportMatrix(rows: readonly ExportAggregate[]): string[][] 
       r.travel
         .map(
           (t) =>
-            `${t.startDate}→${t.endDate} (${t.excused ? "excused" : "late"}) ${driveLink(t.proofFileId)}`,
+            `${t.startDate}→${t.endDate} (${t.excused ? "excused" : "late"})` +
+            (t.proofFileId ? ` ${driveLink(t.proofFileId)}` : ""),
         )
         .join(" | "),
     ]);

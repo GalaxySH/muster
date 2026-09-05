@@ -16,7 +16,8 @@ export interface ExtracurricularFile {
 
 export interface TravelEntry {
   id: string;
-  proofFileId: string;
+  /** Null on an entry an admin recorded for the student, which needs no proof. */
+  proofFileId: string | null;
   startDate: string; // ISO yyyy-mm-dd
   endDate: string;
   note: string | null;
@@ -132,6 +133,8 @@ export async function collectSubmissionDriveFileIds(submissionId: string): Promi
  * gate for non-admins. Checks course schedule, extracurricular, and travel proof.
  */
 export async function studentOwnsFile(studentEmail: string, fileId: string): Promise<boolean> {
+  // A travel entry can carry no proof, so an empty id must never match one.
+  if (!fileId) return false;
   const db = getDb();
   const [sub] = await db
     .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })

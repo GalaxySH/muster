@@ -3,176 +3,20 @@
 /**
  * Admin actions for the W2W shift-plan round-trip
  * (docs/w2w-shift-plan-roundtrip.md §10). The uploaded export is parsed in
- * memory and never written to disk, matching the roster-import idiom. A
- * refused parse persists nothing; a successful import supersedes the previous
- * plan the way schedule runs supersede each other.
+ * memory and never written to disk, matching the roster-import idiom.
+ *
+ * The plan import itself lives in `lib/admin/plan-import-actions.ts`: it can
+ * now write a schedule run from the template's names, and only the console may
+ * compose W2W with the generator.
  */
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { shiftPlans, shiftPlanRows, students, w2wEmployees, w2wPositionMap } from "@/lib/db/schema";
+import { shiftPlans, w2wEmployees } from "@/lib/db/schema";
 import { decodeCp1252 } from "@/lib/text/cp1252";
-import { parseW2wPlan } from "@/lib/domain/w2w-plan/parse";
-import { matchPlan } from "@/lib/domain/w2w-plan/match";
-import { deriveW2wName, parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
-import { DESIRED_CAPACITY_MAX } from "@/lib/domain/config-validation";
-import { CapacityRefused, setBlockCapacities } from "@/lib/positions/capacity";
-import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
+import { parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
 import { validateW2wCsvUpload } from "./upload-validation";
-import { loadPlanMatchInputs } from "./plan-data";
-
-export interface PlanImportResult {
-  ok: boolean;
-  error?: string;
-  summary?: {
-    rowCount: number;
-    matchedCount: number;
-    unmatchedRowCount: number;
-    unknownPositionCount: number;
-    /** Blocks whose desired capacity the checkbox changed. */
-    capacityUpdated: number;
-    /** Rows that arrived already carrying an employee name. */
-    assignedRowCount: number;
-    /** Imported names no mapping entry or roster derivation accounts for. */
-    unknownImportedNames: string[];
-    /** Per-row parse oddities worth showing (first few). */
-    issues: string[];
-  };
-}
-
-/** Insert chunk size: one week is ~1000 rows; keep statements comfortably small. */
-const ROW_CHUNK = 200;
-
-export async function importShiftPlanFromUpload(formData: FormData): Promise<PlanImportResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
-
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, error: "No file was provided." };
-  const check = validateW2wCsvUpload({ name: file.name, size: file.size });
-  if (!check.ok) return { ok: false, error: check.error ?? "Invalid file." };
-
-  const applyCapacity = formData.get("applyCapacity") === "1";
-  const rotationRaw = formData.get("rotationWeek");
-  if (rotationRaw !== "a" && rotationRaw !== "b") {
-    return { ok: false, error: "Pick which weekend rotation this export is (week A or B)." };
-  }
-  const rotationWeek = rotationRaw;
-
-  const text = decodeCp1252(new Uint8Array(await file.arrayBuffer()));
-  const parsed = parseW2wPlan(text);
-  if (!parsed.ok) return { ok: false, error: parsed.reason };
-
-  const db = getDb();
-  let inputs = await loadPlanMatchInputs();
-  // First use on a database that never ran db:seed (prod deploys run only
-  // migrations): seed the known W2W position mapping so the import is not
-  // inert, skipping rows whose Muster position this DB does not have.
-  if (inputs.map.length === 0) {
-    const seedRows = W2W_POSITION_MAP_SEED.filter((m) =>
-      inputs.positionNames.has(m.musterPositionId),
-    );
-    if (seedRows.length > 0) {
-      await db.insert(w2wPositionMap).values([...seedRows]);
-      inputs = await loadPlanMatchInputs();
-    }
-  }
-  const report = matchPlan(parsed.rows, inputs.map, inputs.blocks);
-
-  // Names riding in on the file that nothing can place: not in the W2W name
-  // mapping and not the derived name of anyone on the roster.
-  const importedNames = [
-    ...new Set(parsed.rows.map((r) => r.employeeName).filter((n) => n !== "")),
-  ];
-  let unknownImportedNames: string[] = [];
-  if (importedNames.length > 0) {
-    const [mappedNames, rosterNames] = await Promise.all([
-      db.select({ name: w2wEmployees.w2wName }).from(w2wEmployees),
-      db.select({ displayName: students.displayName }).from(students),
-    ]);
-    const known = new Set(mappedNames.map((m) => m.name));
-    for (const s of rosterNames) known.add(deriveW2wName(s.displayName));
-    unknownImportedNames = importedNames.filter((n) => !known.has(n)).sort();
-  }
-  const planId = randomUUID();
-  let capacityUpdated = 0;
-  try {
-    await db.transaction(async (tx) => {
-      await tx
-        .update(shiftPlans)
-        .set({ status: "superseded" })
-        .where(eq(shiftPlans.status, "current"));
-      await tx.insert(shiftPlans).values({
-        id: planId,
-        importedBy: gate.email,
-        sourceFilename: file.name,
-        rowCount: parsed.rows.length,
-        rotationWeek,
-      });
-      for (let at = 0; at < parsed.rows.length; at += ROW_CHUNK) {
-        await tx.insert(shiftPlanRows).values(
-          parsed.rows.slice(at, at + ROW_CHUNK).map((r) => ({
-            planId,
-            seq: r.seq,
-            w2wPositionId: r.w2wPositionId,
-            w2wPositionName: r.w2wPositionName,
-            category: r.category,
-            description: r.description,
-            day: r.day,
-            startTime: r.startTime,
-            endTime: r.endTime,
-            duration: r.duration,
-            startMinutes: r.startMinutes,
-            endMinutes: r.endMinutes,
-            importedEmployeeName: r.employeeName,
-            importedEmployeeNumber: r.employeeNumber,
-          })),
-        );
-      }
-      if (applyCapacity) {
-        // Target staffing is position config, so it is written through the
-        // seam the positions module owns rather than straight into the table.
-        // That is also what checks the plan's seat counts are in range.
-        capacityUpdated = await setBlockCapacities(
-          tx,
-          report.capacity
-            .filter((line) => line.desiredCapacity !== line.planSeats)
-            .map((line) => ({ blockId: line.blockId, desiredCapacity: line.planSeats })),
-        );
-      }
-    });
-  } catch (e) {
-    if (e instanceof CapacityRefused) {
-      return {
-        ok: false,
-        error: `A shift in the plan asks for ${e.target.desiredCapacity} people. Target staffing has to be a whole number from 1 to ${DESIRED_CAPACITY_MAX}. Nothing was imported.`,
-      };
-    }
-    console.error("Shift plan import failed:", e);
-    return { ok: false, error: "Could not save the plan. Please try again." };
-  }
-
-  revalidatePath("/admin/schedule/plan");
-  // Capacity targets feed the coverage view and the generator's seat math.
-  if (capacityUpdated > 0) revalidatePath("/admin/schedule");
-
-  const unmatchedRowCount = report.unmatched.reduce((n, u) => n + u.rowCount, 0);
-  return {
-    ok: true,
-    summary: {
-      rowCount: parsed.rows.length,
-      matchedCount: report.matchedCount,
-      unmatchedRowCount,
-      unknownPositionCount: report.unknownPositions.length,
-      capacityUpdated,
-      assignedRowCount: parsed.rows.filter((r) => r.employeeName !== "").length,
-      unknownImportedNames: unknownImportedNames.slice(0, 10),
-      issues: parsed.issues.slice(0, 5).map((i) => `Row ${i.row}: ${i.message}`),
-    },
-  };
-}
 
 /**
  * Correct which weekend rotation the current plan represents. It is picked at

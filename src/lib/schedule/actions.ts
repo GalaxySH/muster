@@ -9,10 +9,9 @@
  * generation can be restored later and nothing is ever lost.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import type { Database } from "@/lib/db/client";
 import {
   positions,
   scheduleAssignments,
@@ -38,9 +37,9 @@ import { deriveOpenClose } from "@/lib/domain/blocks";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
-import { staleRunIds } from "@/lib/domain/scheduling/retention";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import {
   applyScopeFreeze,
   normalizeScope,
@@ -64,38 +63,8 @@ import {
   loadCurrentRunRow,
   type CellAvailability,
 } from "./data";
+import { pruneStaleRuns, writeRunAsCurrent } from "./run-write";
 import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
-
-/** A drizzle transaction handle. */
-type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-/** Superseded runs kept for restore before pruning; pinned runs bypass this entirely. */
-const RUN_RETENTION = 10;
-
-/**
- * Deletes runs `staleRunIds` (domain/scheduling/retention.ts) marks stale:
- * beyond the retention count on the restore-or-generate clock, excluding the
- * current run and any pinned run. Shared by generation and by saving a
- * snapshot, since both add a row that can push an old one out of the window.
- */
-async function pruneStaleRuns(tx: DbTx): Promise<void> {
-  const allRuns = await tx
-    .select({
-      id: scheduleRuns.id,
-      status: scheduleRuns.status,
-      pinned: scheduleRuns.pinned,
-      generatedAt: scheduleRuns.generatedAt,
-      restoredAt: scheduleRuns.restoredAt,
-    })
-    .from(scheduleRuns);
-  const stale = staleRunIds(
-    allRuns.map((r) => ({ ...r, rankedAt: r.restoredAt ?? r.generatedAt })),
-    RUN_RETENTION,
-  );
-  if (stale.length > 0) {
-    await tx.delete(scheduleRuns).where(inArray(scheduleRuns.id, stale));
-  }
-}
 
 /**
  * The fall 2026 semester start, and the late-start threshold for a position
@@ -277,7 +246,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // never overwrite what somebody actually said.
   if (options.includeNonResponders) {
     const responded = new Set(engineStudents.map((s) => s.email));
-    const notSubmitted = and(eq(students.onRoster, true), ne(submissions.status, "submitted"));
+    const notSubmitted = and(onRosterStudent(), ne(submissions.status, "submitted"));
     const [rosterRows, draftCells] = await Promise.all([
       db
         .select({
@@ -291,7 +260,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(students)
         .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-        .where(eq(students.onRoster, true)),
+        .where(onRosterStudent()),
       db
         .select({
           email: submissions.studentEmail,
@@ -471,35 +440,16 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     ...(repaired ? { repaired: { students: repaired.students } } : {}),
   };
 
-  const runId = randomUUID();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(scheduleRuns)
-      .set({ status: "superseded" })
-      .where(eq(scheduleRuns.status, "current"));
-    await tx.insert(scheduleRuns).values({
-      id: runId,
+  await db.transaction((tx) =>
+    writeRunAsCurrent(tx, {
+      assignments: result.assignments,
+      report: storedReport,
       generatedBy: gate.email,
-      status: "current",
+      kind: "generated",
       // Null for a whole-roster run, which is what every run before scoping was.
       scopeJson: serializeScope(scope),
-      summaryJson: JSON.stringify(storedReport),
-    });
-    // Chunked inserts: a full fall cycle is a few thousand rows.
-    const rows = result.assignments.map((a) => ({
-      runId,
-      studentEmail: a.studentEmail,
-      shiftBlockId: a.blockId,
-      day: a.day,
-      cohort: a.cohort,
-      // Frozen students' carried rows keep their source; new rows are the engine's.
-      source: a.source ?? ("engine" as const),
-    }));
-    for (let i = 0; i < rows.length; i += 500) {
-      await tx.insert(scheduleAssignments).values(rows.slice(i, i + 500));
-    }
-    await pruneStaleRuns(tx);
-  });
+    }),
+  );
 
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
@@ -639,6 +589,74 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
 
   revalidatePath("/admin/schedule");
   return { ok: true, assignments: count };
+}
+
+export interface ClearScheduleResult {
+  ok: boolean;
+  error?: string;
+  /** Students whose scheduled mark was cleared along with the run. */
+  unmarked?: number;
+}
+
+/**
+ * The report an emptied run stores. The run-history reader parses this and
+ * reads `students` and `shortOfTarget` off it, so the shape has to be complete;
+ * `stats` is deliberately absent, since a cleared run has no health figures and
+ * a snapshot of zeros would read as a measurement.
+ */
+const CLEARED_RUN_REPORT: StoredRunReport = {
+  students: [],
+  droppedStudents: [],
+  droppedBlockGone: 0,
+  skippedNoPosition: [],
+  shortOfTarget: 0,
+  belowMinDays: 0,
+  origin: "cleared",
+};
+
+/**
+ * Empty the current schedule by appending an empty run, the same way a
+ * generation appends a full one. Nothing is deleted: every earlier run keeps
+ * its rows and can be restored, and manual edits keep failing safe, since they
+ * check the run they were opened against is still current.
+ *
+ * Stamped `snapshot`, not `generated`: nothing was solved here, and the scope
+ * ledger counts a generated run as a re-solve of the slice it names.
+ *
+ * `alsoUnmarkScheduled` clears `submissions.scheduled` in the same transaction.
+ * A marked student carries their rows forward instead of being re-solved, so
+ * after a clear they would have nothing to carry and the next run would leave
+ * them empty.
+ */
+export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<ClearScheduleResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = getDb();
+  let unmarked = 0;
+  await db.transaction(async (tx) => {
+    await writeRunAsCurrent(tx, {
+      assignments: [],
+      report: CLEARED_RUN_REPORT,
+      generatedBy: gate.email,
+      kind: "snapshot",
+      // The whole roster: a clear is never a slice.
+      scopeJson: null,
+    });
+    if (alsoUnmarkScheduled) {
+      const [res] = await tx
+        .update(submissions)
+        .set({ scheduled: false })
+        .where(eq(submissions.scheduled, true));
+      unmarked = res.affectedRows;
+    }
+  });
+
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin");
+  if (alsoUnmarkScheduled) revalidatePath("/admin/responses");
+  await trySyncSheet(SCHEDULE_SHEET, 0);
+  return { ok: true, unmarked };
 }
 
 export interface RebuildScheduleSheetResult {

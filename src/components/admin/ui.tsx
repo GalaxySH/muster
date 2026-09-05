@@ -186,6 +186,22 @@ export function StatTile({
   );
 }
 
+/** A dense admin table's header cell: centered, quiet, ruled off from the body. */
+export const tableThStyle: React.CSSProperties = {
+  padding: "4px 10px",
+  fontWeight: 600,
+  color: "var(--color-text-secondary)",
+  borderBottom: "1px solid var(--color-border-secondary)",
+  textAlign: "center",
+};
+
+/** Its body cell. Rows that read as text override `textAlign` to the left. */
+export const tableTdStyle: React.CSSProperties = {
+  padding: "4px 10px",
+  textAlign: "center",
+  borderBottom: "1px solid var(--color-border-secondary)",
+};
+
 /** The groove a bar's fill sits in; the fill paints over it at its own width. */
 export const barTrackStyle: React.CSSProperties = {
   height: 6,

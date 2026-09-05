@@ -62,6 +62,8 @@ export const SETTING_DRIVE_LAST_ERROR_AT = "drive_last_error_at";
 export const SETTING_SCHEDULE_PARAMS = "schedule_params";
 /** "1"/"0": whether the student-facing change-request form is offered (roadmap 3.1). Absent ⇒ on. */
 export const SETTING_CHANGE_REQUESTS_ENABLED = "change_requests_enabled";
+/** "1"/"0": whether students see the high-demand marks on their grid (roadmap 2.5). Absent ⇒ shown. */
+export const SETTING_HIGH_DEMAND_MARKS = "high_demand_marks";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -163,6 +165,16 @@ export async function getSchedulingParams(): Promise<SchedulingParams> {
  */
 export async function getChangeRequestsEnabled(): Promise<boolean> {
   return (await getSetting(SETTING_CHANGE_REQUESTS_ENABLED)) !== "0";
+}
+
+/**
+ * Whether the student availability grid marks its busiest shifts (the red bar,
+ * roadmap 2.5), admin-toggled on /admin/groups. On by default. Off drops the
+ * marks and their legend from the student form only: the admin grids keep
+ * showing the same cells, since the signal is scheduler context either way.
+ */
+export async function getHighDemandMarksEnabled(): Promise<boolean> {
+  return (await getSetting(SETTING_HIGH_DEMAND_MARKS)) !== "0";
 }
 
 /** Parse a stored ISO instant, treating an unparseable value as absent. */

@@ -8,17 +8,11 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
-vi.mock("./plan-data", () => ({ loadPlanMatchInputs: vi.fn() }));
 
 import { getTableName, type Table } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { getDb } from "@/lib/db";
-import { loadPlanMatchInputs } from "./plan-data";
-import {
-  importShiftPlanFromUpload,
-  importW2wEmployeesFromUpload,
-  setPlanRotationWeek,
-} from "./actions";
+import { importW2wEmployeesFromUpload, setPlanRotationWeek } from "./actions";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
@@ -99,18 +93,6 @@ function useDb(rows: Record<string, unknown[]> = {}) {
   return log;
 }
 
-/** The full header of a real W2W schedule export; people are invented. */
-const PLAN_HEADER =
-  '"Shift ID","Schedule ID","Employee Number","Position ID","Position Name",' +
-  '"Category","Shift Description","Date","Start Time","End Time","Duration",' +
-  '"Day Of Week","Employee Name"';
-
-const PLAN_CSV =
-  [
-    PLAN_HEADER,
-    '"555001","9001","","762431352","GDEC - CA","","","12/21/2026","08:00 AM","11:00 AM","3.00","1",""',
-  ].join("\n") + "\n";
-
 const EMPLOYEES_CSV = [
   '"Employee Name","Address","City","Phone","Email","Employee Number","Last Logon","Max Hours Wk"',
   '"Ada Lovelace","","","","ada@wisc.edu","123","",""',
@@ -123,56 +105,9 @@ function upload(csv: string, extra: Record<string, string> = {}): FormData {
   return form;
 }
 
-const planUpload = () => upload(PLAN_CSV, { rotationWeek: "a" });
-
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requireAdmin).mockResolvedValue({ ok: true, email: "admin@wisc.edu" });
-  vi.mocked(loadPlanMatchInputs).mockResolvedValue({
-    map: [
-      {
-        w2wPositionId: "762431352",
-        w2wPositionName: "GDEC - CA",
-        musterPositionId: "culinary-assistant",
-        fillOrder: 0,
-      },
-    ],
-    blocks: [],
-    positionNames: new Map([["culinary-assistant", "Culinary Assistant"]]),
-  });
-});
-
-describe("importShiftPlanFromUpload", () => {
-  it("refuses a signed-in non-admin without touching the database", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue({ ok: false, error: "Admins only." });
-    expect(await importShiftPlanFromUpload(planUpload())).toEqual({
-      ok: false,
-      error: "Admins only.",
-    });
-    expect(getDb).not.toHaveBeenCalled();
-  });
-
-  it("refuses a caller who is not signed in", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue({ ok: false, error: "You are not signed in." });
-    expect(await importShiftPlanFromUpload(planUpload())).toEqual({
-      ok: false,
-      error: "You are not signed in.",
-    });
-    expect(getDb).not.toHaveBeenCalled();
-  });
-
-  it("imports for an admin and stamps the plan with the gate's email", async () => {
-    const log = useDb();
-    const result = await importShiftPlanFromUpload(planUpload());
-    expect(result.ok).toBe(true);
-    expect(result.summary?.rowCount).toBe(1);
-    expect(log.writes).toEqual([
-      "update:shift_plans",
-      "insert:shift_plans",
-      "insert:shift_plan_rows",
-    ]);
-    expect(log.inserted[0]?.values).toMatchObject({ importedBy: "admin@wisc.edu" });
-  });
 });
 
 describe("setPlanRotationWeek", () => {

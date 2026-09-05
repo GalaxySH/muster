@@ -23,6 +23,7 @@ import {
   submissions,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
@@ -66,9 +67,14 @@ import {
   type ShiftBlock,
 } from "@/lib/domain/types";
 
-/** Who the schedule surfaces consider: on-roster students who submitted. */
+/**
+ * Who the schedule surfaces consider: on-roster students who submitted. The
+ * roster half is `onRosterStudent()` rather than a copy of it, so the sites that
+ * need roster membership alone (an assignment row has no submission behind it)
+ * and the sites that need both can never drift apart.
+ */
 export const eligibleSubmittedFilter = () =>
-  and(eq(students.onRoster, true), eq(submissions.status, "submitted"));
+  and(onRosterStudent(), eq(submissions.status, "submitted"));
 
 export interface PositionCoverage {
   positionId: string;
@@ -82,28 +88,45 @@ export interface PositionCoverage {
   summary: CoverageSummary;
 }
 
-/** Coverage for every active, non-alias position, ordered by name. */
-export async function loadCoverage(): Promise<PositionCoverage[]> {
+/**
+ * Coverage for every active, non-alias position, ordered by name, or for the
+ * one position named. Naming a position is itself the filter: a retired or
+ * merged position still reports its coverage when a caller asks for it by id,
+ * so the per-student card never comes up empty for a student who holds one.
+ */
+export async function loadCoverage(positionId?: string): Promise<PositionCoverage[]> {
   const db = getDb();
   const onRosterSubmitted = eligibleSubmittedFilter();
   const eff = effectiveSelections();
+  const holdsPosition = positionId ? eq(students.positionId, positionId) : undefined;
   const [posRows, blockRows, rosterRows, responderRows, cellRows] = await Promise.all([
     db
       .select()
       .from(positions)
-      .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)))
+      .where(
+        positionId
+          ? eq(positions.id, positionId)
+          : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
+      )
       .orderBy(asc(positions.name)),
-    db.select().from(shiftBlocks).where(liveBlocksOnly()),
+    db
+      .select()
+      .from(shiftBlocks)
+      .where(
+        positionId
+          ? and(liveBlocksOnly(), eq(shiftBlocks.positionId, positionId))
+          : liveBlocksOnly(),
+      ),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(students)
-      .where(eq(students.onRoster, true))
+      .where(and(onRosterStudent(), holdsPosition))
       .groupBy(students.positionId),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(submissions)
       .innerJoin(students, eq(submissions.studentEmail, students.email))
-      .where(onRosterSubmitted)
+      .where(and(onRosterSubmitted, holdsPosition))
       .groupBy(students.positionId),
     db
       .select({
@@ -114,7 +137,7 @@ export async function loadCoverage(): Promise<PositionCoverage[]> {
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
       .innerJoin(students, eq(submissions.studentEmail, students.email))
-      .where(onRosterSubmitted)
+      .where(and(onRosterSubmitted, holdsPosition))
       .groupBy(eff.shiftBlockId, eff.day),
   ]);
 
@@ -226,7 +249,10 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
       ? // Students, not submissions: a fill-in can be assigned here without ever
-        // having responded, so the submission join has to be optional.
+        // having responded, so the submission join has to be optional. The
+        // roster half of the eligibility filter still applies on its own: a run
+        // generated before someone left keeps their rows, and they are not
+        // somebody the scheduler can put on this shift.
         db
           .select({
             email: scheduleAssignments.studentEmail,
@@ -241,6 +267,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
           .leftJoin(submissions, eq(submissions.studentEmail, students.email))
           .where(
             and(
+              onRosterStudent(),
               eq(scheduleAssignments.runId, currentRun.id),
               eq(scheduleAssignments.shiftBlockId, blockId),
               eq(scheduleAssignments.day, day),
@@ -298,6 +325,62 @@ export interface AssignedCellCounts {
   b: number;
 }
 
+/**
+ * Seats per (block × day) across a set of assignment rows, split by rotation
+ * week: an every-week row sits in both. Shared by the whole-run loader and the
+ * per-position one so the two count a cell the same way.
+ */
+function tallyAssignedCells(
+  rows: readonly { blockId: string; day: Day; cohort: Cohort }[],
+): Map<string, AssignedCellCounts> {
+  const cells = new Map<string, AssignedCellCounts>();
+  for (const row of rows) {
+    const key = demandCellKey(row.blockId, row.day);
+    let counts = cells.get(key);
+    if (!counts) {
+      counts = { a: 0, b: 0 };
+      cells.set(key, counts);
+    }
+    if (row.cohort === "b") counts.b += 1;
+    else if (row.cohort === "every") {
+      counts.a += 1;
+      counts.b += 1;
+    } else counts.a += 1;
+  }
+  return cells;
+}
+
+/**
+ * One run's seats for one position's cells. The per-student page shows the
+ * coverage of that student's position alone, so it reads this rather than
+ * loading a whole run's students to get at the same map. Joined on block id
+ * alone, so a row carried on a retired block still counts (see
+ * `loadScheduleForRun`). A departed student is a different matter: their seats
+ * leave this overlay the same way they leave the run itself.
+ */
+export async function loadPositionAssignedCells(
+  runId: string,
+  positionId: string,
+): Promise<Map<string, AssignedCellCounts>> {
+  const rows = await getDb()
+    .select({
+      blockId: scheduleAssignments.shiftBlockId,
+      day: scheduleAssignments.day,
+      cohort: scheduleAssignments.cohort,
+    })
+    .from(scheduleAssignments)
+    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
+    .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
+    .where(
+      and(
+        onRosterStudent(),
+        eq(scheduleAssignments.runId, runId),
+        eq(shiftBlocks.positionId, positionId),
+      ),
+    );
+  return tallyAssignedCells(rows);
+}
+
 /** One assigned shift for the per-student list and the CSV export. */
 export interface AssignedCell {
   day: Day;
@@ -343,6 +426,12 @@ export interface CurrentSchedule {
   /** Keyed by demandCellKey(blockId, day). */
   assignedCells: Map<string, AssignedCellCounts>;
   students: ScheduleStudentRow[];
+  /**
+   * Students the run scheduled who have since left the roster. Their rows and
+   * their seats are filtered out of everything else here, so the page says how
+   * many rather than letting them disappear without a word.
+   */
+  offRosterStudents: number;
   totalAssignments: number;
   /** The run's warning lines with the students behind each, hours judged live. */
   problems: ProblemGroup[];
@@ -422,12 +511,14 @@ export async function loadCurrentSchedule(): Promise<CurrentSchedule | null> {
 /** One run (current or historical) with its per-student rows. */
 export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSchedule> {
   const db = getDb();
-  const report = JSON.parse(run.summaryJson) as StoredRunReport;
+  const storedReport = JSON.parse(run.summaryJson) as StoredRunReport;
 
   // The run's rows as they stand now, hand edits included. The join is on block
   // id alone, never on `retiredAt`: a retired block keeps its `shift_blocks`
   // row, so a carried assignment on one keeps its span and its hours here, the
   // same way `loadStudentCurrentAssignments` reads them for the per-student page.
+  // The students join is the other half: a run generated before somebody left
+  // still holds their rows, and those seats are not coverage any more.
   const rows = await db
     .select({
       studentEmail: scheduleAssignments.studentEmail,
@@ -441,26 +532,15 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     })
     .from(scheduleAssignments)
     .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
-    .where(eq(scheduleAssignments.runId, run.id));
+    .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
+    .where(and(onRosterStudent(), eq(scheduleAssignments.runId, run.id)));
 
-  const assignedCells = new Map<string, AssignedCellCounts>();
+  const assignedCells = tallyAssignedCells(rows);
   const cellsByStudent = new Map<string, AssignedCell[]>();
   // The same rows keyed for the hours and rotation measures below, which need
   // the block id the display cells drop.
   const spansByStudent = new Map<string, ExistingAssignment[]>();
   for (const row of rows) {
-    const key = demandCellKey(row.blockId, row.day);
-    let counts = assignedCells.get(key);
-    if (!counts) {
-      counts = { a: 0, b: 0 };
-      assignedCells.set(key, counts);
-    }
-    if (row.cohort === "b") counts.b += 1;
-    else if (row.cohort === "every") {
-      counts.a += 1;
-      counts.b += 1;
-    } else counts.a += 1;
-
     const cell: AssignedCell = {
       day: row.day,
       dayType: row.dayType,
@@ -490,9 +570,9 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
   // show up in the problem lists, so look them up too.
   const emails = [
     ...new Set([
-      ...report.students.map((s) => s.email),
-      ...report.droppedStudents,
-      ...report.skippedNoPosition,
+      ...storedReport.students.map((s) => s.email),
+      ...storedReport.droppedStudents,
+      ...storedReport.skippedNoPosition,
     ]),
   ];
   const infoByEmail = new Map<
@@ -507,6 +587,12 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       scheduled: boolean;
     }
   >();
+  // Everyone the report names, on roster or not, because this read has to keep
+  // naming the people the run DROPPED for leaving the roster: that warning line
+  // is literally "N left the roster and were dropped", and filtering here would
+  // reduce it to a list of email addresses. Membership rides along as a column
+  // instead, and it is the student list below that is filtered by it.
+  const onRosterEmails = new Set<string>();
   if (emails.length > 0) {
     const infoRows = await db
       .select({
@@ -517,6 +603,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         minDays: positions.minDays,
         minHours: positions.minHours,
         international: students.international,
+        onRoster: students.onRoster,
         scheduled: submissions.scheduled,
       })
       .from(students)
@@ -524,6 +611,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       .leftJoin(submissions, eq(submissions.studentEmail, students.email))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
+      if (r.onRoster) onRosterEmails.add(r.email);
       infoByEmail.set(r.email, {
         displayName: r.displayName,
         positionId: r.positionId,
@@ -535,6 +623,17 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       });
     }
   }
+
+  // Students who have since left the roster come out of the run's own list, not
+  // just out of the rows above: leaving them in would show a person with no
+  // shifts left and no hours, and the page's headline counts would still count
+  // them. `droppedStudents` and `skippedNoPosition` are untouched, since the
+  // first exists to report exactly these people.
+  const report: StoredRunReport = {
+    ...storedReport,
+    students: storedReport.students.filter((s) => onRosterEmails.has(s.email)),
+  };
+  const offRosterStudents = storedReport.students.length - report.students.length;
 
   const scope = parseScope(run.scopeJson);
   const lateStartByEmail = new Map((report.lateStarts ?? []).map((w) => [w.email, w]));
@@ -600,6 +699,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     scope,
     assignedCells,
     students: studentRows,
+    offRosterStudents,
     totalAssignments: rows.length,
     // Fed the live-hours students, not the stored ones, so the hours groups
     // (short of target, below minimum, over maximum) count the same people the
@@ -640,6 +740,8 @@ export interface ScheduleRunListItem {
   shortOfTarget: number;
   /** The run's own below-minimum count; null on runs stored before it existed. */
   belowMinHours: number | null;
+  /** Set when the run was not solved: cleared, or transcribed from a W2W plan. */
+  origin: "cleared" | "w2w-plan" | null;
 }
 
 /** Every kept run, newest generation first. */
@@ -654,7 +756,7 @@ export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
   ]);
   const countByRun = new Map(counts.map((r) => [r.runId, Number(r.n)]));
   return runs.map((r) => {
-    const report = JSON.parse(r.summaryJson) as EngineReport;
+    const report = JSON.parse(r.summaryJson) as StoredRunReport;
     return {
       id: r.id,
       generatedAt: r.generatedAt,
@@ -667,8 +769,23 @@ export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
       students: report.students.length,
       shortOfTarget: report.shortOfTarget,
       belowMinHours: report.belowMinHours ?? null,
+      origin: report.origin ?? null,
     };
   });
+}
+
+/**
+ * How many students carry the scheduled mark right now. Every mark counts, not
+ * just the eligible ones, because this is what the clear control offers to drop
+ * and the number it shows must be the number it clears.
+ */
+export async function countScheduledMarks(): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(submissions)
+    .where(eq(submissions.scheduled, true));
+  return Number(row?.n ?? 0);
 }
 
 /** One run's assignment rows with their block spans (for diffing and lists). */

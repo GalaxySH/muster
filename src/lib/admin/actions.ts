@@ -35,6 +35,7 @@ import {
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
   SETTING_CHANGE_REQUESTS_ENABLED,
+  SETTING_HIGH_DEMAND_MARKS,
 } from "@/lib/settings";
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
@@ -339,6 +340,20 @@ export async function setChangeDigestEnabled(enabled: boolean): Promise<AdminAct
   if (!gate.ok) return { ok: false, error: gate.error };
   await setSetting(SETTING_CHANGE_DIGEST_ENABLED, enabled ? "1" : "0");
   revalidatePath("/admin/email-settings");
+  return { ok: true };
+}
+
+/**
+ * Toggle whether students see the high-demand marks on the availability grid
+ * (/admin/groups). Off drops the marks and their legend from the student form;
+ * the admin grids keep them either way.
+ */
+export async function setHighDemandMarksEnabled(enabled: boolean): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await setSetting(SETTING_HIGH_DEMAND_MARKS, enabled ? "1" : "0");
+  revalidatePath("/admin/groups");
+  revalidatePath("/availability");
   return { ok: true };
 }
 

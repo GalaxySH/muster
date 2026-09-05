@@ -231,6 +231,15 @@ export type StoredRunReport = EngineReport & {
    * before they existed, which render without the section.
    */
   stats?: RunStats;
+  /**
+   * How this run came to exist, when that is not "the engine solved it":
+   * `cleared` is an empty run an admin appended to wipe the schedule, and
+   * `w2w-plan` is the assigned names of an imported W2W template transcribed
+   * as they stood. Neither ran the engine, so neither carries `stats`, and the
+   * run history says which it was rather than leaving the difference invisible.
+   * Optional, so every report stored before it existed still parses.
+   */
+  origin?: "cleared" | "w2w-plan";
 };
 
 /** One student who starts after the date their position's shifts resume. */

@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.24
-- **Last updated:** 2026-08-20
+- **Version:** 1.26
+- **Last updated:** 2026-09-05
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -469,7 +469,12 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   `shift_blocks.high_demand` column was dropped). Pure model: `domain/demand.ts`
   (`DEMAND_TOP_SHARE`, `DEMAND_MIN_CELL_COUNT`); computed at grid load in
   `availability/data.ts` (`loadHighDemandCells`, which also loads each block's target).
-  A graded-intensity view, if ever wanted, stays admin-side.
+  A graded-intensity view, if ever wanted, stays admin-side. **Admin-switchable (1.25):**
+  a toggle on `/admin/groups` (`high_demand_marks`, on by default,
+  `getHighDemandMarksEnabled` in `lib/settings.ts`) decides whether students see the
+  marks at all; off, the student grid loads no demand set, so the bars and their legend
+  drop out. The admin grids are unaffected either way, since the same signal is
+  scheduler context there rather than a nudge.
 - **Weekend Sun/Sat separation:** the weekend grids render **Sun then Sat**, because
   the scheduling week **starts on Sunday**: Sunday opens the week and Saturday closes
   it, so the two days sit at **opposite ends of the week** (a Sun + Sat pick is two
@@ -563,6 +568,21 @@ refuse them — an admin adding a travel entry *is* the excusal decision, so the
 stored `excused: true`. This covers what a student hands over in person or after their
 window closes.
 
+**Proof is optional on that path (1.26).** A student is still required to upload one; the
+admin form is not, and an entry added without a file stores `proofFileId: null` and relays
+nothing. The same decision that already exempts an admin from the window and the cutoff
+exempts them from the proof: the scheduler was told about the trip, and forcing a
+placeholder image into Drive to record it served nobody. Everything downstream reads the
+column as nullable rather than through an empty-string stand-in, so the CSV and Sheet
+travel cells simply omit the Drive link and the per-student and student-facing cards show
+a plain "No proof" in place of the thumbnail.
+
+**Date entry (1.26).** Both travel forms share one control (`TravelDateRange`): Start
+defaults to the viewer's local today, read after mount so an evening entry does not land
+on tomorrow via the server's clock, and End follows Start whenever it is empty or would
+fall before it. An End the user set is never overridden, and server-side validation stays
+the authority on the range.
+
 **Upload limits (all three pages).** Each proof file is **≤ 15 MB**
 (`MAX_EVIDENCE_BYTES`, `drive/upload-validation.ts`); images and PDFs only. The Next
 server-action body cap is **20 MB** (`next.config.ts`), which has to clear both the
@@ -651,7 +671,8 @@ columns from the roster.
   ShiftSelection so the position-change carry-over and the shared cell writer
   serve both tables.
 - **TravelRequest** (repeatable per submission — §7b): `id`, `submissionId`,
-  `proofFileId` (**required**, Drive relay), `startDate`, `endDate` (**inclusive**),
+  `proofFileId` (Drive relay; **required of students, nullable since 1.26** so an admin
+  can record a trip they were told about in person — §7b), `startDate`, `endDate` (**inclusive**),
   `note?`, `createdAt`, `excused: bool` (always true under the default "refuse" late
   policy; false = late, stored when the admin's accept-late toggle is on — §7b),
   `resolved: bool` (admin review marker — §10a).
@@ -735,7 +756,16 @@ columns from the roster.
   writes a new run and flips the old one to superseded (retention 10, ranked by
   restore-or-generate time so a restored run moves to the front of the queue; the
   current run is never pruned), so any generation can be restored and nothing is ever
-  erased.
+  erased. **Clearing the schedule uses that same append (1.26):** the Clear schedule
+  control on `/admin/schedule` writes an empty `snapshot` run and makes it current, so a
+  clear is an ordinary history entry and the schedule it replaced is restorable like any
+  other. It optionally clears every `submissions.scheduled` mark in the same transaction,
+  since those are the generator's freeze and a frozen student with no rows would be left
+  empty by the next run. The report carries an optional `origin` (`cleared` |
+  `w2w-plan`), which is how run history labels a run that no engine produced; it is
+  optional like every other report field, so older runs still parse. One writer
+  (`writeRunAsCurrent`, `lib/schedule/run-write.ts`) performs every "this run becomes
+  current" write: generate, clear, and the W2W plan import.
 - **ScheduleAssignment** (plan §2.3): `runId` + `studentEmail` + `shiftBlockId` +
   `day` (composite PK), `cohort` (`weekday`|`a`|`b`|`every` — the A/B weekend
   rotation made concrete; every-weekend opt-ins count in both weeks), `source`
@@ -907,6 +937,14 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
     case (a student handed the scheduler a screenshot) never leaves the view. A course
     schedule is one file, not a list, so once one is on file the control reads **Replace**
     and the upload swaps it (the old Drive file is deleted, §12).
+- **Position coverage (1.25):** once a schedule run exists, a full-width card under the
+  dashboard shows the **same coverage grid as `/admin/schedule`**, narrowed to this
+  student's position: seats the current run fills per (block × day) against the target
+  staffing, weekend cells as `A·B`, cells clickable for who could work them. One shared
+  component (`components/admin/CoverageGrid.tsx`) renders it in both places, so the two
+  readings can never drift. Absent before any run, since the numbers on it are that
+  run's own seats. Since 1.26 the seats it counts are on-roster students only, so
+  somebody who has left cannot make a shift look covered.
 - **Scheduler notes:** free-text per student (e.g. "A weekend + Tue close").
 - **Last seen:** a small card kept **last** in the card order, showing when the student
   was last authenticated (the `students.last_seen_at` stamp, §11) as a plain timestamp,
@@ -1480,6 +1518,86 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.26 (2026-09-05)** — **Four things the scheduler asked for: travel without a photo, a
+  way back to a blank schedule, the W2W template as a schedule, and nobody who quit in the
+  numbers (§7b, §9, §10, §17).** (1) **Travel proof is optional on the admin path.** A trip
+  the scheduler is told about in person had no way into the app: the column was NOT NULL,
+  so recording it meant uploading a placeholder image to Drive. `proof_file_id` is now
+  nullable (migration 0032) and the admin form no longer requires a file. Students still
+  must upload one. The rule is the same one that already exempts an admin from the form
+  window and the travel cutoff: an admin adding an entry *is* the excusal decision. Null is
+  carried as null rather than an empty string, so the export cell drops the Drive link
+  instead of emitting a broken one and the cards show "No proof" where the thumbnail was.
+  Both travel forms also now share one date control: Start opens on today (read after
+  mount, so the server's clock cannot push an evening entry to tomorrow) and End follows
+  Start when it is empty or would fall earlier, without ever overriding a date the user
+  chose. (2) **`/admin/schedule` can be cleared.** Runs are append-only and "current" is a
+  status flag, so clearing appends an **empty** run rather than deleting anything: every
+  earlier run keeps its rows and stays restorable, and the run-id guard manual edits rely
+  on keeps meaning what it meant. It is stamped `kind: "snapshot"` so the scope ledger
+  never reads a clear as a re-solve, and carries no `stats`, so the health panel falls back
+  instead of reporting zeros as fact. The confirm offers to drop the **scheduled** marks at
+  the same time, ticked by default: those marks are the generator's freeze, and a frozen
+  student with no rows to carry is one the next run would leave empty, which is a trap
+  worth one checkbox. Restoring a run does not bring the marks back, which is why the
+  choice is the scheduler's. Writing a run is now **one** function (`writeRunAsCurrent` in
+  `schedule/run-write.ts`): generate, clear and the plan import all go through it, so none
+  of them can drift on write order or quietly skip retention. (3) **A W2W template can
+  become the schedule.** The plan import gained a checkbox that transcribes the assigned
+  names on the uploaded week into a new current run. It is not the generator: nothing is
+  solved, none of repair mode's feasibility refusals apply, and a shift outside a student's
+  stated availability is imported because the scheduler put it there. It maps **only** onto
+  blocks Muster already has, so a template time that matches nothing is reported rather
+  than turned into config, and no block is ever created or edited. Rows for people who have
+  left the roster are skipped. Weekend rows take their rotation from the **effective**
+  every-weekend flag, so an admin's internal copy beats the student's own answer in both
+  directions (§10a) and only an untouched student decides their own; with neither asking
+  for every weekend, the week picked at upload settles it. The same upload now shows a
+  **confirmation screen first**,
+  for every import and not just this option, which is what §10 of the round-trip doc always
+  described and the code never did: it committed on upload and rendered the report
+  afterwards. The preview reports rows parsed, seats that would become assignments,
+  students covered, names with no Muster match (unknown and ambiguous kept apart), roster
+  students the plan gives nothing, and unmapped shift shapes with their counts; cancelling
+  writes nothing at all, including the position-map self-seed, which became data the commit
+  persists rather than a write the preview performed. The import action moved to
+  `lib/admin/plan-import-actions.ts`, since composing W2W with the generator is the
+  console's job and neither peer may import the other. (4) **Off-roster students are out of
+  the scheduling numbers.** Somebody who leaves drops off the roster sheet, but their old
+  assignments kept counting: the supply side was already filtered, the assignment side was
+  not. The coverage grid, the slot dialog, the per-student coverage card, the run's student
+  list and both W2W auto-fill reads now filter on roster membership, through **one** shared
+  predicate (`onRosterStudent()` in `lib/roster/lookup.ts`, which `eligibleSubmittedFilter`
+  now composes from) rather than a fourteenth inline copy; this is the first slice of module
+  item A1. Cells and student rows drop together so the numbers stay self-consistent, and the
+  page says how many are hidden rather than letting a seat vanish silently. Run history
+  still counts stored rows on purpose, so an old run stays reproducible. One hole is left
+  open and named: `schedule/manual.ts` can still hand-place a departed student, which needs
+  a refusal rather than a filter.
+- **1.25 (2026-09-04)** — **The coverage grid follows the student, and the red bar is a
+  setting (§7, §10).** Two small things the scheduler asked for. (1) The per-student page
+  ends in a **Position coverage** card: the same grid `/admin/schedule` draws, narrowed
+  to the position the student holds, so the question the page always raised ("they want
+  Tuesday close, is Tuesday close full?") is answered on the page rather than in a second
+  tab. It reads the current run's seats against the block targets, weekend cells as
+  `A·B`, and every cell opens the same who-could-work-it dialog. It renders only once a
+  run exists, because the numbers on it are that run's own seats. The grid itself was
+  lifted out of the schedule page into `components/admin/CoverageGrid.tsx` and both pages
+  now render that one component: the alternative was a second copy of the cell grading,
+  which is exactly the drift a scheduler would not notice. The per-student page loads
+  only what it shows (`loadCoverage(positionId)` narrows every query behind it, and
+  `loadPositionAssignedCells` reads one run's seats for one position instead of a whole
+  run's students); naming a position is itself the filter there, so a merged or retired
+  position still reports coverage rather than coming up empty. The tally that turns
+  assignment rows into per-cell seats is now one function both loaders share. Two table
+  styles the schedule page kept to itself moved into the admin kit as `tableThStyle` /
+  `tableTdStyle`. (2) The **popular-shift red bar is now admin-switchable** on
+  `/admin/groups` (`high_demand_marks`, on by default). It is a nudge, and a nudge is
+  worth turning off in a cycle where the scheduler would rather see uncoloured
+  preferences; off, the availability page loads no demand set at all, so the bars and the
+  legend that explains them both drop out and two queries stop running. The admin grids
+  keep the marks either way: there the same signal is context for the scheduler rather
+  than steering for the student.
 - **1.24 (2026-08-23)** — **The weekend rotation is editable in the schedule, not only
   in the availability behind it (§10a).** The per-student grid's weekend pill only ever
   moved the *preference* rotation and the preferred hours with it, in Edit schedule mode

@@ -230,6 +230,38 @@ One new plan panel (either `/admin/schedule/plan` or a section on
   all-or-nothing spirit as the roster import, though no absence guard is needed —
   a plan replaces config, not people).
 - "Set capacity from plan" checkbox on the confirm step.
+
+**Confirm-to-apply, actually implemented (1.26).** Until 1.26 the panel committed on
+upload and rendered the report afterwards, so "confirm" described a screen nobody saw
+before the write. The import is now two-phase behind a single action: without the confirm
+flag it analyses and returns the preview, writing nothing; with it, it re-reads the same
+file and writes. The browser holds the `File` between the two calls and resends it, so the
+scheduler picks it once, and assignments are never taken from the client. The position-map
+self-seed became data the commit persists rather than a write the preview performed, so a
+cancelled preview leaves the database untouched.
+
+The preview reports rows parsed, seats that would become assignments, students covered,
+template names with no Muster student (unknown and ambiguous are separate cases), roster
+students the plan gives nothing, unmapped shift shapes with their row counts, and what the
+import already did (store the plan, optionally set capacity).
+
+**Making the template the schedule (1.26).** A checkbox transcribes the template's assigned
+names into a new current run. It is distinct from repair mode (§7), which seeds the
+generator from the same file and then solves: this writes the names as they stand, so none
+of §7's feasibility refusals apply and a shift outside a student's stated availability is
+still imported. Rows that match no existing block, and people who have left the roster, are
+skipped and reported instead. §1's invariant is untouched: the import never creates or
+edits a shift block, so a template time that does not equal a Muster block is delta, never
+new config. The run is written through the generator's own `writeRunAsCurrent`, stamped
+`kind: "snapshot"` with `origin: "w2w-plan"` so run history labels it `from W2W plan` and
+`loadScopeLedger` never mistakes it for a re-solve. Cohort comes from the rotation-week
+radio already on the panel plus each student's every-weekend opt-in, since one uploaded
+week cannot tell an A student from a B student on its own. That opt-in is the **effective**
+one: an admin's internal copy (§10a) overrides the student's own answer in both
+directions, and only when no copy exists does the student's own answer decide.
+
+The import action lives in `src/lib/admin/plan-import-actions.ts`, not in `lib/w2w`: it
+composes W2W with the generator, and only the console may depend on both.
 - Upload employee-details CSV → mapping refresh summary (new/changed/missing).
 - Export card: Week A / Week B download buttons, plus the warning panel (overflow
   students, fallback-derived names, unmatched-row count, staleness: plan imported

@@ -7,9 +7,10 @@ import "server-only";
  * the warnings shown next to the download buttons always describe the file
  * that would download right now.
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { scheduleAssignments, students, w2wEmployees } from "@/lib/db/schema";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
@@ -62,6 +63,9 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
   const db = getDb();
   const [inputs, assignmentRows] = await Promise.all([
     loadPlanMatchInputs(),
+    // On-roster only. This is the file the scheduler uploads into W2W, so a
+    // student who left after the run was generated must not be given a shift in
+    // it. The identity reads below all hang off these emails.
     db
       .select({
         studentEmail: scheduleAssignments.studentEmail,
@@ -70,7 +74,8 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         cohort: scheduleAssignments.cohort,
       })
       .from(scheduleAssignments)
-      .where(eq(scheduleAssignments.runId, run.id)),
+      .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
+      .where(and(onRosterStudent(), eq(scheduleAssignments.runId, run.id))),
   ]);
 
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
@@ -145,12 +150,19 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
     }
   }
   // Resolving imported names needs the whole roster and name list, so it is
-  // skipped outright for a plan that arrived with no names on it.
+  // skipped outright for a plan that arrived with no names on it. The roster
+  // half is the CURRENT roster: a departed student left in it could absorb an
+  // imported W2W name and silence the warning that the plan gave that person
+  // shifts this export does not, or make the lookup ambiguous and silence it
+  // that way instead.
   const hasImportedNames = plan.rows.some((r) => r.employeeName !== "");
   const [allNameRows, allRosterRows] = hasImportedNames
     ? await Promise.all([
         db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
-        db.select({ email: students.email, displayName: students.displayName }).from(students),
+        db
+          .select({ email: students.email, displayName: students.displayName })
+          .from(students)
+          .where(onRosterStudent()),
       ])
     : [[], []];
   const nameIndex = buildNameIndex(

@@ -13,6 +13,8 @@ import {
   manualTagStyle,
   panelStyle,
   successPillStyle,
+  tableTdStyle,
+  tableThStyle,
 } from "@/components/admin/ui";
 import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
@@ -20,13 +22,15 @@ import { ScheduleHealth } from "@/components/admin/ScheduleHealth";
 import { PinRunButton } from "@/components/admin/PinRunButton";
 import { RestoreRunButton } from "@/components/admin/RestoreRunButton";
 import { SaveRunButton } from "@/components/admin/SaveRunButton";
+import { ClearScheduleButton } from "@/components/admin/ClearScheduleButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
-import { SlotCell } from "@/components/admin/SlotCell";
+import { CoverageGrid, CoverageLegend, legendChip } from "@/components/admin/CoverageGrid";
 import { getSchedulingParams } from "@/lib/settings";
 import { rebuildScheduleSheet } from "@/lib/schedule/actions";
 import {
+  countScheduledMarks,
   listScheduleRuns,
   loadCoverage,
   loadCurrentSchedule,
@@ -49,23 +53,15 @@ import {
 import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
-import {
-  assignedCellCount,
-  coverageStatus,
-  summarizeAssignedCoverage,
-  type CoverageRow,
-  type CoverageStatus,
-  type CoverageSummary,
-} from "@/lib/domain/scheduling/coverage";
+import { summarizeAssignedCoverage, type CoverageSummary } from "@/lib/domain/scheduling/coverage";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
-import { demandCellKey } from "@/lib/domain/demand";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
 import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
 import type { ProblemGroup } from "@/lib/domain/scheduling/problems";
 import type { Cohort, LateStartWarning } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
-import { DAY_LABEL, type DayType } from "@/lib/domain/types";
+import { DAY_LABEL } from "@/lib/domain/types";
 
 /** Counts move with every submission and run; never serve a cached page. */
 export const dynamic = "force-dynamic";
@@ -90,19 +86,31 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
-  const [sp, coverage, schedule, params, runs, sheetUrl, sheetSyncedAt, mismatches, plan, ledger] =
-    await Promise.all([
-      searchParams,
-      loadCoverage(),
-      loadCurrentSchedule(),
-      getSchedulingParams(),
-      listScheduleRuns(),
-      getSheetUrl(SCHEDULE_SHEET),
-      getLastSheetSync(SCHEDULE_SHEET),
-      loadFrozenMismatches(),
-      getCurrentPlan(),
-      loadScopeLedger(),
-    ]);
+  const [
+    sp,
+    coverage,
+    schedule,
+    params,
+    runs,
+    sheetUrl,
+    sheetSyncedAt,
+    mismatches,
+    plan,
+    ledger,
+    markedScheduled,
+  ] = await Promise.all([
+    searchParams,
+    loadCoverage(),
+    loadCurrentSchedule(),
+    getSchedulingParams(),
+    listScheduleRuns(),
+    getSheetUrl(SCHEDULE_SHEET),
+    getLastSheetSync(SCHEDULE_SHEET),
+    loadFrozenMismatches(),
+    getCurrentPlan(),
+    loadScopeLedger(),
+    countScheduledMarks(),
+  ]);
   const scopePositions = coverage.map((c) => ({ id: c.positionId, name: c.positionName }));
   const positionNames = new Map(scopePositions.map((p) => [p.id, p.name]));
   const hasPlan = plan !== null;
@@ -218,10 +226,7 @@ export default async function AdminSchedulePage({
             />
           </span>
         )}
-        <span style={{ ...legendChip, ...statusStyles.ok }}>meets target</span>{" "}
-        <span style={{ ...legendChip, ...statusStyles.short }}>short</span>{" "}
-        <span style={{ ...legendChip, ...statusStyles.severe }}>under half</span>{" "}
-        <span style={legendChip}>no target</span>
+        <CoverageLegend />
       </p>
 
       {coverage.map((p) => (
@@ -235,7 +240,7 @@ export default async function AdminSchedulePage({
 
       {schedule && <StudentTable schedule={schedule} />}
 
-      {runs.length > 0 && <RunHistorySection runs={runs} />}
+      {runs.length > 0 && <RunHistorySection runs={runs} markedScheduled={markedScheduled} />}
 
       {runs.length > 1 && beforeId && afterId ? (
         <DiffSection
@@ -388,6 +393,13 @@ function SchedulePanel({
           scheduled as new students. Re-import the roster from the PCPL workbook to fix this.
         </div>
       )}
+      {schedule.offRosterStudents > 0 && (
+        <div style={{ ...bannerStyle, marginBottom: 10 }}>
+          {schedule.offRosterStudents === 1
+            ? "1 student in this schedule has left the roster and is not shown."
+            : `${schedule.offRosterStudents} students in this schedule have left the roster and are not shown.`}
+        </div>
+      )}
       {(problems.length > 0 || report.droppedBlockGone > 0) && (
         <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
           {problems.map((group) => (
@@ -459,21 +471,23 @@ function ScopeLedgerPanel({ ledger }: { ledger: PositionLedgerRow[] }) {
       <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
         <thead>
           <tr>
-            <th style={{ ...cellTh, textAlign: "left" }}>Position</th>
-            <th style={{ ...cellTh, textAlign: "left" }}>Last updated</th>
-            <th style={cellTh}>Changed since</th>
+            <th style={{ ...tableThStyle, textAlign: "left" }}>Position</th>
+            <th style={{ ...tableThStyle, textAlign: "left" }}>Last updated</th>
+            <th style={tableThStyle}>Changed since</th>
           </tr>
         </thead>
         <tbody>
           {ledger.map((row) => (
             <tr key={row.positionId}>
-              <td style={{ ...cellTd, textAlign: "left" }}>{row.positionName}</td>
-              <td style={{ ...cellTd, textAlign: "left", color: "var(--color-text-secondary)" }}>
+              <td style={{ ...tableTdStyle, textAlign: "left" }}>{row.positionName}</td>
+              <td
+                style={{ ...tableTdStyle, textAlign: "left", color: "var(--color-text-secondary)" }}
+              >
                 {row.lastSolvedAt ? row.lastSolvedAt.toLocaleString("en-US") : "Never"}
               </td>
               <td
                 style={{
-                  ...cellTd,
+                  ...tableTdStyle,
                   color:
                     row.newSubmissions + row.edited > 0
                       ? "var(--color-text-warning)"
@@ -618,6 +632,12 @@ const ROTATION_LABEL: Record<Cohort, string> = {
   every: "every weekend",
 };
 
+/** Runs nothing solved. Tagged so their zeroed counts are not read as findings. */
+const RUN_ORIGIN_LABEL = {
+  cleared: "cleared",
+  "w2w-plan": "from W2W plan",
+} as const;
+
 const fmtRunTime = (d: Date) =>
   d.toLocaleString("en-US", {
     month: "short",
@@ -626,10 +646,25 @@ const fmtRunTime = (d: Date) =>
     minute: "2-digit",
   });
 
-function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
+function RunHistorySection({
+  runs,
+  markedScheduled,
+}: {
+  runs: ScheduleRunListItem[];
+  markedScheduled: number;
+}) {
   return (
     <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
-      <SectionLabel action={<SaveRunButton />}>Run history</SectionLabel>
+      <SectionLabel
+        action={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <SaveRunButton />
+            <ClearScheduleButton markedScheduled={markedScheduled} />
+          </span>
+        }
+      >
+        Run history
+      </SectionLabel>
       <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
         Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
         replaced run stays here. Pinned runs are kept regardless of age.
@@ -638,36 +673,37 @@ function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
         <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
           <thead>
             <tr>
-              <th style={{ ...cellTh, textAlign: "left" }}>Generated</th>
-              <th style={{ ...cellTh, textAlign: "left" }}>By</th>
-              <th style={cellTh}>Assignments</th>
-              <th style={cellTh}>Students</th>
-              <th style={cellTh}>Short of hours</th>
-              <th style={cellTh}>Below min</th>
-              <th style={{ ...cellTh, textAlign: "left" }}>Restored</th>
-              <th style={{ ...cellTh, textAlign: "left" }}>Pinned</th>
-              <th style={{ ...cellTh, textAlign: "left" }}>Status</th>
+              <th style={{ ...tableThStyle, textAlign: "left" }}>Generated</th>
+              <th style={{ ...tableThStyle, textAlign: "left" }}>By</th>
+              <th style={tableThStyle}>Assignments</th>
+              <th style={tableThStyle}>Students</th>
+              <th style={tableThStyle}>Short of hours</th>
+              <th style={tableThStyle}>Below min</th>
+              <th style={{ ...tableThStyle, textAlign: "left" }}>Restored</th>
+              <th style={{ ...tableThStyle, textAlign: "left" }}>Pinned</th>
+              <th style={{ ...tableThStyle, textAlign: "left" }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {runs.map((r) => (
               <tr key={r.id}>
-                <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
+                <td style={{ ...tableTdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
                   {fmtRunTime(r.generatedAt)}
+                  {r.origin && <span style={manualTagStyle}>{RUN_ORIGIN_LABEL[r.origin]}</span>}
                 </td>
-                <td style={{ ...cellTd, textAlign: "left" }}>{r.generatedBy}</td>
-                <td style={cellTd}>{r.assignments}</td>
-                <td style={cellTd}>{r.students}</td>
-                <td style={cellTd}>{r.shortOfTarget}</td>
+                <td style={{ ...tableTdStyle, textAlign: "left" }}>{r.generatedBy}</td>
+                <td style={tableTdStyle}>{r.assignments}</td>
+                <td style={tableTdStyle}>{r.students}</td>
+                <td style={tableTdStyle}>{r.shortOfTarget}</td>
                 {/* Runs stored before the counter existed have nothing to show. */}
-                <td style={cellTd}>{r.belowMinHours ?? "-"}</td>
-                <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
+                <td style={tableTdStyle}>{r.belowMinHours ?? "-"}</td>
+                <td style={{ ...tableTdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
                   {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
                 </td>
-                <td style={{ ...cellTd, textAlign: "left" }}>
+                <td style={{ ...tableTdStyle, textAlign: "left" }}>
                   <PinRunButton runId={r.id} pinned={r.pinned} />
                 </td>
-                <td style={{ ...cellTd, textAlign: "left" }}>
+                <td style={{ ...tableTdStyle, textAlign: "left" }}>
                   {r.status === "current" ? (
                     <span style={successPillStyle}>current</span>
                   ) : (
@@ -879,10 +915,6 @@ function PositionSection({
   summary: CoverageSummary;
 }) {
   const { positionName, rosterCount, responders, rows } = coverage;
-  const dayTypes: { dayType: DayType; label: string }[] = [
-    { dayType: "weekday", label: "Weekdays" },
-    { dayType: "weekend", label: "Weekends" },
-  ];
 
   return (
     <section style={{ ...panelStyle, marginTop: 14 }}>
@@ -909,86 +941,8 @@ function PositionSection({
         </span>
       </SectionLabel>
 
-      {rows.length === 0 && (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-          No blocks configured.
-        </p>
-      )}
-
-      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
-        {dayTypes.map(({ dayType, label }) => {
-          const dayRows = rows.filter((r) => r.dayType === dayType);
-          if (dayRows.length === 0) return null;
-          return (
-            <div key={dayType} style={{ overflowX: "auto" }}>
-              <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>{label}</h3>
-              <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...cellTh, textAlign: "left" }}>Shift</th>
-                    <th style={cellTh}>Target</th>
-                    {dayRows[0]!.cells.map((c) => (
-                      <th key={c.day} style={cellTh}>
-                        {DAY_LABEL[c.day]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {dayRows.map((row) => (
-                    <CoverageTableRow key={row.blockId} row={row} schedule={schedule} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        })}
-      </div>
+      <CoverageGrid rows={rows} assignedCells={schedule?.assignedCells ?? null} />
     </section>
-  );
-}
-
-function CoverageTableRow({
-  row,
-  schedule,
-}: {
-  row: CoverageRow;
-  schedule: CurrentSchedule | null;
-}) {
-  return (
-    <tr>
-      <td style={{ ...cellTd, textAlign: "left", whiteSpace: "nowrap" }}>
-        {formatSpan(row.start, row.end)}
-        {row.tier === "night" && <span style={nightTag}>Night</span>}
-        {row.tier === "evening" && <span style={eveningTag}>Evening</span>}
-        {row.isClose && <span style={closeTag}>Close</span>}
-      </td>
-      <td style={{ ...cellTd, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
-      {row.cells.map((cell) => {
-        const counts = schedule?.assignedCells.get(demandCellKey(row.blockId, cell.day));
-        const assigned = schedule ? assignedCellCount(row.dayType, counts) : 0;
-        const status = schedule ? coverageStatus(assigned, cell.target) : cell.status;
-        const shown = !schedule
-          ? String(cell.count)
-          : row.dayType === "weekend"
-            ? `${counts?.a ?? 0}·${counts?.b ?? 0}`
-            : String(assigned);
-        return (
-          <SlotCell
-            key={cell.day}
-            blockId={row.blockId}
-            day={cell.day}
-            dayLabel={DAY_LABEL[cell.day]}
-            shiftLabel={formatSpan(row.start, row.end)}
-            supply={cell.count}
-            style={{ ...cellTd, ...statusStyles[status] }}
-          >
-            {shown}
-            {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
-          </SlotCell>
-        );
-      })}
-    </tr>
   );
 }
 
@@ -1000,47 +954,6 @@ function StudentTable({ schedule }: { schedule: CurrentSchedule }) {
     </section>
   );
 }
-
-const statusStyles: Record<CoverageStatus, React.CSSProperties> = {
-  ok: { background: "#e6f4ea", color: "#196127" },
-  short: { background: "#fff4e0", color: "#8a5a00" },
-  severe: { background: "#fce8e6", color: "#b3261e" },
-  none: { color: "var(--color-text-secondary)" },
-};
-
-const cellTh: React.CSSProperties = {
-  padding: "4px 10px",
-  fontWeight: 600,
-  color: "var(--color-text-secondary)",
-  borderBottom: "1px solid var(--color-border-secondary)",
-  textAlign: "center",
-};
-
-const cellTd: React.CSSProperties = {
-  padding: "4px 10px",
-  textAlign: "center",
-  borderBottom: "1px solid var(--color-border-secondary)",
-};
-
-const tagBase: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-  marginLeft: 6,
-  whiteSpace: "nowrap",
-};
-const nightTag: React.CSSProperties = { ...tagBase, background: "#efeafd", color: "#5b3fbf" };
-const eveningTag: React.CSSProperties = { ...tagBase, background: "#fff4e0", color: "#8a5a00" };
-const closeTag: React.CSSProperties = { ...tagBase, background: "#e7f0fb", color: "#1a66cc" };
-
-const legendChip: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  background: "var(--color-background-secondary)",
-  color: "inherit",
-  textDecoration: "none",
-};
 
 /** The grid mode currently on screen: filled, so the pair reads as one switch. */
 const activeLegendChip: React.CSSProperties = {
