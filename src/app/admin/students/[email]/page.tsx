@@ -756,15 +756,13 @@ export default async function StudentDetailPage({
           shows. Full width under the dashboard: the weekday table is far wider
           than a masonry column. */}
       {coverageRows && position && (
-        <section style={panelStyle}>
+        // marginTop matches the masonry's own column gap: the panels inside it
+        // carry only a bottom margin, so this one would otherwise sit flush
+        // against the tallest column.
+        <section style={{ ...panelStyle, marginTop: 14 }}>
           <SectionLabel action={<Link href="/admin/schedule">Open the schedule</Link>}>
             {position.name} coverage
           </SectionLabel>
-          <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}>
-            How many students the current schedule puts on each shift, against the target staffing
-            where one is set. Weekend cells show both rotation weeks as A·B. Click a cell to see
-            everyone who could work it.
-          </p>
           <p style={{ margin: "0 0 10px", fontSize: 13 }}>
             <CoverageLegend />
           </p>
