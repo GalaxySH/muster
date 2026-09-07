@@ -79,12 +79,13 @@ export function ResponseFilterBar({
 
   return (
     <div
+      // No margin of its own: the response list renders this inside its control
+      // panel and owns the spacing around it.
       style={{
         display: "flex",
         gap: 12,
         alignItems: "center",
         flexWrap: "wrap",
-        margin: "0 0 12px",
       }}
     >
       <label style={labelStyle}>

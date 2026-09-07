@@ -137,7 +137,9 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
           <span style={{ color: "var(--color-text-secondary)" }}>none</span>
         ) : (
           <StudentScheduleModalLink email={s.email} displayName={s.displayName}>
-            {s.cells.length} {s.cells.length === 1 ? "shift" : "shifts"}
+            <span style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
+              {s.cells.length} {s.cells.length === 1 ? "shift" : "shifts"}
+            </span>
           </StudentScheduleModalLink>
         )}
         {s.frozenReason && <span style={keptTagStyle}>{FROZEN_LABEL[s.frozenReason]}</span>}

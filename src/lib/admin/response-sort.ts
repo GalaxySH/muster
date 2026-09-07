@@ -13,6 +13,7 @@
 
 export type SortKey =
   | "name"
+  | "group"
   | "position"
   | "status"
   | "requested"
@@ -30,6 +31,7 @@ export interface ResponseSort {
 
 export const SORT_KEYS: readonly SortKey[] = [
   "name",
+  "group",
   "position",
   "status",
   "requested",
@@ -47,6 +49,8 @@ export const isDefaultSort = (sort: ResponseSort) =>
 /** The minimal row shape the comparator reads. */
 export interface SortableResponse {
   displayName: string;
+  /** Null for an ungrouped student, who sorts after every named group. */
+  groupName: string | null;
   positionName: string | null;
   status: string;
   desiredHours: number | null;
@@ -62,6 +66,10 @@ export function compareResponses(a: SortableResponse, b: SortableResponse, key: 
   switch (key) {
     case "name":
       return a.displayName.localeCompare(b.displayName);
+    case "group":
+      // Ungrouped students sort last rather than first: the list leads with the
+      // groups an admin is working through, and "no group" is the tail.
+      return (a.groupName ?? "￿").localeCompare(b.groupName ?? "￿");
     case "position":
       return (a.positionName ?? "").localeCompare(b.positionName ?? "");
     case "status":

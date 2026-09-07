@@ -6,10 +6,16 @@ import { driveRedirectUri } from "@/lib/drive/oauth";
 import { env } from "@/lib/env";
 import { DriveControls } from "@/components/DriveControls";
 import { Page } from "@/components/ui";
+import { getSheetUrl, getLastSheetSync, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
+import { rebuildResponsesSheet } from "@/lib/admin/actions";
+import { SheetControls, btnLink } from "@/components/admin/SheetControls";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 
 const ERROR_TEXT: Record<string, string> = {
   state: "The sign-in state didn't match (possible expired link). Please try connecting again.",
-  exchange: "Google didn't return the expected grant. Try again; if it persists, revoke the app's access in your Google account and reconnect.",
+  exchange:
+    "Google didn't return the expected grant. Try again; if it persists, revoke the app's access in your Google account and reconnect.",
   access_denied: "You declined the permission. Drive access is required to relay proof uploads.",
 };
 
@@ -22,19 +28,25 @@ export default async function AdminDrivePage({
   if (!session) redirect("/signin?callbackUrl=/admin/drive");
   if (!session.isAdmin) redirect("/me");
 
-  const status = await getDriveGrantStatus();
-  const { connected, error } = await searchParams;
+  const [status, { connected, error }, responsesSheetUrl, responsesLastSync] = await Promise.all([
+    getDriveGrantStatus(),
+    searchParams,
+    getSheetUrl(RESPONSES_SHEET),
+    getLastSheetSync(RESPONSES_SHEET),
+  ]);
   const folderSet = Boolean(env.DRIVE_FOLDER_ID);
 
   return (
     <Page>
       <AppHeader>
         <Crumb href="/admin" label="Admin" />
+        <Crumb href="/admin/responses" label="Responses" />
       </AppHeader>
       <h1>Google Drive connection</h1>
       <p style={{ color: "#555" }}>
         Proof files (course schedules, extracurricular proof, travel proof) are relayed into
-        UW-managed Google Drive using an admin grant. The database stores only the Drive file id, no image bytes.
+        UW-managed Google Drive using an admin grant. The database stores only the Drive file id, no
+        image bytes.
       </p>
 
       {connected && (
@@ -64,6 +76,24 @@ export default async function AdminDrivePage({
       </section>
 
       <section style={card}>
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Responses</h2>
+        <p style={{ margin: "0 0 12px", fontSize: 14, color: "#555" }}>
+          Every response as a spreadsheet: a one-off CSV download, or the running{" "}
+          <strong>Muster Responses</strong> sheet in the Drive folder.
+        </p>
+        <SheetControls
+          sheetUrl={responsesSheetUrl}
+          lastSyncedAtMs={responsesLastSync ? responsesLastSync.getTime() : null}
+          rebuild={rebuildResponsesSheet}
+          leading={
+            <a href="/admin/responses/export" style={btnLink} download>
+              Download CSV <FontAwesomeIcon icon={faDownload} />
+            </a>
+          }
+        />
+      </section>
+
+      <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Configuration</h2>
         <p style={{ margin: "0 0 6px", fontSize: 14 }}>
           <strong>Destination folder:</strong>{" "}
@@ -79,7 +109,9 @@ export default async function AdminDrivePage({
         <p style={{ margin: "10px 0 4px", fontSize: 14 }}>
           <strong>Authorized redirect URI</strong> (must be registered on the Google OAuth client):
         </p>
-        <code style={{ display: "block", padding: "6px 8px", background: "#f5f5f5", borderRadius: 4 }}>
+        <code
+          style={{ display: "block", padding: "6px 8px", background: "#f5f5f5", borderRadius: 4 }}
+        >
           {driveRedirectUri()}
         </code>
       </section>

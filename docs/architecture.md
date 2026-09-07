@@ -290,7 +290,9 @@ sheet is written via the **Google Sheets API v4** (`drive/api.ts` `createSpreads
 freeze/bold header]) — within the `drive.file` grant (the Sheets API is now enabled on the
 Cloud project). The export matrix is pure (`admin/export.ts`, test-first) and shared by the
 CSV route (`/admin/responses/export`) and the Drive sheet; `admin/export-data.ts`
-bulk-loads it; `admin/sheet-sync.ts` orchestrates the rebuild behind a **split rate limit**
+bulk-loads it; both are driven from the **Responses card on `/admin/drive`** (1.27),
+next to the grant they depend on, rather than from a row of buttons above the response
+list; `admin/sheet-sync.ts` orchestrates the rebuild behind a **split rate limit**
 (pure `cooldownRemainingMs`): a **30-second** cooldown for the admin "Rebuild" button vs. a
 **10-minute** cooldown for the best-effort resync after a student submit. Timestamp columns
 (Submitted/Last edited) render full UTC `h:m:s`; proof columns are public Drive web links so
@@ -307,7 +309,8 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 `loadStudentDetail` (student + position + blocks + submission + selection/auto split +
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
-count from one grouped query over `change_requests.status = "open"`),
+count from one grouped query over `change_requests.status = "open"`, the student's
+`groupName` from a left join on `groups`, and `scheduledMinutes`),
 `getResponseNeighbors(email, filters, sort)` (prev/next + the
 filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
 `listResponses` is **roster-wide**: `FROM students LEFT
@@ -339,13 +342,39 @@ viewed isn't in the filtered list, widening the submission state only when none 
 chosen, so a chosen state still governs the prev/next walk.
 The start-date filter (`started` = before|after|on + `startedDate`, applied only when
 both halves are valid) compares `students.hiredOn` by calendar day; rows with no hire
-date never match. The list itself (`ResponseList`) is a full-bleed
+date never match.
+**Scheduled hours on the list (1.27):** `scheduledMinutes` is the current run's cycle-
+averaged weekly minutes for that student, from a module-private
+`scheduledMinutesByStudent()` that reads the current run once and measures every
+student's rows with the generator's own `weekMinutesForRows`. That is the same measure
+`/admin/schedule`'s student table and the one-student popup quote, so no two surfaces
+put different hours on the same rows. It is null before the first run and for anyone the
+run holds nothing for, which is what lets the Hours cell tell "not scheduled" from
+"scheduled zero hours"; it is independent of the `scheduled` mark, because the run is
+what says how many hours somebody has. This is a console-side read composing
+`schedule/data.ts` (`loadCurrentRunRow`), the same direction as the popup's loader. The list itself (`ResponseList`) is a full-bleed
 `.stack-table` on a `width="full"` page (v0.64), matching the groups table: rows stack
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
 `.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
 and in stacked mobile rows, the compact count + alert pills between); an open
 change-request count pill sits next to the name (nothing at zero); a `missing` row shows
-the red status badge, dashes for its submission-only cells, and no delete control. The
+the red status badge, dashes for its submission-only cells, and no delete control.
+It also opts into `.ruled-table` and `.hover-table` (globals.css, 1.27): a hairline
+between columns in table mode only, and a row that dims under the cursor to match the
+fact that the whole row is the link. **The filters and the search share one panel** above
+the table: the page builds `ResponseFilterBar` and hands it to `ResponseList` as the
+`filters` prop, because filtering and searching are one job and the search term is
+client state the table owns. The element is keyed at the page, since React cannot tell a
+Flight-deserialized element was static JSX and warns about a missing key otherwise. The
+Group cell prints the group name, or **"no group" in red**: ungrouped is a gap somebody
+has to close. The Hours cell is `scheduled/requested` once the run holds shifts and the
+requested figure alone otherwise, and the scheduled mark is a **solid green pill**, not a
+tick, so the column can be read down at a glance. A calendar icon beside each name opens
+`StudentScheduleModalLink`, the same current-run popup the schedule page's shift count
+opens; the trigger stops the click reaching the row, and `Modal`'s overlay does the same
+for the click that dismisses it, so neither navigates. `StudentScheduleModalLink` no
+longer styles its own trigger (its two call sites do), which is what lets one component
+serve an underlined count and an icon button. The
 Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
 that writes through the student evidence actions; travel entries additionally carry
 **Edit** and **Remove** (`TravelEntryActions`, 1.23), through `updateTravelRequest` and

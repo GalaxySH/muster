@@ -93,6 +93,29 @@ body {
 .zebra-table tbody tr:nth-child(even) {
   background: var(--color-background-secondary);
 }
+
+/* Ruled columns (opt-in): a hairline between cells so a dense row reads as a
+   grid instead of a run of words. Table mode only; the stacked mobile layout
+   has no columns to rule. The last column drops its rule so a row never ends
+   on a dangling line. */
+@media (min-width: 720px) {
+  .ruled-table th,
+  .ruled-table td {
+    border-right: 1px solid var(--color-border-tertiary);
+  }
+  .ruled-table th:last-child,
+  .ruled-table td:last-child {
+    border-right: none;
+  }
+}
+
+/* Row hover (opt-in): the row under the cursor dims, so a click target that
+   spans the whole width is unmistakable. Used with a pointer cursor by the
+   tables whose rows navigate. */
+.hover-table tbody tr:hover {
+  background: var(--color-border-tertiary);
+}
+
 @media (min-width: 720px) {
   .stack-table {
     min-width: 680px;
