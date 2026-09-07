@@ -35,15 +35,22 @@ function useStudentSchedule(email: string) {
   return { view, error, load };
 }
 
-/** The students-table trigger: a link-styled count that opens the modal. */
+/**
+ * The click trigger: whatever the caller renders opens the modal. Appearance is
+ * the caller's (an underlined shift count in the students table, an icon button
+ * in the response list), so this owns only the button behaviour.
+ */
 export function StudentScheduleModalLink({
   email,
   displayName,
+  label,
   children,
 }: {
   email: string;
   /** For the modal header, available before the fetch lands. */
   displayName: string;
+  /** Accessible name, needed when the trigger is an icon with no text. */
+  label?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -53,11 +60,16 @@ export function StudentScheduleModalLink({
     <>
       <button
         type="button"
-        onClick={() => {
+        aria-label={label}
+        title={label}
+        onClick={(e) => {
+          // The response list's rows navigate on click; opening the popup is
+          // its own action, not a trip to the per-student page.
+          e.stopPropagation();
           setOpen(true);
           state.load();
         }}
-        style={linkButton}
+        style={triggerButton}
       >
         {children}
       </button>
@@ -301,12 +313,7 @@ function cellTitle(
   return parts.join(", ");
 }
 
-const linkButton: React.CSSProperties = {
-  all: "unset",
-  cursor: "pointer",
-  textDecoration: "underline",
-  textUnderlineOffset: 2,
-};
+const triggerButton: React.CSSProperties = { all: "unset", cursor: "pointer" };
 
 const hoverPanel: React.CSSProperties = {
   position: "fixed",

@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.26
-- **Last updated:** 2026-09-05
+- **Version:** 1.27
+- **Last updated:** 2026-09-07
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -799,6 +799,16 @@ columns from the roster.
   unconditionally, so whoever is open is always reachable that way; it widens the
   submission state **only when none was chosen**, so a student outside an explicitly
   chosen state gets no arrows, exactly as the review filter already behaves.
+  **What a row shows (1.27):** name (with the open-change-request pill and the off-roster
+  badge), the student's **group name** or **"no group" in red**, position, submission
+  status, **hours as `scheduled/requested`**, flags, the scheduled mark, and last
+  activity. The scheduled figure is the current run's cycle-averaged weekly hours for
+  that student and appears whenever the run holds shifts for them, independently of the
+  **scheduled mark** — which is now a solid green pill rather than a tick, so the column
+  reads down at a glance. A **calendar icon beside each name** opens the same current-run
+  shift popup the schedule page's shift count opens. Columns are ruled, the row under the
+  cursor dims, and the URL filters share **one panel** with the search box above the
+  table.
 - **Per-student summary:** position, international status + **hour cap (20/30)**,
   selected preferences, **preference capacity** (covered hours their selection
   supports) vs. the floor, days covered, open/close coverage, A/B +
@@ -813,7 +823,9 @@ columns from the roster.
 - **Export:** ✅ one comprehensive row per submission, available as an **in-app CSV
   download** and as the **running `Muster Responses` Google Sheet** in the Drive folder
   (§12) — the latter readable by folder members without the app and serving as a
-  recovery copy. Both come from the same export matrix.
+  recovery copy. Both come from the same export matrix. Since 1.27 both are driven from
+  the **Responses card on `/admin/drive`** (download, open the sheet, rebuild it, last
+  sync), next to the Drive grant they depend on; the response list links across to it.
 - **Schedule change requests:** ✅ render on the per-student page (independent of the
   submission, each anchored as `#change-request-<id>`; every row is an outline box,
   resolved ones additionally green-tinted with a check-icon badge) and in the queue at
@@ -1518,6 +1530,29 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.27 (2026-09-07)** — **The response list says more, and says it faster (§10).** The
+  dashboard was a wall of similar-looking text with a jumble of controls over it, so
+  reading it took longer than the data in it warranted. Rows now carry the student's
+  **group** (or **"no group" in red**, because ungrouped is a gap somebody has to close)
+  and their hours as **`scheduled/requested`** rather than requested alone. The scheduled
+  figure comes from the **current run**, measured with the generator's own
+  `weekMinutesForRows`, which is the measure `/admin/schedule` and the one-student popup
+  already quote, so the three surfaces can never disagree about one student's hours. It
+  shows whenever the run holds shifts for them, which is deliberately **not** the same
+  question as the **scheduled mark**: the mark is the scheduler's own bookkeeping, the run
+  is what says how many hours somebody has. That mark is now a **solid green pill**
+  instead of a tick, which was too small to scan a column of. A **calendar icon beside
+  each name** opens the current-run shift popup that until now only the schedule page's
+  shift count opened; the trigger and the modal's overlay both stop their click reaching
+  the row, so neither opening nor dismissing it navigates. Columns are **ruled** and the
+  row under the cursor **dims** (opt-in `.ruled-table` / `.hover-table` in globals.css),
+  so a wide row reads as a grid and the full-width click target is unmistakable. The URL
+  filters and the search box now share **one panel** above the table instead of stacking
+  as two loose rows: filtering and searching are one job. The list renders even when the
+  filter matches nobody, so the filter that emptied it is still there to change. Finally,
+  **Download CSV / Open Google Sheet / Rebuild + last sync moved to `/admin/drive`** as
+  their own Responses card, next to the grant they depend on; the two pages link to each
+  other. No schema change.
 - **1.26 (2026-09-05)** — **Four things the scheduler asked for: travel without a photo, a
   way back to a blank schedule, the W2W template as a schedule, and nobody who quit in the
   numbers (§7b, §9, §10, §17).** (1) **Travel proof is optional on the admin path.** A trip

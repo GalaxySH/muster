@@ -16,6 +16,7 @@ import {
   changeRequests,
   groups,
   positions,
+  scheduleAssignments,
   shiftBlocks,
   students,
   submissions,
@@ -32,6 +33,8 @@ import { loadEvidence, type EvidenceView } from "@/lib/evidence/data";
 import { loadOrphanedCells, type OrphanedCell } from "@/lib/positions/orphans";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
+import { weekMinutesForRows, type ExistingAssignment } from "@/lib/domain/scheduling/manual";
+import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import {
   applyResponseFilters,
@@ -240,6 +243,14 @@ export interface ResponseRow {
   onRoster: boolean;
   /** Group membership, for the group filter (null = ungrouped). */
   groupId: string | null;
+  /** The group's name, shown in the list; null when they're ungrouped. */
+  groupName: string | null;
+  /**
+   * What the current run comes to for them per week, cycle-averaged, or null
+   * when no run holds a shift for them (including before the first run). Shown
+   * against their requested hours, so the pair reads as scheduled of requested.
+   */
+  scheduledMinutes: number | null;
   /** Roster hire date, for the start-date filter (null when unknown). */
   hiredOn: Date | null;
   /** Flag types on this submission, for the flag filter + count. */
@@ -250,6 +261,44 @@ export interface ResponseRow {
   submittedAt: Date | null;
   /** Null for students with no submission row. */
   updatedAt: Date | null;
+}
+
+/**
+ * Cycle-averaged weekly minutes the current run assigns, keyed by student email.
+ * Empty before the first run, and a student the run holds nothing for is simply
+ * absent, so the list can tell "not scheduled" from "scheduled zero hours".
+ *
+ * Measured with the generator's own `weekMinutesForRows`, the same measure the
+ * schedule page's student table and the one-student popup quote, so no two
+ * surfaces ever put different hours on the same rows.
+ */
+async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
+  const run = await loadCurrentRunRow();
+  if (!run) return new Map();
+
+  const db = getDb();
+  // Joined on block id alone, never on `retiredAt`: a retired block keeps its
+  // row, so a shift carried onto one keeps its span and its hours here.
+  const rows = await db
+    .select({
+      email: scheduleAssignments.studentEmail,
+      blockId: scheduleAssignments.shiftBlockId,
+      day: scheduleAssignments.day,
+      cohort: scheduleAssignments.cohort,
+      start: shiftBlocks.startMinutes,
+      end: shiftBlocks.endMinutes,
+    })
+    .from(scheduleAssignments)
+    .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
+    .where(eq(scheduleAssignments.runId, run.id));
+
+  const spansByStudent = new Map<string, ExistingAssignment[]>();
+  for (const r of rows) {
+    const list = spansByStudent.get(r.email) ?? [];
+    list.push({ blockId: r.blockId, day: r.day, cohort: r.cohort, start: r.start, end: r.end });
+    spansByStudent.set(r.email, list);
+  }
+  return new Map([...spansByStudent].map(([email, spans]) => [email, weekMinutesForRows(spans)]));
 }
 
 /**
@@ -270,6 +319,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       positionName: positions.name,
       onRoster: students.onRoster,
       groupId: students.groupId,
+      groupName: groups.name,
       hiredOn: students.hiredOn,
       submissionId: submissions.id,
       status: submissions.status,
@@ -282,6 +332,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
     .leftJoin(positions, eq(students.positionId, positions.id))
+    .leftJoin(groups, eq(students.groupId, groups.id))
     // Roster + submission-state visibility are filter concerns:
     // applyResponseFilters hides off-roster students (PLAN §4.2), and students
     // with no submission unless the state filter asks for them.
@@ -315,6 +366,8 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .groupBy(changeRequests.studentEmail);
   const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
 
+  const scheduledMinutes = await scheduledMinutesByStudent();
+
   const mapped: ResponseRow[] = rows.map((r) => {
     const flagTypes = (r.submissionId && flagTypesBySub.get(r.submissionId)) || [];
     return {
@@ -327,7 +380,9 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       desiredHours: r.desiredHours,
       onRoster: r.onRoster,
       groupId: r.groupId,
+      groupName: r.groupName,
       hiredOn: r.hiredOn,
+      scheduledMinutes: scheduledMinutes.get(r.email) ?? null,
       flagTypes,
       flagCount: flagTypes.length,
       openChangeRequests: openRequestsByEmail.get(r.email) ?? 0,

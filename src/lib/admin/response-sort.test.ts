@@ -10,6 +10,7 @@ import {
 } from "./response-sort";
 
 const row = (over: Partial<SortableResponse> & { displayName: string }): SortableResponse => ({
+  groupName: "Returners",
   positionName: "Cashier",
   status: "submitted",
   desiredHours: 10,
@@ -47,7 +48,7 @@ describe("serializeResponseSort", () => {
   });
 
   it("round-trips every non-default sort", () => {
-    for (const key of ["position", "flags", "updated", "name"] as const) {
+    for (const key of ["group", "position", "flags", "updated", "name"] as const) {
       for (const dir of [1, -1] as const) {
         const sort = { key, dir };
         if (key === "name" && dir === 1) continue;
@@ -121,5 +122,17 @@ describe("compareResponses", () => {
     const none = row({ displayName: "Amy", desiredHours: null });
     const some = row({ displayName: "Boyd", desiredHours: 12 });
     expect(compareResponses(none, some, "requested")).toBeLessThan(0);
+  });
+
+  it("sorts ungrouped students after every named group", () => {
+    const grouped = row({ displayName: "Amy", groupName: "Returners" });
+    const ungrouped = row({ displayName: "Boyd", groupName: null });
+    expect(compareResponses(grouped, ungrouped, "group")).toBeLessThan(0);
+  });
+
+  it("orders named groups alphabetically", () => {
+    const a = row({ displayName: "Amy", groupName: "Everyone else" });
+    const b = row({ displayName: "Boyd", groupName: "Returners" });
+    expect(compareResponses(a, b, "group")).toBeLessThan(0);
   });
 });

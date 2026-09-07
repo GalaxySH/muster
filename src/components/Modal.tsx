@@ -37,7 +37,13 @@ export function Modal({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      onClick={onClose}
+      // The overlay swallows the click as well as closing on it: a modal opened
+      // from inside something clickable (a response-list row) must not hand
+      // that thing the click that dismissed it.
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
       className="modal-overlay"
     >
       <div
@@ -45,7 +51,14 @@ export function Modal({
         className="modal-panel"
         style={{ "--modal-max-width": maxWidth } as React.CSSProperties}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
           <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{label}</span>
           <button
             type="button"
