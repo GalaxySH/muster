@@ -52,6 +52,14 @@ yarn-error.log*
 # Playwright MCP scratch (snapshots/screenshots)
 .playwright-mcp/
 
+# Verification screenshots dropped in the repo root. The dev DB holds the real
+# roster, so a screenshot of a running admin page can carry student PII.
+# Root-only, so public/ and docs/ assets are unaffected.
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+
 # Claude Code agent worktrees (temporary, auto-cleaned)
 .claude/worktrees/
 
