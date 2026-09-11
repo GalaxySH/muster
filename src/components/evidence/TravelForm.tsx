@@ -24,7 +24,6 @@ import {
   travelRowLate,
   excusedBadge,
   lateBadge,
-  CONTACT_EMAIL,
 } from "./shared";
 import { TravelDateRange } from "./TravelDateRange";
 import { ActionButton, InfoCard } from "@/components/ui";
@@ -38,6 +37,7 @@ export function TravelForm({
   lateAccepted,
   onBehalfOf,
   returnDate,
+  contactEmail,
 }: {
   initial: EvidenceView;
   driveConnected: boolean;
@@ -53,6 +53,8 @@ export function TravelForm({
   onBehalfOf?: string;
   /** The student's expected return-to-work date (e.g. "8/17"), by position; null hides the card. */
   returnDate: string | null;
+  /** What to name as the contact (CONTACT_EMAIL, or the fallback phrase). */
+  contactEmail: string;
 }) {
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   const canAddTravel = !pastCutoff || lateAccepted;
@@ -88,7 +90,7 @@ export function TravelForm({
             Travel could be excused only if added before <strong>{cutoffLabel}</strong>, so entries
             can no longer be added or removed.
             {initial.travel.length > 0 && " Anything you already added is shown below."} For
-            extenuating circumstances, contact <strong>{CONTACT_EMAIL}</strong> or come into the
+            extenuating circumstances, contact <strong>{contactEmail}</strong> or come into the
             office.
           </p>
         </InfoCard>
@@ -99,7 +101,7 @@ export function TravelForm({
           <p style={{ margin: 0 }}>
             You can still add travel, but anything added now is marked <strong>late</strong> and is
             not excused. If you think a trip should be excused anyway, contact{" "}
-            <strong>{CONTACT_EMAIL}</strong> or come into the office.
+            <strong>{contactEmail}</strong> or come into the office.
           </p>
         </InfoCard>
       )}

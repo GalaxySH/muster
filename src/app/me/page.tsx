@@ -8,7 +8,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { InfoCard, Page, PrimaryLink } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
-import { CONTACT_EMAIL } from "@/components/evidence/shared";
+import { contactLabel } from "@/lib/env";
 import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { getChangeRequestsEnabled } from "@/lib/settings";
 
@@ -40,7 +40,7 @@ export default async function MePage() {
         <InfoCard title="We don't recognize this account">
           <p style={{ margin: 0 }}>
             You&apos;re signed in but are not a known employee. If this is a mistake, contact{" "}
-            <strong>{CONTACT_EMAIL}</strong>.
+            <strong>{contactLabel}</strong>.
           </p>
         </InfoCard>
       ) : flow.access.kind === "no-group" ? (
@@ -121,7 +121,7 @@ export default async function MePage() {
                 </SubmitButton>
               </form>
               <p style={{ fontSize: 13, color: "#666", marginBottom: 0 }}>
-                Something look wrong? Email <strong>{CONTACT_EMAIL}</strong> before continuing.
+                Something look wrong? Email <strong>{contactLabel}</strong> before continuing.
               </p>
             </InfoCard>
           ) : (
@@ -152,7 +152,7 @@ export default async function MePage() {
 
       {!adminHome && (
         <p style={{ marginTop: 20 }}>
-          For any questions, contact <strong>{CONTACT_EMAIL}</strong> or come into the office.
+          For any questions, contact <strong>{contactLabel}</strong> or come into the office.
         </p>
       )}
 

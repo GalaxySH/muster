@@ -1530,6 +1530,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.28 (2026-09-11)** — **The contact address is configuration, not source (§14).** The
+  address student-facing copy names ("If you have questions, contact ...") was a constant
+  in `components/evidence/shared.tsx`, which put a real mailbox in every clone of the
+  repo. It now comes from a `CONTACT_EMAIL` env var, read through the validated `env.ts`
+  as `contactLabel`. `shared.tsx` is a client module, so the server pages (`/intro`,
+  `/me`, `/travel`) read the label and `TravelForm` takes it as a `contactEmail` prop.
+  When the var is unset the copy says **"the scheduler"**, so an unconfigured deploy shows
+  a sensible phrase rather than a blank or a placeholder address. Set `CONTACT_EMAIL` in
+  the production `.env` (it is passed through in `compose.yaml`) to name a real mailbox.
 - **1.27 (2026-09-07)** — **The response list says more, and says it faster (§10).** The
   dashboard was a wall of similar-looking text with a jumble of controls over it, so
   reading it took longer than the data in it warranted. Rows now carry the student's

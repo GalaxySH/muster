@@ -74,6 +74,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

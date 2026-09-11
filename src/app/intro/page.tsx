@@ -5,7 +5,7 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
-import { CONTACT_EMAIL } from "@/components/evidence/shared";
+import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled, getTravelCutoff } from "@/lib/settings";
 import Link from "next/link";
 
@@ -67,7 +67,7 @@ export default async function IntroPage() {
             We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams.
           </li>
           <li>
-            If you have questions, contact the scheduler (<strong>{CONTACT_EMAIL}</strong>).
+            If you have questions, contact <strong>{contactLabel}</strong>.
           </li>
         </ul>
       </section>

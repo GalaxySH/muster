@@ -70,8 +70,8 @@ level; re-import of the real workbook to verify Ava.
 - Promote `infoCardStyle` (`components/ui.tsx`) to a reusable `<InfoCard>`
   component with tone variants (`info` blue, `danger` red — the red variant
   pre-builds the warning box 3.2 needs on `/me`).
-- Wrap the `/me` "signed in but not a known employee… contact
-  scheduler@example.edu" paragraph in it.
+- Wrap the `/me` "signed in but not a known employee… contact the scheduler"
+  paragraph in it.
 - Wrap the `/me` admin-dashboard link ("You have admin access…") in it.
 - Restyle `/signin` to match the modern pages (shared `Page`, button styles,
   `InfoCard` for the "link sent" banner instead of its ad-hoc inline style).

@@ -8,6 +8,7 @@ import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadWizardNav } from "@/lib/flow/data";
 import { nextHref } from "@/lib/flow/steps";
 import { TravelForm } from "@/components/evidence/TravelForm";
+import { contactLabel } from "@/lib/env";
 import { TravelContinue } from "@/components/evidence/TravelContinue";
 import { OnBehalfBanner } from "@/components/evidence/shared";
 import {
@@ -83,6 +84,7 @@ export default async function TravelPage({
           lateAccepted={lateAccepted}
           onBehalfOf={onBehalf.email}
           returnDate={returnDate}
+          contactEmail={contactLabel}
         />
       </Page>
     );
@@ -127,6 +129,7 @@ export default async function TravelPage({
         pastCutoff={pastCutoff}
         lateAccepted={lateAccepted}
         returnDate={returnDate}
+        contactEmail={contactLabel}
       />
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />

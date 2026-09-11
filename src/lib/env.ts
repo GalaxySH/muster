@@ -25,6 +25,10 @@ const schema = z.object({
   RESEND_API_KEY: z.string().default(""),
   EMAIL_FROM: z.string().default("GDEC Scheduling <no-reply@re.hauge.rocks>"),
   ADMIN_EMAILS: z.string().default(""),
+  // Contact address shown to students in the app's "questions?" copy. When
+  // unset the copy falls back to a neutral phrase, so no blank or placeholder
+  // address can reach a student-facing page.
+  CONTACT_EMAIL: z.string().default(""),
   // Base64 256-bit key for encrypting secrets at rest (the Drive refresh token).
   ENCRYPTION_KEY: z
     .string()
@@ -91,6 +95,9 @@ function loadEnv() {
 }
 
 export const env = loadEnv();
+
+/** What student-facing copy names as the contact: the address, or a fallback. */
+export const contactLabel = env.CONTACT_EMAIL.trim() || "the scheduler";
 
 /** Parsed admin allowlist as a normalized lowercase set. */
 export const adminEmails = new Set(

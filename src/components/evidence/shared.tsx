@@ -13,7 +13,6 @@ import type { ActionResult } from "@/lib/evidence/actions";
 
 export const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 export const FORMAT_HINT = "PNG/JPEG/PDF only";
-export const CONTACT_EMAIL = "scheduler@example.edu";
 
 /**
  * The shared "run a server action, show a per-section status note" plumbing.
