@@ -43,6 +43,8 @@ export const positionChangeSourceEnum = [
   "alias",
   /** A ghost title finally got a position, which gave it to them. */
   "ghost_resolution",
+  /** An admin pointed the roster title they are listed under at another position. */
+  "roster_title_map",
 ] as const;
 
 /**

@@ -24,6 +24,7 @@ const person = (overrides: Partial<CellPerson> & { email: string }): CellPerson 
   offered: true,
   assignedHere: false,
   source: null,
+  cohort: null,
   scheduled: false,
   ...overrides,
 });
@@ -166,5 +167,42 @@ describe("SlotCell dialog", () => {
     const rows = screen.getAllByRole("listitem");
     expect(within(rows[0]!).queryByText("on this shift")).toBeTruthy();
     expect(within(rows[1]!).queryByText("on this shift")).toBeNull();
+  });
+
+  it("says which rotation week each weekend assignment is in", async () => {
+    // A weekend cell mixes both weeks, and its count reads "a·b", so the list
+    // has to say which of the two each person is actually working.
+    renderCell([
+      person({ email: "amy@wisc.edu", displayName: "Amy Ames", assignedHere: true, cohort: "a" }),
+      person({ email: "boyd@wisc.edu", displayName: "Boyd Bell", assignedHere: true, cohort: "b" }),
+      person({
+        email: "cyd@wisc.edu",
+        displayName: "Cyd Cole",
+        assignedHere: true,
+        cohort: "every",
+      }),
+    ]);
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByText("Cyd Cole")).toBeTruthy());
+    const rows = screen.getAllByRole("listitem");
+    expect(within(rows[0]!).queryByText("week A")).toBeTruthy();
+    expect(within(rows[1]!).queryByText("week B")).toBeTruthy();
+    expect(within(rows[2]!).queryByText("every weekend")).toBeTruthy();
+  });
+
+  it("tags no rotation on a weekday cell, or on someone the run does not place", async () => {
+    renderCell([
+      person({
+        email: "amy@wisc.edu",
+        displayName: "Amy Ames",
+        assignedHere: true,
+        cohort: "weekday",
+      }),
+      person({ email: "boyd@wisc.edu", displayName: "Boyd Bell" }),
+    ]);
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByText("Boyd Bell")).toBeTruthy());
+    expect(screen.queryByText(/^week [AB]$/)).toBeNull();
+    expect(screen.queryByText("every weekend")).toBeNull();
   });
 });

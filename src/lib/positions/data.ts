@@ -13,6 +13,7 @@ import { getDb } from "@/lib/db";
 import {
   internalSelections,
   positions,
+  rosterTitleMappings,
   shiftBlocks,
   shiftSelections,
   students,
@@ -119,6 +120,12 @@ export interface AdminPositionItem {
    * delete confirm names them first.
    */
   w2wMappingCount: number;
+  /**
+   * Roster titles that map here, normalized and sorted. The position card
+   * edits this list, so an admin can re-point a title without deleting the
+   * position it was mapped to (1.29).
+   */
+  rosterTitles: string[];
   blocks: AdminBlockItem[];
 }
 
@@ -138,6 +145,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     internalSelectionRows,
     realPickRows,
     w2wMapRows,
+    titleRows,
   ] = await Promise.all([
     db.select().from(positions).orderBy(asc(positions.name)),
     db
@@ -180,12 +188,17 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       .select({ positionId: w2wPositionMap.musterPositionId, n: sql<number>`count(*)` })
       .from(w2wPositionMap)
       .groupBy(w2wPositionMap.musterPositionId),
+    db.select().from(rosterTitleMappings),
   ]);
 
   const nameById = new Map(posRows.map((p) => [p.id, p.name]));
   const studentCount = new Map(studentRows.map((r) => [r.positionId, Number(r.n)]));
   const onRosterCount = new Map(onRosterRows.map((r) => [r.positionId, Number(r.n)]));
   const w2wMappingCount = new Map(w2wMapRows.map((r) => [r.positionId, Number(r.n)]));
+  const rosterTitles = new Map<string, string[]>();
+  for (const t of titleRows) {
+    rosterTitles.set(t.positionId, [...(rosterTitles.get(t.positionId) ?? []), t.title].sort());
+  }
   const selectionCount = new Map(selectionRows.map((r) => [r.blockId, Number(r.n)]));
   for (const r of internalSelectionRows) {
     selectionCount.set(r.blockId, (selectionCount.get(r.blockId) ?? 0) + Number(r.n));
@@ -221,6 +234,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     studentCount: studentCount.get(p.id) ?? 0,
     onRosterCount: onRosterCount.get(p.id) ?? 0,
     w2wMappingCount: w2wMappingCount.get(p.id) ?? 0,
+    rosterTitles: rosterTitles.get(p.id) ?? [],
     blocks: blocksByPosition.get(p.id) ?? [],
   }));
 }

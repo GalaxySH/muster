@@ -202,6 +202,13 @@ export interface CellPerson {
   assignedHere: boolean;
   /** How the assignment got here, when there is one. */
   source: AssignmentSource | null;
+  /**
+   * Which weekly template their assignment on this cell sits in, or null when
+   * the run does not put them here. On a weekend cell this is the A or B
+   * rotation ("every" for an every-weekend opt-in), which is the difference
+   * between two people the cell's own `a·b` count already shows apart.
+   */
+  cohort: Cohort | null;
   /** The live "mark scheduled" toggle (PLAN §10a: W2W-entry progress). */
   scheduled: boolean;
 }
@@ -257,6 +264,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
           .select({
             email: scheduleAssignments.studentEmail,
             source: scheduleAssignments.source,
+            cohort: scheduleAssignments.cohort,
             displayName: students.displayName,
             positionName: positions.name,
             scheduled: submissions.scheduled,
@@ -290,6 +298,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       offered: true,
       assignedHere: assignedBy.has(row.email),
       source: assignedBy.get(row.email)?.source ?? null,
+      cohort: assignedBy.get(row.email)?.cohort ?? null,
       scheduled: row.scheduled ?? false,
     });
   }
@@ -305,6 +314,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       offered: false,
       assignedHere: true,
       source: row.source,
+      cohort: row.cohort,
       scheduled: row.scheduled ?? false,
     });
   }

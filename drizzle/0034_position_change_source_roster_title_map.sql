@@ -1,0 +1,1 @@
+ALTER TABLE `position_changes` MODIFY COLUMN `source` enum('roster_import','admin','alias','ghost_resolution','roster_title_map') NOT NULL;

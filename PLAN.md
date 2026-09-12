@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.27
-- **Last updated:** 2026-09-07
+- **Version:** 1.31
+- **Last updated:** 2026-09-11
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1350,7 +1350,9 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 2. **Position ↔ title mapping** — ✅ *resolved (v0.63):* the mapping lives in the
    `roster_title_mappings` table, seeded once from the code fixture; unmapped titles
    surface as ghosts and are resolved by the admin on `/admin/positions` (§6.1). No
-   code change needed for new titles.
+   code change needed for new titles. Since 1.30 a resolved mapping is also **editable
+   there**: each position card lists the roster titles that map to it, and saving that
+   list re-points a title (moving its students) or drops it.
 3. **`drive.file` spike** — ✅ *resolved (confirmed live).* `files.create` + read-back +
    delete work under the per-file scope, **including writing into a pre-existing Shared
    Drive folder by id** — so no app-creates-its-own-folder workaround is needed (§12).
@@ -1547,6 +1549,35 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.31 (2026-09-11)** — **A weekend cell says who works which rotation week (§10a).** The
+  coverage grid reads `a·b` on a weekend cell, so two people in it are working different
+  fortnights, but clicking through to the list of names dropped the distinction entirely:
+  the scheduler could see the split existed and not who was on either side of it. The
+  cell's assignment `cohort` now rides along on `CellPerson` and the dialog tags each
+  assigned person **week A**, **week B**, or **every weekend**, colored apart so a long
+  list is scannable the same way the count is. Only an assignment carries a rotation, so
+  somebody who merely offered the shift gets no tag, and a weekday cell (cohort
+  `weekday`) shows none at all.
+- **1.30 (2026-09-11)** — **A roster title's position is editable, not a one-way door
+  (§6.1, §16.2).** Resolving a ghost title wrote a `roster_title_mappings` row that
+  steered every later import, and nothing in the app could then read or change it: the
+  ghost card was the only writer and it only appears while position-less students exist,
+  so the mapping vanished from view the moment it worked. The only way out was deleting
+  the position, which takes its blocks and W2W mappings with it. Two changes:
+  1. **The ghost card's confirms say what they are doing.** Both "Create position" and
+     "Map" now state that every later import follows the mapping too, and name where to
+     change it.
+  2. **Each position card carries its roster titles**, one per line, with its own Save.
+     Adding a title takes it over from whatever position held it and moves those students
+     through the shared position-change routine (carry-over, history row, revalidation),
+     recorded under the new `roster_title_map` change source. Removing one only stops
+     steering later imports: students already placed keep the position until an import
+     moves them, the same trade `clearAlias` makes. Alias and inactive targets are
+     refused, mirroring the ghost-resolution guards. `assignStudentsForTitle` generalized
+     into `moveStudentsWithTitle` (both ghost resolutions now call it), and the pure diff
+     seam is `diffTitleList` in `roster/position-mapping.ts`, where
+     `normalizeExcludedTitles` became the purpose-neutral `normalizeTitleList` it always
+     was.
 - **1.29 (2026-09-11)** — **A position change is now an event, not a side effect (§6.2a, §9,
   §10a).** A student moved from Dishwasher to Culinary Assistant kept her three
   dishwasher shifts in the current run, because `applyPositionChange` never touched

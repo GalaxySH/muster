@@ -18,7 +18,7 @@
 import { useState, useTransition } from "react";
 
 import { Modal } from "@/components/Modal";
-import { manualTagStyle } from "@/components/admin/ui";
+import { manualTagStyle, ROTATION_TAG_LABEL, rotationTagStyles } from "@/components/admin/ui";
 import { StudentScheduleHover } from "@/components/admin/StudentSchedulePopup";
 import type { Day } from "@/lib/domain/types";
 import { fetchCellAvailability } from "@/lib/schedule/actions";
@@ -138,6 +138,12 @@ function PersonList({ people }: { people: CellPerson[] }) {
             <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
           </StudentScheduleHover>
           <span style={{ display: "flex", gap: 8, whiteSpace: "nowrap", alignItems: "baseline" }}>
+            {/* Weekday assignments run every week, so only a weekend one is worth tagging. */}
+            {p.cohort !== null && p.cohort !== "weekday" && (
+              <span style={{ ...rotationTagStyles[p.cohort], marginLeft: 0 }}>
+                {ROTATION_TAG_LABEL[p.cohort]}
+              </span>
+            )}
             {p.source === "manual" && (
               <span style={{ ...manualTagStyle, marginLeft: 0 }}>manual</span>
             )}

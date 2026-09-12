@@ -84,11 +84,12 @@ export const SKIP_TITLES: ReadonlySet<string> = new Set([
 export const SETTING_EXCLUDED_ROSTER_TITLES = "excluded_roster_titles";
 
 /**
- * Normalize an excluded-titles input (one title per line): trim, lowercase,
- * collapse whitespace, drop blank lines, de-duplicate. Used both to store the
- * setting and to parse it back.
+ * Normalize a one-per-line title list: trim, lowercase, collapse whitespace,
+ * drop blank lines, de-duplicate. Shared by the two admin-edited title lists,
+ * the excluded titles on /admin/roster and a position's roster titles on
+ * /admin/positions, for both storing and parsing back.
  */
-export function normalizeExcludedTitles(raw: string): string[] {
+export function normalizeTitleList(raw: string): string[] {
   const titles = new Set<string>();
   for (const line of raw.split("\n")) {
     const title = normalizeTitle(line);
@@ -103,5 +104,30 @@ export function normalizeExcludedTitles(raw: string): string[] {
  * else the SKIP_TITLES fixture.
  */
 export function effectiveExcludedTitles(raw: string | null): ReadonlySet<string> {
-  return raw === null ? SKIP_TITLES : new Set(normalizeExcludedTitles(raw));
+  return raw === null ? SKIP_TITLES : new Set(normalizeTitleList(raw));
+}
+
+/** What an edited roster-title list changes, against what is stored. */
+export interface TitleListDiff {
+  /** The normalized list to store. */
+  titles: string[];
+  /** Titles the position did not claim before: their students move to it. */
+  added: string[];
+  /** Titles the position gives up: later imports stop steering them to it. */
+  removed: string[];
+}
+
+/**
+ * Diff an edited one-per-line title list against the stored titles. Both
+ * sides normalize first, so re-casing or re-spacing a title is not a change.
+ */
+export function diffTitleList(saved: readonly string[], raw: string): TitleListDiff {
+  const titles = normalizeTitleList(raw);
+  const before = new Set(saved.map((t) => normalizeTitle(t)));
+  const after = new Set(titles);
+  return {
+    titles,
+    added: titles.filter((t) => !before.has(t)),
+    removed: [...before].filter((t) => !after.has(t)).sort(),
+  };
 }

@@ -29,6 +29,13 @@ export default async function AdminPositionsPage() {
   const rank = (p: (typeof items)[number]) => (p.mergedIntoId ? 2 : p.active ? 0 : 1);
   const sorted = [...items].sort((a, b) => rank(a) - rank(b));
 
+  // Who holds each roster title right now, so a card saving a title it does not
+  // have yet can name the position it is taking it from.
+  const titleOwners: Record<string, string> = {};
+  for (const p of items) {
+    for (const title of p.rosterTitles) titleOwners[title] = p.name;
+  }
+
   return (
     <Page width="full">
       <AppHeader>
@@ -48,6 +55,7 @@ export default async function AdminPositionsPage() {
           key={p.id}
           position={p}
           aliasTargets={options}
+          titleOwners={titleOwners}
           dayCapHours={params.dayCapHours}
         />
       ))}
