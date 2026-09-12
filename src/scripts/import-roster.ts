@@ -70,9 +70,11 @@ async function main() {
     if (summary.positionChanges.length > 0) {
       console.log("\n  position changes (selections carried over where block times match):");
       for (const c of summary.positionChanges) {
-        const outcome = c.deferred
+        const picks = c.deferred
           ? "picks unchanged (no target blocks yet)"
-          : `${c.carriedOver} kept, ${c.dropped} dropped${c.revalidationFailed ? ", now fails validation" : ""}`;
+          : `${c.carriedOver} moved, ${c.preserved} left as orphans`;
+        const shifts = c.removedShifts > 0 ? `, ${c.removedShifts} shifts removed` : "";
+        const outcome = `${picks}${shifts}${c.revalidationFailed ? ", now fails validation" : ""}`;
         console.log(`    ${c.email}  ${c.from ?? "(none)"} -> ${c.to ?? "(none)"}  ${outcome}`);
       }
     }

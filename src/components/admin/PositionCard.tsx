@@ -153,7 +153,7 @@ export function PositionCard({
             : "";
         setMsg({
           ok: true,
-          text: `Moved ${plural(res.moved, "student")}. Kept ${plural(res.kept, "pick")}, dropped ${res.dropped}. ${fails}${w2w}`,
+          text: `Moved ${plural(res.moved, "student")}. Carried ${plural(res.kept, "pick")} over${res.preserved > 0 ? `, and left ${res.preserved} on the old position to review` : ""}. ${fails}${w2w}`,
         });
         setAliasTarget("");
         router.refresh();

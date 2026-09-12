@@ -13,8 +13,9 @@
  *
  * Titles map to positions through the DB-owned roster_title_mappings table
  * (alias chains resolved), and a student whose stored position differs from
- * the sheet's goes through the shared position-change routine (selection
- * carry-over + flags + revalidation; roadmap 3.3). Takes a Database so it's
+ * the sheet's goes through the shared position-change routine (history, shift
+ * removal, selection carry-over, flags, revalidation; roadmap 3.3). Takes a
+ * Database so it's
  * decoupled from connection setup, and a workbook source that is either a
  * file path (CLI) or the uploaded bytes (admin UI).
  */
@@ -50,7 +51,13 @@ export interface PositionChangeSummary {
   from: string | null;
   to: string | null;
   carriedOver: number;
-  dropped: number;
+  /**
+   * Picks with no counterpart in the new position, left where they are rather
+   * than deleted. Each is now an orphan the admin can review and clear.
+   */
+  preserved: number;
+  /** Current-run shifts removed, because they were on the old position. */
+  removedShifts: number;
   /** True when the picks were left untouched: the new title has no position or no blocks yet. */
   deferred: boolean;
   revalidationFailed: boolean;
@@ -81,9 +88,10 @@ export interface ImportSummary {
   byPosition: Record<string, number>;
   /**
    * Active students whose stored position differed from the incoming one
-   * (including to/from none): the shared carry-over routine ran for each
-   * (selections re-pointed where a target block has identical times, the rest
-   * dropped, position_change flagged, availability revalidated).
+   * (including to/from none): the shared routine ran for each (change
+   * recorded, current-run shifts removed, selections re-pointed where a target
+   * block has identical times and the rest left in place as orphans,
+   * position_change flagged, availability revalidated).
    */
   positionChanges: PositionChangeSummary[];
 }
@@ -188,7 +196,9 @@ export async function importRoster({
         });
 
       // Position change (only ever from active rows; deactivations just flip
-      // onRoster): run the shared carry-over + flag + revalidate routine.
+      // onRoster): run the shared routine, which records the change, drops the
+      // shifts the old position left behind, carries what picks still fit, and
+      // re-runs the checks.
       const hadRow = priorPosition.has(s.email);
       const before = priorPosition.get(s.email) ?? null;
       // Keep the in-memory view current so a duplicate row for the same email
@@ -199,13 +209,16 @@ export async function importRoster({
         email: s.email,
         fromPositionId: before,
         toPositionId: s.positionId,
+        source: "roster_import",
+        changedBy: importedBy,
       });
       positionChanges.push({
         email: s.email,
         from: nameOf(before),
         to: nameOf(s.positionId),
         carriedOver: change.carriedOver,
-        dropped: change.dropped,
+        preserved: change.preserved,
+        removedShifts: change.removedShifts,
         deferred: change.deferred,
         revalidationFailed: change.revalidationFailed,
       });

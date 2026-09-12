@@ -15,6 +15,7 @@ import { getDb } from "@/lib/db";
 import {
   changeRequests,
   groups,
+  positionChanges,
   positions,
   scheduleAssignments,
   shiftBlocks,
@@ -24,6 +25,7 @@ import {
   travelRequests,
   flags,
   type DbFlagType,
+  type PositionChangeSource,
 } from "@/lib/db/schema";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
@@ -92,6 +94,25 @@ export interface StudentDetail {
   evidence: EvidenceView;
   /** SL weekend closes (PLAN §18a); null when the step doesn't apply. */
   closes: StudentCloseClaims | null;
+  /**
+   * Every position this student has moved between, oldest first. Keyed by
+   * email rather than submission, so it survives a response being deleted and
+   * recreated, and it accumulates rather than replacing, so somebody who has
+   * moved twice shows both moves.
+   */
+  positionHistory: PositionChangeRecord[];
+}
+
+/** One entry in a student's position history. */
+export interface PositionChangeRecord {
+  /** Names as they read when the change happened, so a later rename or delete
+   *  cannot turn the history into blanks or bare ids. */
+  from: string | null;
+  to: string | null;
+  changedAt: Date;
+  /** The admin who did it, or ran the import; null on older rows. */
+  changedBy: string | null;
+  source: PositionChangeSource;
 }
 
 /** Everything the per-student view needs, or null if no such student. */
@@ -129,6 +150,18 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       blocks = blockRows.map(toDomainBlock);
     }
   }
+
+  const historyRows = await db
+    .select({
+      from: positionChanges.fromPositionName,
+      to: positionChanges.toPositionName,
+      changedAt: positionChanges.changedAt,
+      changedBy: positionChanges.changedBy,
+      source: positionChanges.source,
+    })
+    .from(positionChanges)
+    .where(eq(positionChanges.studentEmail, email))
+    .orderBy(asc(positionChanges.changedAt));
 
   const [subRow] = await db
     .select()
@@ -207,6 +240,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     orphaned,
     evidence,
     closes,
+    positionHistory: historyRows,
   };
 }
 

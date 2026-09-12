@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors, responseStatus } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
+import { positionOptions } from "@/lib/positions/data";
 import {
   loadCoverage,
   loadPositionAssignedCells,
@@ -42,6 +43,7 @@ import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
 import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { CoverageGrid, CoverageLegend } from "@/components/admin/CoverageGrid";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
+import { StudentPositionChanger } from "@/components/admin/StudentPositionChanger";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
@@ -233,6 +235,10 @@ export default async function StudentDetailPage({
     : null;
 
   const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
+  // Every assignable position, for the change-position control in the details
+  // card. Loaded unconditionally: a student with no position is exactly who
+  // most needs one set.
+  const allPositions = await positionOptions();
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
   const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
@@ -748,6 +754,31 @@ export default async function StudentDetailPage({
                 {fmtDay(detail.hiredOn) ?? "Unknown"}
               </div>
             </div>
+            {/* Position history, oldest first. Absent until somebody actually
+                moves, so a student who never changed position sees nothing. */}
+            {detail.positionHistory.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  Position history
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {detail.positionHistory.map((h, i) => (
+                    <div key={i}>
+                      {h.from ? `${h.from} to ${h.to ?? "no position"}` : `Set to ${h.to}`}
+                      <span style={{ color: "var(--color-text-tertiary)" }}>
+                        {" "}
+                        · {fmtDay(h.changedAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <StudentPositionChanger
+              studentEmail={detail.email}
+              currentPositionId={position?.id ?? null}
+              options={allPositions}
+            />
           </div>
         </section>
       </div>

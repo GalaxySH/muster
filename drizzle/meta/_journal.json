@@ -232,6 +232,13 @@
       "when": 1788645038147,
       "tag": "0032_make_travel_proof_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1789172630350,
+      "tag": "0033_jazzy_thor",
+      "breakpoints": true
     }
   ]
 }

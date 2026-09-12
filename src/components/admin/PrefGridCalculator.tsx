@@ -1021,13 +1021,20 @@ function CalcTable({
   // picked on. Grouped here so the table stays the only place that knows how a
   // sub-grid is laid out.
   const orphanRows = useMemo(() => {
-    const byBlock = new Map<string, { label: string; start: number; days: Set<Day> }>();
+    const byBlock = new Map<
+      string,
+      { label: string; start: number; days: Set<Day>; retired: boolean }
+    >();
     for (const c of orphans) {
       if (c.dayType !== sub.dayType) continue;
       const entry = byBlock.get(c.blockId) ?? {
         label: `${formatTime(c.start)}–${formatTime(c.end)}`,
         start: c.start,
         days: new Set<Day>(),
+        // Two different stories with the same shape: the admin retired this
+        // shift, or the student moved position and it belongs to the one they
+        // left. Both are dead picks; only one of them was "removed".
+        retired: c.retired,
       };
       entry.days.add(c.day);
       byBlock.set(c.blockId, entry);
@@ -1120,13 +1127,20 @@ function CalcTable({
             })}
           </tr>
         ))}
-        {/* Removed shifts. The row is dead: every cell is disabled, and only a
-            cell the student actually picked is clickable, to clear it. */}
-        {orphanRows.map((row) => (
+        {/* Dead shifts: retired by an admin, or on the position the student
+            used to hold. The row is dead either way: every cell is disabled,
+            and only a cell the student actually picked is clickable, to clear
+            it. */}
+        {orphanRows.map((row) => {
+          const what = row.retired ? "removed" : "old position";
+          const why = row.retired
+            ? "This shift was removed."
+            : "This shift is on the position they used to hold.";
+          return (
           <tr key={row.blockId}>
             <td style={orphanLabel}>
               <span style={{ textDecoration: "line-through" }}>{row.label}</span>{" "}
-              <span style={orphanTag}>removed</span>
+              <span style={orphanTag}>{what}</span>
             </td>
             {sub.days.map((day) => {
               const picked = row.days.has(day);
@@ -1135,12 +1149,12 @@ function CalcTable({
                 <td key={day} style={{ padding: 0, ...weekSplit(sub, day) }}>
                   <button
                     type="button"
-                    aria-label={`${row.label} ${DAY_LABEL[day]} on a removed shift`}
+                    aria-label={`${row.label} ${DAY_LABEL[day]} on a ${what} shift`}
                     disabled={!picked || busyCell === key}
                     title={
                       picked
-                        ? "This shift was removed. Click to clear this pick."
-                        : "This shift was removed and can't be picked."
+                        ? `${why} Click to clear this pick.`
+                        : `${why} It can't be picked.`
                     }
                     onClick={() => onRemoveOrphan(row.blockId, day)}
                     style={orphanCellStyle(picked, busyCell === key)}
@@ -1155,16 +1169,18 @@ function CalcTable({
               );
             })}
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );
 }
 
 /**
- * A cell on a removed shift. A picked one keeps the check mark so it still
- * reads as the student's answer, but greyed and hatched so it never looks
- * like something the scheduler can use; an unpicked one is inert.
+ * A cell on a dead shift (retired, or on the position the student left). A
+ * picked one keeps the check mark so it still reads as the student's answer,
+ * but greyed and hatched so it never looks like something the scheduler can
+ * use; an unpicked one is inert.
  */
 function orphanCellStyle(picked: boolean, busy: boolean): React.CSSProperties {
   return {

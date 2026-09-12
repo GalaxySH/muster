@@ -4,6 +4,11 @@
  * A pick becomes orphaned when the admin retires the block it points at (a
  * block with picks can't be deleted, so `deleteBlock` retires it instead) or
  * when a position change leaves the row pointing at another position's blocks.
+ * The second case is deliberate rather than incidental: a position change
+ * carries picks onto time-identical blocks and LEAVES THE REST WHERE THEY ARE
+ * (see positions/apply-change.ts), because a student's answer should not be
+ * thrown away silently just because their position moved under them. Becoming
+ * an orphan is what makes such a pick visible to the admin.
  * The row survives, but it is dead data: every live read filters retired
  * blocks out, so orphaned picks never reach a grid the student sees, the
  * capacity math, coverage, the export, or the generator.
@@ -66,9 +71,9 @@ export interface OrphanedCell {
  *
  * Returns [] when the student has no position, and when their position has no
  * live blocks at all. Both mean the position isn't set up, not that the picks
- * are rotten: the carry-over is still pending, and calling every row dead
- * would invite an admin to delete a whole real availability. An unconfigured
- * position has its own alerts on the hub.
+ * are rotten: the carry-over is deferred until the position has blocks, and
+ * calling every row dead would invite an admin to delete a whole real
+ * availability. An unconfigured position has its own alerts on the hub.
  */
 export async function loadOrphanedCells(
   db: Queryable,
@@ -170,14 +175,18 @@ export async function syncOrphanedSelectionFlag(tx: DbTx, submissionId: string):
   if (cells.length === 0) return 0;
 
   const named = cells.map((c) => c.label).join(", ");
+  // Deliberately neutral about the cause: a retired block really is gone, but a
+  // pick left behind by a position change is on a shift that still exists and
+  // still runs, just not for this student any more. "No longer exists" would be
+  // false half the time. The grid row says which of the two it is.
   await tx.insert(flags).values({
     id: randomUUID(),
     submissionId,
     type: "orphaned_selection",
     detail:
       cells.length === 1
-        ? `1 pick is on a shift that no longer exists: ${named}.`
-        : `${cells.length} picks are on shifts that no longer exist: ${named}.`,
+        ? `1 pick is on a shift they can't be scheduled for: ${named}.`
+        : `${cells.length} picks are on shifts they can't be scheduled for: ${named}.`,
   });
   return cells.length;
 }

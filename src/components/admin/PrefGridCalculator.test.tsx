@@ -1121,7 +1121,7 @@ describe("PrefGridCalculator", () => {
       expect(orphanCell("Tue")).toBeDisabled();
       expect(orphanCell("Thu")).toBeDisabled();
       expect(orphanCell("Tue").getAttribute("title")).toBe(
-        "This shift was removed and can't be picked.",
+        "This shift was removed. It can't be picked.",
       );
     });
 
@@ -1156,6 +1156,56 @@ describe("PrefGridCalculator", () => {
     it("shows no removed row when there are no orphans", () => {
       renderCalc();
       expect(screen.queryByText("removed")).not.toBeInTheDocument();
+    });
+  });
+
+  // A pick preserved through a position change looks the same as a retired one
+  // (dead, visible, clearable) but is NOT the same thing, and telling the admin
+  // the shift "was removed" would be a plain lie: it still exists, on the
+  // position this student no longer holds.
+  describe("orphaned picks (a position the student left)", () => {
+    const orphans: OrphanedCell[] = [
+      {
+        blockId: "dishwasher-wd-6a-10a",
+        day: "mon",
+        dayType: "weekday",
+        start: parseTime("6a"),
+        end: parseTime("10a"),
+        label: "Mon 6a–10a",
+        retired: false,
+        fromStudent: true,
+        fromInternal: false,
+      },
+    ];
+
+    const cell = (day: string) =>
+      screen.getByRole("button", { name: `6a–10a ${day} on a old position shift` });
+
+    it("tags the row as an old position rather than a removal", () => {
+      renderCalc({ orphans });
+      expect(screen.getByText("old position")).toBeInTheDocument();
+      expect(screen.queryByText("removed")).not.toBeInTheDocument();
+    });
+
+    it("explains why the pick is dead without claiming the shift is gone", () => {
+      renderCalc({ orphans });
+      expect(cell("Mon").getAttribute("title")).toBe(
+        "This shift is on the position they used to hold. Click to clear this pick.",
+      );
+      expect(cell("Tue").getAttribute("title")).toBe(
+        "This shift is on the position they used to hold. It can't be picked.",
+      );
+    });
+
+    it("keeps the pick clearable, so the admin decides when it goes", () => {
+      renderCalc({ orphans });
+      expect(cell("Mon")).toBeEnabled();
+      expect(cell("Tue")).toBeDisabled();
+    });
+
+    it("never counts it toward the hours readout", () => {
+      renderCalc({ orphans });
+      expect(screen.getByText("10h")).toBeInTheDocument();
     });
   });
 });
