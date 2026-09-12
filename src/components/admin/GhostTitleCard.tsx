@@ -89,8 +89,7 @@ function GhostTitleCard({
   return (
     <InfoCard tone="danger" title={title ?? "No title recorded"}>
       <p style={{ margin: "0 0 10px", fontSize: 14 }}>
-        No position information. {students} on the roster can&apos;t fill out the availability
-        form.
+        No position information. {students} on the roster can&apos;t fill out the availability form.
       </p>
       {title === null ? (
         <p style={{ margin: 0, fontSize: 14 }}>
@@ -102,7 +101,13 @@ function GhostTitleCard({
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(`Create a new position named "${title}" and assign ${students}?`)) {
+              if (
+                confirm(
+                  `Create a new position named "${title}" and assign ${students}?\n\n` +
+                    "Every import after this one puts the title in the new position too. " +
+                    "To change that later, edit Roster titles on its card.",
+                )
+              ) {
                 resolve(() => createPositionForTitle(title), title);
               }
             }}
@@ -129,7 +134,13 @@ function GhostTitleCard({
             onClick={() => {
               const target = options.find((o) => o.id === targetId);
               if (!target) return;
-              if (confirm(`Map "${title}" to ${target.name} and assign ${students}?`)) {
+              if (
+                confirm(
+                  `Map "${title}" to ${target.name} and assign ${students}?\n\n` +
+                    `Every import after this one puts the title in ${target.name} too, and those students count as ${target.name}. ` +
+                    `To change that later, edit Roster titles on the ${target.name} card.`,
+                )
+              ) {
                 resolve(() => mapTitleToPosition(title, targetId), target.name);
               }
             }}

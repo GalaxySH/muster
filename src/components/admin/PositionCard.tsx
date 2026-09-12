@@ -10,27 +10,37 @@ import {
   savePosition,
   setAlias,
   setPositionActive,
+  setRosterTitles,
   type BlockEdit,
 } from "@/lib/positions/actions";
 import type { AdminPositionItem } from "@/lib/positions/data";
+import { diffTitleList } from "@/lib/roster/position-mapping";
 import { BlockEditor, blockRowDirty, parseBlockRow, type BlockRowEdit } from "./BlockEditor";
 import type { PositionOption } from "./GhostTitleCard";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+const quoteList = (titles: string[]) => titles.map((t) => `"${t}"`).join(", ");
+
 /**
  * One position on /admin/positions (roadmap 3.3): the min-config edit form,
- * the block editor (or the alias note for aliases), one Save covering both,
- * the active toggle, the alias control, and delete when nothing references
- * the position.
+ * the roster-title list, the block editor (or the alias note for aliases),
+ * one Save covering the details and blocks, the active toggle, the alias
+ * control, and delete when nothing references the position.
  */
 export function PositionCard({
   position,
   aliasTargets,
+  titleOwners,
   dayCapHours,
 }: {
   position: AdminPositionItem;
   aliasTargets: PositionOption[];
+  /**
+   * Every mapped roster title to the position that currently holds it, so the
+   * save confirm can name what a title is being taken from.
+   */
+  titleOwners: Record<string, string>;
   /** The schedule engine's max merged hours per day (see BlockEditor). */
   dayCapHours: number;
 }) {
@@ -47,6 +57,8 @@ export function PositionCard({
   // computed against the saved values, so a refresh settles it back to clean.
   const [edits, setEdits] = useState<Record<string, BlockRowEdit>>({});
   const [aliasTarget, setAliasTarget] = useState("");
+  const savedTitles = position.rosterTitles.join("\n");
+  const [titles, setTitles] = useState(savedTitles);
 
   const isShiftLead = position.id === SHIFT_LEAD_POSITION_ID;
   const isAlias = position.mergedIntoId !== null;
@@ -62,6 +74,8 @@ export function PositionCard({
     returnDate !== savedReturnDate;
   const dirtyBlocks = position.blocks.filter((b) => blockRowDirty(b, edits[b.id]));
   const dirty = detailsDirty || dirtyBlocks.length > 0;
+  const titleDiff = diffTitleList(position.rosterTitles, titles);
+  const titlesDirty = titleDiff.added.length > 0 || titleDiff.removed.length > 0;
 
   function act(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
     setMsg(null);
@@ -127,6 +141,45 @@ export function PositionCard({
         }
       : undefined;
     act(() => savePosition(position.id, { details, blockEdits }), "Saved.");
+  }
+
+  function saveTitles() {
+    // Spell out both halves, because they behave differently: an added title
+    // moves its students now, a removed one only stops steering later imports.
+    const lines: string[] = [];
+    if (titleDiff.added.length > 0) {
+      const taken = titleDiff.added.filter(
+        (t) => titleOwners[t] && titleOwners[t] !== position.name,
+      );
+      const from = taken.map((t) => `"${t}" from ${titleOwners[t]}`).join(", ");
+      lines.push(
+        `Adding ${quoteList(titleDiff.added)}. Everyone the tracker lists under ${titleDiff.added.length === 1 ? "it" : "them"} moves to ${position.name} now.`,
+      );
+      if (taken.length > 0) lines.push(`That takes ${from}.`);
+    }
+    if (titleDiff.removed.length > 0) {
+      lines.push(
+        `Removing ${quoteList(titleDiff.removed)}. Later imports stop putting ${titleDiff.removed.length === 1 ? "it" : "them"} in ${position.name}, and students already here keep it until the next import moves them.`,
+      );
+    }
+    if (!confirm(`Save roster titles for ${position.name}?\n\n${lines.join("\n\n")}`)) return;
+    setMsg(null);
+    startTransition(async () => {
+      const res = await setRosterTitles(position.id, titles);
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error ?? "Failed." });
+        return;
+      }
+      const moves =
+        res.moved === 0
+          ? "No students moved."
+          : `Moved ${plural(res.moved, "student")}. Carried ${plural(res.kept, "pick")} over${res.preserved > 0 ? `, and left ${res.preserved} on the old position to review` : ""}.` +
+            (res.failing > 0
+              ? ` ${plural(res.failing, "student")} now fail${res.failing === 1 ? "s" : ""} checks.`
+              : "");
+      setMsg({ ok: true, text: `Roster titles saved. ${moves}` });
+      router.refresh();
+    });
   }
 
   function makeAlias() {
@@ -222,6 +275,29 @@ export function PositionCard({
       <p style={{ margin: "-6px 0 12px", fontSize: 12, color: "var(--color-text-secondary)" }}>
         Shown to students in this position on /travel. Leave blank to hide that card.
       </p>
+
+      {!isAlias && (
+        <div style={{ margin: "12px 0" }}>
+          <label style={{ ...label, maxWidth: 440 }}>
+            Roster titles
+            <textarea
+              value={titles}
+              onChange={(e) => setTitles(e.target.value)}
+              disabled={pending}
+              rows={Math.max(2, position.rosterTitles.length + 1)}
+              placeholder="No roster title maps here yet"
+              style={{ ...input, resize: "vertical", lineHeight: 1.5 }}
+            />
+          </label>
+          <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+            One per line. Students the tracker lists under these titles get this position, now and
+            on every import after.
+          </p>
+          <button type="button" disabled={pending || !titlesDirty} onClick={saveTitles}>
+            Save titles
+          </button>
+        </div>
+      )}
 
       {isAlias ? (
         <div style={{ margin: "12px 0" }}>

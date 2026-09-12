@@ -15,7 +15,7 @@
  * step for every affected student.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
@@ -28,13 +28,14 @@ import {
   shiftSelections,
   students,
   w2wPositionMap,
+  type PositionChangeSource,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
 import { canAliasTo } from "@/lib/domain/position-alias";
 import type { DayType } from "@/lib/domain/types";
-import { normalizeTitle } from "@/lib/roster/position-mapping";
+import { diffTitleList, normalizeTitle } from "@/lib/roster/position-mapping";
 import {
   applyPositionChange,
   resolveDeferredCarryOver,
@@ -733,39 +734,70 @@ export interface GhostResolveResult extends ActionResult {
   assigned: number;
 }
 
+/** What moving one roster title's students did, for the admin's result line. */
+interface TitleMoveSummary {
+  moved: number;
+  kept: number;
+  preserved: number;
+  failing: number;
+}
+
+const NO_MOVES: TitleMoveSummary = { moved: 0, kept: 0, preserved: 0, failing: 0 };
+
 /**
- * Assign `positionId` to every position-less student whose stored roster
- * title matches `rawTitle`, running the shared position-change routine for
- * each. Title matching happens in JS because normalization lives there.
+ * Move every student whose stored roster title matches `rawTitle` into
+ * `positionId`, running the shared position-change routine for each; students
+ * already there are skipped. Title matching happens in JS because
+ * normalization lives there. Ghost resolution (students who have no position)
+ * and a roster-title re-point (students who hold a different one) both come
+ * through here, so the carry-over runs the same way either way; only the
+ * recorded `source` tells the two apart.
  */
-async function assignStudentsForTitle(
+async function moveStudentsWithTitle(
   tx: DbTx,
   rawTitle: string,
   positionId: string,
+  source: PositionChangeSource,
   changedBy: string,
-): Promise<number> {
+): Promise<TitleMoveSummary> {
   const normalized = normalizeTitle(rawTitle);
   const rows = await tx
-    .select({ email: students.email, rosterTitle: students.rosterTitle })
+    .select({
+      email: students.email,
+      positionId: students.positionId,
+      rosterTitle: students.rosterTitle,
+    })
     .from(students)
-    .where(and(isNull(students.positionId), isNotNull(students.rosterTitle)));
-  const matched = rows
-    .filter((r) => normalizeTitle(r.rosterTitle ?? "") === normalized)
-    .map((r) => r.email);
-  if (matched.length === 0) return 0;
+    .where(isNotNull(students.rosterTitle));
+  const matched = rows.filter(
+    (r) => normalizeTitle(r.rosterTitle ?? "") === normalized && r.positionId !== positionId,
+  );
+  if (matched.length === 0) return NO_MOVES;
 
   // Set positionId first so the per-student revalidation reads the new position.
-  await tx.update(students).set({ positionId }).where(inArray(students.email, matched));
-  for (const email of matched) {
-    await applyPositionChange(tx, {
-      email,
-      fromPositionId: null,
+  await tx
+    .update(students)
+    .set({ positionId })
+    .where(
+      inArray(
+        students.email,
+        matched.map((r) => r.email),
+      ),
+    );
+  const summary = { ...NO_MOVES, moved: matched.length };
+  for (const r of matched) {
+    const change = await applyPositionChange(tx, {
+      email: r.email,
+      fromPositionId: r.positionId,
       toPositionId: positionId,
-      source: "ghost_resolution",
+      source,
       changedBy,
     });
+    summary.kept += change.carriedOver;
+    summary.preserved += change.preserved;
+    if (change.revalidationFailed) summary.failing += 1;
   }
-  return matched.length;
+  return summary;
 }
 
 function revalidateGhostSurfaces() {
@@ -811,7 +843,7 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
       .insert(rosterTitleMappings)
       .values({ title: normalizeTitle(trimmed), positionId: id })
       .onDuplicateKeyUpdate({ set: { positionId: id } });
-    assigned = await assignStudentsForTitle(tx, trimmed, id, gate.email);
+    assigned = (await moveStudentsWithTitle(tx, trimmed, id, "ghost_resolution", gate.email)).moved;
   });
 
   revalidateGhostSurfaces();
@@ -860,7 +892,9 @@ export async function mapTitleToPosition(
       .insert(rosterTitleMappings)
       .values({ title: normalizeTitle(trimmed), positionId })
       .onDuplicateKeyUpdate({ set: { positionId } });
-    assigned = await assignStudentsForTitle(tx, trimmed, positionId, gate.email);
+    assigned = (
+      await moveStudentsWithTitle(tx, trimmed, positionId, "ghost_resolution", gate.email)
+    ).moved;
   });
 
   revalidateGhostSurfaces();
@@ -958,4 +992,117 @@ export async function changeStudentPosition(
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
   return { ok: true, ...change };
+}
+
+/** `roster_title_mappings.title` is varchar(128); a longer line is refused. */
+const ROSTER_TITLE_MAX = 128;
+
+export interface RosterTitlesResult extends ActionResult {
+  /** Titles this position took on, normalized. */
+  added: string[];
+  /** Titles it gave up, normalized. */
+  removed: string[];
+  /** Students the added titles moved into this position. */
+  moved: number;
+  /** Picks re-pointed onto time-identical blocks here. */
+  kept: number;
+  /** Picks with no counterpart, left in place for the admin to review. */
+  preserved: number;
+  /** Moved students whose availability now fails validation. */
+  failing: number;
+}
+
+/**
+ * Replace the roster titles mapped to a position. An added title is taken
+ * over from whatever position held it and its students move here through the
+ * shared position-change routine; a removed title only stops steering later
+ * imports, so students already placed keep the position until an import moves
+ * them (the same trade `clearAlias` makes).
+ */
+export async function setRosterTitles(
+  positionId: string,
+  raw: string,
+): Promise<RosterTitlesResult> {
+  const fail = (error: string): RosterTitlesResult => ({
+    ok: false,
+    error,
+    added: [],
+    removed: [],
+    ...NO_MOVES,
+  });
+  const gate = await requireAdmin();
+  if (!gate.ok) return fail(gate.error);
+
+  const db = getDb();
+  const [target] = await db
+    .select({
+      id: positions.id,
+      name: positions.name,
+      active: positions.active,
+      mergedIntoId: positions.mergedIntoId,
+    })
+    .from(positions)
+    .where(eq(positions.id, positionId))
+    .limit(1);
+  if (!target) return fail("Position not found.");
+  // Same two guards the ghost resolution and the per-student move use: a title
+  // that steers students onto a position nobody schedules into is the problem.
+  if (target.mergedIntoId !== null) {
+    return fail(`${target.name} is an alias. Set roster titles on the position it points to.`);
+  }
+  if (!target.active) return fail(`${target.name} is inactive. Reactivate it first.`);
+
+  const savedRows = await db
+    .select({ title: rosterTitleMappings.title })
+    .from(rosterTitleMappings)
+    .where(eq(rosterTitleMappings.positionId, positionId));
+  const { titles, added, removed } = diffTitleList(
+    savedRows.map((r) => r.title),
+    raw,
+  );
+  const tooLong = titles.find((t) => t.length > ROSTER_TITLE_MAX);
+  if (tooLong) {
+    return fail(
+      `"${tooLong.slice(0, 40)}..." is too long. Keep roster titles to ${ROSTER_TITLE_MAX} characters or fewer.`,
+    );
+  }
+  if (added.length === 0 && removed.length === 0) {
+    return { ok: true, added, removed, ...NO_MOVES };
+  }
+
+  const totals = { ...NO_MOVES };
+  await db.transaction(async (tx) => {
+    if (removed.length > 0) {
+      await tx
+        .delete(rosterTitleMappings)
+        .where(
+          and(
+            eq(rosterTitleMappings.positionId, positionId),
+            inArray(rosterTitleMappings.title, removed),
+          ),
+        );
+    }
+    for (const title of added) {
+      // The title is the primary key, so taking one over from another position
+      // is an update of the row it already has, not a second row.
+      await tx
+        .insert(rosterTitleMappings)
+        .values({ title, positionId })
+        .onDuplicateKeyUpdate({ set: { positionId } });
+      const move = await moveStudentsWithTitle(
+        tx,
+        title,
+        positionId,
+        "roster_title_map",
+        gate.email,
+      );
+      totals.moved += move.moved;
+      totals.kept += move.kept;
+      totals.preserved += move.preserved;
+      totals.failing += move.failing;
+    }
+  });
+
+  revalidateGhostSurfaces();
+  return { ok: true, added, removed, ...totals };
 }

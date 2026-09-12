@@ -39,10 +39,7 @@ import {
 } from "@/lib/settings";
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
-import {
-  normalizeExcludedTitles,
-  SETTING_EXCLUDED_ROSTER_TITLES,
-} from "@/lib/roster/position-mapping";
+import { normalizeTitleList, SETTING_EXCLUDED_ROSTER_TITLES } from "@/lib/roster/position-mapping";
 import {
   syncSheet,
   trySyncSheet,
@@ -417,7 +414,7 @@ export async function setExcludedRosterTitles(raw: string): Promise<SaveExcluded
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const titles = normalizeExcludedTitles(raw);
+  const titles = normalizeTitleList(raw);
   await setSetting(SETTING_EXCLUDED_ROSTER_TITLES, titles.join("\n"));
   revalidatePath("/admin/roster");
   return { ok: true, saved: titles };

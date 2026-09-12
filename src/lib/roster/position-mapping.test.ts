@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   buildEffectiveTitleMap,
+  diffTitleList,
   effectiveExcludedTitles,
-  normalizeExcludedTitles,
+  normalizeTitleList,
   normalizeTitle,
   SKIP_TITLES,
 } from "./position-mapping";
@@ -68,23 +69,23 @@ describe("buildEffectiveTitleMap", () => {
   });
 });
 
-describe("normalizeExcludedTitles", () => {
+describe("normalizeTitleList", () => {
   it("trims, lowercases, and collapses whitespace per line", () => {
-    expect(normalizeExcludedTitles("  Dining Advisor   Board Member (DAB) \n")).toEqual([
+    expect(normalizeTitleList("  Dining Advisor   Board Member (DAB) \n")).toEqual([
       "dining advisor board member (dab)",
     ]);
   });
 
   it("drops blank lines and de-duplicates case-insensitively", () => {
-    expect(normalizeExcludedTitles("Volunteer\n\n  \nVOLUNTEER\nvolunteer \nGuest")).toEqual([
+    expect(normalizeTitleList("Volunteer\n\n  \nVOLUNTEER\nvolunteer \nGuest")).toEqual([
       "volunteer",
       "guest",
     ]);
   });
 
   it("returns [] for empty input", () => {
-    expect(normalizeExcludedTitles("")).toEqual([]);
-    expect(normalizeExcludedTitles("  \n \n")).toEqual([]);
+    expect(normalizeTitleList("")).toEqual([]);
+    expect(normalizeTitleList("  \n \n")).toEqual([]);
   });
 });
 
@@ -107,5 +108,42 @@ describe("effectiveExcludedTitles", () => {
 
   it("normalizes stored titles for case-insensitive comparison", () => {
     expect(effectiveExcludedTitles("  GUEST   Worker ").has("guest worker")).toBe(true);
+  });
+});
+
+describe("diffTitleList", () => {
+  it("reports titles the position takes on and gives up", () => {
+    const diff = diffTitleList(["cashier", "old title"], "Cashier\nBarista");
+    expect(diff.titles).toEqual(["cashier", "barista"]);
+    expect(diff.added).toEqual(["barista"]);
+    expect(diff.removed).toEqual(["old title"]);
+  });
+
+  it("treats a re-cased or re-spaced title as unchanged", () => {
+    const diff = diffTitleList(["retail and cafe team member"], "  Retail and   Cafe Team Member ");
+    expect(diff.titles).toEqual(["retail and cafe team member"]);
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+  });
+
+  it("normalizes stored titles too, so a hand-written row still matches", () => {
+    expect(diffTitleList(["Retail and Café Team Member"], "retail and cafe team member")).toEqual({
+      titles: ["retail and cafe team member"],
+      added: [],
+      removed: [],
+    });
+  });
+
+  it("removes every title when the box is cleared", () => {
+    const diff = diffTitleList(["cashier", "barista"], "");
+    expect(diff.titles).toEqual([]);
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual(["barista", "cashier"]);
+  });
+
+  it("adds every title when nothing is stored yet", () => {
+    const diff = diffTitleList([], "Cashier\n\nBarista\n");
+    expect(diff.added).toEqual(["cashier", "barista"]);
+    expect(diff.removed).toEqual([]);
   });
 });

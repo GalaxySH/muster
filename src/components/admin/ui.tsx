@@ -121,6 +121,24 @@ export const manualTagStyle: React.CSSProperties = {
 };
 
 /**
+ * Which weekend rotation an assignment sits in. A and B are colored apart on
+ * purpose: a weekend cell mixes both, and its count already reads "a·b", so
+ * the list under it has to be scannable the same way.
+ */
+export const rotationTagStyles = {
+  a: { ...tagStyle, background: "#e7f0fb", color: "#1a66cc" },
+  b: { ...tagStyle, background: "#fff4e0", color: "#8a5a00" },
+  every: { ...tagStyle, background: "#e6f4ea", color: "#196127" },
+} as const;
+
+/** What each rotation tag says. */
+export const ROTATION_TAG_LABEL = {
+  a: "week A",
+  b: "week B",
+  every: "every weekend",
+} as const;
+
+/**
  * A stored `yyyy-mm-dd` as "Sep 2". Read as UTC so the day never shifts, and
  * pinned to en-US so the server and the client render the same string.
  */

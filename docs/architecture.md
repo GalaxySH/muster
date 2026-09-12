@@ -1109,7 +1109,7 @@ list** is settings data since v0.76 (roadmap 1.7): `excluded_roster_titles` in
 + `setExcludedRosterTitles` in `admin/actions.ts`), falling back to the `SKIP_TITLES`
 fixture until first saved; `importRoster` reads it through its own db handle (so the
 CLI honors it too) and injects the set into `parseRoster` the same way. The pure seams
-(`normalizeExcludedTitles`, `effectiveExcludedTitles`) and the setting key live in
+(`normalizeTitleList`, `effectiveExcludedTitles`) and the setting key live in
 `position-mapping.ts`; the server accessor is `getExcludedRosterTitles` in
 `settings.ts`. Admin titles (Office/Head Student Supervisor) stay code-side in
 `position-mapping.ts` — deliberately not admin-editable. The importer also stores each
@@ -1206,6 +1206,19 @@ aggregated client-side; toggling weekend exemption and removing an alias confirm
 alongside the existing block-remove and make-alias confirms — 1.02), block add/remove
 (`validateBlockTimes`; referenced blocks refuse delete), and ghost resolution
 (`createPositionForTitle`/`mapTitleToPosition` — mapping row + assign + carry-over).
+**Roster titles are editable per position** (1.30): `setRosterTitles` diffs the card's
+one-per-line box against the stored rows via the pure `diffTitleList`
+(`roster/position-mapping.ts`), deletes what was dropped, upserts what was added (the
+title is the PK, so taking one from another position is an update of that row), and runs
+`moveStudentsWithTitle` per added title — the generalized `assignStudentsForTitle` both
+ghost resolutions now call, which skips students already in the target and records the
+move under the `roster_title_map` change source. **The two halves are deliberately
+asymmetric:** an added title moves its students immediately, a removed one only stops
+steering later imports (students keep the position until an import moves them, the same
+trade `clearAlias` makes). Alias and inactive targets are refused, mirroring the
+ghost-resolution guards. The page derives a `titleOwners` map from
+`AdminPositionItem.rosterTitles` so a card's save confirm can name the position a title
+is being taken from.
 The UI is `/admin/positions` (server page → islands `GhostTitleCard`, `PositionCard`,
 `BlockEditor`, `AddPositionForm`); the block editor parses HH:MM live, re-derives
 Open/Close tags + warnings per keystroke from the pure helpers, and lifts row edits
@@ -1757,6 +1770,13 @@ the list and the number it explains cannot disagree. That grid counts
 auto-assigned weekend cells, so the dialog returns those people too and flags
 them rather than filtering them out. Any change to one query belongs in the
 other.
+
+Each person the current run places here also carries that assignment's `cohort`,
+and the dialog tags it **week A** / **week B** / **every weekend** (1.31;
+`rotationTagStyles` + `ROTATION_TAG_LABEL` in `components/admin/ui.tsx`, colored
+apart because a weekend cell mixes both weeks and its own count already reads
+`a·b`). Only an assignment has a rotation, so somebody who merely offered the
+shift is untagged, and a `weekday` cohort renders nothing.
 
 ### Labor rules, validation, and schedule health (v1.15)
 
