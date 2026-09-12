@@ -64,7 +64,7 @@ export const FLAG_LABELS: Record<DbFlagType, string> = {
   position_change: "Position changed",
   revalidation_failed: "Failed validation",
   student_changed_after_internal_edit: "Changed after adjustment",
-  orphaned_selection: "Shift removed",
+  orphaned_selection: "Unavailable pick",
 };
 
 const KNOWN_FLAGS: readonly FlagFilter[] = ["any", ...(Object.keys(FLAG_LABELS) as DbFlagType[])];

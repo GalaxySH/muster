@@ -680,20 +680,37 @@ columns from the roster.
   `position_change`, `revalidation_failed`, `student_changed_after_internal_edit`,
   `orphaned_selection`),
   `detail`. `position_change` is written on
-  any position modification of a student holding a submission (import, alias switch,
-  ghost resolution; detail carries old/new position + picks kept/dropped) and clears on
+  any position modification of a student holding a submission (import, admin edit, alias
+  switch, ghost resolution; detail carries old/new position, picks moved, picks left
+  behind, and shifts removed) and clears on
   admin dismiss or the student's next save; `revalidation_failed` is owned by the
   generic revalidation seam (`positions/apply-change.ts`) — written whenever a re-run
-  of `validateAvailability` fails **against the student's own rows** (it never
-  describes the internal copy), deleted the moment a validation run passes, never
-  manually dismissed. `student_changed_after_internal_edit` (1.07) is raised by every
+  of `validateAvailability` fails against the **effective** availability (1.29: the
+  internal copy when one exists, the student's own rows otherwise, since the effective
+  layer is the one that gets scheduled), deleted the moment a validation run passes,
+  never manually dismissed. It is re-synced on an internal save, an internal revert, and
+  a student save alike. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
   when the admin re-saves or reverts the internal copy — the reconcile signal that the
   ground truth moved under the scheduler's adjustments. `orphaned_selection` (1.10) is
   owned by the orphan seam (`positions/orphans.ts`) — written whenever a submission holds
   a pick on a shift that is no longer in the student's live block set (§6.2a), deleted
   the moment the last one is cleared, never manually dismissed. It survives a student
-  save, because a student can neither see nor clear an orphaned pick.
+  save, because a student can neither see nor clear an orphaned pick. Two causes, one
+  flag: the admin retired the block, or a position change left the pick on the position
+  the student used to hold (1.29). The grid row says which; the flag copy stays neutral,
+  since only the first of the two is really "gone".
+- **PositionChange** (1.29 — the permanent record of a student's moves): `studentEmail`,
+  `fromPositionId?`/`toPositionId?` with `fromPositionName?`/`toPositionName?` snapshotted
+  beside them, `changedAt`, `changedBy?` (the admin, or whoever ran the import),
+  `source` (`roster_import` | `admin` | `alias` | `ghost_resolution`). Keyed by **email,
+  not submission**, because a position belongs to the person and outlives any one
+  response (a deleted-and-recreated submission must not erase the fact that they moved),
+  and it **accumulates** rather than replacing, unlike the `position_change` flag beside
+  it. The position ids carry **no foreign key** and the names are stored alongside them
+  on purpose: a position can be renamed or deleted later and the history still has to
+  read "Dishwasher to Culinary Assistant", and an FK would add a fifth way for a
+  position delete to refuse (see the FK register in `docs/architecture.md`).
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
   `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
@@ -1530,6 +1547,38 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.29 (2026-09-11)** — **A position change is now an event, not a side effect (§6.2a, §9,
+  §10a).** A student moved from Dishwasher to Culinary Assistant kept her three
+  dishwasher shifts in the current run, because `applyPositionChange` never touched
+  `schedule_assignments`. Nothing read them together: every hours total joins assignments
+  to `shift_blocks` on block id alone and counted them, while every grid renders the
+  student's POSITION's blocks and could not draw them. She read as scheduled for 10.5
+  hours over a visibly empty schedule. The routine also returned early for a student with
+  no submission row, which is exactly what she was at the time (her position changed on a
+  roster import hours before an admin created her submission by writing a note), so not
+  even a flag was raised. Five changes:
+  1. **Shifts are removed, never transferred.** A position change deletes the student's
+     rows from the **current** run only; superseded runs and pinned snapshots stay as the
+     record of what was generated while they held the old position. `submissions.scheduled`
+     is cleared with them, so a marker saying a schedule was built can't outlive it.
+  2. **The history write and the shift removal run for every student**, submission or not.
+     Position and schedule rows hang off the email, so gating them on a submission loses
+     precisely the case that hurts.
+  3. **Picks are preserved, never deleted.** Carry-over still moves a pick onto a
+     time-identical block in the new position; a pick with no counterpart now **stays where
+     it is** instead of being deleted, which makes it an orphan (§6.2a) the admin sees as a
+     read-only struck-through row tagged "old position" and clears deliberately. Only the
+     carry-over's own leftovers go: the originals it re-pointed, and the loser of a
+     same-time collapse (redundant, not orphaned — its hours carried over on another row).
+     `carryOverSelections` reports these as `consumed` and `unmatched` in place of `dropped`.
+  4. **A real flow.** `changeStudentPosition` plus a picker in the Student details card:
+     until now a position could only change as a side effect of a roster import, an alias
+     switch, or a ghost resolution. The card also lists every past move, from the new
+     `position_changes` table.
+  5. **Revalidation judges the effective layer.** `syncRevalidationFlag` now validates the
+     internal copy when one exists (it is what gets scheduled) and fires on internal save,
+     revert, and student save. Previously an admin could save a copy that fails the hard
+     rules via `overrideInvalid` and nothing reported it.
 - **1.28 (2026-09-11)** — **The contact address is configuration, not source (§14).** The
   address student-facing copy names ("If you have questions, contact ...") was a constant
   in `components/evidence/shared.tsx`, which put a real mailbox in every clone of the

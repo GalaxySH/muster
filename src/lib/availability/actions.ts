@@ -45,6 +45,7 @@ import {
 } from "@/lib/db/schema";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 import { requireEditableStudent } from "@/lib/groups/gate";
+import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
@@ -248,6 +249,14 @@ async function writeSelectionAndFlags(
   // the rows as they now stand. Idempotent, and it also self-heals the case
   // where the last orphaned pick has since been cleared.
   await syncOrphanedSelectionFlag(tx, submissionId);
+
+  // Same for revalidation. The blanket delete treats a student save as the
+  // self-heal for revalidation_failed, which is only true when the student's
+  // own rows are what gets validated. Under an internal copy they are not: the
+  // copy is the effective availability, the student cannot touch it, and their
+  // save must not clear a failure that is still there. Recomputing settles both
+  // cases, and costs a no-op when there is no copy and the save was valid.
+  await syncRevalidationFlag(tx, submissionId);
   return autoAssigned;
 }
 
@@ -463,6 +472,11 @@ export async function saveAvailabilityFor(
     // The internal copy can carry orphaned cells of its own, and this save
     // just rewrote its live ones. Keep the flag honest either way.
     await syncOrphanedSelectionFlag(tx, submissionId);
+    // The copy IS the effective availability, so an admin edit changes what
+    // gets validated. It matters most on the `overrideInvalid` path above,
+    // which exists to let an admin save a copy that fails the hard rules on
+    // purpose: without this the failure was saved and never reported.
+    await syncRevalidationFlag(tx, submissionId);
     return auto;
   });
 
@@ -508,6 +522,9 @@ export async function revertInternalAvailability(student: string): Promise<Rever
     // Dropping the copy takes its orphaned cells with it, so the flag may now
     // rest on the student's rows alone, or on nothing at all.
     await syncOrphanedSelectionFlag(tx, sub.id);
+    // Validation falls back to the student's own rows here, which can pass
+    // where the copy failed or fail where it passed.
+    await syncRevalidationFlag(tx, sub.id);
   });
 
   if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);

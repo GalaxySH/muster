@@ -404,8 +404,12 @@ export interface AliasResult extends ActionResult {
   moved: number;
   /** Selection rows carried over across all moved students. */
   kept: number;
-  /** Selection rows dropped across all moved students. */
-  dropped: number;
+  /**
+   * Selection rows left on the source position because the target has no
+   * block at those hours. They are kept, not deleted: each is now an orphan
+   * the admin can see on the student's grid and clear.
+   */
+  preserved: number;
   /** Moved students whose availability now fails validation. */
   failing: number;
   /** W2W position mappings re-pointed at the target along with the students. */
@@ -464,7 +468,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
     error,
     moved: 0,
     kept: 0,
-    dropped: 0,
+    preserved: 0,
     failing: 0,
     remapped: 0,
   });
@@ -499,7 +503,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
 
   let moved = 0;
   let kept = 0;
-  let dropped = 0;
+  let preserved = 0;
   let failing = 0;
   let remapped = 0;
   await db.transaction(async (tx) => {
@@ -518,9 +522,11 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
         email,
         fromPositionId: sourceId,
         toPositionId: targetId,
+        source: "alias",
+        changedBy: gate.email,
       });
       kept += change.carriedOver;
-      dropped += change.dropped;
+      preserved += change.preserved;
       if (change.revalidationFailed) failing += 1;
     }
     moved = affected.length;
@@ -535,7 +541,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
   revalidatePositions();
   revalidateStudentSurfaces();
   if (remapped > 0) revalidateW2wSurfaces();
-  return { ok: true, moved, kept, dropped, failing, remapped };
+  return { ok: true, moved, kept, preserved, failing, remapped };
 }
 
 /**
@@ -736,6 +742,7 @@ async function assignStudentsForTitle(
   tx: DbTx,
   rawTitle: string,
   positionId: string,
+  changedBy: string,
 ): Promise<number> {
   const normalized = normalizeTitle(rawTitle);
   const rows = await tx
@@ -750,7 +757,13 @@ async function assignStudentsForTitle(
   // Set positionId first so the per-student revalidation reads the new position.
   await tx.update(students).set({ positionId }).where(inArray(students.email, matched));
   for (const email of matched) {
-    await applyPositionChange(tx, { email, fromPositionId: null, toPositionId: positionId });
+    await applyPositionChange(tx, {
+      email,
+      fromPositionId: null,
+      toPositionId: positionId,
+      source: "ghost_resolution",
+      changedBy,
+    });
   }
   return matched.length;
 }
@@ -798,7 +811,7 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
       .insert(rosterTitleMappings)
       .values({ title: normalizeTitle(trimmed), positionId: id })
       .onDuplicateKeyUpdate({ set: { positionId: id } });
-    assigned = await assignStudentsForTitle(tx, trimmed, id);
+    assigned = await assignStudentsForTitle(tx, trimmed, id, gate.email);
   });
 
   revalidateGhostSurfaces();
@@ -847,9 +860,102 @@ export async function mapTitleToPosition(
       .insert(rosterTitleMappings)
       .values({ title: normalizeTitle(trimmed), positionId })
       .onDuplicateKeyUpdate({ set: { positionId } });
-    assigned = await assignStudentsForTitle(tx, trimmed, positionId);
+    assigned = await assignStudentsForTitle(tx, trimmed, positionId, gate.email);
   });
 
   revalidateGhostSurfaces();
   return { ok: true, assigned };
+}
+
+export interface ChangeStudentPositionResult extends ActionResult {
+  /** Picks re-pointed onto the new position's time-identical blocks. */
+  carriedOver: number;
+  /** Picks with no counterpart, left in place for the admin to review. */
+  preserved: number;
+  /** Current-run shifts removed, because they were on the old position. */
+  removedShifts: number;
+}
+
+/**
+ * Move ONE student to another position by hand: the flow a job change actually
+ * needs. Until this existed a position could only change as a side effect of a
+ * roster import, an alias switch, or a ghost resolution, so a scheduler told
+ * "she is switching from dishwasher to CA" had nowhere to record it and left a
+ * note in the free-text box instead.
+ *
+ * Everything the change implies is `applyPositionChange`'s job, and it runs in
+ * the same transaction as the `students` write so the two can never diverge:
+ * history, shift removal, carry-over, the scheduled marker, and the flags.
+ */
+export async function changeStudentPosition(
+  email: string,
+  toPositionId: string,
+): Promise<ChangeStudentPositionResult> {
+  const fail = (error: string): ChangeStudentPositionResult => ({
+    ok: false,
+    error,
+    carriedOver: 0,
+    preserved: 0,
+    removedShifts: 0,
+  });
+  const gate = await requireAdmin();
+  if (!gate.ok) return fail(gate.error);
+
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return fail("No student was named.");
+
+  const db = getDb();
+  const [student] = await db
+    .select({ email: students.email, positionId: students.positionId })
+    .from(students)
+    .where(eq(students.email, normalized))
+    .limit(1);
+  if (!student) return fail("That employee is not a known student.");
+  if (student.positionId === toPositionId) return fail("They already hold that position.");
+
+  const [target] = await db
+    .select({
+      id: positions.id,
+      name: positions.name,
+      active: positions.active,
+      mergedIntoId: positions.mergedIntoId,
+    })
+    .from(positions)
+    .where(eq(positions.id, toPositionId))
+    .limit(1);
+  if (!target) return fail("Position not found.");
+  // Both refusals mirror the alias guards: parking a student on a position
+  // nobody schedules into is the problem this is meant to fix, not cause.
+  if (target.mergedIntoId) {
+    return fail(`${target.name} is an alias. Pick the position it points to.`);
+  }
+  if (!target.active) return fail(`${target.name} is inactive. Reactivate it first.`);
+
+  let change = { carriedOver: 0, preserved: 0, removedShifts: 0 };
+  await db.transaction(async (tx) => {
+    // positionId first, so the revalidation inside the routine reads the new
+    // position (the same order the importer and the alias switch use).
+    await tx
+      .update(students)
+      .set({ positionId: toPositionId })
+      .where(eq(students.email, normalized));
+    const result = await applyPositionChange(tx, {
+      email: normalized,
+      fromPositionId: student.positionId,
+      toPositionId,
+      source: "admin",
+      changedBy: gate.email,
+    });
+    change = {
+      carriedOver: result.carriedOver,
+      preserved: result.preserved,
+      removedShifts: result.removedShifts,
+    };
+  });
+
+  revalidatePath(`/admin/students/${encodeURIComponent(normalized)}`);
+  revalidatePath("/admin/responses");
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin");
+  return { ok: true, ...change };
 }

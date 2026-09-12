@@ -1154,13 +1154,46 @@ unreachable min hours via `capacity.ts`), `position-alias.ts` (`resolveAlias`,
 `config/positions.ts` consumer now uses), `listPositionsAdmin` (blocks + reference
 counts), `listGhostTitles` (shared with `roster/status.ts`). The write-side heart is
 `positions/apply-change.ts` (plain server module, CLI-safe): `applyPositionChange(tx,
-{email, from, to})` runs the carry-over inside the caller's transaction (source blocks
-come from the selection rows' own block ids, so a deferred ghost move still carries
-picks when resolved), always writes the `position_change` flag, and calls
-`syncRevalidationFlag(tx, submissionId)` — the **generic revalidation seam** any
-future feature can reuse (mirrors the finalize gate: hard rules + desired-hours;
-upserts/deletes the `revalidation_failed` flag). Callers: the importer, `setAlias`,
-and both ghost resolutions. Mutations are `positions/actions.ts` (admin-gated,
+{email, from, to, source, changedBy})` runs inside the caller's transaction and does
+four things, of which **the first two do not need a submission** (v1.29):
+
+1. Inserts a `position_changes` row. Keyed by email and accumulating, it is the
+   permanent record; the `position_change` flag beside it is the transient marker,
+   replaced each time and dismissable.
+2. Deletes the student's `schedule_assignments` rows from the **current** run
+   (`removeCurrentRunShifts`). Shifts never transfer between positions, and a shift
+   stranded on the old position's block is worse than none: `scheduledMinutesByStudent`,
+   `loadScheduleForRun` and `loadStudentCurrentAssignments` all join assignments to
+   `shift_blocks` on **block id alone** and count it, while every grid renders the
+   student's POSITION's blocks and cannot draw it. That gap is what put a student on
+   10.5 scheduled hours over an empty schedule. Superseded runs and pinned snapshots are
+   deliberately untouched: they record what was generated when the student really did
+   hold that position.
+3. Runs the carry-over (source blocks come from the selection rows' own block ids, so a
+   deferred ghost move still carries picks when resolved) and clears
+   `submissions.scheduled`. Since 1.29 the carry-over **preserves** what it cannot move:
+   `carryOverSelections` returns `consumed` (the originals it re-pointed, plus the loser
+   of a same-time collapse) and `unmatched`, and only `consumed` is deleted, row by row
+   rather than by source block id. An unmatched pick stays on the old position's block
+   and thereby becomes an orphan, which is precisely what makes it visible to the admin.
+4. Calls `syncRevalidationFlag(tx, submissionId)` and `syncOrphanedSelectionFlag`.
+
+`syncRevalidationFlag` is the **generic revalidation seam** any future feature can reuse
+(mirrors the finalize gate: hard rules + desired-hours; upserts/deletes the
+`revalidation_failed` flag). Since 1.29 it judges the **effective** availability, not the
+student's rows: the internal copy when one exists, since that is the layer that actually
+gets scheduled and the layer an admin can break. Reading the copy is allowed here because
+the flag is admin-only; student-facing surfaces still never read it. It is called from
+`saveAvailabilityFor`, `revertInternalAvailability` and `writeSelectionAndFlags` too, so
+an admin saving an invalid copy through `overrideInvalid` no longer passes unreported.
+
+Callers of `applyPositionChange`: the importer (`roster_import`), `changeStudentPosition`
+(`admin`), `setAlias` (`alias`), and both ghost resolutions (`ghost_resolution`).
+`changeStudentPosition` (v1.29) is the per-student flow the app previously lacked
+entirely: before it, a position could only change as a side effect of an import, an alias
+switch, or a ghost resolution, so a scheduler handling a job change had nowhere to record
+it. Its island is `StudentPositionChanger`, in the Student details card next to the
+position history the same card now lists. Mutations are `positions/actions.ts` (admin-gated,
 `ActionResult`): position create/deactivate/delete with reference guards (see
 **Position delete and its foreign keys** below),
 `setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then

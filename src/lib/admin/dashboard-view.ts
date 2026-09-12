@@ -462,16 +462,19 @@ function buildAlerts(
     });
   }
 
-  // Picks left on a shift the admin removed. They are already out of every
-  // calculation, but the response still says the student offered hours they
-  // can't be scheduled for, and only an admin can clear them (PLAN §6.2a).
+  // Picks that can no longer be scheduled: the admin retired the shift, or the
+  // student changed position and the pick belongs to the one they left. Both
+  // are already out of every calculation, but the response still says the
+  // student offered hours nobody can use, and only an admin can clear them
+  // (PLAN §6.2a).
   const orphaned = s.flagCounts.find((f) => f.type === "orphaned_selection")?.count ?? 0;
   if (orphaned > 0) {
     danger.push({
       id: "orphaned-selections",
       severity: "danger",
-      title: `${orphaned} ${plural(orphaned, "response", "responses")} ${plural(orphaned, "has", "have")} picks on a shift that no longer exists.`,
-      detail: "The shift was removed after they picked it. Clear the picks on their response.",
+      title: `${orphaned} ${plural(orphaned, "response", "responses")} ${plural(orphaned, "has", "have")} picks that can't be scheduled.`,
+      detail:
+        "The shift was removed, or they changed position. Clear the picks on their response.",
       href: "/admin/responses?flag=orphaned_selection",
       linkLabel: "Review",
     });

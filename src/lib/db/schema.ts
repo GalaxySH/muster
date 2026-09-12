@@ -33,6 +33,18 @@ export const flagTypeEnum = [
   "orphaned_selection",
 ] as const;
 
+/** What moved a student's position, recorded on every `position_changes` row. */
+export const positionChangeSourceEnum = [
+  /** A roster import listed them under a different title. */
+  "roster_import",
+  /** An admin changed it by hand on the per-student page. */
+  "admin",
+  /** Their old position was declared an alias of another one. */
+  "alias",
+  /** A ghost title finally got a position, which gave it to them. */
+  "ghost_resolution",
+] as const;
+
 /**
  * Any flag type a stored row can carry. A superset of the validation-produced
  * union in domain/validation.ts: position_change, revalidation_failed and
@@ -41,6 +53,9 @@ export const flagTypeEnum = [
  * internal copy exists; none of these come from validateAvailability.
  */
 export type DbFlagType = (typeof flagTypeEnum)[number];
+
+/** What moved a position, as stored. */
+export type PositionChangeSource = (typeof positionChangeSourceEnum)[number];
 
 /** Selectable availability position (PLAN.md §6.1). Editable config. */
 export const positions = mysqlTable("positions", {
@@ -290,6 +305,39 @@ export const flags = mysqlTable("flags", {
     .references(() => submissions.id, { onDelete: "cascade" }),
   type: mysqlEnum("type", flagTypeEnum).notNull(),
   detail: text("detail"),
+});
+
+/**
+ * Every position a student has ever moved between (PLAN.md §9).
+ *
+ * Keyed by EMAIL, not submission: a position belongs to the person, and both
+ * their schedule rows and their roster identity outlive any one submission
+ * (a deleted-and-recreated response must not erase the fact that they changed
+ * jobs). This is the permanent record; the `position_change` flag beside it is
+ * the transient "an admin should look at this" marker, replaced on each change
+ * and dismissable.
+ *
+ * The position ids carry NO foreign key, and the names are snapshotted next to
+ * them on purpose. A position can be deleted or renamed later, and this history
+ * still has to read "Dishwasher to Culinary Assistant"; an FK here would also
+ * add a fifth way for a position delete to refuse (see the FK register in
+ * docs/architecture.md).
+ */
+export const positionChanges = mysqlTable("position_changes", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  studentEmail: varchar("student_email", { length: 255 })
+    .notNull()
+    .references(() => students.email, { onDelete: "cascade" }),
+  /** Null when the student held no position before (a ghost resolution). */
+  fromPositionId: varchar("from_position_id", { length: 64 }),
+  fromPositionName: varchar("from_position_name", { length: 128 }),
+  /** Null when the roster moved them onto a title with no position yet. */
+  toPositionId: varchar("to_position_id", { length: 64 }),
+  toPositionName: varchar("to_position_name", { length: 128 }),
+  changedAt: timestamp("changed_at").notNull().defaultNow(),
+  /** The admin who did it; null for a roster import, which has no actor. */
+  changedBy: varchar("changed_by", { length: 255 }),
+  source: mysqlEnum("source", positionChangeSourceEnum).notNull(),
 });
 
 /** Admin allowlist (PLAN.md §3, §9). */

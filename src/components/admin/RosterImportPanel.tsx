@@ -131,11 +131,22 @@ export function RosterImportPanel() {
   );
 }
 
-/** One line on what the carry-over did for a changed student. */
+/** One line on what the position change did for a student. */
 function describeChangeOutcome(c: PositionChangeSummary): string {
-  if (c.deferred) return "Shift picks unchanged.";
-  const picks = `${c.carriedOver} shift pick${c.carriedOver === 1 ? "" : "s"} kept, ${c.dropped} dropped.`;
-  return c.revalidationFailed ? `${picks} Now fails checks.` : picks;
+  const parts: string[] = [];
+  if (c.deferred) {
+    parts.push("Shift picks unchanged.");
+  } else {
+    parts.push(`${c.carriedOver} shift pick${c.carriedOver === 1 ? "" : "s"} moved over.`);
+    if (c.preserved > 0) {
+      parts.push(`${c.preserved} left on the old position to review.`);
+    }
+  }
+  if (c.removedShifts > 0) {
+    parts.push(`${c.removedShifts} scheduled shift${c.removedShifts === 1 ? "" : "s"} removed.`);
+  }
+  if (c.revalidationFailed) parts.push("Now fails checks.");
+  return parts.join(" ");
 }
 
 function SummaryReport({ summary }: { summary: ImportSummary }) {
