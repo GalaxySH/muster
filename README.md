@@ -8,7 +8,7 @@ Students sign in with their wisc.edu Google account and fill out a guided form: 
 
 From those responses Muster also generates a **recommended** schedule for the scheduler to work from, advisory and admin-only, which students never see. Muster does not interface with WhenToWork, the human scheduler still enters the schedule in W2W by hand. Muster replaces the collection step that used to happen over email and spreadsheets.
 
-[!demo image](demo.png)
+![demo image](demo.png)
 
 ## Before you start
 
