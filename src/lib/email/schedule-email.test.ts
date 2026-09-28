@@ -26,8 +26,8 @@ const bare: ScheduleEmailVars = {
   first_shift_time: "",
 };
 const shifts: ShiftSpan[] = [
-  { day: "tue", start: 20 * 60 + 30, end: 23 * 60 },
-  { day: "mon", start: 17 * 60 + 45, end: 21 * 60 + 30 },
+  { day: "tue", start: 20 * 60 + 30, end: 23 * 60, cohort: "weekday" },
+  { day: "mon", start: 17 * 60 + 45, end: 21 * 60 + 30, cohort: "weekday" },
 ];
 
 describe("renderScheduleEmail with the default template", () => {

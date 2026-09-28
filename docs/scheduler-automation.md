@@ -218,9 +218,9 @@ These override the proposal above wherever the two differ.
 2. **Sending marks the student scheduled.** A toggle controls this, on by default.
    It sits inside the schedule-email card on `/admin/email-settings`.
 3. **The start date is a template variable** (`start_date`), picked with a date input
-   in the confirmation dialog. It defaults to **the Sunday of next week**. We read
-   that as the next Sunday after today, so on Monday 9/28 it's Sunday 10/4, and on a
-   Sunday it's the following Sunday. This needs confirming.
+   in the confirmation dialog. It defaults to **the next Sunday after today**, rolling
+   week to week (confirmed: on Monday 9/28 that's Sunday 10/4; on a Sunday it's the
+   following Sunday).
 4. **Never send a test to the cc group.** Someone checks the group's "Who can post"
    setting in Google Groups instead of test-sending. The allowlist guard and "Send a
    test to me" never include the cc address.
@@ -241,14 +241,13 @@ These override the proposal above wherever the two differ.
    evaluated and passed over.
 8. **Schedule in the email:** an HTML table, not a rendered image. `schedule_table` is two
    columns (Day, Shift times) and `schedule_list` is one line per day, both from the
-   current run, with no weekend rotation and no dates. There is no separate checkbox:
-   the template decides whether they appear.
+   current run. Weekend shifts show their rotation letter (A, B, or E for every
+   weekend) with no explanation, and there are no dates. There is no separate
+   checkbox: the template decides whether they appear.
 9. **Cross-over paragraph:** tied to the `crossover` variable, set by a dialog checkbox
    that is off by default.
 
 ### Open questions
 
-- Is "the Sunday of next week" the next upcoming Sunday (10/4 from Monday 9/28), or
-  the Sunday that ends next week (10/11)?
 - The from name and local part still apply to this email only. The magic-link mail
   and the digest keep `EMAIL_FROM`. Confirm this is right.

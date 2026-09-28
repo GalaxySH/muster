@@ -1,9 +1,11 @@
 /**
  * The student's shifts for the schedule email: one entry per day with that
  * day's shift times, as an email-safe HTML table and as a plain list. Built
- * from the current run's rows. Deliberately minimal: no weekend rotation and
- * no dates. Overlapping or back-to-back shifts on a day merge into one span,
- * the way the rest of the app counts them (domain/intervals.ts).
+ * from the current run's rows. Deliberately minimal: a weekend shift carries
+ * its rotation letter (A, B, or E for every weekend) with no explanation, and
+ * nothing carries a date. Overlapping or back-to-back shifts on a day merge
+ * into one span, the way the rest of the app counts them (domain/intervals.ts),
+ * but only within one rotation, so an A shift and a B shift stay apart.
  */
 import { mergeRanges } from "@/lib/domain/intervals";
 import type { Day } from "@/lib/domain/types";
@@ -13,7 +15,11 @@ export interface ShiftSpan {
   /** Minutes since midnight. */
   start: number;
   end: number;
+  /** The run's cohort: "weekday", or a weekend rotation "a", "b" or "every". */
+  cohort: string;
 }
+
+const ROTATION_LETTER: Record<string, string> = { a: "A", b: "B", every: "E" };
 
 const DAY_ORDER: Day[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_NAME: Record<Day, string> = {
@@ -33,15 +39,29 @@ export function formatClock(minutes: number): string {
   return `${h12}:${String(minutes % 60).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
 }
 
-/** Each working day, Monday first, with its merged shift times ("6:15 AM to 10:00 AM"). */
+/**
+ * Each working day, Monday first, with its merged shift times in start order:
+ * "6:15 AM to 10:00 AM", or "8:30 AM to 11:00 AM (A)" on a rotating weekend.
+ */
 export function shiftsByDay(shifts: readonly ShiftSpan[]): { day: string; times: string[] }[] {
   return DAY_ORDER.flatMap((day) => {
-    const spans = mergeRanges(shifts.filter((s) => s.day === day));
+    const onDay = shifts.filter((s) => s.day === day);
+    const spans = [...new Set(onDay.map((s) => s.cohort))]
+      .flatMap((cohort) =>
+        mergeRanges(onDay.filter((s) => s.cohort === cohort)).map((r) => ({
+          ...r,
+          letter: ROTATION_LETTER[cohort],
+        })),
+      )
+      .sort((x, y) => x.start - y.start);
     if (spans.length === 0) return [];
     return [
       {
         day: DAY_NAME[day],
-        times: spans.map((s) => `${formatClock(s.start)} to ${formatClock(s.end)}`),
+        times: spans.map(
+          (s) =>
+            `${formatClock(s.start)} to ${formatClock(s.end)}${s.letter ? ` (${s.letter})` : ""}`,
+        ),
       },
     ];
   });

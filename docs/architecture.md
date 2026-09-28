@@ -1119,7 +1119,8 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   empty paragraphs) and the plain-text part (`sanitize-html` with no tags, then
   `entities` decoding). Only after sanitizing are the placeholders replaced: the table
   (`lib/email/schedule-table.ts`: Day and Shift times, Monday first, overlaps merged with
-  `mergeRanges`, no rotation or dates) in the HTML, the list in the text. The generated
+  `mergeRanges` within each rotation, weekend times suffixed "(A)", "(B)" or "(E)", no
+  dates) in the HTML, the list in the text. The generated
   markup never passes through the author allowlist, and the allowlist never needs table
   tags. The dialog and settings previews render `html` with `dangerouslySetInnerHTML`,
   which is safe because of that order.

@@ -151,7 +151,8 @@ export const SCHEDULE_EMAIL_VARIABLES: { name: string; about: string }[] = [
   },
   {
     name: "schedule_table",
-    about: "Their shifts as a table of days and times. Blank when they have none.",
+    about:
+      "Their shifts as a table of days and times, with A, B or E on weekend shifts. Blank when they have none.",
   },
   {
     name: "schedule_list",
@@ -189,10 +190,10 @@ export const SAMPLE_VARS: ScheduleEmailVars = {
 
 /** Shifts used for the settings preview and for checking a template on save. */
 export const SAMPLE_SHIFTS: ShiftSpan[] = [
-  { day: "mon", start: 375, end: 600 },
-  { day: "wed", start: 870, end: 1020 },
-  { day: "wed", start: 1005, end: 1170 },
-  { day: "sat", start: 570, end: 750 },
+  { day: "mon", start: 375, end: 600, cohort: "weekday" },
+  { day: "wed", start: 870, end: 1020, cohort: "weekday" },
+  { day: "wed", start: 1005, end: 1170, cohort: "weekday" },
+  { day: "sat", start: 570, end: 750, cohort: "a" },
 ];
 
 // Templates never read files: `include`, `render` and `layout` hit this and fail.

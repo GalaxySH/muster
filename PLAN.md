@@ -239,8 +239,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   (suggestable from the current run's weekday rows). Cross-over shifts can't be
   represented in a run, so those are always typed. The student's **current-run shifts**
   are available as `schedule_table` (two columns, Day and Shift times, one row per day
-  with overlapping shifts merged) and `schedule_list` (one line per day); neither shows
-  weekend rotation or dates. They are shown in the dialog preview, so each send is the
+  with overlapping shifts merged) and `schedule_list` (one line per day); weekend
+  shifts carry their rotation letter (A, B, or E for every weekend) with no
+  explanation, and nothing carries a date. They are shown in the dialog preview, so each send is the
   scheduler confirming those shifts for that student. The template is **Liquid**
   (`liquidjs`, no file access, strict variables, `outputEscape` so every value is
   HTML-escaped, checked on save) and may use `<b> <i> <u> <mark>` (plus `<strong>`,
@@ -1580,7 +1581,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   first-shift time (suggested from the current run's weekday rows), a live preview, and
   a default-on **Also send to** the cc email. The template can show the student's
   current-run shifts through `schedule_table` (Day and Shift times) or `schedule_list`,
-  built by the app and inserted after sanitizing, with no rotation letters or dates. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so
+  built by the app and inserted after sanitizing, with weekend rotation letters (A/B/E)
+  and no dates. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so
   roadmap 6.1 step two is cancelled; no migration) and, with the setting on, marks the
   student scheduled. `/admin/email-settings` gains a **Schedule email** card: a Liquid
   template (`liquidjs`; no file includes; strict variables and filters; every value
