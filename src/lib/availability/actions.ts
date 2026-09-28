@@ -29,6 +29,10 @@
  * flags are never modified by an admin edit, and scheduling surfaces read the
  * internal copy in its place (lib/availability/effective.ts). The student
  * save path below stays exactly as it was.
+ *
+ * `saveDesiredHoursFor` and `saveStudentNotesFor` are the exceptions: the
+ * response page edits those two answers in place, on the student's own
+ * submission row, since there is no internal copy of either.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
@@ -529,6 +533,93 @@ export async function revertInternalAvailability(student: string): Promise<Rever
 
   if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
   revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
+  return { ok: true };
+}
+
+export interface AdminAnswerResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Write one admin edit straight onto a student's own submission row, starting
+ * a stub draft when there is none (it never promotes, same as every admin
+ * write). Deliberately leaves `updated_at` alone: that column means the
+ * student last changed their answers (PLAN §9), and they didn't.
+ *
+ * Desired hours is one of the checks behind `revalidation_failed`, so an edit
+ * to it re-syncs that flag. A stub this call just created has nothing to
+ * revalidate yet, so it is skipped there.
+ */
+async function writeAnswerFor(
+  email: string,
+  patch: { desiredHours: number | null } | { studentNotes: string | null },
+): Promise<void> {
+  const db = getDb();
+  const [existing] = await db
+    .select({ id: submissions.id, status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.studentEmail, email))
+    .limit(1);
+  const submissionId = existing?.id ?? (await ensureSubmissionId(email));
+
+  await db.transaction(async (tx) => {
+    await tx.update(submissions).set(patch).where(eq(submissions.id, submissionId));
+    if (existing && "desiredHours" in patch) await syncRevalidationFlag(tx, submissionId);
+  });
+
+  // Both answers are columns in the export, so a real response keeps the
+  // running sheet fresh.
+  if (existing?.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
+  revalidatePath("/admin/responses");
+}
+
+/**
+ * Admin: set a student's desired weekly hours from the response page. Owner
+ * decision: this overwrites the student's own answer (there is no internal
+ * copy of it). A number must be whole and pass the same floor check the
+ * student form runs (`checkDesiredHours`); null clears the answer.
+ */
+export async function saveDesiredHoursFor(
+  student: string,
+  hours: number | null,
+): Promise<AdminAnswerResult> {
+  if (!student.trim()) return { ok: false, error: "No student was named." };
+  const gate = await requireEditableStudent(student);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!gate.positionId) return { ok: false, error: "No position is set for this student." };
+
+  if (hours !== null) {
+    if (!Number.isInteger(hours)) return { ok: false, error: "Enter a whole number of hours." };
+    const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
+    if (!posWithBlocks) {
+      return { ok: false, error: "This student's position configuration is missing." };
+    }
+    const { position } = posWithBlocks;
+    if (!checkDesiredHours(hours, position).passed) {
+      return { ok: false, error: `Must be at least ${position.minHours}h.` };
+    }
+  }
+
+  await writeAnswerFor(gate.email, { desiredHours: hours });
+  return { ok: true };
+}
+
+/**
+ * Admin: rewrite the student's own note from the availability form. Trimmed
+ * and stored empty as null, exactly as the student's save does; the form sets
+ * no length limit, so neither does this.
+ */
+export async function saveStudentNotesFor(
+  student: string,
+  notes: string,
+): Promise<AdminAnswerResult> {
+  if (!student.trim()) return { ok: false, error: "No student was named." };
+  const gate = await requireEditableStudent(student);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  await writeAnswerFor(gate.email, { studentNotes: notes.trim() || null });
   return { ok: true };
 }
 

@@ -239,6 +239,26 @@ race) before calling `runChangeDigest`, so two processes on one DB cannot double
 the route refuses; docs/deploy.md §7).
 The shared `DAY_LABEL` map now lives in `domain/types.ts` (grids, exports, emails).
 
+**A request can span several days, and admins can edit or delete one (1.33).** The day
+column takes `multiple` as well as a weekday (migration 0035; `changeRequestDayEnum` in
+the schema, `ChangeRequestDay` + `CHANGE_REQUEST_DAYS` in `domain/change-requests.ts`),
+and every list, the queue, and the digest print it through `changeRequestDayLabel`
+("Multiple days"). The form opens on **Multiple** (`CHANGE_REQUEST_DAY_OPTIONS` puts it
+first). Under the shift-time box sits a row of **quick-insert pills**, one per distinct
+shift span of the targeted person's position: the pure `shiftTimeOptions(blocks, day)`
+filters by day type (Multiple shows both), dedupes identical spans, and labels them with
+`formatSpan`; `insertShiftTime` fills or appends (", "-joined, never twice). The page
+passes the initial target's blocks (the `?student=` employee, else the signed-in user);
+picking another employee fetches theirs through the admin-gated `adminShiftTimeBlocks`,
+which returns only `dayType/start/end`. On the per-student page each request row carries
+**Edit** and **Delete** (`components/admin/ChangeRequestEntryActions.tsx`, modeled on
+`TravelEntryActions`) over `updateChangeRequest` (day, shift, comment, permanent through
+`validateChangeRequest`; status and the digest stamp untouched) and `deleteChangeRequest`
+(the row goes, its file rows cascade, then each Drive proof is `relayDelete`d best-effort,
+the same order as `removeTravelRequest`). The row itself is two compact lines: day and
+shift (wrapping anywhere) with the status badge and resolved checkbox pinned right, then a
+small "permanent / one time · stamp · Edit Delete" line, then the comment.
+
 ## Edit-window enforcement (PLAN §13)
 
 Gates the student form on **admin-configured student groups** with open/close
@@ -375,8 +395,9 @@ opens; the trigger stops the click reaching the row, and `Modal`'s overlay does 
 for the click that dismisses it, so neither navigates. `StudentScheduleModalLink` no
 longer styles its own trigger (its two call sites do), which is what lets one component
 serve an underlined count and an icon button. The
-Travel and Extracurriculars cards each carry an **Add** link (`AddEvidenceButton`, v0.67)
-that writes through the student evidence actions; travel entries additionally carry
+Travel and Extracurriculars cards carry an `AddEvidenceButton` link (v0.67; **Add** on
+travel, **Edit** on extracurriculars since 1.33) that writes through the student evidence
+actions; travel entries additionally carry
 **Edit** and **Remove** (`TravelEntryActions`, 1.23), through `updateTravelRequest` and
 the existing `removeTravelRequest` on the same on-behalf seam. Editing covers the dates
 and the note only: the proof is the evidence for the trip and `excused` records how the
@@ -409,9 +430,9 @@ avatar** beside it, so the avatar remains the tallest element and the bar keeps 
 height it had when it showed one timestamp — if you change the font size, line height, or
 padding, re-measure. And the old header fell back to `updatedAt` when `submittedAt` was
 null, which labelled an edit time as a submit time; the stamps are now distinct fields
-and never substitute for each other. `fmtStamp` is the compact one-line form of
-`fmtDate` (same US Central rendering, seconds dropped). The client
-islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
+and never substitute for each other. `fmtStamp` is the page's one timestamp format
+(US Central, seconds dropped; the change-request rows use it too since 1.33). The client
+islands are `MarkScheduledButton`, `NotesCard`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
 both through the `/api/evidence/[fileId]` proxy), `PrefGridCalculator`, and `JumpMenu`
 (the header name → responder-list disclosure; a client wrapper around the native
@@ -523,6 +544,43 @@ no submission, since an admin can assign closes before the lead ever opens the f
 New admin pages: `/admin/travel` (2.3); `/admin/schedule-email` (2.4) was added here
 too and removed in 0.99 (roadmap 6.1). Wireframe design tokens (`--color-*`,
 `--border-radius-*`) live in `globals.css`.
+
+### Every answer is editable on the per-student page (1.33)
+
+The per-student page lets the scheduler change anything the student's form collects,
+never requiring an upload (the evidence and change-request sections above cover those
+cards). The rest:
+
+- **Requested hours.** The number in the REQUESTED tile is `RequestedHoursEditor`: a
+  plain-looking button (dotted underline and faint fill on hover or focus, title "Click to
+  edit") that turns into a number box; Enter or blur saves, Escape cancels, an empty box
+  clears the answer. `saveDesiredHoursFor` in `availability/actions.ts` **overwrites
+  `submissions.desired_hours`** (owner's call: this is not part of the 1.07 internal copy),
+  validates through the same `checkDesiredHours` floor as the student form plus a
+  whole-number check, re-syncs `revalidation_failed`, and never moves `updated_at`.
+- **Notes.** Scheduling notes and student notes are one component, `NotesCard`
+  (`kind: "scheduling" | "student"`): the full text as `pre-wrap` paragraphs (never a
+  text box, never truncated; "No notes." when empty), edited in a modal opened by the
+  header's **Edit** or a **double-click** on the text. Scheduling notes save through
+  `saveSchedulerNotes` (`lib/admin/actions.ts`), student notes through
+  `saveStudentNotesFor`, which has the same gating and stamp rule as desired hours.
+  Both of those availability actions share a private `writeAnswerFor` (gate via `requireEditableStudent`,
+  `ensureSubmissionId`, responses-sheet refresh when submitted, revalidate).
+- **Group.** `StudentGroupChanger` sits under the position changer: a select defaulting to
+  the student's group (`StudentDetail.groupId`) plus "No group", saved through the
+  existing `assignStudents` / `unassignStudents`.
+- **Coverage is a card like the rest.** The position's coverage grid moved from a
+  full-width panel under the dashboard into the masonry as its last card;
+  `CoverageGrid`'s opt-in `stacked` prop stacks Weekdays over Weekends so they fit a
+  column, each table scrolling sideways inside the card. `/admin/schedule` keeps the
+  side-by-side default.
+- **Availability and schedule card.** It opens on **Edit schedule** whenever a current
+  run exists (the tab is disabled otherwise, so Edit preferences stays the fallback). In
+  Edit preferences a read-only chip beside the rotation pill ("Sched A", "Sched B",
+  "Sched E") shows the week the **saved** run puts the student's weekend on
+  (`scheduleCohort`), so the answer is visible without switching tabs; it is a
+  `role="note"` span, not a control, and it is absent in Edit schedule and when the run
+  gives them no weekend.
 
 ## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
 
@@ -758,6 +816,17 @@ for an untouched input ("The file is empty."). The null is carried as **null**, 
 empty-string stand-in, because `EvidenceThumb` would otherwise link `/api/evidence/` and
 the export would emit `.../file/d//view`; `TravelEntry.proofFileId` is `string | null` and
 the guards live at each render and export site, with `relayDelete` skipped on removal.
+
+**No admin edit needs an upload (1.33).** The extracurricular header link reads **Edit**:
+the modal's proof field is optional for the admin, so saving with no file only calls
+`saveExtracurricularNotes` (and nothing at all when the details are unchanged), while a
+file still goes through `addExtracurricularFile`, which keeps requiring one server-side.
+Each extracurricular proof and an on-file course schedule get a **Remove**
+(`RemoveEvidenceButton`, confirm first) over `removeExtracurricularFile` and the new
+`removeCourseSchedule`. The latter is **admin-only**: the schedule is required of
+students, and their page offers only Replace, so a student call is refused rather than
+letting a submitted response lose a required item. The course schedule stays image-only
+(no text stand-in); travel was already proof-optional for admins.
 `collectSubmissionDriveFileIds` already dropped falsy ids, so the proxy gate needed no
 change.
 

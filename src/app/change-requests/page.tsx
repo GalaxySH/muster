@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { listChangeRequests } from "@/lib/changes/data";
+import { loadPositionWithBlocks } from "@/lib/availability/data";
 import {
   ChangeRequestsPanel,
   type ChangeRequestsAdminProps,
@@ -37,17 +38,22 @@ export default async function ChangeRequestsPage({
   // Admins get the on-behalf employee field, optionally pre-seeded by the
   // quick link on the per-student admin page (?student=email).
   let admin: ChangeRequestsAdminProps | undefined;
+  let target: typeof student = null;
   if (session.isAdmin) {
     const { student: studentParam } = await searchParams;
-    const target = studentParam ? await findStudentByEmail(studentParam) : null;
+    target = studentParam ? await findStudentByEmail(studentParam) : null;
     admin = {
       initialEmployee: target ? { email: target.email, displayName: target.displayName } : null,
       selfEmail: student?.email ?? null,
     };
   }
 
-  const listEmail = admin?.initialEmployee?.email ?? student?.email ?? null;
-  const requests = listEmail ? await listChangeRequests(listEmail) : [];
+  // The form starts out acting for the pre-seeded employee, else the signer.
+  const formFor = target ?? student;
+  const requests = formFor ? await listChangeRequests(formFor.email) : [];
+  // Its position's shift times become the quick inserts under the shift time box.
+  const loaded = formFor?.positionId ? await loadPositionWithBlocks(formFor.positionId) : null;
+  const blocks = (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));
 
   return (
     <Page>
@@ -83,7 +89,7 @@ export default async function ChangeRequestsPage({
       <p style={{ color: "#555" }}>
         If your request is for a non-permanent change, put the specific date in the description.
       </p>
-      <ChangeRequestsPanel initial={requests} admin={admin} />
+      <ChangeRequestsPanel initial={requests} initialBlocks={blocks} admin={admin} />
     </Page>
   );
 }

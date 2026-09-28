@@ -8,7 +8,7 @@ import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestR
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { ShowResolvedToggle } from "@/components/admin/ShowResolvedToggle";
 import { ChangeRequestsEnabledToggle } from "@/components/admin/ChangeRequestsEnabledToggle";
-import { DAY_LABEL } from "@/lib/domain/types";
+import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import { getChangeRequestsEnabled } from "@/lib/settings";
 import { Page } from "@/components/ui";
 
@@ -73,7 +73,7 @@ export default async function AdminChangeRequestsPage({
                   <span style={{ fontWeight: 600 }}>{r.studentName}</span>
                   <span style={{ color: "var(--color-text-secondary)" }}>
                     {" "}
-                    {r.studentEmail} · {DAY_LABEL[r.day]} · {r.shiftText} ·{" "}
+                    {r.studentEmail} · {changeRequestDayLabel(r.day)} · {r.shiftText} ·{" "}
                     {r.permanent ? "permanent" : "one time"}
                   </span>
                 </div>

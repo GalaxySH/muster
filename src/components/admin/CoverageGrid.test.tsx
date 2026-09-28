@@ -69,6 +69,28 @@ describe("CoverageGrid", () => {
     expect(cellOf(weekendTable(), "Sat")).toHaveTextContent("2·1/2");
   });
 
+  /** The flex box holding both day-type tables: table → scroll wrapper → layout. */
+  const layoutOf = () => weekdayTable().parentElement!.parentElement!;
+
+  it("sets the two tables side by side by default", () => {
+    render(<CoverageGrid rows={rows()} assignedCells={null} />);
+    expect(layoutOf()).not.toHaveStyle({ flexDirection: "column" });
+    expect(layoutOf()).toHaveStyle({ flexWrap: "wrap" });
+  });
+
+  it("stacks weekdays above weekends when asked, each table scrolling on its own", () => {
+    render(<CoverageGrid rows={rows()} assignedCells={null} stacked />);
+    expect(layoutOf()).toHaveStyle({ flexDirection: "column" });
+    expect(weekendTable().parentElement!.parentElement).toBe(layoutOf());
+    const headings = within(layoutOf())
+      .getAllByRole("heading")
+      .map((h) => h.textContent);
+    expect(headings).toEqual(["Weekdays", "Weekends"]);
+    for (const table of [weekdayTable(), weekendTable()]) {
+      expect(table.parentElement).toHaveStyle({ overflowX: "auto" });
+    }
+  });
+
   it("says so when the position has no blocks", () => {
     render(<CoverageGrid rows={[]} assignedCells={null} />);
     expect(screen.getByText("No blocks configured.")).toBeInTheDocument();

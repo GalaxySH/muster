@@ -1,0 +1,1 @@
+ALTER TABLE `change_requests` MODIFY COLUMN `day` enum('mon','tue','wed','thu','fri','sat','sun','multiple') NOT NULL;

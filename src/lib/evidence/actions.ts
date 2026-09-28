@@ -7,8 +7,9 @@
  * image bytes to the app's storage.
  *
  * Every action also runs for an admin acting **on behalf of** a student (the
- * target email rides in the FormData `student` field, or a second argument for
- * the ones that don't take FormData); `requireEditableStudent` admin-gates it.
+ * target email rides in the FormData `student` field, or an argument for the
+ * ones that don't take FormData); `requireEditableStudent` admin-gates it.
+ * `removeCourseSchedule` runs only that way.
  * Only the student's own path stamps `updated_at` (see `editStamp`): that column
  * answers "when did the student last change their answers", so an admin filling
  * something in for them must not disturb it.
@@ -121,6 +122,34 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
   } catch (e) {
     return { ok: false, error: relayError(e) };
   }
+}
+
+/**
+ * Admin only. The course schedule is required of students, so their own page
+ * offers Replace and never an empty slot; clearing one (say, a schedule filed
+ * under the wrong person) is the scheduler's call on the response page.
+ */
+export async function removeCourseSchedule(onBehalfOf?: string): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf);
+  if ("error" in who) return { ok: false, error: who.error };
+  if (!who.onBehalf) return { ok: false, error: "Only an admin can remove a course schedule." };
+
+  const db = getDb();
+  const submissionId = await ensureSubmissionId(who.email);
+  const [row] = await db
+    .select({ courseScheduleFileId: submissions.courseScheduleFileId })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1);
+  if (!row?.courseScheduleFileId) return { ok: false, error: "No course schedule is on file." };
+
+  await db
+    .update(submissions)
+    .set({ courseScheduleFileId: null, ...editStamp(who) })
+    .where(eq(submissions.id, submissionId));
+  await relayDelete(row.courseScheduleFileId);
+  revalidateEvidence("/course-schedule", who);
+  return { ok: true };
 }
 
 export async function addExtracurricularFile(formData: FormData): Promise<ActionResult> {

@@ -23,10 +23,10 @@ vi.mock("@/lib/settings", () => ({
 import { getTableName, type Table } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { requireEditableStudent } from "@/lib/groups/gate";
-import { relayUpload } from "@/lib/drive/relay";
+import { relayDelete, relayUpload } from "@/lib/drive/relay";
 import { getLateTravelPolicy, getTravelCutoff } from "@/lib/settings";
 import { ensureSubmissionId } from "./data";
-import { addTravelRequest } from "./actions";
+import { addTravelRequest, removeCourseSchedule } from "./actions";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
@@ -43,10 +43,11 @@ interface QueryChain {
 /**
  * Stand-in for the drizzle handle: enough of the builder chain to answer the
  * entry-count read, keyed by the table it selects FROM, plus a log of every row
- * this action tried to insert.
+ * this action tried to insert and every column set it tried to update.
  */
 function fakeDb(rows: Record<string, unknown[]>) {
   const inserts: { table: string; values: Record<string, unknown> }[] = [];
+  const updates: { table: string; values: Record<string, unknown> }[] = [];
   const select = (): QueryChain => {
     let table = "";
     const chain: QueryChain = {
@@ -67,16 +68,22 @@ function fakeDb(rows: Record<string, unknown[]>) {
         inserts.push({ table: nameOf(t), values });
       },
     }),
-    update: () => ({ set: () => ({ where: async () => {} }) }),
+    update: (t: unknown) => ({
+      set: (values: Record<string, unknown>) => ({
+        where: async () => {
+          updates.push({ table: nameOf(t), values });
+        },
+      }),
+    }),
     delete: () => ({ where: async () => {} }),
   };
-  return { db, inserts };
+  return { db, inserts, updates };
 }
 
 function useDb(rows: Record<string, unknown[]> = { travel_requests: [{ n: 0 }] }) {
-  const { db, inserts } = fakeDb(rows);
+  const { db, inserts, updates } = fakeDb(rows);
   vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
-  return inserts;
+  return { inserts, updates };
 }
 
 const STUDENT = "stu@wisc.edu";
@@ -127,7 +134,7 @@ beforeEach(() => {
 describe("addTravelRequest proof rule", () => {
   it("lets an admin record an entry with no proof at all", async () => {
     asAdminFor();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm());
 
@@ -143,7 +150,7 @@ describe("addTravelRequest proof rule", () => {
 
   it("treats an untouched file input as no proof for an admin", async () => {
     asAdminFor();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm(emptyFile()));
 
@@ -154,7 +161,7 @@ describe("addTravelRequest proof rule", () => {
 
   it("still relays the proof when an admin attaches one", async () => {
     asAdminFor();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm(pngFile()));
 
@@ -165,7 +172,7 @@ describe("addTravelRequest proof rule", () => {
 
   it("refuses a student who attached nothing", async () => {
     asStudent();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm());
 
@@ -176,7 +183,7 @@ describe("addTravelRequest proof rule", () => {
 
   it("refuses a student whose file input was left empty", async () => {
     asStudent();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm(emptyFile()));
 
@@ -186,11 +193,68 @@ describe("addTravelRequest proof rule", () => {
 
   it("still accepts a student who attached one", async () => {
     asStudent();
-    const inserts = useDb();
+    const { inserts } = useDb();
 
     const res = await addTravelRequest(travelForm(pngFile()));
 
     expect(res).toEqual({ ok: true });
     expect(inserts[0]!.values.proofFileId).toBe("DRIVE1");
+  });
+});
+
+describe("removeCourseSchedule", () => {
+  it("clears the schedule and deletes its Drive file for an admin", async () => {
+    asAdminFor();
+    const { updates } = useDb({ submissions: [{ courseScheduleFileId: "COURSE1" }] });
+
+    const res = await removeCourseSchedule(STUDENT);
+
+    expect(res).toEqual({ ok: true });
+    expect(updates).toEqual([{ table: "submissions", values: { courseScheduleFileId: null } }]);
+    expect(relayDelete).toHaveBeenCalledWith("COURSE1");
+  });
+
+  it("leaves updated_at alone, since the student changed nothing", async () => {
+    asAdminFor();
+    const { updates } = useDb({ submissions: [{ courseScheduleFileId: "COURSE1" }] });
+
+    await removeCourseSchedule(STUDENT);
+
+    expect(updates[0]!.values).not.toHaveProperty("updatedAt");
+  });
+
+  it("says so when there is nothing to remove", async () => {
+    asAdminFor();
+    const { updates } = useDb({ submissions: [{ courseScheduleFileId: null }] });
+
+    const res = await removeCourseSchedule(STUDENT);
+
+    expect(res).toEqual({ ok: false, error: "No course schedule is on file." });
+    expect(updates).toHaveLength(0);
+    expect(relayDelete).not.toHaveBeenCalled();
+  });
+
+  it("refuses a student clearing their own", async () => {
+    asStudent();
+    const { updates } = useDb({ submissions: [{ courseScheduleFileId: "COURSE1" }] });
+
+    const res = await removeCourseSchedule();
+
+    expect(res.ok).toBe(false);
+    expect(updates).toHaveLength(0);
+    expect(relayDelete).not.toHaveBeenCalled();
+  });
+
+  it("passes the gate's refusal through", async () => {
+    vi.mocked(requireEditableStudent).mockResolvedValue({
+      ok: false,
+      error: "Only admins can fill in the form for someone else.",
+    });
+    const { updates } = useDb({ submissions: [{ courseScheduleFileId: "COURSE1" }] });
+
+    const res = await removeCourseSchedule(STUDENT);
+
+    expect(res).toEqual({ ok: false, error: "Only admins can fill in the form for someone else." });
+    expect(updates).toHaveLength(0);
   });
 });

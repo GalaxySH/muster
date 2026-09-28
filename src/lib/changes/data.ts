@@ -8,14 +8,13 @@ import "server-only";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { changeRequestFiles, changeRequests, students } from "@/lib/db/schema";
-import { CHANGE_REQUEST_WINDOW_MS } from "@/lib/domain/change-requests";
-import type { Day } from "@/lib/domain/types";
+import { CHANGE_REQUEST_WINDOW_MS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 
 export type ChangeRequestStatus = "open" | "withdrawn" | "resolved";
 
 export interface ChangeRequestRow {
   id: string;
-  day: Day;
+  day: ChangeRequestDay;
   shiftText: string;
   comment: string;
   permanent: boolean;
@@ -91,7 +90,7 @@ export interface AdminChangeRequest {
   id: string;
   studentEmail: string;
   studentName: string;
-  day: Day;
+  day: ChangeRequestDay;
   shiftText: string;
   comment: string;
   permanent: boolean;

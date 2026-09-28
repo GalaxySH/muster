@@ -4,14 +4,14 @@
  * per-student view (anchored to the request). No I/O; `./digest.ts` feeds it
  * the pending batch and the base URL.
  */
-import { DAY_LABEL, type Day } from "@/lib/domain/types";
+import { changeRequestDayLabel, type ChangeRequestDay } from "@/lib/domain/change-requests";
 import { changeRequestAdminPath } from "./links";
 
 export interface DigestEmailRequest {
   id: string;
   studentName: string;
   studentEmail: string;
-  day: Day;
+  day: ChangeRequestDay;
   shiftText: string;
   comment: string;
   permanent: boolean;
@@ -53,7 +53,7 @@ export function buildChangeDigestEmail(
     const name = list[0]!.studentName;
     const link = (r: DigestEmailRequest) => `${baseUrl}${changeRequestAdminPath(email, r.id)}`;
     const lines = list.map(
-      (r) => `- ${DAY_LABEL[r.day]} ${r.shiftText} (${kindLabel(r)}): ${r.comment}\n  ${link(r)}`,
+      (r) => `- ${changeRequestDayLabel(r.day)} ${r.shiftText} (${kindLabel(r)}): ${r.comment}\n  ${link(r)}`,
     );
     textBlocks.push(`${name} (${email})\n${lines.join("\n")}`);
     htmlBlocks.push(
@@ -61,7 +61,7 @@ export function buildChangeDigestEmail(
         `<ul>${list
           .map(
             (r) =>
-              `<li>${DAY_LABEL[r.day]} ${escapeHtml(r.shiftText)} (${kindLabel(r)}): ${escapeHtml(r.comment)} · ` +
+              `<li>${changeRequestDayLabel(r.day)} ${escapeHtml(r.shiftText)} (${kindLabel(r)}): ${escapeHtml(r.comment)} · ` +
               `<a href="${link(r)}">Review request</a></li>`,
           )
           .join("")}</ul>`,

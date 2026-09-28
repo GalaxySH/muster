@@ -59,6 +59,8 @@ export interface StudentDetail {
   position: Position | null;
   /** The student's form-window group name, or null when they're ungrouped. */
   group: string | null;
+  /** That group's id, for the group picker; null when they're ungrouped. */
+  groupId: string | null;
   blocks: ShiftBlock[];
   submission: {
     id: string;
@@ -231,6 +233,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     hiredOn: student.hiredOn,
     position,
     group,
+    groupId: student.groupId,
     blocks,
     submission,
     selection,

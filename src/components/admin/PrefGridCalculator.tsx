@@ -50,7 +50,8 @@ import {
  * learns it at the cell rather than at Save; the save-time check on the final
  * state is still the truth. Pending cells carry the amber dashed ring the grid
  * already uses for "deviates". Rows are added as source "manual"; removing an
- * engine row is allowed. Disabled until a run exists.
+ * engine row is allowed. Disabled until a run exists. Once one does, it is the
+ * tab the card opens on; without one the card opens on Edit preferences.
  *
  * The weekend header's rotation control belongs to whichever mode is on (1.24),
  * because the two modes ask different questions of it. In preferences it is the
@@ -58,7 +59,9 @@ import {
  * RUN's rotation, read off their current-run rows: flipping it moves every
  * weekend row they hold, and while the plan is alternating an A/B pair beside it
  * picks the week. It rides the same trial as the cells, so Save carries it in
- * the same batch and Reset drops it with them.
+ * the same batch and Reset drops it with them. Preferences also shows a quiet
+ * read-only chip beside its pill naming the week the saved schedule puts them
+ * on, so the admin can compare the two without switching tabs.
  *
  * The header carries BOTH hour figures at once, because the question the admin
  * is asking changes with the mode and the other number is still worth a glance:
@@ -198,7 +201,10 @@ function referenceKeys(grid: AdminGridModel): {
 export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const router = useRouter();
   const { preferred, auto, assigned } = useMemo(() => referenceKeys(props.grid), [props.grid]);
-  const [mode, setMode] = useState<Mode>("prefs");
+  // Opens on the schedule when there is one to edit. Every other piece of state
+  // is seeded the same way in both modes, so the starting tab changes nothing
+  // but which one is showing.
+  const [mode, setMode] = useState<Mode>(props.hasCurrentRun ? "schedule" : "prefs");
   const [mock, setMock] = useState<Set<string>>(() => new Set(preferred));
   // The rotation is part of the trial too: flipping the pill re-weights the
   // weekend (x0.5 under A/B, x1.0 every-weekend) without touching the student's
@@ -777,21 +783,35 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                   )}
                 </>
               ) : (
-                <button
-                  type="button"
-                  aria-pressed={optIn}
-                  onClick={flipRotation}
-                  style={weekendModeBadge(optIn, rotationDeviates)}
-                  title={
-                    rotationDeviates
-                      ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
-                      : optIn
-                        ? "Every weekend. Click to try alternating (A/B)."
-                        : "Alternating (A/B). Click to try every weekend."
-                  }
-                >
-                  {optIn ? "EVERY weekend" : "alternating (A/B)"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    aria-pressed={optIn}
+                    onClick={flipRotation}
+                    style={weekendModeBadge(optIn, rotationDeviates)}
+                    title={
+                      rotationDeviates
+                        ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
+                        : optIn
+                          ? "Every weekend. Click to try alternating (A/B)."
+                          : "Alternating (A/B). Click to try every weekend."
+                    }
+                  >
+                    {optIn ? "EVERY weekend" : "alternating (A/B)"}
+                  </button>
+                  {/* The saved schedule's week, for reference only: it reads the
+                      run as persisted, never an unsaved schedule trial. */}
+                  {props.scheduleCohort && (
+                    <span
+                      role="note"
+                      aria-label={SCHEDULED_WEEK[props.scheduleCohort].label}
+                      title={SCHEDULED_WEEK[props.scheduleCohort].label}
+                      style={scheduledWeekChip}
+                    >
+                      Sched <b>{SCHEDULED_WEEK[props.scheduleCohort].letter}</b>
+                    </span>
+                  )}
+                </>
               )}
             </SubHead>
             <CalcTable
@@ -1646,6 +1666,30 @@ const weekBtn = (active: boolean): React.CSSProperties => ({
   background: active ? "var(--color-text-info)" : "var(--color-background-primary)",
   color: active ? "#fff" : "var(--color-text-secondary)",
 });
+
+/**
+ * The saved schedule's rotation week, shown beside the preference pill. It is
+ * a label, not a control, so it is outlined and muted rather than shaped like
+ * the pill it sits next to.
+ */
+const SCHEDULED_WEEK: Record<Exclude<Cohort, "weekday">, { letter: string; label: string }> = {
+  a: { letter: "A", label: "Scheduled for week A" },
+  b: { letter: "B", label: "Scheduled for week B" },
+  every: { letter: "E", label: "Scheduled every weekend" },
+};
+const scheduledWeekChip: React.CSSProperties = {
+  display: "inline-block",
+  marginLeft: 5,
+  padding: "0 6px",
+  borderRadius: 10,
+  border: "1px solid var(--color-border-tertiary)",
+  fontSize: 10,
+  fontWeight: 500,
+  lineHeight: 1.6,
+  color: "var(--color-text-tertiary)",
+  verticalAlign: "middle",
+  cursor: "default",
+};
 
 /** The preference half's fill (the whole cell when there is no schedule to split). */
 function prefFill(inMock: boolean, wasPreferred: boolean, wasAuto: boolean): string {

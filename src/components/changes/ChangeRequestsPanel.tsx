@@ -7,7 +7,8 @@
  * rate-capped server-side, and open requests can be withdrawn. Admins get an
  * extra employee field (type-to-search) to send a request on someone's
  * behalf, plus a resolve-on-submission checkbox for changes already handled;
- * the list below follows whoever the form targets.
+ * the list below follows whoever the form targets. Under the shift time, the
+ * target's position offers its shift times as one-click inserts.
  */
 import { useRef, useState, useTransition } from "react";
 import {
@@ -15,23 +16,20 @@ import {
   withdrawChangeRequest,
   type ChangeRequestActionResult,
 } from "@/lib/changes/actions";
-import { adminListChangeRequests } from "@/lib/changes/admin-actions";
+import { adminListChangeRequests, adminShiftTimeBlocks } from "@/lib/changes/admin-actions";
 import type { ChangeRequestRow, ChangeRequestStatus } from "@/lib/changes/data";
-import { MAX_CHANGE_REQUEST_FILES } from "@/lib/domain/change-requests";
-import { DAY_LABEL, ALL_DAYS, type Day } from "@/lib/domain/types";
+import {
+  CHANGE_REQUEST_DAY_OPTIONS,
+  MAX_CHANGE_REQUEST_FILES,
+  changeRequestDayLabel,
+  insertShiftTime,
+  shiftTimeOptions,
+  type ChangeRequestDay,
+  type ShiftTimeBlock,
+} from "@/lib/domain/change-requests";
 import { ACCEPT } from "@/components/evidence/shared";
 import { ActionButton } from "@/components/ui";
 import { EmployeePicker, type EmployeeOption } from "./EmployeePicker";
-
-const FULL_DAY: Record<Day, string> = {
-  mon: "Monday",
-  tue: "Tuesday",
-  wed: "Wednesday",
-  thu: "Thursday",
-  fri: "Friday",
-  sat: "Saturday",
-  sun: "Sunday",
-};
 
 export interface ChangeRequestsAdminProps {
   /** Pre-seeded from the per-student admin page's quick link (?student=). */
@@ -42,14 +40,18 @@ export interface ChangeRequestsAdminProps {
 
 export function ChangeRequestsPanel({
   initial,
+  initialBlocks,
   admin,
 }: {
   initial: ChangeRequestRow[];
+  /** The live blocks of the initial target's position (empty without one). */
+  initialBlocks: ShiftTimeBlock[];
   admin?: ChangeRequestsAdminProps;
 }) {
   const [requests, setRequests] = useState(initial);
+  const [blocks, setBlocks] = useState(initialBlocks);
   const [employee, setEmployee] = useState<EmployeeOption | null>(admin?.initialEmployee ?? null);
-  const [day, setDay] = useState<Day>("mon");
+  const [day, setDay] = useState<ChangeRequestDay>("multiple");
   const [shiftText, setShiftText] = useState("");
   const [comment, setComment] = useState("");
   const [permanent, setPermanent] = useState(true);
@@ -66,15 +68,21 @@ export function ChangeRequestsPanel({
     setMsg(res.ok ? { ok: true, text: successText } : { ok: false, text: res.error ?? "Something went wrong." });
   }
 
-  // Admin only: swap the request list to whoever the form now acts for.
+  // Admin only: swap the request list and shift times to whoever the form now acts for.
   function selectEmployee(next: EmployeeOption | null) {
     setEmployee(next);
     setMsg(null);
     const email = next?.email ?? admin?.selfEmail ?? null;
     startListLoad(async () => {
-      setRequests(email ? await adminListChangeRequests(email) : []);
+      const [list, nextBlocks] = email
+        ? await Promise.all([adminListChangeRequests(email), adminShiftTimeBlocks(email)])
+        : [[], []];
+      setRequests(list);
+      setBlocks(nextBlocks);
     });
   }
+
+  const shiftTimes = shiftTimeOptions(blocks, day);
 
   function submit() {
     setMsg(null);
@@ -131,27 +139,48 @@ export function ChangeRequestsPanel({
             </span>
           </div>
         )}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
           <label style={field}>
             Day
-            <select value={day} onChange={(e) => setDay(e.target.value as Day)} style={input}>
-              {ALL_DAYS.map((d) => (
-                <option key={d} value={d}>
-                  {FULL_DAY[d]}
+            <select
+              value={day}
+              onChange={(e) => setDay(e.target.value as ChangeRequestDay)}
+              style={input}
+            >
+              {CHANGE_REQUEST_DAY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </select>
           </label>
-          <label style={{ ...field, flex: 1, minWidth: 180 }}>
-            Shift time
-            <input
-              type="text"
-              value={shiftText}
-              onChange={(e) => setShiftText(e.target.value)}
-              placeholder="e.g. 2p to 5p"
-              style={input}
-            />
-          </label>
+          <div style={{ ...field, flex: 1, minWidth: 180 }}>
+            <label style={field}>
+              Shift time
+              <input
+                type="text"
+                value={shiftText}
+                onChange={(e) => setShiftText(e.target.value)}
+                placeholder="e.g. 2p to 5p"
+                style={input}
+              />
+            </label>
+            {shiftTimes.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {shiftTimes.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setShiftText((cur) => insertShiftTime(cur, t))}
+                    aria-label={`Add ${t}`}
+                    style={shiftTimePill}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <label style={{ ...field, marginTop: 10 }}>
           What do you need?
@@ -212,7 +241,7 @@ export function ChangeRequestsPanel({
             <li key={r.id} style={requestCard}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ fontWeight: 600 }}>
-                  {DAY_LABEL[r.day]} · {r.shiftText}
+                  {changeRequestDayLabel(r.day)} · {r.shiftText}
                   <span style={{ fontWeight: 400, color: "#777" }}>
                     {" "}
                     · {r.permanent ? "permanent" : "one time"}
@@ -269,6 +298,15 @@ const requestCard: React.CSSProperties = {
   border: "1px solid #e2e2e2",
   borderRadius: 8,
   padding: "0.7rem 0.9rem",
+};
+const shiftTimePill: React.CSSProperties = {
+  padding: "2px 9px",
+  border: "1px solid #ccc",
+  borderRadius: 12,
+  background: "#f7f7f7",
+  fontSize: 12,
+  fontWeight: 400,
+  cursor: "pointer",
 };
 const checkboxRow: React.CSSProperties = {
   display: "inline-flex",
