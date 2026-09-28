@@ -14,6 +14,10 @@ vi.mock("@/lib/email/resend", () => ({ sendEmail: (m: unknown) => sendEmail(m) }
 vi.mock("@/lib/positions/data", () => ({
   positionOptions: async () => [{ id: "ca", name: "Culinary Assistant" }],
 }));
+const loadStudentCurrentAssignments = vi.fn();
+vi.mock("@/lib/schedule/data", () => ({
+  loadStudentCurrentAssignments: (e: string) => loadStudentCurrentAssignments(e),
+}));
 const findStudentByEmail = vi.fn();
 vi.mock("@/lib/roster/lookup", () => ({
   findStudentByEmail: (e: string) => findStudentByEmail(e),
@@ -37,6 +41,7 @@ const { sendScheduleEmail, sendScheduleEmailTest, saveScheduleEmailConfig } =
 
 const input = {
   startDate: "2026-10-04",
+  crossover: false,
   crossoverPosition: "",
   crossoverShift: "",
   firstShiftTime: "",
@@ -54,7 +59,13 @@ beforeEach(() => {
     displayName: "Stefan Hauge",
     positionId: "ca",
   });
-  sendEmail.mockResolvedValue("sent");
+  sendEmail.mockImplementation(async (m: { cc: string[] }) => ({ outcome: "sent", cc: m.cc }));
+  loadStudentCurrentAssignments.mockResolvedValue({
+    runId: "run-1",
+    cells: [
+      { blockId: "b1", day: "tue", cohort: "weekday", source: "engine", start: 390, end: 600 },
+    ],
+  });
   updateSubmission.mockResolvedValue({ ok: true });
 });
 
@@ -74,6 +85,8 @@ describe("sendScheduleEmail", () => {
       idempotencyKey: `schedule-email-${input.requestId}`,
     });
     expect(msg.text).toContain("Sunday, October 4");
+    expect(msg.text).toContain("Tuesday: 6:30 AM to 10:00 AM");
+    expect(msg.html).toContain(">Tuesday</td>");
     expect(updateSubmission).toHaveBeenCalledWith("sfhauge@wisc.edu", {
       scheduleEmailSentAt: expect.any(Date),
       scheduled: true,
@@ -86,6 +99,13 @@ describe("sendScheduleEmail", () => {
       cc: [],
       replyTo: "gdec_h-o@g-groups.wisc.edu",
     });
+  });
+
+  it("doesn't claim a copy went out when the cc was dropped", async () => {
+    sendEmail.mockResolvedValue({ outcome: "sent", cc: [] });
+    expect((await sendScheduleEmail("sfhauge@wisc.edu", input)).message).toBe(
+      "Sent to sfhauge@wisc.edu.",
+    );
   });
 
   it("only stamps the sent date when marking scheduled is off", async () => {
@@ -105,7 +125,7 @@ describe("sendScheduleEmail", () => {
   });
 
   it("doesn't stamp when the test guard blocks the message", async () => {
-    sendEmail.mockResolvedValue("blocked");
+    sendEmail.mockResolvedValue({ outcome: "blocked", cc: [] });
     const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/EMAIL_TEST_RECIPIENTS/);

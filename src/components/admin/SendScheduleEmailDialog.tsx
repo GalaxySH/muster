@@ -3,9 +3,13 @@
 /**
  * The confirmation dialog for the "your schedule is posted" email, opened from
  * the Mark scheduled menu on the per-student page. The scheduler fills in the
- * start date (default: next Sunday) and the optional cross-over and first-shift
- * values, checks the live preview, and sends. Nothing is sent without the Send
- * click here.
+ * start date (default: next Sunday), ticks the cross-over box when one shift
+ * is in another position (off by default), adds a first-shift time if it's
+ * tomorrow, checks the live preview (the student's current-run shifts
+ * included), and sends. Nothing is sent without the Send click here.
+ *
+ * Loaded on demand by MarkScheduledButton, so Liquid and the sanitizer only
+ * download when the dialog opens.
  */
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -34,8 +38,8 @@ export interface ScheduleEmailDialogProps {
   from: string;
   marksScheduled: boolean;
   emailEnabled: boolean;
-  /** The student's rows in the current run, for the first-shift suggestion. */
-  shiftCells: { day: Day; start: number; cohort: string }[];
+  /** The student's rows in the current run: the schedule table and the first-shift suggestion. */
+  shifts: { day: Day; start: number; end: number; cohort: string }[];
 }
 
 export function SendScheduleEmailDialog({
@@ -48,6 +52,7 @@ export function SendScheduleEmailDialog({
   const [requestId] = useState(() => crypto.randomUUID());
   const [fields, setFields] = useState<ScheduleEmailInput>(() => ({
     startDate: nextSunday(today),
+    crossover: false,
     crossoverPosition: "",
     crossoverShift: "",
     firstShiftTime: "",
@@ -57,8 +62,9 @@ export function SendScheduleEmailDialog({
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
 
-  const suggestion = suggestFirstShiftTime(today, p.shiftCells);
-  const set = (k: keyof ScheduleEmailInput, v: string) => setFields((f) => ({ ...f, [k]: v }));
+  const suggestion = suggestFirstShiftTime(today, p.shifts);
+  const set = <K extends keyof ScheduleEmailInput>(k: K, v: ScheduleEmailInput[K]) =>
+    setFields((f) => ({ ...f, [k]: v }));
   const inputError = validateScheduleEmailInput(fields);
 
   const preview = useMemo(() => {
@@ -68,11 +74,11 @@ export function SendScheduleEmailDialog({
         { displayName: p.displayName, position: p.positionName },
         fields,
       );
-      return { ok: true as const, email: renderScheduleEmail(p.template, vars) };
+      return { ok: true as const, email: renderScheduleEmail(p.template, vars, p.shifts) };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
-  }, [fields, p.displayName, p.positionName, p.template]);
+  }, [fields, p.displayName, p.positionName, p.template, p.shifts]);
 
   function send() {
     setError(null);
@@ -116,29 +122,38 @@ export function SendScheduleEmailDialog({
         </label>
 
         <div style={fieldStyle}>
-          <span style={labelStyle}>Cross-over shift (optional)</span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <select
-              aria-label="Cross-over position"
-              value={fields.crossoverPosition}
-              onChange={(e) => set("crossoverPosition", e.target.value)}
-              style={{ ...inputStyle, width: "auto", flex: "1 1 160px" }}
-            >
-              <option value="">None</option>
-              {p.positions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
-              aria-label="Cross-over shift"
-              placeholder="e.g. Tuesday 2 to 5 PM"
-              value={fields.crossoverShift}
-              onChange={(e) => set("crossoverShift", e.target.value)}
-              style={{ ...inputStyle, width: "auto", flex: "2 1 200px" }}
+              type="checkbox"
+              checked={fields.crossover}
+              onChange={(e) => set("crossover", e.target.checked)}
             />
-          </div>
+            One of their shifts is in another position
+          </label>
+          {fields.crossover && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <select
+                aria-label="Cross-over position"
+                value={fields.crossoverPosition}
+                onChange={(e) => set("crossoverPosition", e.target.value)}
+                style={{ ...inputStyle, width: "auto", flex: "1 1 160px" }}
+              >
+                <option value="">Pick a position</option>
+                {p.positions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label="Cross-over shift"
+                placeholder="e.g. Tuesday 2 to 5 PM"
+                value={fields.crossoverShift}
+                onChange={(e) => set("crossoverShift", e.target.value)}
+                style={{ ...inputStyle, width: "auto", flex: "2 1 200px" }}
+              />
+            </div>
+          )}
         </div>
 
         <div style={fieldStyle}>
@@ -177,7 +192,8 @@ export function SendScheduleEmailDialog({
           ) : preview.ok ? (
             <>
               <div style={{ fontWeight: 600, margin: "8px 0" }}>{preview.email.subject}</div>
-              <div style={{ whiteSpace: "pre-wrap" }}>{preview.email.text}</div>
+              {/* Sanitized by renderScheduleEmail; the schedule table is app-built. */}
+              <div dangerouslySetInnerHTML={{ __html: preview.email.html }} />
             </>
           ) : (
             <div style={{ color: "var(--color-text-danger)" }}>

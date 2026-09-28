@@ -12,6 +12,7 @@ import { normalizeEmail } from "@/lib/auth/policy";
 import { env } from "@/lib/env";
 import { sendEmail, type EmailOutcome } from "@/lib/email/resend";
 import {
+  SAMPLE_SHIFTS,
   SAMPLE_VARS,
   buildFromAddress,
   buildScheduleEmailVars,
@@ -22,7 +23,9 @@ import {
   type ScheduleEmailInput,
   type ScheduleEmailVars,
 } from "@/lib/email/schedule-email";
+import type { ShiftSpan } from "@/lib/email/schedule-table";
 import { positionOptions } from "@/lib/positions/data";
+import { loadStudentCurrentAssignments } from "@/lib/schedule/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import {
   getEmailSendingEnabled,
@@ -69,21 +72,22 @@ async function deliver(
   to: string,
   config: ScheduleEmailConfig,
   vars: ScheduleEmailVars,
+  shifts: readonly ShiftSpan[],
   includeCc: boolean,
   idempotencyKey?: string,
-): Promise<{ outcome: EmailOutcome } | { error: string }> {
+): Promise<{ outcome: EmailOutcome; cc: string | null } | { error: string }> {
   if (!(await getEmailSendingEnabled())) {
     return { error: "Email sending is turned off. Turn it on in Email settings first." };
   }
   let rendered;
   try {
-    rendered = renderScheduleEmail(config, vars);
+    rendered = renderScheduleEmail(config, vars, shifts);
   } catch (e) {
     return { error: `The template has a problem: ${e instanceof Error ? e.message : String(e)}` };
   }
   const cc = config.cc.trim();
   try {
-    const outcome = await sendEmail({
+    const { outcome, cc: copied } = await sendEmail({
       to,
       ...rendered,
       cc: includeCc && cc ? [cc] : [],
@@ -99,7 +103,7 @@ async function deliver(
     if (outcome === "suppressed") {
       return { error: "Email sending is turned off. Turn it on in Email settings first." };
     }
-    return { outcome };
+    return { outcome, cc: copied[0] ?? null };
   } catch (e) {
     console.error("[schedule-email] send failed:", e);
     return { error: "The email service refused the message. Try again, or check the server log." };
@@ -118,9 +122,9 @@ export async function sendScheduleEmailTest(): Promise<ScheduleEmailSendResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const config = await getScheduleEmailConfig();
-  const res = await deliver(gate.email, config, SAMPLE_VARS, false);
+  const res = await deliver(gate.email, config, SAMPLE_VARS, SAMPLE_SHIFTS, false);
   if ("error" in res) return { ok: false, error: res.error };
-  return { ok: true, message: sentMessage(res.outcome, gate.email, null) };
+  return { ok: true, message: sentMessage(res.outcome, gate.email, res.cc) };
 }
 
 /**
@@ -137,6 +141,7 @@ export async function sendScheduleEmail(
 
   const fields: ScheduleEmailInput = {
     startDate: String(input.startDate ?? ""),
+    crossover: input.crossover === true,
     crossoverPosition: String(input.crossoverPosition ?? ""),
     crossoverShift: String(input.crossoverShift ?? ""),
     firstShiftTime: String(input.firstShiftTime ?? ""),
@@ -155,10 +160,13 @@ export async function sendScheduleEmail(
 
   const config = await getScheduleEmailConfig();
   const vars = buildScheduleEmailVars({ displayName: student.displayName, position }, fields);
+  // The shifts the current run gives them: what the dialog previewed.
+  const shifts = (await loadStudentCurrentAssignments(email))?.cells ?? [];
   const res = await deliver(
     email,
     config,
     vars,
+    shifts,
     input.includeCc === true,
     `schedule-email-${input.requestId}`,
   );
@@ -168,8 +176,7 @@ export async function sendScheduleEmail(
     scheduleEmailSentAt: new Date(),
     ...(config.marksScheduled ? { scheduled: true } : {}),
   });
-  const cc = input.includeCc === true && config.cc.trim() ? config.cc.trim() : null;
-  const message = sentMessage(res.outcome, email, cc);
+  const message = sentMessage(res.outcome, email, res.cc);
   if (!stamped.ok) {
     return { ok: true, message: `${message} The sent date couldn't be saved: ${stamped.error}` };
   }

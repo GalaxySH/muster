@@ -4,13 +4,18 @@
  * helpers the send dialog uses. Pure (no I/O, no env), so the dialog's live
  * preview and the server's send render with the same code.
  *
- * Muster never writes shift details from its own schedule run into this
- * email: W2W holds the final schedule. Every value except the student's name
- * and position comes from the scheduler in the send dialog.
+ * Rendering: Liquid fills the template with every value HTML-escaped
+ * (`outputEscape`), `./format` sanitizes the result down to the allowed
+ * formatting tags, and only then are the app-built schedule table and list
+ * swapped in for their placeholders, so a template can never smuggle in markup
+ * through them. The schedule comes from the current run and is shown to the
+ * scheduler in the dialog preview before anything is sent.
  */
 import { Liquid, type FS } from "liquidjs";
 import { isEmailShaped } from "@/lib/auth/policy";
 import type { Day } from "@/lib/domain/types";
+import { bodyToHtml, toPlainText } from "./format";
+import { formatClock, scheduleListText, scheduleTableHtml, type ShiftSpan } from "./schedule-table";
 
 export interface ScheduleEmailConfig {
   subject: string;
@@ -29,7 +34,11 @@ export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
   subject: "Your Fall 2026 work schedule",
   body: `Your Fall 2026 work schedule will go into effect on {{ start_date | date: "%A, %B %-d" }}. Your schedule is posted in When2Work. If there are issues with your schedule that conflict with your course schedule or mandatory extracurricular events, you will need to contact gdec_h-o@g-groups.wisc.edu in order to get your schedule adjusted before you begin with proof of the conflict (class schedule screenshot). Otherwise, this schedule will remain the same for the entirety of the semester! We look forward to seeing you soon!
 
-{% if crossover_shift %}Due to lack of shift availability for {{ position }}, one of your weekly shifts ({{ crossover_shift }}) is a {{ crossover_position }} shift. Please refer to shift leads or managers if you have any questions while on shift.{% endif %}
+{% if schedule_table %}Your shifts:
+
+{{ schedule_table }}{% endif %}
+
+{% if crossover %}Due to lack of shift availability for {{ position }}, one of your weekly shifts ({{ crossover_shift }}) is a {{ crossover_position }} shift. Please refer to shift leads or managers if you have any questions while on shift.{% endif %}
 
 {% if first_shift_time %}Please note that your first shift is scheduled for tomorrow at {{ first_shift_time }}.{% endif %}`,
   cc: "gdec_h-o@g-groups.wisc.edu",
@@ -62,13 +71,18 @@ export function parseScheduleEmailConfig(raw: string | null): ScheduleEmailConfi
   };
 }
 
-/** The values a template can use. Optional ones are "" when not given. */
+/**
+ * The values a template can use, besides `schedule_table` and `schedule_list`,
+ * which the renderer builds from the shifts. Optional text is "" when not given.
+ */
 export interface ScheduleEmailVars {
   first_name: string;
   full_name: string;
   position: string;
   /** "YYYY-MM-DD". Rendered as a date, so templates format it with `| date:`. */
   start_date: string;
+  /** Whether the cross-over paragraph applies (the dialog's checkbox). */
+  crossover: boolean;
   crossover_position: string;
   crossover_shift: string;
   first_shift_time: string;
@@ -78,6 +92,8 @@ export interface ScheduleEmailVars {
 export interface ScheduleEmailInput {
   /** "YYYY-MM-DD". */
   startDate: string;
+  /** The cross-over checkbox; off by default. Its two fields only count when on. */
+  crossover: boolean;
   crossoverPosition: string;
   crossoverShift: string;
   firstShiftTime: string;
@@ -99,8 +115,9 @@ export function buildScheduleEmailVars(
     full_name: student.displayName.trim(),
     position: student.position,
     start_date: input.startDate,
-    crossover_position: input.crossoverPosition.trim(),
-    crossover_shift: input.crossoverShift.trim(),
+    crossover: input.crossover,
+    crossover_position: input.crossover ? input.crossoverPosition.trim() : "",
+    crossover_shift: input.crossover ? input.crossoverShift.trim() : "",
     first_shift_time: input.firstShiftTime.trim(),
   };
 }
@@ -115,15 +132,15 @@ export function validateScheduleEmailInput(input: ScheduleEmailInput): string | 
   }
   const fields = [input.crossoverPosition, input.crossoverShift, input.firstShiftTime];
   if (fields.some((f) => f.length > 200)) return "Keep each field under 200 characters.";
-  const hasPosition = input.crossoverPosition.trim() !== "";
-  const hasShift = input.crossoverShift.trim() !== "";
-  if (hasPosition && !hasShift) return "Add the cross-over shift, or clear its position.";
-  if (hasShift && !hasPosition) return "Pick the position the cross-over shift is in.";
+  if (input.crossover) {
+    if (!input.crossoverPosition.trim()) return "Pick the position the cross-over shift is in.";
+    if (!input.crossoverShift.trim()) return "Add the cross-over shift.";
+  }
   return null;
 }
 
 /** The variables key shown on the settings page. */
-export const SCHEDULE_EMAIL_VARIABLES: { name: keyof ScheduleEmailVars; about: string }[] = [
+export const SCHEDULE_EMAIL_VARIABLES: { name: string; about: string }[] = [
   { name: "first_name", about: "The student's first name." },
   { name: "full_name", about: "The student's full name." },
   { name: "position", about: "The student's position." },
@@ -133,12 +150,24 @@ export const SCHEDULE_EMAIL_VARIABLES: { name: keyof ScheduleEmailVars; about: s
       'The start date picked when sending. Format it, e.g. {{ start_date | date: "%A, %B %-d" }}.',
   },
   {
+    name: "schedule_table",
+    about: "Their shifts as a table of days and times. Blank when they have none.",
+  },
+  {
+    name: "schedule_list",
+    about: "The same shifts as one line per day. Blank when they have none.",
+  },
+  {
+    name: "crossover",
+    about: "True when you tick the cross-over box while sending. Use it with {% if crossover %}.",
+  },
+  {
     name: "crossover_position",
-    about: "The other position, when one shift is in another position.",
+    about: "The other position, when the cross-over box is ticked.",
   },
   {
     name: "crossover_shift",
-    about: "That shift, e.g. Tuesday 2 to 5 PM. Blank when there isn't one.",
+    about: "That shift, e.g. Tuesday 2 to 5 PM, when the cross-over box is ticked.",
   },
   {
     name: "first_shift_time",
@@ -152,10 +181,19 @@ export const SAMPLE_VARS: ScheduleEmailVars = {
   full_name: "Alex Example",
   position: "Culinary Assistant",
   start_date: "2026-10-04",
+  crossover: true,
   crossover_position: "Dishwasher",
   crossover_shift: "Tuesday 2 to 5 PM",
   first_shift_time: "7:00 AM",
 };
+
+/** Shifts used for the settings preview and for checking a template on save. */
+export const SAMPLE_SHIFTS: ShiftSpan[] = [
+  { day: "mon", start: 375, end: 600 },
+  { day: "wed", start: 870, end: 1020 },
+  { day: "wed", start: 1005, end: 1170 },
+  { day: "sat", start: 570, end: 750 },
+];
 
 // Templates never read files: `include`, `render` and `layout` hit this and fail.
 const NO_FILES: FS = {
@@ -175,8 +213,10 @@ const engine = new Liquid({
   relativeReference: false,
   strictVariables: true,
   strictFilters: true,
-  // A blank optional field is falsy, so `{% if crossover_shift %}` reads naturally.
+  // A blank optional field is falsy, so `{% if first_shift_time %}` reads naturally.
   jsTruthy: true,
+  // Every {{ value }} is HTML-escaped, so a value is always text, never markup.
+  outputEscape: "escape",
   ownPropertyOnly: true,
   // start_date is passed as UTC midnight, so format it in UTC to keep the day.
   timezoneOffset: 0,
@@ -191,37 +231,40 @@ export interface RenderedEmail {
   html: string;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+// Stand-ins for the app-built schedule: plain text that survives Liquid's
+// escaping and the sanitizer, swapped for the real table or list afterwards.
+const TABLE_MARK = "%%MUSTER_SCHEDULE_TABLE%%";
+const LIST_MARK = "%%MUSTER_SCHEDULE_LIST%%";
 
-/** Tidy rendered text: an omitted optional paragraph leaves no blank gap. */
-function tidy(text: string): string {
-  return text
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-/** Render the email. Throws with Liquid's message when the template is broken. */
+/**
+ * Render the email for these values and shifts. Throws with Liquid's message
+ * when the template is broken.
+ */
 export function renderScheduleEmail(
   template: { subject: string; body: string },
   vars: ScheduleEmailVars,
+  shifts: readonly ShiftSpan[],
 ): RenderedEmail {
-  const scope = { ...vars, start_date: toUtc(vars.start_date) };
-  const subject = tidy(engine.parseAndRenderSync(template.subject, scope)).replace(/\s+/g, " ");
-  const text = tidy(engine.parseAndRenderSync(template.body, scope));
-  const html = text
-    .split("\n\n")
-    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
-    .join("");
+  const table = scheduleTableHtml(shifts);
+  const list = scheduleListText(shifts);
+  const scope = {
+    ...vars,
+    start_date: toUtc(vars.start_date),
+    schedule_table: table ? TABLE_MARK : "",
+    schedule_list: list ? LIST_MARK : "",
+  };
+  const body = engine.parseAndRenderSync(template.body, scope);
+  const noMarks = (t: string) => t.replaceAll(TABLE_MARK, "").replaceAll(LIST_MARK, "");
+
+  const subject = noMarks(toPlainText(engine.parseAndRenderSync(template.subject, scope)))
+    .replace(/\s+/g, " ")
+    .trim();
+  const text = toPlainText(body).replaceAll(TABLE_MARK, list).replaceAll(LIST_MARK, list);
+  const html = bodyToHtml(body)
+    // A placeholder alone in its paragraph takes the paragraph's place.
+    .replaceAll(`<p>${TABLE_MARK}</p>`, table)
+    .replaceAll(TABLE_MARK, table)
+    .replaceAll(LIST_MARK, list.replace(/\n/g, "<br>"));
   return { subject, text, html };
 }
 
@@ -232,13 +275,19 @@ export function renderScheduleEmail(
 export function checkScheduleTemplate(template: { subject: string; body: string }): string | null {
   const blank: ScheduleEmailVars = {
     ...SAMPLE_VARS,
+    crossover: false,
     crossover_position: "",
     crossover_shift: "",
     first_shift_time: "",
   };
   try {
-    for (const vars of [SAMPLE_VARS, blank]) {
-      if (!renderScheduleEmail(template, vars).subject) return "The subject can't be empty.";
+    for (const [vars, shifts] of [
+      [SAMPLE_VARS, SAMPLE_SHIFTS],
+      [blank, []],
+    ] as const) {
+      if (!renderScheduleEmail(template, vars, shifts).subject) {
+        return "The subject can't be empty.";
+      }
     }
     return null;
   } catch (e) {
@@ -308,13 +357,6 @@ export function weekdayOf(iso: string): Day {
 export function nextSunday(todayIso: string): string {
   const dow = toUtc(todayIso).getUTCDay();
   return addDays(todayIso, dow === 0 ? 7 : 7 - dow);
-}
-
-/** Minutes since midnight as "7:00 AM". */
-export function formatClock(minutes: number): string {
-  const h24 = Math.floor(minutes / 60);
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}:${String(minutes % 60).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
 }
 
 /**

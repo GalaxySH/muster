@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { setScheduled } from "@/lib/admin/actions";
-import {
-  SendScheduleEmailDialog,
-  type ScheduleEmailDialogProps,
-} from "@/components/admin/SendScheduleEmailDialog";
+import type { ScheduleEmailDialogProps } from "@/components/admin/SendScheduleEmailDialog";
+
+// Liquid and the sanitizer ride along with the dialog, so load it only when opened.
+const SendScheduleEmailDialog = dynamic(
+  () => import("@/components/admin/SendScheduleEmailDialog").then((m) => m.SendScheduleEmailDialog),
+  { ssr: false },
+);
 
 /**
  * The "mark scheduled ✓" toggle (PLAN §10a): tracks W2W-entry progress across

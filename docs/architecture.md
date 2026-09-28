@@ -1102,15 +1102,27 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
 - **Pure core:** `lib/email/schedule-email.ts` holds the config type + default template,
   `parseScheduleEmailConfig`, the Liquid engine (`liquidjs` with a no-files `FS`, so
   `include`/`render`/`layout` fail; `strictVariables`, `strictFilters`, `jsTruthy` so a
-  blank optional field is falsy; `timezoneOffset: 0` with `start_date` passed as UTC
-  midnight so the `date` filter keeps the day; parse/render/memory limits),
-  `renderScheduleEmail` (text is tidied so an omitted optional paragraph leaves no gap;
-  HTML is the escaped text split into paragraphs), `checkScheduleTemplate` /
+  blank optional field is falsy; `outputEscape: "escape"` so every value is HTML-escaped;
+  `timezoneOffset: 0` with `start_date` passed as UTC midnight so the `date` filter
+  keeps the day; parse/render/memory limits), `renderScheduleEmail`, `checkScheduleTemplate` /
   `validateScheduleEmailConfig` (run on save), `buildScheduleEmailVars` +
   `validateScheduleEmailInput` (shared by the dialog preview and the server send), and
   the dialog's date helpers (`chicagoToday`, `nextSunday`, `suggestFirstShiftTime`, which
   reads only weekday and every-weekend rows since A/B weeks have no dates). The client
-  bundles it for live previews; the server re-renders from the saved config on send.
+  renders the same code for live previews; the server re-renders from the saved config
+  on send.
+- **Render pipeline** (`renderScheduleEmail`): Liquid renders the body once, with values
+  escaped and `schedule_table` / `schedule_list` bound to plain-text placeholders (or ""
+  when the student has no shifts, so `{% if schedule_table %}` works). `lib/email/format.ts`
+  then makes the HTML part (blank lines become paragraphs, `sanitize-html` keeps only
+  `p br b strong i em u` plus `<mark>` rewritten to a background-colored span, and drops
+  empty paragraphs) and the plain-text part (`sanitize-html` with no tags, then
+  `entities` decoding). Only after sanitizing are the placeholders replaced: the table
+  (`lib/email/schedule-table.ts`: Day and Shift times, Monday first, overlaps merged with
+  `mergeRanges`, no rotation or dates) in the HTML, the list in the text. The generated
+  markup never passes through the author allowlist, and the allowlist never needs table
+  tags. The dialog and settings previews render `html` with `dangerouslySetInnerHTML`,
+  which is safe because of that order.
 - **Settings:** one JSON key, `schedule_email` (`getScheduleEmailConfig` in
   `lib/settings.ts`), edited by `ScheduleEmailSettingsPanel` on `/admin/email-settings`.
   The cc email is always the reply-to; the sender's domain always comes from
@@ -1124,9 +1136,12 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   the `server-only` `lib/admin/update-submission.ts` so it can't become a client-callable
   action.
 - **UI:** `MarkScheduledButton` is a split button; its caret menu opens
-  `SendScheduleEmailDialog`. The per-student page passes the template, cc, sender,
-  toggle, master-switch state, and the student's current-run rows (for the first-shift
-  suggestion). Student details shows "Schedule email sent" once the column is set.
+  `SendScheduleEmailDialog`, loaded with `next/dynamic` so Liquid and `sanitize-html`
+  download only when it opens. The per-student page passes the template, cc, sender,
+  toggle, master-switch state, and the student's current-run rows (the schedule table
+  and the first-shift suggestion; the send action re-reads them). The cross-over
+  paragraph hangs off the `crossover` variable, set by a dialog checkbox that is off by
+  default and reveals the position and shift fields. Student details shows "Schedule email sent" once the column is set.
 - **Test safety:** `sendEmail` returns an `EmailOutcome` (`sent` | `suppressed` |
   `logged` | `blocked`). Outside production it filters every `to`/`cc` through
   `EMAIL_TEST_RECIPIENTS` (pure `lib/email/guard.ts`): a main recipient not on the list

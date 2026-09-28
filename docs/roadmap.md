@@ -514,7 +514,7 @@ in the two steps this item prescribed. **Step one shipped 2026-07-30 (PLAN
 path, and the hub nav card are removed; `schedule_email_sent_at` stays in the
 schema, dead. **Step two is cancelled (PLAN 1.34, 2026-09-28):** the per-student
 schedule email (sent by hand from the per-student page, one student at a time, after
-the schedule is in W2W, carrying no shift from Muster's run) reuses
+the schedule is in W2W, with any run shifts it shows previewed before sending) reuses
 `schedule_email_sent_at` as its last-sent date, so the column stays. See
 `docs/scheduler-automation.md`.
 

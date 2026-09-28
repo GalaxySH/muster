@@ -345,9 +345,10 @@ export default async function StudentDetailPage({
               from: buildFromAddress(scheduleEmail, env.EMAIL_FROM),
               marksScheduled: scheduleEmail.marksScheduled,
               emailEnabled,
-              shiftCells: (schedule?.cells ?? []).map((c) => ({
+              shifts: (schedule?.cells ?? []).map((c) => ({
                 day: c.day,
                 start: c.start,
+                end: c.end,
                 cohort: c.cohort,
               })),
             }}

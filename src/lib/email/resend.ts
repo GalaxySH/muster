@@ -33,6 +33,12 @@ export interface EmailMessage {
  */
 export type EmailOutcome = "sent" | "suppressed" | "logged" | "blocked";
 
+export interface EmailResult {
+  outcome: EmailOutcome;
+  /** The cc addresses the message actually went to, after the test guard. */
+  cc: string[];
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -45,13 +51,13 @@ const testRecipients =
   process.env.NODE_ENV === "production" ? null : parseTestRecipients(env.EMAIL_TEST_RECIPIENTS);
 
 /** Send one transactional email via Resend, or log it in dev. Throws on send failure. */
-export async function sendEmail(message: EmailMessage): Promise<EmailOutcome> {
+export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   const { subject, text, html, replyTo, from, idempotencyKey } = message;
   // Master switch (admin-set, /admin/email-settings): when off, nothing is sent.
   // This is the single choke point, so every sender obeys it.
   if (!(await getEmailSendingEnabled())) {
     console.log(`[email] sending is turned off; suppressed message to ${message.to}: "${subject}"`);
-    return "suppressed";
+    return { outcome: "suppressed", cc: [] };
   }
   const { to, cc, dropped } = guardRecipients(
     { to: message.to, cc: message.cc ?? [] },
@@ -63,12 +69,12 @@ export async function sendEmail(message: EmailMessage): Promise<EmailOutcome> {
   if (!to) {
     console.log(`[email] blocked message to ${message.to}: "${subject}"
 ${text}`);
-    return "blocked";
+    return { outcome: "blocked", cc: [] };
   }
   if (!env.RESEND_API_KEY) {
     console.log(`[email] no RESEND_API_KEY set. Would send to ${to}: "${subject}"
 ${text}`);
-    return "logged";
+    return { outcome: "logged", cc };
   }
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -92,7 +98,7 @@ ${text}`);
     const body = await res.text().catch(() => "");
     throw new Error(`Resend send failed (${res.status}): ${body.slice(0, 300)}`);
   }
-  return "sent";
+  return { outcome: "sent", cc };
 }
 
 export interface MagicLinkEmail {

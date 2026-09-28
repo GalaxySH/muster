@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { ActionButton, InfoCard } from "@/components/ui";
 import { saveScheduleEmailConfig, sendScheduleEmailTest } from "@/lib/admin/schedule-email-actions";
 import {
+  SAMPLE_SHIFTS,
   SAMPLE_VARS,
   SCHEDULE_EMAIL_VARIABLES,
   renderScheduleEmail,
@@ -40,7 +41,7 @@ export function ScheduleEmailSettingsPanel({
 
   const preview = useMemo(() => {
     try {
-      return { ok: true as const, email: renderScheduleEmail(draft, SAMPLE_VARS) };
+      return { ok: true as const, email: renderScheduleEmail(draft, SAMPLE_VARS, SAMPLE_SHIFTS) };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
@@ -121,7 +122,8 @@ export function ScheduleEmailSettingsPanel({
         {preview.ok ? (
           <>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>{preview.email.subject}</div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{preview.email.text}</div>
+            {/* Sanitized by renderScheduleEmail; the schedule table is app-built. */}
+            <div dangerouslySetInnerHTML={{ __html: preview.email.html }} />
           </>
         ) : (
           <div style={{ color: "var(--color-text-danger)" }}>

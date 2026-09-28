@@ -32,7 +32,10 @@ describe("sendEmail outside production", () => {
   });
 
   it("blocks a student address and never calls Resend", async () => {
-    expect(await sendEmail({ to: "student@wisc.edu", subject: "s", text: "t" })).toBe("blocked");
+    expect(await sendEmail({ to: "student@wisc.edu", subject: "s", text: "t" })).toEqual({
+      outcome: "blocked",
+      cc: [],
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -46,7 +49,7 @@ describe("sendEmail outside production", () => {
       from: "GDEC Scheduling <schedule@re.hauge.rocks>",
       idempotencyKey: "schedule-email-abc",
     });
-    expect(outcome).toBe("sent");
+    expect(outcome).toEqual({ outcome: "sent", cc: [] });
     const body = sentBody();
     expect(body.to).toEqual(["sfhauge@wisc.edu"]);
     expect(body.cc).toBeUndefined();
@@ -66,7 +69,9 @@ describe("sendEmail outside production", () => {
 
   it("sends nothing when the master switch is off", async () => {
     getEmailSendingEnabled.mockResolvedValue(false);
-    expect(await sendEmail({ to: "sfhauge@wisc.edu", subject: "s", text: "t" })).toBe("suppressed");
+    expect((await sendEmail({ to: "sfhauge@wisc.edu", subject: "s", text: "t" })).outcome).toBe(
+      "suppressed",
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

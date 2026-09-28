@@ -187,12 +187,12 @@ directly is still out of scope.
 6.1)**: it could only *announce* that a schedule exists, never contain one, because the
 authoritative schedule lives in W2W and Muster's generated run is a recommendation the
 scheduler may have edited away from. **1.34 added a per-student schedule email** sent by
-hand from the per-student page (the Mark scheduled menu) after the schedule is in W2W;
-any shift details in it are typed by the scheduler, never read from the run. The email
-students would actually want is their **final shifts plus the reminders that go with
-them**. That needs Muster to hold the final schedule, which today means either 5.3's
-export round-tripping back, or the scheduler confirming a run as final. The wish stands
-until one of those exists.
+hand from the per-student page (the Mark scheduled menu) after the schedule is in W2W.
+It can include the student's shifts from the current run (`schedule_table` /
+`schedule_list`), which the scheduler sees in the preview and confirms by sending, so
+it is a per-student confirmation, not a record Muster keeps. The wish that remains is
+Muster **holding** the final schedule (5.3's export round-tripping back, or confirming a
+whole run as final), so later reminders can be sent from it.
 
 **Email testing rule:** outside production, `sendEmail` only delivers to
 `EMAIL_TEST_RECIPIENTS`. When testing any email feature, set it to the owner's own

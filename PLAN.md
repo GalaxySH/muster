@@ -234,12 +234,19 @@ but `/change-requests` itself and the admin queue stay reachable.
   scheduler sends the "your schedule is posted" email from the per-student page:
   **Send schedule email…** in the menu beside **Mark scheduled** opens a confirmation
   dialog with a live preview. It never goes out on its own or in bulk. The dialog takes
-  the start date (default: the next Sunday after today) and the optional cross-over
-  position + shift and first-shift time; Muster doesn't fill those from its run, since
-  W2W holds the final schedule and cross-over shifts can't be represented here (the
-  first-shift time can be suggested from the current run's weekday rows). The template
-  is **Liquid** (`liquidjs`, no file access, strict variables, checked on save), edited
-  on `/admin/email-settings` with a variables key and preview, along with the **cc
+  the start date (default: the next Sunday after today), a **cross-over** checkbox (off
+  by default) that reveals the other position + shift, and an optional first-shift time
+  (suggestable from the current run's weekday rows). Cross-over shifts can't be
+  represented in a run, so those are always typed. The student's **current-run shifts**
+  are available as `schedule_table` (two columns, Day and Shift times, one row per day
+  with overlapping shifts merged) and `schedule_list` (one line per day); neither shows
+  weekend rotation or dates. They are shown in the dialog preview, so each send is the
+  scheduler confirming those shifts for that student. The template is **Liquid**
+  (`liquidjs`, no file access, strict variables, `outputEscape` so every value is
+  HTML-escaped, checked on save) and may use `<b> <i> <u> <mark>` (plus `<strong>`,
+  `<em>`); `sanitize-html` strips any other markup and turns `<mark>` into a background
+  color. It is edited on `/admin/email-settings` with a variables key and preview,
+  along with the **cc
   email** (default `gdec_h-o@g-groups.wisc.edu`; default-on per send; always the
   reply-to), the sender name and local part (the domain stays EMAIL_FROM's verified
   one), and **Mark the student scheduled when you send it** (default on). A send stamps
@@ -1568,21 +1575,26 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a
-  confirmation dialog with the start date (default: the next Sunday after today), an
-  optional cross-over position + shift, an optional first-shift time (suggested from the
-  current run's weekday rows), a live preview, and a default-on **Also send to** the cc
-  email. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so
+  confirmation dialog with the start date (default: the next Sunday after today), a
+  cross-over checkbox (off by default) with the other position + shift, an optional
+  first-shift time (suggested from the current run's weekday rows), a live preview, and
+  a default-on **Also send to** the cc email. The template can show the student's
+  current-run shifts through `schedule_table` (Day and Shift times) or `schedule_list`,
+  built by the app and inserted after sanitizing, with no rotation letters or dates. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so
   roadmap 6.1 step two is cancelled; no migration) and, with the setting on, marks the
   student scheduled. `/admin/email-settings` gains a **Schedule email** card: a Liquid
-  template (`liquidjs`; no file includes; strict variables and filters; render limits;
-  checked on save), a variables key, a preview, the cc email (always the reply-to), the
+  template (`liquidjs`; no file includes; strict variables and filters; every value
+  HTML-escaped by `outputEscape`; render limits; checked on save) that may use `<b> <i>
+  <u> <mark>`, with `sanitize-html` enforcing that allowlist and `entities` decoding the
+  plain-text part, a variables key, a preview, the cc email (always the reply-to), the
   sender name and local part on EMAIL_FROM's domain, the marks-scheduled toggle, and
   **Send a test to me** (the signed-in admin only, never the cc). `sendEmail` gains cc,
   reply-to, sender, an `Idempotency-Key`, and a returned outcome, and outside production
   it only delivers to the new `EMAIL_TEST_RECIPIENTS` allowlist (everything else is
-  logged). This reverses 6.1's "more email is the wrong direction" only in part: the
-  email is per student, sent by hand after the schedule is in W2W, and carries no shift
-  from Muster's run. `updateSubmission` moves out of the `"use server"` actions file into
+  logged). This reverses 6.1's "more email is the wrong direction" in part: the email is
+  per student and sent by hand after the schedule is in W2W, and the run's shifts it can
+  carry are previewed and confirmed on every send. The dialog loads on demand, so the
+  per-student page doesn't grow. `updateSubmission` moves out of the `"use server"` actions file into
   `lib/admin/update-submission.ts`. See `docs/scheduler-automation.md`.
 - **1.33 (2026-09-27)** — **The scheduler can edit every answer on the per-student page
   (§4.1, §10a).** The page showed the student's form but only some of it could be changed

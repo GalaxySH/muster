@@ -232,6 +232,20 @@ These override the proposal above wherever the two differ.
    show it in the Student details card only when it's set. That cancels roadmap 6.1
    step two, so #13 (drop that column) should be closed when this ships.
 
+### Later decisions (owner, 2026-09-28)
+
+7. **Formatting:** templates may use `<b> <i> <u> <mark>`. Values are escaped by Liquid
+   and the result is sanitized with `sanitize-html`, not hand-written escaping. A
+   rich-text editor (TipTap/Lexical, about 110 to 125 KB gzipped plus Liquid friction)
+   and Markdown (breaks Liquid's quoted filter arguments without extra glue) were
+   evaluated and passed over.
+8. **Schedule in the email:** an HTML table, not a rendered image. `schedule_table` is two
+   columns (Day, Shift times) and `schedule_list` is one line per day, both from the
+   current run, with no weekend rotation and no dates. There is no separate checkbox:
+   the template decides whether they appear.
+9. **Cross-over paragraph:** tied to the `crossover` variable, set by a dialog checkbox
+   that is off by default.
+
 ### Open questions
 
 - Is "the Sunday of next week" the next upcoming Sunday (10/4 from Monday 9/28), or

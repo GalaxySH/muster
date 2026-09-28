@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SCHEDULE_EMAIL,
+  SAMPLE_SHIFTS,
   SAMPLE_VARS,
   buildFromAddress,
   buildScheduleEmailVars,
-  firstNameOf,
   checkScheduleTemplate,
   chicagoToday,
-  formatClock,
+  firstNameOf,
   nextSunday,
   parseScheduleEmailConfig,
   renderScheduleEmail,
@@ -16,22 +16,29 @@ import {
   validateScheduleEmailInput,
   type ScheduleEmailVars,
 } from "./schedule-email";
+import type { ShiftSpan } from "./schedule-table";
 
 const bare: ScheduleEmailVars = {
   ...SAMPLE_VARS,
+  crossover: false,
   crossover_position: "",
   crossover_shift: "",
   first_shift_time: "",
 };
+const shifts: ShiftSpan[] = [
+  { day: "tue", start: 20 * 60 + 30, end: 23 * 60 },
+  { day: "mon", start: 17 * 60 + 45, end: 21 * 60 + 30 },
+];
 
 describe("renderScheduleEmail with the default template", () => {
   it("formats the start date without shifting the day", () => {
-    const { text } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare);
+    const { text } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare, []);
     expect(text).toContain("will go into effect on Sunday, October 4.");
   });
 
-  it("leaves out both optional paragraphs, with no blank gap, when they're blank", () => {
-    const { text, html } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare);
+  it("leaves out every optional part, with no blank gap, when there's nothing for them", () => {
+    const { text, html } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare, []);
+    expect(text).not.toContain("Your shifts");
     expect(text).not.toContain("lack of shift availability");
     expect(text).not.toContain("first shift");
     expect(text).not.toMatch(/\n\n\n/);
@@ -39,38 +46,91 @@ describe("renderScheduleEmail with the default template", () => {
     expect(html.match(/<p>/g)).toHaveLength(1);
   });
 
-  it("includes the cross-over paragraph with both positions", () => {
-    const { text } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, {
-      ...bare,
-      crossover_position: "Dishwasher",
-      crossover_shift: "Tuesday 2 to 5 PM",
-    });
+  it("puts the schedule table in the HTML and the list in the text", () => {
+    const { text, html } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare, shifts);
+    expect(html).toContain("<table");
+    expect(html).toContain(">Monday</td>");
+    expect(html).not.toContain("<p><table");
+    expect(html).not.toContain("%%");
     expect(text).toContain(
-      "Due to lack of shift availability for Culinary Assistant, one of your weekly shifts (Tuesday 2 to 5 PM) is a Dishwasher shift.",
+      "Your shifts:\n\nMonday: 5:45 PM to 9:30 PM\nTuesday: 8:30 PM to 11:00 PM",
     );
-    expect(text.split("\n\n")).toHaveLength(2);
+  });
+
+  it("includes the cross-over paragraph only when crossover is on", () => {
+    const filled = { crossover_position: "Dishwasher", crossover_shift: "Tue 2 to 5" };
+    const on = renderScheduleEmail(
+      DEFAULT_SCHEDULE_EMAIL,
+      { ...bare, ...filled, crossover: true },
+      [],
+    );
+    expect(on.text).toContain(
+      "Due to lack of shift availability for Culinary Assistant, one of your weekly shifts (Tue 2 to 5) is a Dishwasher shift.",
+    );
+    const off = renderScheduleEmail(
+      DEFAULT_SCHEDULE_EMAIL,
+      { ...bare, ...filled, crossover: false },
+      [],
+    );
+    expect(off.text).not.toContain("lack of shift availability");
   });
 
   it("includes the first-shift paragraph", () => {
-    const { text } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, {
-      ...bare,
-      first_shift_time: "7:00 AM",
-    });
+    const { text } = renderScheduleEmail(
+      DEFAULT_SCHEDULE_EMAIL,
+      { ...bare, first_shift_time: "7:00 AM" },
+      [],
+    );
     expect(text).toContain("your first shift is scheduled for tomorrow at 7:00 AM.");
   });
+});
 
-  it("escapes HTML from typed values", () => {
-    const { html } = renderScheduleEmail(
-      { subject: "Hi", body: "{{ crossover_shift }}" },
-      { ...bare, crossover_shift: "<b>Tue</b>" },
+describe("renderScheduleEmail formatting and escaping", () => {
+  const render = (body: string, vars: Partial<ScheduleEmailVars> = {}, s: ShiftSpan[] = []) =>
+    renderScheduleEmail({ subject: "Hi {{ first_name }}", body }, { ...bare, ...vars }, s);
+
+  it("keeps bold, italics, underline, and turns highlight into a background", () => {
+    const { html, text } = render("<b>B</b> <i>I</i> <u>U</u> <mark>M</mark>");
+    expect(html).toBe(
+      '<p><b>B</b> <i>I</i> <u>U</u> <span style="background-color:#fff59d">M</span></p>',
     );
-    expect(html).toBe("<p>&lt;b&gt;Tue&lt;/b&gt;</p>");
+    expect(text).toBe("B I U M");
   });
 
-  it("renders the subject as a single line", () => {
-    expect(renderScheduleEmail({ subject: "Hi {{ first_name }}\n", body: "x" }, bare).subject).toBe(
-      "Hi Alex",
+  it("drops scripts, images, links and styles written into the template", () => {
+    const { html } = render(
+      '<script>alert(1)</script><img src=x onerror=alert(1)><a href="javascript:alert(1)">link</a><span style="color:red">red</span>',
     );
+    expect(html).toBe("<p>link<span>red</span></p>");
+  });
+
+  it("escapes markup in values, in the HTML and the text alike", () => {
+    const { html, text, subject } = render("Shift: {{ crossover_shift }}", {
+      first_name: "<b>Al</b>",
+      crossover_shift: "<img src=x onerror=alert(1)> & <b>more</b>",
+    });
+    expect(html).toBe(
+      "<p>Shift: &lt;img src=x onerror=alert(1)&gt; &amp; &lt;b&gt;more&lt;/b&gt;</p>",
+    );
+    expect(text).toBe("Shift: <img src=x onerror=alert(1)> & <b>more</b>");
+    expect(subject).toBe("Hi <b>Al</b>");
+  });
+
+  it("puts the table in place of a paragraph, or inline, and the list as lines", () => {
+    expect(render("{{ schedule_table }}", {}, shifts).html.startsWith("<table")).toBe(true);
+    expect(render("See: {{ schedule_list }}", {}, shifts).html).toBe(
+      "<p>See: Monday: 5:45 PM to 9:30 PM<br>Tuesday: 8:30 PM to 11:00 PM</p>",
+    );
+  });
+
+  it("gives blank schedule variables when there are no shifts", () => {
+    expect(render("[{{ schedule_table }}][{{ schedule_list }}]").text).toBe("[][]");
+  });
+
+  it("keeps the placeholders out of the subject", () => {
+    expect(
+      renderScheduleEmail({ subject: "Hi {{ schedule_table }}", body: "x" }, bare, shifts).subject,
+    ).toBe("Hi");
   });
 });
 
@@ -161,13 +221,6 @@ describe("dates", () => {
   ])("nextSunday(%s) is %s", (today, sunday) => {
     expect(nextSunday(today)).toBe(sunday);
   });
-
-  it("formats clock times", () => {
-    expect(formatClock(7 * 60)).toBe("7:00 AM");
-    expect(formatClock(0)).toBe("12:00 AM");
-    expect(formatClock(12 * 60 + 30)).toBe("12:30 PM");
-    expect(formatClock(17 * 60 + 5)).toBe("5:05 PM");
-  });
 });
 
 describe("suggestFirstShiftTime", () => {
@@ -210,32 +263,38 @@ describe("firstNameOf", () => {
 });
 
 describe("buildScheduleEmailVars", () => {
+  const student = { displayName: "Alex Example", position: "Barista" };
+  const input = {
+    startDate: "2026-10-04",
+    crossover: true,
+    crossoverPosition: " Stocker ",
+    crossoverShift: " Tue 2-5 ",
+    firstShiftTime: "",
+  };
+
   it("trims the typed values and fills the student's name and position", () => {
-    expect(
-      buildScheduleEmailVars(
-        { displayName: "Alex Example", position: "Barista" },
-        {
-          startDate: "2026-10-04",
-          crossoverPosition: " Stocker ",
-          crossoverShift: " Tue 2-5 ",
-          firstShiftTime: "",
-        },
-      ),
-    ).toEqual({
+    expect(buildScheduleEmailVars(student, input)).toEqual({
       first_name: "Alex",
       full_name: "Alex Example",
       position: "Barista",
       start_date: "2026-10-04",
+      crossover: true,
       crossover_position: "Stocker",
       crossover_shift: "Tue 2-5",
       first_shift_time: "",
     });
+  });
+
+  it("blanks the cross-over fields when the box is off", () => {
+    const vars = buildScheduleEmailVars(student, { ...input, crossover: false });
+    expect(vars).toMatchObject({ crossover: false, crossover_position: "", crossover_shift: "" });
   });
 });
 
 describe("validateScheduleEmailInput", () => {
   const ok = {
     startDate: "2026-10-04",
+    crossover: false,
     crossoverPosition: "",
     crossoverShift: "",
     firstShiftTime: "",
@@ -252,15 +311,25 @@ describe("validateScheduleEmailInput", () => {
     },
   );
 
-  it("needs both halves of a cross-over", () => {
-    expect(validateScheduleEmailInput({ ...ok, crossoverShift: "Tue 2-5" })).toMatch(/position/);
-    expect(validateScheduleEmailInput({ ...ok, crossoverPosition: "Stocker" })).toMatch(/shift/);
+  it("needs both cross-over fields only when the box is on", () => {
+    expect(validateScheduleEmailInput({ ...ok, crossoverShift: "Tue 2-5" })).toBeNull();
+    expect(validateScheduleEmailInput({ ...ok, crossover: true })).toMatch(/position/);
+    expect(
+      validateScheduleEmailInput({ ...ok, crossover: true, crossoverPosition: "Stocker" }),
+    ).toMatch(/shift/);
     expect(
       validateScheduleEmailInput({
         ...ok,
+        crossover: true,
         crossoverPosition: "Stocker",
         crossoverShift: "Tue 2-5",
       }),
     ).toBeNull();
   });
+});
+
+it("the sample shifts render a table (the settings preview relies on it)", () => {
+  expect(renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, SAMPLE_VARS, SAMPLE_SHIFTS).html).toContain(
+    "<table",
+  );
 });
