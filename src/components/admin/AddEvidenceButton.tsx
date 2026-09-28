@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * The "Add" link in the Course schedule / Travel / Extracurriculars card headers
- * on the per-student response page: opens a modal with the same fields the
- * student's own form has, and calls the same evidence actions with the student
- * named in a hidden field, so an admin can enter what a student handed them in
- * person.
+ * The header link in the Course schedule / Travel / Extracurriculars cards on the
+ * per-student response page: opens a modal with the same fields the student's
+ * own form has, and calls the same evidence actions with the student named in a
+ * hidden field, so an admin can enter what a student handed them in person.
+ *
+ * Only the course schedule needs a file. Travel can go in without proof, and the
+ * extracurricular box edits the details with proof as an optional extra.
  */
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -25,7 +27,7 @@ export type EvidenceKind = "course" | "travel" | "extracurricular";
 const TITLES: Record<EvidenceKind, string> = {
   course: "Add course schedule",
   travel: "Add travel entry",
-  extracurricular: "Add extracurricular",
+  extracurricular: "Edit extracurriculars",
 };
 
 export function AddEvidenceButton({
@@ -44,11 +46,12 @@ export function AddEvidenceButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Travel can go in without proof, so the button says what it is actually doing.
+  // Proof is optional outside the course schedule, so the button says what it is actually doing.
   const [hasFile, setHasFile] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const title = replaces ? "Replace course schedule" : TITLES[kind];
+  const submitLabel = kind === "extracurricular" ? (hasFile ? "Upload and save" : "Save") : title;
 
   // Reopening starts clean: a failed attempt's error must not greet the next one.
   function close() {
@@ -62,15 +65,18 @@ export function AddEvidenceButton({
     const formData = new FormData(e.currentTarget);
     setError(null);
     startTransition(async () => {
-      const added =
-        kind === "travel"
-          ? await addTravelRequest(formData)
-          : kind === "course"
-            ? await uploadCourseSchedule(formData)
-            : await addExtracurricularFile(formData);
-      if (!added.ok) {
-        setError(added.error ?? "Something went wrong.");
-        return;
+      // An extracurricular edit may be details only, with nothing to upload.
+      if (kind !== "extracurricular" || hasFile) {
+        const added =
+          kind === "travel"
+            ? await addTravelRequest(formData)
+            : kind === "course"
+              ? await uploadCourseSchedule(formData)
+              : await addExtracurricularFile(formData);
+        if (!added.ok) {
+          setError(added.error ?? "Something went wrong.");
+          return;
+        }
       }
       // Details are one field on the submission, not per file, so save them only
       // when the admin actually changed them.
@@ -78,7 +84,8 @@ export function AddEvidenceButton({
       if (kind === "extracurricular" && notes !== currentNotes) {
         const saved = await saveExtracurricularNotes(notes, studentEmail);
         if (!saved.ok) {
-          setError(saved.error ?? "The proof was added but the details did not save.");
+          setError(saved.error ?? "The details did not save.");
+          // A proof uploaded just before still landed, so show it.
           router.refresh();
           return;
         }
@@ -91,7 +98,7 @@ export function AddEvidenceButton({
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} style={addLink} aria-label={title}>
-        {replaces ? "Replace" : "Add"}
+        {replaces ? "Replace" : kind === "extracurricular" ? "Edit" : "Add"}
       </button>
 
       {open && (
@@ -128,17 +135,20 @@ export function AddEvidenceButton({
               )}
 
               <label style={field}>
-                {kind === "travel" ? "Proof (optional)" : "Proof"}
-                {/* Students must attach proof. An admin entering an excusal for
-                    someone is the excusal, so theirs may go in without one. */}
+                {kind === "course" ? "Proof" : "Proof (optional)"}
+                {/* Students must attach travel proof. An admin entering an
+                    excusal for someone is the excusal, so theirs may go in
+                    without one, and extracurricular details stand on their own. */}
                 <input
                   type="file"
                   name="file"
                   accept={ACCEPT}
-                  required={kind !== "travel"}
+                  required={kind === "course"}
                   onChange={(e) => setHasFile(Boolean(e.currentTarget.files?.length))}
                 />
-                <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{FORMAT_HINT}</span>
+                <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                  {FORMAT_HINT}
+                </span>
               </label>
             </div>
 
@@ -156,7 +166,7 @@ export function AddEvidenceButton({
                 pending={pending}
                 pendingLabel={hasFile ? "Uploading…" : "Saving…"}
               >
-                {title}
+                {submitLabel}
               </ActionButton>
             </div>
           </form>

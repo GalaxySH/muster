@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.32
+- **Version:** 1.33
 - **Last updated:** 2026-09-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -152,8 +152,9 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
 
 **Always-available mini-flow — schedule change requests (roadmap 3.1):** separate from
 the wizard and NOT window-gated: any known student can send a request all semester from
-`/me` → **`/change-requests`** (day + shift time in their own words + comment, since the
-actual W2W schedule isn't modeled here; a **permanent vs one-time** checkbox; and up to
+`/me` → **`/change-requests`** (day, or **Multiple** (the default, 1.33), + shift time in
+their own words, with quick-insert pills for their position's shift spans, + comment, since
+the actual W2W schedule isn't modeled here; a **permanent vs one-time** checkbox; and up to
 3 optional **supporting-proof files**, relayed to Drive like all evidence — the form
 states that changes due to events/extracurriculars must include proof). Pure validation
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
@@ -1549,6 +1550,29 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.33 (2026-09-27)** — **The scheduler can edit every answer on the per-student page
+  (§4.1, §10a).** The page showed the student's form but only some of it could be changed
+  there, and several edits still demanded an upload. Now every field is editable and none
+  needs an image:
+  1. **Change requests** take a **Multiple** day (migration 0035 adds `multiple` to
+     `change_requests.day`; additive), which is the form's default. Quick-insert **shift
+     time pills** under the text box offer the targeted person's position spans, filtered
+     by day type. On the per-student page each request can be **edited** (day, shift,
+     comment, permanent) or **deleted** for good (its Drive proofs go too), and the row
+     is two compact lines instead of a wrapping header.
+  2. **Evidence:** extracurricular details save without a file, each proof and the course
+     schedule get a **Remove** (course-schedule removal is admin-only; the schedule stays
+     required of students and image-only), and travel stays proof-optional for admins.
+  3. **Requested hours** edit in place by clicking the number in the REQUESTED tile. By the
+     owner's call this **overwrites** `submissions.desired_hours` rather than joining the
+     1.07 internal copy; it keeps the student form's floor and never moves `updated_at`.
+     **Student notes** are editable the same way, and the details card gains a **Group**
+     select under Change position.
+  4. **Layout:** the coverage grid is now a card in the dashboard (weekday and weekend
+     tables stacked) instead of a full-width strip under it. The availability card opens on
+     **Edit schedule** when a run exists, and Edit preferences shows a read-only
+     **Sched A/B/E** chip beside the rotation pill so the scheduled weekend is visible
+     without switching tabs. No scheduling behavior changes.
 - **1.32 (2026-09-27)** — **The CLI tools read `.env.local` on their own (§14).** Every
   command that runs outside Next (`drizzle-kit` via `db:migrate`/`generate`/`push`/`studio`,
   `db:seed`, the roster import CLI, and the dev scripts) read `DATABASE_URL` straight from

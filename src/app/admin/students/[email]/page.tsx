@@ -5,6 +5,7 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadStudentDetail, getResponseNeighbors, responseStatus } from "@/lib/admin/data";
 import { loadHighDemandCells } from "@/lib/availability/data";
 import { positionOptions } from "@/lib/positions/data";
+import { listGroups } from "@/lib/groups/data";
 import {
   loadCoverage,
   loadPositionAssignedCells,
@@ -36,8 +37,10 @@ import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkBut
 import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
+import { RemoveEvidenceButton } from "@/components/admin/RemoveEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
+import { ChangeRequestEntryActions } from "@/components/admin/ChangeRequestEntryActions";
 import { TravelResolvedCheckbox } from "@/components/admin/TravelResolvedCheckbox";
 import { TravelEntryActions } from "@/components/admin/TravelEntryActions";
 import { DismissFlagButton } from "@/components/admin/DismissFlagButton";
@@ -45,6 +48,9 @@ import { PrefGridCalculator } from "@/components/admin/PrefGridCalculator";
 import { CoverageGrid, CoverageLegend } from "@/components/admin/CoverageGrid";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { StudentPositionChanger } from "@/components/admin/StudentPositionChanger";
+import { StudentGroupChanger } from "@/components/admin/StudentGroupChanger";
+import { RequestedHoursEditor } from "@/components/admin/RequestedHoursEditor";
+import { EditStudentNotesButton } from "@/components/admin/EditStudentNotesButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
@@ -78,30 +84,12 @@ const initials = (name: string) =>
     .map((p) => p[0]!.toUpperCase())
     .join("") || "?";
 
-// Full timestamp for the scheduler, e.g. "09 July 2026 14:30:05 CDT". Rendered in
-// US Central (UW-Madison / how the domain reasons about cutoffs); formatToParts lets us
-// assemble the DD-month-YYYY order ourselves (en-US gives the CDT/CST short zone name).
-const fmtDate = (d: Date | null) => {
-  if (!d) return null;
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "America/Chicago",
-    timeZoneName: "short",
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`;
-};
-
 /**
- * The same instant as `fmtDate`, abbreviated to one short line ("26 Jul 2026 19:13
- * CDT") so the header can show two stamps without growing taller. Same US Central
- * rendering (see `fmtDate`); seconds are dropped, since nothing here turns on them.
+ * A timestamp on one short line, e.g. "26 Jul 2026 19:13 CDT", so the header can
+ * show two stamps without growing taller. Rendered in US Central (UW-Madison / how
+ * the domain reasons about cutoffs); formatToParts lets us assemble the DD-month-YYYY
+ * order ourselves (en-US gives the CDT/CST short zone name). Seconds are dropped,
+ * since nothing here turns on them.
  */
 const fmtStamp = (d: Date): string => {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -240,6 +228,8 @@ export default async function StudentDetailPage({
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.
   const allPositions = await positionOptions();
+  // Every group, for the change-group control under it.
+  const allGroups = (await listGroups()).map((g) => ({ id: g.id, name: g.name }));
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
   const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
@@ -390,7 +380,18 @@ export default async function StudentDetailPage({
           />
           <StatTile
             label="REQUESTED"
-            value={`${submission?.desiredHours ? `${submission.desiredHours}h` : "D"} of ${fmtHours(validation.capacity.weeklyAverageHours)} sel`}
+            value={
+              <>
+                {/* Keyed on the stored value so a change from anywhere resets it. */}
+                <RequestedHoursEditor
+                  key={submission?.desiredHours ?? "unset"}
+                  studentEmail={detail.email}
+                  desiredHours={submission?.desiredHours ?? null}
+                  minHours={position!.minHours}
+                />{" "}
+                of {fmtHours(validation.capacity.weeklyAverageHours)} sel
+              </>
+            }
             sub=""
           />
           <StatTile
@@ -498,11 +499,16 @@ export default async function StudentDetailPage({
         <section style={panelStyle}>
           <SectionLabel
             action={
-              <AddEvidenceButton
-                kind="course"
-                studentEmail={detail.email}
-                replaces={Boolean(evidence.courseScheduleFileId)}
-              />
+              <span style={headerActions}>
+                <AddEvidenceButton
+                  kind="course"
+                  studentEmail={detail.email}
+                  replaces={Boolean(evidence.courseScheduleFileId)}
+                />
+                {evidence.courseScheduleFileId && (
+                  <RemoveEvidenceButton kind="course" studentEmail={detail.email} />
+                )}
+              </span>
             }
           >
             Course schedule
@@ -613,12 +619,18 @@ export default async function StudentDetailPage({
           {evidence.extracurricularFiles.length > 0 ? (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {evidence.extracurricularFiles.map((f, i) => (
-                <EvidenceThumb
-                  key={f.id}
-                  fileId={f.fileId}
-                  label="Extracurricular proof"
-                  caption={`proof ${i + 1}`}
-                />
+                <div key={f.id} style={proofTile}>
+                  <EvidenceThumb
+                    fileId={f.fileId}
+                    label="Extracurricular proof"
+                    caption={`proof ${i + 1}`}
+                  />
+                  <RemoveEvidenceButton
+                    kind="extracurricular"
+                    rowId={f.id}
+                    studentEmail={detail.email}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -628,15 +640,30 @@ export default async function StudentDetailPage({
           )}
         </section>
 
-        {/* Student's own note about their requested schedule */}
-        {submission?.studentNotes && (
-          <section style={panelStyle}>
-            <SectionLabel>Student notes</SectionLabel>
+        {/* Student's own note about their requested schedule. Always shown, so
+            the scheduler can write one in for them; saving starts a submission
+            like everything else here. */}
+        <section style={panelStyle}>
+          <SectionLabel
+            action={
+              <EditStudentNotesButton
+                studentEmail={detail.email}
+                notes={submission?.studentNotes ?? ""}
+              />
+            }
+          >
+            Student notes
+          </SectionLabel>
+          {submission?.studentNotes ? (
             <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
               {submission.studentNotes}
             </p>
-          </section>
-        )}
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
+              No notes.
+            </p>
+          )}
+        </section>
 
         {/* A responder whose position is unset has no validation to show, but a
             position_change flag must stay visible and dismissible (roadmap 3.3). */}
@@ -651,8 +678,8 @@ export default async function StudentDetailPage({
 
         {/* Schedule change requests (roadmap 3.1): independent of the submission,
             so they render even for students without one. Kept near the end of DOM
-            order so a long history packs into a late column slot (only the small
-            Last-seen card follows). */}
+            order so a long history packs into a late column slot (only Student
+            details and coverage follow). */}
         {changeRequests.length > 0 && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
@@ -665,33 +692,27 @@ export default async function StudentDetailPage({
                     id={changeRequestAnchor(r.id)}
                     style={r.status === "resolved" ? resolvedChangeRow : changeRow}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        fontSize: 14,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600 }}>
+                    <div style={changeHead}>
+                      <span style={changeTitle}>
                         {changeRequestDayLabel(r.day)} · {r.shiftText}
-                        <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
-                          {" "}
-                          · {r.permanent ? "permanent" : "one time"}
-                        </span>
                       </span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span style={changeStatus}>
                         <ChangeStatusBadge status={r.status} />
-                        <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                          {fmtDate(r.createdAt)}
-                        </span>
                         <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
                       </span>
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
-                      {r.comment}
-                    </p>
+                    <div style={changeMeta}>
+                      {r.permanent ? "permanent" : "one time"} · {fmtStamp(r.createdAt)}
+                      <ChangeRequestEntryActions
+                        id={r.id}
+                        day={r.day}
+                        shiftText={r.shiftText}
+                        comment={r.comment}
+                        permanent={r.permanent}
+                        fileCount={files.length}
+                      />
+                    </div>
+                    <p style={changeComment}>{r.comment}</p>
                     {files.length > 0 &&
                       (previewIds.has(r.id) ? (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -726,8 +747,8 @@ export default async function StudentDetailPage({
           </section>
         )}
 
-        {/* Student details: last authenticated activity and hire date. Kept last
-            in the card order. */}
+        {/* Student details: last authenticated activity, hire date, and the
+            position and group controls. Only the coverage card follows it. */}
         <section style={panelStyle}>
           <SectionLabel>Student details</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
@@ -780,27 +801,29 @@ export default async function StudentDetailPage({
               currentPositionId={position?.id ?? null}
               options={allPositions}
             />
+            <StudentGroupChanger
+              studentEmail={detail.email}
+              currentGroupId={detail.groupId}
+              options={allGroups}
+            />
           </div>
         </section>
-      </div>
 
-      {/* Coverage for this student's position, the same grid the schedule page
-          shows. Full width under the dashboard: the weekday table is far wider
-          than a masonry column. */}
-      {coverageRows && position && (
-        // marginTop matches the masonry's own column gap: the panels inside it
-        // carry only a bottom margin, so this one would otherwise sit flush
-        // against the tallest column.
-        <section style={{ ...panelStyle, marginTop: 14 }}>
-          <SectionLabel action={<Link href="/admin/schedule">Open the schedule</Link>}>
-            {position.name} coverage
-          </SectionLabel>
-          <p style={{ margin: "0 0 10px", fontSize: 13 }}>
-            <CoverageLegend />
-          </p>
-          <CoverageGrid rows={coverageRows} assignedCells={assignedCells} />
-        </section>
-      )}
+        {/* Coverage for this student's position, the same grid the schedule
+            page shows. A card like any other, last in the order: the two tables
+            stack to fit the column and each scrolls sideways inside it. */}
+        {coverageRows && position && (
+          <section style={panelStyle}>
+            <SectionLabel action={<Link href="/admin/schedule">Open the schedule</Link>}>
+              {position.name} coverage
+            </SectionLabel>
+            <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+              <CoverageLegend />
+            </p>
+            <CoverageGrid rows={coverageRows} assignedCells={assignedCells} stacked />
+          </section>
+        )}
+      </div>
     </Page>
   );
 }
@@ -829,11 +852,36 @@ const changeRow: React.CSSProperties = {
 };
 /** Resolved requests read as done at a glance: green tint plus the badge icon. */
 const resolvedChangeRow: React.CSSProperties = {
-  scrollMarginTop: 20,
+  ...changeRow,
   background: "#f3faf5",
   border: "1px solid #cbe6d3",
-  borderRadius: "var(--border-radius-md)",
-  padding: "8px 10px",
+};
+/** Day and shift on the left; the status controls stay pinned right and never wrap. */
+const changeHead: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 8,
+  fontSize: 14,
+};
+// Free text, so a long unbroken shift string must wrap instead of pushing the controls out.
+const changeTitle: React.CSSProperties = { fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" };
+const changeStatus: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  flexShrink: 0,
+};
+const changeMeta: React.CSSProperties = {
+  marginTop: 1,
+  fontSize: 12,
+  color: "var(--color-text-secondary)",
+};
+const changeComment: React.CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: 13,
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
 };
 
 const travelEntry: React.CSSProperties = {
@@ -867,6 +915,15 @@ const noProofThumb: React.CSSProperties = {
   color: "var(--color-text-tertiary)",
   fontSize: 11,
   textAlign: "center",
+};
+/** Replace and Remove side by side in the course schedule header. */
+const headerActions: React.CSSProperties = { display: "flex", alignItems: "baseline", gap: 12 };
+/** One extracurricular proof with its Remove link centered underneath. */
+const proofTile: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 2,
 };
 
 // --- presentational helpers (server) ---

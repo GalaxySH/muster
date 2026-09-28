@@ -32,9 +32,15 @@ const DAY_TYPES: { dayType: DayType; label: string }[] = [
 export function CoverageGrid({
   rows,
   assignedCells,
+  stacked = false,
 }: {
   rows: readonly CoverageRow[];
   assignedCells: AssignedCellMap;
+  /**
+   * Weekdays above Weekends instead of side by side, for a narrow card. Each
+   * table still scrolls sideways on its own when it is wider than the card.
+   */
+  stacked?: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -45,7 +51,7 @@ export function CoverageGrid({
   }
 
   return (
-    <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+    <div style={stacked ? stackedLayout : sideBySideLayout}>
       {DAY_TYPES.map(({ dayType, label }) => {
         const dayRows = rows.filter((r) => r.dayType === dayType);
         if (dayRows.length === 0) return null;
@@ -132,6 +138,19 @@ export function CoverageLegend() {
     </>
   );
 }
+
+const sideBySideLayout: React.CSSProperties = {
+  display: "flex",
+  gap: 28,
+  flexWrap: "wrap",
+  alignItems: "flex-start",
+};
+/** Full-width rows, so each table's own scroll kicks in at the card's edge. */
+const stackedLayout: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 14,
+};
 
 export const coverageStatusStyles: Record<CoverageStatus, React.CSSProperties> = {
   ok: { background: "#e6f4ea", color: "#196127" },
