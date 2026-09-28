@@ -163,8 +163,9 @@ Checked against Resend's send-email API reference:
    - Send is disabled while pending. The server action re-checks admin, re-renders
      the email on the server, and sends.
 7. **Record the send.** Reuse `submissions.schedule_email_sent_at` (no migration, and
-   it cancels 6.1 step two and #13) and show "Schedule email sent Sep 28" in the top
-   bar.
+   it cancels 6.1 step two and #13). When the column is set, the **Student details**
+   card on the per-student page shows a "Schedule email sent" row with the timestamp,
+   next to Last seen and Hire date. When it's unset, the row is hidden.
 
 Estimate: **S–M, about 1–2 days** including tests and doc updates. Main files:
 `lib/email/resend.ts`, a new `lib/email/schedule-email.ts`, `lib/settings.ts`,
@@ -227,9 +228,9 @@ These override the proposal above wherever the two differ.
    applies even when the cc checkbox is unticked for a send. The editable settings
    are the template (subject and body), the cc email, and the from name and local
    part.
-6. **A last-sent date is enough.** Reuse `submissions.schedule_email_sent_at`. That
-   cancels roadmap 6.1 step two, so #13 (drop that column) should be closed when this
-   ships.
+6. **A last-sent date is enough.** Reuse `submissions.schedule_email_sent_at`, and
+   show it in the Student details card only when it's set. That cancels roadmap 6.1
+   step two, so #13 (drop that column) should be closed when this ships.
 
 ### Open questions
 
