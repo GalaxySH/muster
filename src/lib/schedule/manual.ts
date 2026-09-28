@@ -8,8 +8,8 @@
  * reach. Edits mutate the current run's rows: no new run per save, so Update
  * still supersedes them for non-frozen students by design (the freeze model in
  * docs/architecture.md). Manual rows carry source "manual"; removing an engine
- * row is allowed, since the scheduler owns the schedule. The only hard rule is
- * that every same-day shift must add unique time (domain/scheduling/manual.ts),
+ * row is allowed, since the scheduler owns the schedule. The student must still
+ * be on the roster, and every same-day shift must add unique time (domain/scheduling/manual.ts),
  * re-checked against the batch's evolving rows so the state it lands on is the
  * thing judged; assigning a cell the student never selected is deliberate
  * scheduler prerogative, and labor rule violations come back as warnings on the
@@ -35,6 +35,7 @@ import {
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import { hourCap } from "@/lib/domain/caps";
 import { laborLimits } from "@/lib/domain/scheduling/labor";
 import {
@@ -138,10 +139,11 @@ export async function applyScheduleEdits(
     .from(students)
     .leftJoin(submissions, eq(submissions.studentEmail, students.email))
     .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
-    .where(eq(students.email, email))
+    .where(and(eq(students.email, email), onRosterStudent()))
     .limit(1);
-  const everyWeekendOptIn = effectiveRotation(profile?.internalOptIn, profile?.everyWeekendOptIn);
-  const international = profile?.international ?? false;
+  if (!profile) return fail("This student is no longer on the roster and cannot be scheduled.");
+  const everyWeekendOptIn = effectiveRotation(profile.internalOptIn, profile.everyWeekendOptIn);
+  const international = profile.international;
 
   let rows: ExistingAssignment[];
   try {
