@@ -29,6 +29,7 @@ import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import { weekendCohortOf } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
@@ -674,7 +675,7 @@ export default async function StudentDetailPage({
                       }}
                     >
                       <span style={{ fontWeight: 600 }}>
-                        {DAY_LABEL[r.day]} · {r.shiftText}
+                        {changeRequestDayLabel(r.day)} · {r.shiftText}
                         <span style={{ fontWeight: 400, color: "var(--color-text-secondary)" }}>
                           {" "}
                           · {r.permanent ? "permanent" : "one time"}

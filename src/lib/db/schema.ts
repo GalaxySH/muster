@@ -400,6 +400,8 @@ export const appSettings = mysqlTable("app_settings", {
 });
 
 export const changeRequestStatusEnum = ["open", "withdrawn", "resolved"] as const;
+/** A change request names one day, or "multiple" when it spans several. */
+export const changeRequestDayEnum = [...dayEnum, "multiple"] as const;
 
 /**
  * A student's self-service schedule change request (roadmap 3.1). A second,
@@ -414,7 +416,7 @@ export const changeRequests = mysqlTable("change_requests", {
   studentEmail: varchar("student_email", { length: 255 })
     .notNull()
     .references(() => students.email, { onDelete: "cascade" }),
-  day: mysqlEnum("day", dayEnum).notNull(),
+  day: mysqlEnum("day", changeRequestDayEnum).notNull(),
   shiftText: varchar("shift_text", { length: 200 }).notNull(),
   comment: text("comment").notNull(),
   permanent: boolean("permanent").notNull().default(false),

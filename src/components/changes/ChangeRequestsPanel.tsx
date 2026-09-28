@@ -17,7 +17,7 @@ import {
 } from "@/lib/changes/actions";
 import { adminListChangeRequests } from "@/lib/changes/admin-actions";
 import type { ChangeRequestRow, ChangeRequestStatus } from "@/lib/changes/data";
-import { MAX_CHANGE_REQUEST_FILES } from "@/lib/domain/change-requests";
+import { MAX_CHANGE_REQUEST_FILES, changeRequestDayLabel } from "@/lib/domain/change-requests";
 import { DAY_LABEL, ALL_DAYS, type Day } from "@/lib/domain/types";
 import { ACCEPT } from "@/components/evidence/shared";
 import { ActionButton } from "@/components/ui";
@@ -212,7 +212,7 @@ export function ChangeRequestsPanel({
             <li key={r.id} style={requestCard}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ fontWeight: 600 }}>
-                  {DAY_LABEL[r.day]} · {r.shiftText}
+                  {changeRequestDayLabel(r.day)} · {r.shiftText}
                   <span style={{ fontWeight: 400, color: "#777" }}>
                     {" "}
                     · {r.permanent ? "permanent" : "one time"}
