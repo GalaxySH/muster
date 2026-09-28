@@ -34,7 +34,7 @@ import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
-import { SchedulerNotes } from "@/components/admin/SchedulerNotes";
+import { NotesCard } from "@/components/admin/NotesCard";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { RemoveEvidenceButton } from "@/components/admin/RemoveEvidenceButton";
@@ -50,7 +50,6 @@ import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { StudentPositionChanger } from "@/components/admin/StudentPositionChanger";
 import { StudentGroupChanger } from "@/components/admin/StudentGroupChanger";
 import { RequestedHoursEditor } from "@/components/admin/RequestedHoursEditor";
-import { EditStudentNotesButton } from "@/components/admin/EditStudentNotesButton";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
@@ -535,13 +534,11 @@ export default async function StudentDetailPage({
         {/* Evidence and notes render for everyone on the roster, not just
             responders: the scheduler can record details, and adding any of them
             starts the student's submission. */}
-        {/* Scheduler notes (editable) */}
-        <section style={panelStyle}>
-          <SchedulerNotes
-            studentEmail={detail.email}
-            initialNotes={submission?.schedulerNotes ?? ""}
-          />
-        </section>
+        <NotesCard
+          kind="scheduling"
+          studentEmail={detail.email}
+          notes={submission?.schedulerNotes ?? ""}
+        />
 
         {/* Travel */}
         <section style={panelStyle}>
@@ -643,27 +640,11 @@ export default async function StudentDetailPage({
         {/* Student's own note about their requested schedule. Always shown, so
             the scheduler can write one in for them; saving starts a submission
             like everything else here. */}
-        <section style={panelStyle}>
-          <SectionLabel
-            action={
-              <EditStudentNotesButton
-                studentEmail={detail.email}
-                notes={submission?.studentNotes ?? ""}
-              />
-            }
-          >
-            Student notes
-          </SectionLabel>
-          {submission?.studentNotes ? (
-            <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>
-              {submission.studentNotes}
-            </p>
-          ) : (
-            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>
-              No notes.
-            </p>
-          )}
-        </section>
+        <NotesCard
+          kind="student"
+          studentEmail={detail.email}
+          notes={submission?.studentNotes ?? ""}
+        />
 
         {/* A responder whose position is unset has no validation to show, but a
             position_change flag must stay visible and dismissible (roadmap 3.3). */}

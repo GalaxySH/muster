@@ -430,9 +430,9 @@ avatar** beside it, so the avatar remains the tallest element and the bar keeps 
 height it had when it showed one timestamp — if you change the font size, line height, or
 padding, re-measure. And the old header fell back to `updatedAt` when `submittedAt` was
 null, which labelled an edit time as a submit time; the stamps are now distinct fields
-and never substitute for each other. `fmtStamp` is the compact one-line form of
-`fmtDate` (same US Central rendering, seconds dropped). The client
-islands are `MarkScheduledButton`, `SchedulerNotes`, `EvidenceThumb` (one
+and never substitute for each other. `fmtStamp` is the page's one timestamp format
+(US Central, seconds dropped; the change-request rows use it too since 1.33). The client
+islands are `MarkScheduledButton`, `NotesCard`, `EvidenceThumb` (one
 thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
 both through the `/api/evidence/[fileId]` proxy), `PrefGridCalculator`, and `JumpMenu`
 (the header name → responder-list disclosure; a client wrapper around the native
@@ -558,9 +558,13 @@ cards). The rest:
   `submissions.desired_hours`** (owner's call: this is not part of the 1.07 internal copy),
   validates through the same `checkDesiredHours` floor as the student form plus a
   whole-number check, re-syncs `revalidation_failed`, and never moves `updated_at`.
-- **Student notes.** The card always renders ("No notes." when empty) with an **Edit**
-  modal (`EditStudentNotesButton`) over `saveStudentNotesFor`, same gating and stamp rule.
-  Both actions share a private `writeAnswerFor` (gate via `requireEditableStudent`,
+- **Notes.** Scheduling notes and student notes are one component, `NotesCard`
+  (`kind: "scheduling" | "student"`): the full text as `pre-wrap` paragraphs (never a
+  text box, never truncated; "No notes." when empty), edited in a modal opened by the
+  header's **Edit** or a **double-click** on the text. Scheduling notes save through
+  `saveSchedulerNotes` (`lib/admin/actions.ts`), student notes through
+  `saveStudentNotesFor`, which has the same gating and stamp rule as desired hours.
+  Both of those availability actions share a private `writeAnswerFor` (gate via `requireEditableStudent`,
   `ensureSubmissionId`, responses-sheet refresh when submitted, revalidate).
 - **Group.** `StudentGroupChanger` sits under the position changer: a select defaulting to
   the student's group (`StudentDetail.groupId`) plus "No group", saved through the

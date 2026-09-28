@@ -1566,8 +1566,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   3. **Requested hours** edit in place by clicking the number in the REQUESTED tile. By the
      owner's call this **overwrites** `submissions.desired_hours` rather than joining the
      1.07 internal copy; it keeps the student form's floor and never moves `updated_at`.
-     **Student notes** are editable the same way, and the details card gains a **Group**
-     select under Change position.
+     **Student notes** and **scheduling notes** share one card: the full note as readable
+     text (scheduling notes lose their always-open text box), edited in a modal from the
+     header's Edit or a double-click on the text. The details card gains a **Group** select
+     under Change position.
   4. **Layout:** the coverage grid is now a card in the dashboard (weekday and weekend
      tables stacked) instead of a full-width strip under it. The availability card opens on
      **Edit schedule** when a run exists, and Edit preferences shows a read-only
