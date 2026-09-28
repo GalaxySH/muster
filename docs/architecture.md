@@ -84,8 +84,9 @@ from the cutoff-derived `excused` flag. The hub's imminent-travel alert reads it
 admin-views section). (4) a **batch schedule-ready email** at
 `/admin/schedule-email` — **removed in 0.99 (roadmap 6.1)**; its lasting piece is the
 split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
-the magic-link mail and the change digest still sit on (the dead
-`submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
+the magic-link mail and the change digest still sit on (its
+`submissions.scheduleEmailSentAt` column is reused by the per-student schedule email,
+1.34; see that section); (5) **computed
 high-demand** — the red bar
 derives from live selection counts (pure `domain/demand.ts`): each (block × day) cell
 is gated on its own block target (at least `desiredCapacity` takers) plus an absolute
@@ -1092,6 +1093,45 @@ roster-probing input) and sends no email; the raw URL and the student's email co
 the client, which shows them in the shared `Modal` + `MagicLinkCopy`. The email is **not**
 in the URL (redemption stays bound to token+email); the modal shows it separately as the
 reminder the student needs to enter at `/magic/redeem`.
+
+## Schedule email (per student, PLAN 1.34)
+
+The "your schedule is posted" email a scheduler sends one student after entering their
+schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automation.md`.
+
+- **Pure core:** `lib/email/schedule-email.ts` holds the config type + default template,
+  `parseScheduleEmailConfig`, the Liquid engine (`liquidjs` with a no-files `FS`, so
+  `include`/`render`/`layout` fail; `strictVariables`, `strictFilters`, `jsTruthy` so a
+  blank optional field is falsy; `timezoneOffset: 0` with `start_date` passed as UTC
+  midnight so the `date` filter keeps the day; parse/render/memory limits),
+  `renderScheduleEmail` (text is tidied so an omitted optional paragraph leaves no gap;
+  HTML is the escaped text split into paragraphs), `checkScheduleTemplate` /
+  `validateScheduleEmailConfig` (run on save), `buildScheduleEmailVars` +
+  `validateScheduleEmailInput` (shared by the dialog preview and the server send), and
+  the dialog's date helpers (`chicagoToday`, `nextSunday`, `suggestFirstShiftTime`, which
+  reads only weekday and every-weekend rows since A/B weeks have no dates). The client
+  bundles it for live previews; the server re-renders from the saved config on send.
+- **Settings:** one JSON key, `schedule_email` (`getScheduleEmailConfig` in
+  `lib/settings.ts`), edited by `ScheduleEmailSettingsPanel` on `/admin/email-settings`.
+  The cc email is always the reply-to; the sender's domain always comes from
+  `EMAIL_FROM` (Resend only sends from the verified domain), so only the name and local
+  part are editable.
+- **Actions:** `lib/admin/schedule-email-actions.ts` (`saveScheduleEmailConfig`,
+  `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`). A send
+  refuses when the master switch is off, passes an `Idempotency-Key` minted when the
+  dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
+  `scheduled` when `marksScheduled` is on) through `updateSubmission`, which lives in
+  the `server-only` `lib/admin/update-submission.ts` so it can't become a client-callable
+  action.
+- **UI:** `MarkScheduledButton` is a split button; its caret menu opens
+  `SendScheduleEmailDialog`. The per-student page passes the template, cc, sender,
+  toggle, master-switch state, and the student's current-run rows (for the first-shift
+  suggestion). Student details shows "Schedule email sent" once the column is set.
+- **Test safety:** `sendEmail` returns an `EmailOutcome` (`sent` | `suppressed` |
+  `logged` | `blocked`). Outside production it filters every `to`/`cc` through
+  `EMAIL_TEST_RECIPIENTS` (pure `lib/email/guard.ts`): a main recipient not on the list
+  blocks the message, a cc not on it is dropped, and an unset list delivers nothing.
+  This covers the magic-link mail and the digest too.
 
 ## Test-account manager
 

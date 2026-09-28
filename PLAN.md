@@ -45,9 +45,9 @@
   restore, the run diff, the staleness banner, and the `Muster Schedule` sheet —
   all ship on `/admin/schedule`; see `docs/schedule-generation-plan.md`. Ops is
   complete (the nightly backup cron is installed). The batch schedule email is
-  removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
-  "Still open" loose ends.
-- **Version:** 1.33
+  removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
+  (1.34). Next: the "Still open" loose ends.
+- **Version:** 1.34
 - **Last updated:** 2026-09-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -228,8 +228,24 @@ but `/change-requests` itself and the admin queue stay reachable.
   marked-scheduled recipients, send once each) could only announce that a schedule
   exists, since the final schedule lives in W2W and Muster holds a recommendation the
   scheduler may have edited away from. The generic `sendEmail` core and
-  `submissions.scheduled` stay; the dead `scheduleEmailSentAt` column is dropped in a
-  later release.
+  `submissions.scheduled` stay. Its `scheduleEmailSentAt` column is reused by the
+  per-student schedule email below instead of being dropped (1.34).
+- **Schedule email (per student, 1.34)** — once a student's schedule is in W2W, the
+  scheduler sends the "your schedule is posted" email from the per-student page:
+  **Send schedule email…** in the menu beside **Mark scheduled** opens a confirmation
+  dialog with a live preview. It never goes out on its own or in bulk. The dialog takes
+  the start date (default: the next Sunday after today) and the optional cross-over
+  position + shift and first-shift time; Muster doesn't fill those from its run, since
+  W2W holds the final schedule and cross-over shifts can't be represented here (the
+  first-shift time can be suggested from the current run's weekday rows). The template
+  is **Liquid** (`liquidjs`, no file access, strict variables, checked on save), edited
+  on `/admin/email-settings` with a variables key and preview, along with the **cc
+  email** (default `gdec_h-o@g-groups.wisc.edu`; default-on per send; always the
+  reply-to), the sender name and local part (the domain stays EMAIL_FROM's verified
+  one), and **Mark the student scheduled when you send it** (default on). A send stamps
+  `scheduleEmailSentAt`, shown in Student details once set. Outside production,
+  `sendEmail` only delivers to `EMAIL_TEST_RECIPIENTS`. See
+  `docs/scheduler-automation.md`.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
   students); every name links straight to that student's page.
 - **Config** — **positions & shift blocks on `/admin/positions`** (roadmap 3.3):
@@ -653,9 +669,8 @@ columns from the roster.
   `courseScheduleFileId?` (Drive `fileId` via `drive.file` relay — §12),
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
-  §10a), `scheduleEmailSentAt?` (**dead** — the batch schedule-ready email was removed
-  in 0.99, roadmap 6.1; nothing reads or writes it, and the column drop is deferred to
-  a later release), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  §10a), `scheduleEmailSentAt?` (when an admin last sent the per-student schedule email,
+  1.34; the column dates from the removed batch email and was reused, not dropped), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
   **The student's own record, and only theirs** (1.07): admin edits never write this
   table, so what the student submitted is always preserved verbatim.
@@ -740,8 +755,8 @@ columns from the roster.
   validation falls back **wholesale** rather than field by field, because judging a
   run against half-validated knobs produces findings nobody can act on). Rows are
   created on first write, so an unset key means "use the coded
-  default", never "broken". *(The dead `scheduleEmailSentAt` marker on Submission
-  awaits its deferred drop — removed with the batch email in 0.99, roadmap 6.1.)*
+  default", never "broken". The schedule email's template, cc, sender and
+  marks-scheduled toggle live under one JSON key, `schedule_email` (1.34).
 - **MagicLink** (fallback auth — §11): `id`, `studentEmail` (bound identity),
   `tokenHash`, `requestedAt`, `expiresAt` (**as built: 1 day from issue** — 1.16, up
   from 30 minutes — not the form-window close the original design proposed),
@@ -1550,6 +1565,25 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
+  new student the "your schedule is posted" email from their page instead of by hand.
+  **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a
+  confirmation dialog with the start date (default: the next Sunday after today), an
+  optional cross-over position + shift, an optional first-shift time (suggested from the
+  current run's weekday rows), a live preview, and a default-on **Also send to** the cc
+  email. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so
+  roadmap 6.1 step two is cancelled; no migration) and, with the setting on, marks the
+  student scheduled. `/admin/email-settings` gains a **Schedule email** card: a Liquid
+  template (`liquidjs`; no file includes; strict variables and filters; render limits;
+  checked on save), a variables key, a preview, the cc email (always the reply-to), the
+  sender name and local part on EMAIL_FROM's domain, the marks-scheduled toggle, and
+  **Send a test to me** (the signed-in admin only, never the cc). `sendEmail` gains cc,
+  reply-to, sender, an `Idempotency-Key`, and a returned outcome, and outside production
+  it only delivers to the new `EMAIL_TEST_RECIPIENTS` allowlist (everything else is
+  logged). This reverses 6.1's "more email is the wrong direction" only in part: the
+  email is per student, sent by hand after the schedule is in W2W, and carries no shift
+  from Muster's run. `updateSubmission` moves out of the `"use server"` actions file into
+  `lib/admin/update-submission.ts`. See `docs/scheduler-automation.md`.
 - **1.33 (2026-09-27)** — **The scheduler can edit every answer on the per-student page
   (§4.1, §10a).** The page showed the student's form but only some of it could be changed
   there, and several edits still demanded an upload. Now every field is editable and none

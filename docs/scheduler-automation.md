@@ -6,7 +6,7 @@ automate. Each has a GitHub issue; only the one marked **explored** has had disc
 | # | Item | Issue | Status |
 |---|------|-------|--------|
 | 1 | Import the rolling-hire Google Form's response sheet as partial responses | #3 | to explore |
-| 2 | Send the "your schedule is posted" email from the per-student page | #4 | **explored** (below) |
+| 2 | Send the "your schedule is posted" email from the per-student page | #4 | **built** (PLAN 1.34; notes below) |
 
 ### 1. Rolling-hire Google Form import (not explored)
 

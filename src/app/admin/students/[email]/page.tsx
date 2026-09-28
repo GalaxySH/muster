@@ -57,6 +57,9 @@ import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/d
 import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
+import { getEmailSendingEnabled, getScheduleEmailConfig } from "@/lib/settings";
+import { buildFromAddress } from "@/lib/email/schedule-email";
+import { env } from "@/lib/env";
 import {
   StatTile,
   SectionLabel,
@@ -227,6 +230,10 @@ export default async function StudentDetailPage({
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.
   const allPositions = await positionOptions();
+  const [scheduleEmail, emailEnabled] = await Promise.all([
+    getScheduleEmailConfig(),
+    getEmailSendingEnabled(),
+  ]);
   // Every group, for the change-group control under it.
   const allGroups = (await listGroups()).map((g) => ({ id: g.id, name: g.name }));
   // The current run's rows for this student, overlaid as the schedule half of
@@ -327,8 +334,23 @@ export default async function StudentDetailPage({
           </Link>
           <GenerateMagicLinkButton studentEmail={detail.email} />
           <MarkScheduledButton
-            studentEmail={detail.email}
             scheduled={submission?.scheduled ?? false}
+            email={{
+              studentEmail: detail.email,
+              displayName: detail.displayName,
+              positionName: position?.name ?? "your position",
+              positions: allPositions.map((p) => p.name).filter((n) => n !== position?.name),
+              template: { subject: scheduleEmail.subject, body: scheduleEmail.body },
+              cc: scheduleEmail.cc,
+              from: buildFromAddress(scheduleEmail, env.EMAIL_FROM),
+              marksScheduled: scheduleEmail.marksScheduled,
+              emailEnabled,
+              shiftCells: (schedule?.cells ?? []).map((c) => ({
+                day: c.day,
+                start: c.start,
+                cohort: c.cohort,
+              })),
+            }}
           />
           {submission && (
             <DeleteResponseButton
@@ -728,8 +750,9 @@ export default async function StudentDetailPage({
           </section>
         )}
 
-        {/* Student details: last authenticated activity, hire date, and the
-            position and group controls. Only the coverage card follows it. */}
+        {/* Student details: last authenticated activity, hire date, when the
+            schedule email went out (once it has), and the position and group
+            controls. Only the coverage card follows it. */}
         <section style={panelStyle}>
           <SectionLabel>Student details</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
@@ -757,6 +780,14 @@ export default async function StudentDetailPage({
                 {fmtDay(detail.hiredOn) ?? "Unknown"}
               </div>
             </div>
+            {submission?.scheduleEmailSentAt && (
+              <div>
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  Schedule email sent
+                </div>
+                <div>{fmtStamp(submission.scheduleEmailSentAt)}</div>
+              </div>
+            )}
             {/* Position history, oldest first. Absent until somebody actually
                 moves, so a student who never changed position sees nothing. */}
             {detail.positionHistory.length > 0 && (
