@@ -9,7 +9,7 @@
  * A later roster import may overwrite or drop this row.
  */
 import { and, eq, isNull } from "drizzle-orm";
-import { createDb } from "../lib/db/client";
+import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { positions, students } from "../lib/db/schema";
 import { normalizeEmail } from "../lib/auth/policy";
 
@@ -37,8 +37,7 @@ async function main() {
   }
   const normalized = normalizeEmail(email);
 
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required (see .env.example)");
+  const url = cliDatabaseUrl();
 
   const displayName = name ?? normalized.split("@")[0]!;
   const { db, pool } = createDb(url);

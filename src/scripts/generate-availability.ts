@@ -15,7 +15,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { inArray, like } from "drizzle-orm";
-import { createDb } from "../lib/db/client";
+import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { positions, shiftBlocks, shiftSelections, students, submissions } from "../lib/db/schema";
 import { liveBlocksOnly } from "../lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
@@ -192,8 +192,7 @@ async function main() {
   if (process.env.NODE_ENV === "production") {
     throw new Error("Refusing to generate synthetic data in production");
   }
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required (see .env.example)");
+  const url = cliDatabaseUrl();
   const args = parseArgs(process.argv.slice(2));
 
   const { db, pool } = createDb(url);

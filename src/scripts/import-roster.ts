@@ -12,7 +12,7 @@
  * Idempotent. The file holds employee PII and must never be committed
  * (it's gitignored).
  */
-import { createDb } from "../lib/db/client";
+import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { importRoster } from "../lib/roster/import";
 import { RosterGuardError } from "../lib/roster/parse";
 
@@ -39,8 +39,7 @@ async function main() {
       'Usage: npm run roster:import -- "<tracker.xlsx|export.csv>" --by <email> [--sheet <name>] [--allow-mass-deactivation]',
     );
   }
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required (see .env.example)");
+  const url = cliDatabaseUrl();
 
   const { db, pool } = createDb(url);
   try {
