@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1; its dead column drops after a cycle). Next: the
   "Still open" loose ends.
-- **Version:** 1.31
-- **Last updated:** 2026-09-11
+- **Version:** 1.32
+- **Last updated:** 2026-09-27
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1549,6 +1549,17 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.32 (2026-09-27)** — **The CLI tools read `.env.local` on their own (§14).** Every
+  command that runs outside Next (`drizzle-kit` via `db:migrate`/`generate`/`push`/`studio`,
+  `db:seed`, the roster import CLI, and the dev scripts) read `DATABASE_URL` straight from
+  the process environment, so each needed it exported by hand first, and `drizzle-kit
+  migrate` exited 0 when it was missing, which made a skipped migration easy to miss.
+  `drizzle.config.ts` now loads `.env.local` with Node's `process.loadEnvFile` when the file
+  exists, and the scripts share `cliDatabaseUrl()` in `db/client.ts`, which does the same
+  and replaces the read-or-throw each of them carried. Anything already in the environment
+  wins over the file, and the prod migrate image has no `.env` files (`.dockerignore`) and
+  gets its URL from compose, so deploys are unchanged. Dev tooling only; no app behavior
+  changes.
 - **1.31 (2026-09-11)** — **A weekend cell says who works which rotation week (§10a).** The
   coverage grid reads `a·b` on a weekend cell, so two people in it are working different
   fortnights, but clicking through to the list of names dropped the distinction entirely:
