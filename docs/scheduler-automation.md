@@ -120,16 +120,17 @@ Checked against Resend's send-email API reference:
 - **from** has to use a verified domain (`re.hauge.rocks`). Make the display name
   and the local part editable, keep the domain fixed, and reject anything else on
   the server.
-- **reply_to** can be any address. A sensible default is the cc email, so student
-  replies go to the team instead of `no-reply`.
+- **reply_to** can be any address. It is always the cc email, so student replies go
+  to the team instead of `no-reply` (decision 5).
 - **cc** is supported (as a string or an array).
 - An **`Idempotency-Key`** header prevents duplicate sends for 24 hours. Keying it
   on student + send attempt protects against a double click.
-- These settings should apply to **this email only**. The magic-link mail and the
-  digest keep `EMAIL_FROM` (open question 5).
+- These settings apply to **this email only**. The magic-link mail and the digest
+  keep `EMAIL_FROM`.
 - **Google Group caveat:** `gdec_h-o@g-groups.wisc.edu` only receives the cc if the
   group accepts posts from outside senders. Otherwise the cc bounces or waits for
-  moderation. Someone needs to check the group's posting setting (open question 4).
+  moderation. Check the group's "Who can post" setting in Google Groups. Never
+  test-send to the group (decision 4).
 
 ### Proposed shape
 
@@ -143,22 +144,27 @@ Checked against Resend's send-email API reference:
    and off.
 4. **Settings keys** in `app_settings`: `schedule_email_subject`,
    `schedule_email_body`, `schedule_email_cc` (default `gdec_h-o@g-groups.wisc.edu`),
-   `schedule_email_from_name`, `schedule_email_from_local`,
-   `schedule_email_reply_to`.
+   `schedule_email_from_name`, `schedule_email_from_local`, and
+   `schedule_email_marks_scheduled` (default on). There's no reply-to key, because
+   reply-to is always the cc email.
 5. **Email settings section:** a template editor, a variables key, a live preview
-   using sample data, the cc, from, and reply-to fields, and **"Send a test to me"**,
+   using sample data, the cc and from fields, the "Sending marks the student
+   scheduled" toggle, and **"Send a test to me"**,
    which renders sample data and sends only to the signed-in admin with no cc. That
    gives production a safe test path that never involves a student.
-6. **Per-student button + dialog** (console code in `components/admin` and
+6. **Per-student split button + dialog** (console code in `components/admin` and
    `lib/admin`, which respects the module rules):
-   - Fields: start date (required), cross-over position and shift (optional), and
-     first shift time (optional, prefilled when possible).
+   - "Mark scheduled" stays visible. A caret beside it opens **Send schedule email…**.
+   - Fields: start date (a date input, default the Sunday of next week), cross-over
+     position and shift (optional), and first shift time (optional, prefilled when
+     possible).
+   - After a send, the student is marked scheduled if the setting is on.
    - A live preview and a **"Also send to <cc email>"** checkbox, on by default.
    - Send is disabled while pending. The server action re-checks admin, re-renders
      the email on the server, and sends.
 7. **Record the send.** Reuse `submissions.schedule_email_sent_at` (no migration, and
-   it cancels 6.1 step two) and show "Schedule email sent Sep 28" in the top bar. If a
-   full send history is wanted, the alternative is a new `email_sends` table.
+   it cancels 6.1 step two and #13) and show "Schedule email sent Sep 28" in the top
+   bar.
 
 Estimate: **S–M, about 1–2 days** including tests and doc updates. Main files:
 `lib/email/resend.ts`, a new `lib/email/schedule-email.ts`, `lib/settings.ts`,
@@ -202,17 +208,32 @@ Beyond the guard:
 | Master switch off, but the dialog reports success | `sendEmail` returns a status, and the action reports "email sending is off" |
 | cc rejected by the Google Group | Check the group's posting setting before launch |
 
-### Open questions for the owner
+### Decisions (owner, 2026-09-28)
 
-1. **Button placement:** a separate "Send schedule email" button next to "Mark
-   scheduled", or one dropdown for both?
-2. Should sending also **mark the student scheduled**?
-3. **Start date:** type it every time, or keep a saved default in settings (useful
-   for a batch of hires starting the same day)?
-4. Does `gdec_h-o@g-groups.wisc.edu` accept posts from outside senders? Is one test
-   send to the group acceptable, or should the cc stay unverified until the first
-   real send?
-5. Should the from and reply-to settings apply to **this email only**, or to all of
-   the app's email?
-6. Is the last-sent date (reusing the dead column) enough, or do you want a full
-   send history?
+These override the proposal above wherever the two differ.
+
+1. **Button:** "Mark scheduled" stays the always-visible main button. A dropdown
+   caret beside it opens a menu with **Send schedule email…**.
+2. **Sending marks the student scheduled.** A toggle controls this, on by default.
+   It sits inside the schedule-email card on `/admin/email-settings`.
+3. **The start date is a template variable** (`start_date`), picked with a date input
+   in the confirmation dialog. It defaults to **the Sunday of next week**. We read
+   that as the next Sunday after today, so on Monday 9/28 it's Sunday 10/4, and on a
+   Sunday it's the following Sunday. This needs confirming.
+4. **Never send a test to the cc group.** Someone checks the group's "Who can post"
+   setting in Google Groups instead of test-sending. The allowlist guard and "Send a
+   test to me" never include the cc address.
+5. **Reply-to is always the cc email.** There's no separate reply-to setting. It
+   applies even when the cc checkbox is unticked for a send. The editable settings
+   are the template (subject and body), the cc email, and the from name and local
+   part.
+6. **A last-sent date is enough.** Reuse `submissions.schedule_email_sent_at`. That
+   cancels roadmap 6.1 step two, so #13 (drop that column) should be closed when this
+   ships.
+
+### Open questions
+
+- Is "the Sunday of next week" the next upcoming Sunday (10/4 from Monday 9/28), or
+  the Sunday that ends next week (10/11)?
+- The from name and local part still apply to this email only. The magic-link mail
+  and the digest keep `EMAIL_FROM`. Confirm this is right.
