@@ -39,7 +39,7 @@ export type ScheduleEmailTemplate = Pick<ScheduleEmailConfig, "subject" | "body"
 
 export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
   subject: "Your Fall 2026 work schedule",
-  body: `Your Fall 2026 work schedule will go into effect on {{ start_date | date: "%A, %B %-d" }}. Your schedule is posted in When2Work. If there are issues with your schedule that conflict with your course schedule or mandatory extracurricular events, you will need to contact gdec_h-o@g-groups.wisc.edu in order to get your schedule adjusted before you begin with proof of the conflict (class schedule screenshot). Otherwise, this schedule will remain the same for the entirety of the semester! We look forward to seeing you soon!
+  body: `Your <b>Fall 2026</b> work schedule as a {{position}} will go into effect on <b>{{ start_date | date: "%A, %B %-d" }}</b>. Your schedule is posted in When2Work. If there are issues with your schedule that conflict with your course schedule or mandatory extracurricular events, you will need to contact <mark>gdec_h-o@g-groups.wisc.edu</mark> in order to get your schedule adjusted before you begin with proof of the conflict (class schedule screenshot). Otherwise, this schedule will remain the same for the entirety of the semester! We look forward to seeing you soon!
 
 {% if schedule_table %}Your shifts:
 

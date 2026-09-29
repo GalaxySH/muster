@@ -36,8 +36,12 @@ vi.mock("./update-submission", () => ({
   updateSubmission: (e: string, patch: unknown) => updateSubmission(e, patch),
 }));
 
-const { sendScheduleEmail, sendScheduleEmailTest, saveScheduleEmailConfig } =
-  await import("./schedule-email-actions");
+const {
+  sendScheduleEmail,
+  sendScheduleEmailTest,
+  saveScheduleEmailConfig,
+  resetScheduleEmailTemplate,
+} = await import("./schedule-email-actions");
 
 const input = {
   startDate: "2026-10-04",
@@ -177,4 +181,31 @@ describe("saveScheduleEmailConfig", () => {
 it("saves the chosen font", async () => {
   await saveScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, font: "arial" });
   expect(JSON.parse(setSetting.mock.calls[0]![1]).font).toBe("arial");
+});
+
+describe("resetScheduleEmailTemplate", () => {
+  it("restores the subject, text and font but keeps the other settings", async () => {
+    config = {
+      ...DEFAULT_SCHEDULE_EMAIL,
+      subject: "Custom",
+      body: "Custom body",
+      font: "georgia",
+      cc: "team@wisc.edu",
+      fromName: "Dining Team",
+      marksScheduled: false,
+    };
+    expect(await resetScheduleEmailTemplate()).toEqual({ ok: true });
+    expect(JSON.parse(setSetting.mock.calls[0]![1])).toEqual({
+      ...DEFAULT_SCHEDULE_EMAIL,
+      cc: "team@wisc.edu",
+      fromName: "Dining Team",
+      marksScheduled: false,
+    });
+  });
+
+  it("refuses non-admins", async () => {
+    requireAdmin.mockResolvedValue({ ok: false, error: "Admins only." });
+    expect((await resetScheduleEmailTemplate()).ok).toBe(false);
+    expect(setSetting).not.toHaveBeenCalled();
+  });
 });

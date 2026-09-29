@@ -12,6 +12,7 @@ import { normalizeEmail } from "@/lib/auth/policy";
 import { env } from "@/lib/env";
 import { sendEmail, type EmailOutcome } from "@/lib/email/resend";
 import {
+  DEFAULT_SCHEDULE_EMAIL,
   SAMPLE_SHIFTS,
   SAMPLE_VARS,
   buildFromAddress,
@@ -61,6 +62,22 @@ export async function saveScheduleEmailConfig(
   if (error) return { ok: false, error };
 
   await setSetting(SETTING_SCHEDULE_EMAIL, JSON.stringify(clean));
+  revalidatePath("/admin/email-settings");
+  return { ok: true };
+}
+
+/**
+ * Put the email itself (subject, text, font) back to the built-in default.
+ * The cc email, sender and marks-scheduled toggle are settings, not the
+ * template, so they keep their saved values.
+ */
+export async function resetScheduleEmailTemplate(): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const { subject, body, font } = DEFAULT_SCHEDULE_EMAIL;
+  const saved = await getScheduleEmailConfig();
+  await setSetting(SETTING_SCHEDULE_EMAIL, JSON.stringify({ ...saved, subject, body, font }));
   revalidatePath("/admin/email-settings");
   return { ok: true };
 }

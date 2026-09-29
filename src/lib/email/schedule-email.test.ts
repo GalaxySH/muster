@@ -364,3 +364,14 @@ describe("the body font", () => {
     expect(validateScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, font: "x" })).toMatch(/font/);
   });
 });
+
+it("the default template bolds the term and start date and highlights the contact", () => {
+  const { html, text } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare, []);
+  expect(html).toContain(
+    "Your <b>Fall 2026</b> work schedule as a Culinary Assistant will go into effect on <b>Sunday, October 4</b>.",
+  );
+  expect(html).toContain(
+    '<span style="background-color:#fff59d">gdec_h-o@g-groups.wisc.edu</span>',
+  );
+  expect(text.startsWith("Your Fall 2026 work schedule as a Culinary Assistant")).toBe(true);
+});

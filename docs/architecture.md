@@ -1132,6 +1132,11 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   never free text: an unknown stored id reads as "default" and an unknown one is refused
   on save. `renderScheduleEmail` wraps the finished HTML in a `font-family` div and puts
   the same stack on each table cell (desktop Outlook doesn't carry it into tables).
+  **Reset to default** (`resetScheduleEmailTemplate`, behind a confirmation modal) writes
+  `DEFAULT_SCHEDULE_EMAIL`'s subject, body and font over the saved config and keeps the
+  cc, sender and marks-scheduled toggle; the button is disabled while both the saved and
+  the edited email already match the default. A saved template never follows later
+  changes to the coded default, so reset is how an admin picks up a new one.
 - **Actions:** `lib/admin/schedule-email-actions.ts` (`saveScheduleEmailConfig`,
   `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`). A send
   refuses when the master switch is off, passes an `Idempotency-Key` minted when the

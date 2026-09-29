@@ -249,6 +249,9 @@ These override the proposal above wherever the two differ.
 10. **Body font:** a setting on the template, picked from email-safe font stacks
     (Arial, Calibri, Verdana, Tahoma, Trebuchet MS, Georgia, Times New Roman, Courier
     New), defaulting to none so the mail app decides.
+11. **Default template:** the owner's version, which bolds the term and start date,
+    highlights the contact address, and names the student's position. A
+    confirmation-gated **Reset to default** restores the subject, text and font only.
 
 ### Open questions
 

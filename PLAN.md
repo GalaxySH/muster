@@ -1590,7 +1590,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   HTML-escaped by `outputEscape`; render limits; checked on save) that may use `<b> <i>
   <u> <mark>`, with `sanitize-html` enforcing that allowlist and `entities` decoding the
   plain-text part, a variables key, a body font (email-safe stacks, default none), a
-  preview, the cc email (always the reply-to), the
+  preview, **Reset to default** (confirmation-gated; restores the subject, text and font
+  and keeps the cc, sender and toggle), the cc email (always the reply-to), the
   sender name and local part on EMAIL_FROM's domain, the marks-scheduled toggle, and
   **Send a test to me** (the signed-in admin only, never the cc). `sendEmail` gains cc,
   reply-to, sender, an `Idempotency-Key`, and a returned outcome, and outside production

@@ -5,14 +5,21 @@
  * the Liquid template with a variables key, the body font, and a live preview, the cc email
  * (also the reply-to), the sender, and whether a send marks the student
  * scheduled. "Send a test to me" sends the saved version to the signed-in
- * admin only, never to the cc.
+ * admin only, never to the cc. "Reset to default" puts the subject, text and
+ * font back to the built-in version after a confirmation, leaving the rest.
  */
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionButton, InfoCard } from "@/components/ui";
+import { Modal } from "@/components/Modal";
 import { EMAIL_FONTS } from "@/lib/email/format";
-import { saveScheduleEmailConfig, sendScheduleEmailTest } from "@/lib/admin/schedule-email-actions";
 import {
+  resetScheduleEmailTemplate,
+  saveScheduleEmailConfig,
+  sendScheduleEmailTest,
+} from "@/lib/admin/schedule-email-actions";
+import {
+  DEFAULT_SCHEDULE_EMAIL,
   SAMPLE_SHIFTS,
   SAMPLE_VARS,
   SCHEDULE_EMAIL_VARIABLES,
@@ -34,9 +41,16 @@ export function ScheduleEmailSettingsPanel({
   const [draft, setDraft] = useState(config);
   const [pendingSave, startSave] = useTransition();
   const [pendingTest, startTest] = useTransition();
+  const [pendingReset, startReset] = useTransition();
+  const [confirmReset, setConfirmReset] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
+  const { subject, body, font } = DEFAULT_SCHEDULE_EMAIL;
+  const isDefault = (c: ScheduleEmailConfig) =>
+    c.subject === subject && c.body === body && c.font === font;
+  // Nothing to reset when both the saved and the edited email are the default.
+  const atDefault = isDefault(config) && isDefault(draft);
   const set = <K extends keyof ScheduleEmailConfig>(k: K, v: ScheduleEmailConfig[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
@@ -56,6 +70,22 @@ export function ScheduleEmailSettingsPanel({
         res.ok ? { ok: true, text: "Saved." } : { ok: false, text: res.error ?? "Could not save." },
       );
       if (res.ok) router.refresh();
+    });
+  }
+
+  function reset() {
+    setMsg(null);
+    startReset(async () => {
+      const res = await resetScheduleEmailTemplate();
+      setConfirmReset(false);
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error ?? "Could not reset." });
+        return;
+      }
+      // Other unsaved edits (cc, sender) stay in the form.
+      setDraft((d) => ({ ...d, subject, body, font }));
+      setMsg({ ok: true, text: "The email is back to the default." });
+      router.refresh();
     });
   }
 
@@ -211,6 +241,13 @@ export function ScheduleEmailSettingsPanel({
         >
           Send a test to me
         </ActionButton>
+        <ActionButton
+          variant="secondary"
+          onClick={() => setConfirmReset(true)}
+          disabled={atDefault}
+        >
+          Reset to default
+        </ActionButton>
       </div>
       <p style={hintStyle}>
         {dirty
@@ -229,6 +266,23 @@ export function ScheduleEmailSettingsPanel({
           {msg.ok ? "✓ " : "✗ "}
           {msg.text}
         </p>
+      )}
+      {confirmReset && (
+        <Modal label="Reset to default" onClose={() => setConfirmReset(false)} maxWidth="440px">
+          <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Reset the email to the default?</p>
+          <p style={{ margin: "0 0 16px" }}>
+            The subject, email text and font go back to the default version, and any changes you
+            made to them are lost. The cc email, sender and other settings stay as they are.
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <ActionButton variant="secondary" onClick={() => setConfirmReset(false)}>
+              Cancel
+            </ActionButton>
+            <ActionButton onClick={reset} pending={pendingReset} pendingLabel="Resetting…">
+              Reset
+            </ActionButton>
+          </div>
+        </Modal>
       )}
     </InfoCard>
   );
