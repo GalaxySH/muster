@@ -2,7 +2,7 @@
 
 /**
  * Settings for the "your schedule is posted" email (docs/scheduler-automation.md):
- * the Liquid template with a variables key and a live preview, the cc email
+ * the Liquid template with a variables key, the body font, and a live preview, the cc email
  * (also the reply-to), the sender, and whether a send marks the student
  * scheduled. "Send a test to me" sends the saved version to the signed-in
  * admin only, never to the cc.
@@ -10,6 +10,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionButton, InfoCard } from "@/components/ui";
+import { EMAIL_FONTS } from "@/lib/email/format";
 import { saveScheduleEmailConfig, sendScheduleEmailTest } from "@/lib/admin/schedule-email-actions";
 import {
   SAMPLE_SHIFTS,
@@ -100,8 +101,13 @@ export function ScheduleEmailSettingsPanel({
         <summary style={{ cursor: "pointer" }}>Variables you can use</summary>
         <p style={{ margin: "6px 0" }}>
           Write <code>{"{{ first_name }}"}</code> to insert a value. Wrap a paragraph in{" "}
-          <code>{"{% if crossover_shift %}"}</code> and <code>{"{% endif %}"}</code> to include it
+          <code>{"{% if first_shift_time %}"}</code> and <code>{"{% endif %}"}</code> to include it
           only when that value is filled in. Blank lines separate paragraphs.
+        </p>
+        <p style={{ margin: "6px 0" }}>
+          Use <code>{"<b>"}</code>, <code>{"<i>"}</code>, <code>{"<u>"}</code> and{" "}
+          <code>{"<mark>"}</code> for bold, italics, underline and highlight, e.g.{" "}
+          <code>{"<b>Welcome!</b>"}</code>.
         </p>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <tbody>
@@ -116,6 +122,22 @@ export function ScheduleEmailSettingsPanel({
           </tbody>
         </table>
       </details>
+
+      <label style={labelStyle} htmlFor="se-font">
+        Font
+      </label>
+      <select
+        id="se-font"
+        value={draft.font}
+        onChange={(e) => set("font", e.target.value)}
+        style={{ ...inputStyle, width: "auto", minWidth: 220 }}
+      >
+        {EMAIL_FONTS.map((f) => (
+          <option key={f.id} value={f.id} style={f.stack ? { fontFamily: f.stack } : undefined}>
+            {f.label}
+          </option>
+        ))}
+      </select>
 
       <div style={labelStyle}>Preview with sample values</div>
       <div style={previewStyle}>

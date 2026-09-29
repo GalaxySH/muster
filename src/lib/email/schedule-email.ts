@@ -14,7 +14,7 @@
 import { Liquid, type FS } from "liquidjs";
 import { isEmailShaped } from "@/lib/auth/policy";
 import type { Day } from "@/lib/domain/types";
-import { bodyToHtml, toPlainText } from "./format";
+import { EMAIL_FONTS, applyFont, bodyToHtml, fontStack, toPlainText } from "./format";
 import { formatClock, scheduleListText, scheduleTableHtml, type ShiftSpan } from "./schedule-table";
 
 export interface ScheduleEmailConfig {
@@ -28,7 +28,14 @@ export interface ScheduleEmailConfig {
   fromLocal: string;
   /** Whether a send also marks the student scheduled. */
   marksScheduled: boolean;
+  /** The body font, an id from EMAIL_FONTS ("default" sets none). */
+  font: string;
 }
+
+/** The parts of the config that shape the email itself. No font means the mail app default. */
+export type ScheduleEmailTemplate = Pick<ScheduleEmailConfig, "subject" | "body"> & {
+  font?: string;
+};
 
 export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
   subject: "Your Fall 2026 work schedule",
@@ -45,6 +52,7 @@ export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
   fromName: "GDEC Scheduling",
   fromLocal: "no-reply",
   marksScheduled: true,
+  font: "default",
 };
 
 /** Read the stored JSON, falling back to the default field by field. */
@@ -68,6 +76,8 @@ export function parseScheduleEmailConfig(raw: string | null): ScheduleEmailConfi
       typeof stored.marksScheduled === "boolean"
         ? stored.marksScheduled
         : DEFAULT_SCHEDULE_EMAIL.marksScheduled,
+    // A font that's no longer offered falls back to the mail app default.
+    font: EMAIL_FONTS.some((f) => f.id === stored.font) ? str("font") : DEFAULT_SCHEDULE_EMAIL.font,
   };
 }
 
@@ -242,11 +252,12 @@ const LIST_MARK = "%%MUSTER_SCHEDULE_LIST%%";
  * when the template is broken.
  */
 export function renderScheduleEmail(
-  template: { subject: string; body: string },
+  template: ScheduleEmailTemplate,
   vars: ScheduleEmailVars,
   shifts: readonly ShiftSpan[],
 ): RenderedEmail {
-  const table = scheduleTableHtml(shifts);
+  const font = fontStack(template.font ?? "default");
+  const table = scheduleTableHtml(shifts, font);
   const list = scheduleListText(shifts);
   const scope = {
     ...vars,
@@ -266,14 +277,14 @@ export function renderScheduleEmail(
     .replaceAll(`<p>${TABLE_MARK}</p>`, table)
     .replaceAll(TABLE_MARK, table)
     .replaceAll(LIST_MARK, list.replace(/\n/g, "<br>"));
-  return { subject, text, html };
+  return { subject, text, html: applyFont(html, font) };
 }
 
 /**
  * Check a template before saving: it must render with every optional value set
  * and with every optional value blank. Returns the error to show, or null.
  */
-export function checkScheduleTemplate(template: { subject: string; body: string }): string | null {
+export function checkScheduleTemplate(template: ScheduleEmailTemplate): string | null {
   const blank: ScheduleEmailVars = {
     ...SAMPLE_VARS,
     crossover: false,
@@ -310,6 +321,7 @@ export function validateScheduleEmailConfig(c: ScheduleEmailConfig): string | nu
   if (!/^[a-z0-9][a-z0-9._+-]{0,63}$/i.test(c.fromLocal)) {
     return "The sender address can only use letters, numbers, dots, dashes, underscores and plus signs.";
   }
+  if (!EMAIL_FONTS.some((f) => f.id === c.font)) return "Pick a font from the list.";
   return checkScheduleTemplate(c);
 }
 

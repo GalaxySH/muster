@@ -333,3 +333,34 @@ it("the sample shifts render a table (the settings preview relies on it)", () =>
     "<table",
   );
 });
+
+describe("the body font", () => {
+  const withTable = [{ day: "mon" as const, start: 420, end: 600, cohort: "weekday" }];
+
+  it("sets no font by default", () => {
+    const { html } = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, bare, withTable);
+    expect(html).not.toContain("font-family");
+  });
+
+  it("wraps the body in the chosen font and repeats it on the table cells", () => {
+    const { html, text } = renderScheduleEmail(
+      { ...DEFAULT_SCHEDULE_EMAIL, font: "georgia" },
+      bare,
+      withTable,
+    );
+    expect(html.startsWith(`<div style="font-family:Georgia, 'Times New Roman', serif">`)).toBe(
+      true,
+    );
+    expect(html).toMatch(/<td style="[^"]*font-family:Georgia/);
+    expect(text).not.toContain("Georgia");
+  });
+
+  it("falls back to the default for a stored font that's no longer offered", () => {
+    expect(parseScheduleEmailConfig(JSON.stringify({ font: "comic-sans" })).font).toBe("default");
+    expect(parseScheduleEmailConfig(JSON.stringify({ font: "verdana" })).font).toBe("verdana");
+  });
+
+  it("refuses to save an unknown font", () => {
+    expect(validateScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, font: "x" })).toMatch(/font/);
+  });
+});

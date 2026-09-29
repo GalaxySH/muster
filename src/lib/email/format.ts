@@ -10,6 +10,33 @@
 import sanitizeHtml from "sanitize-html";
 import { decodeHTML } from "entities";
 
+/**
+ * Fonts an email body can use. Mail apps don't reliably load web fonts, so each
+ * choice is a stack of commonly installed fonts ending in a generic family.
+ * "default" sets no font, leaving the reader's mail app to choose.
+ */
+export const EMAIL_FONTS = [
+  { id: "default", label: "Mail app default", stack: "" },
+  { id: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
+  { id: "calibri", label: "Calibri", stack: "Calibri, Carlito, Arial, sans-serif" },
+  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+  { id: "tahoma", label: "Tahoma", stack: "Tahoma, Verdana, sans-serif" },
+  { id: "trebuchet", label: "Trebuchet MS", stack: "'Trebuchet MS', Helvetica, sans-serif" },
+  { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', serif" },
+  { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, serif" },
+  { id: "courier", label: "Courier New", stack: "'Courier New', Courier, monospace" },
+] as const;
+
+/** The CSS font stack for a font id; "" for the mail app default or an unknown id. */
+export function fontStack(id: string): string {
+  return EMAIL_FONTS.find((f) => f.id === id)?.stack ?? "";
+}
+
+/** Wrap finished HTML in the chosen font. Only ever given a stack from EMAIL_FONTS. */
+export function applyFont(html: string, stack: string): string {
+  return stack ? `<div style="font-family:${stack}">${html}</div>` : html;
+}
+
 /** The highlight color <mark> becomes: mail clients drop <mark> but keep a background. */
 export const HIGHLIGHT_COLOR = "#fff59d";
 

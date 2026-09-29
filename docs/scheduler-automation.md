@@ -246,6 +246,9 @@ These override the proposal above wherever the two differ.
    checkbox: the template decides whether they appear.
 9. **Cross-over paragraph:** tied to the `crossover` variable, set by a dialog checkbox
    that is off by default.
+10. **Body font:** a setting on the template, picked from email-safe font stacks
+    (Arial, Calibri, Verdana, Tahoma, Trebuchet MS, Georgia, Times New Roman, Courier
+    New), defaulting to none so the mail app decides.
 
 ### Open questions
 

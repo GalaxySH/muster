@@ -1128,7 +1128,10 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   `lib/settings.ts`), edited by `ScheduleEmailSettingsPanel` on `/admin/email-settings`.
   The cc email is always the reply-to; the sender's domain always comes from
   `EMAIL_FROM` (Resend only sends from the verified domain), so only the name and local
-  part are editable.
+  part are editable. The body font is an id from `EMAIL_FONTS` (`lib/email/format.ts`),
+  never free text: an unknown stored id reads as "default" and an unknown one is refused
+  on save. `renderScheduleEmail` wraps the finished HTML in a `font-family` div and puts
+  the same stack on each table cell (desktop Outlook doesn't carry it into tables).
 - **Actions:** `lib/admin/schedule-email-actions.ts` (`saveScheduleEmailConfig`,
   `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`). A send
   refuses when the master switch is off, passes an `Idempotency-Key` minted when the

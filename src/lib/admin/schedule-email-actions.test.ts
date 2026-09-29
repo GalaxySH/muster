@@ -173,3 +173,8 @@ describe("saveScheduleEmailConfig", () => {
     expect(setSetting).not.toHaveBeenCalled();
   });
 });
+
+it("saves the chosen font", async () => {
+  await saveScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, font: "arial" });
+  expect(JSON.parse(setSetting.mock.calls[0]![1]).font).toBe("arial");
+});

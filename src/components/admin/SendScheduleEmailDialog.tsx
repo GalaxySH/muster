@@ -24,6 +24,7 @@ import {
   suggestFirstShiftTime,
   validateScheduleEmailInput,
   type ScheduleEmailInput,
+  type ScheduleEmailTemplate,
 } from "@/lib/email/schedule-email";
 import type { Day } from "@/lib/domain/types";
 
@@ -33,7 +34,7 @@ export interface ScheduleEmailDialogProps {
   positionName: string;
   /** Other positions, for the cross-over picker. */
   positions: string[];
-  template: { subject: string; body: string };
+  template: ScheduleEmailTemplate;
   cc: string;
   from: string;
   marksScheduled: boolean;

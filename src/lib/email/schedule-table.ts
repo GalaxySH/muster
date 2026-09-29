@@ -67,13 +67,16 @@ export function shiftsByDay(shifts: readonly ShiftSpan[]): { day: string; times:
   });
 }
 
-const cell = "padding:4px 20px 4px 0;vertical-align:top;text-align:left";
-const head = `${cell};border-bottom:1px solid #cccccc;font-weight:bold`;
-
-/** Two columns, Day and Shift times. Empty when there are no shifts. */
-export function scheduleTableHtml(shifts: readonly ShiftSpan[]): string {
+/**
+ * Two columns, Day and Shift times. Empty when there are no shifts. The font
+ * goes on every cell because desktop Outlook doesn't carry it into tables.
+ */
+export function scheduleTableHtml(shifts: readonly ShiftSpan[], fontStack = ""): string {
   const days = shiftsByDay(shifts);
   if (days.length === 0) return "";
+  const font = fontStack ? `;font-family:${fontStack}` : "";
+  const cell = `padding:4px 20px 4px 0;vertical-align:top;text-align:left${font}`;
+  const head = `${cell};border-bottom:1px solid #cccccc;font-weight:bold`;
   const rows = days
     .map(
       (d) =>

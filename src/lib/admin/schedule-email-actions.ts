@@ -55,6 +55,7 @@ export async function saveScheduleEmailConfig(
     fromName: String(config.fromName ?? "").trim(),
     fromLocal: String(config.fromLocal ?? "").trim(),
     marksScheduled: config.marksScheduled === true,
+    font: String(config.font ?? "default"),
   };
   const error = validateScheduleEmailConfig(clean);
   if (error) return { ok: false, error };

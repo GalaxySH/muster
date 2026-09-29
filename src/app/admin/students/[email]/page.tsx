@@ -340,7 +340,11 @@ export default async function StudentDetailPage({
               displayName: detail.displayName,
               positionName: position?.name ?? "your position",
               positions: allPositions.map((p) => p.name).filter((n) => n !== position?.name),
-              template: { subject: scheduleEmail.subject, body: scheduleEmail.body },
+              template: {
+                subject: scheduleEmail.subject,
+                body: scheduleEmail.body,
+                font: scheduleEmail.font,
+              },
               cc: scheduleEmail.cc,
               from: buildFromAddress(scheduleEmail, env.EMAIL_FROM),
               marksScheduled: scheduleEmail.marksScheduled,

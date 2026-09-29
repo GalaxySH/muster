@@ -246,8 +246,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   (`liquidjs`, no file access, strict variables, `outputEscape` so every value is
   HTML-escaped, checked on save) and may use `<b> <i> <u> <mark>` (plus `<strong>`,
   `<em>`); `sanitize-html` strips any other markup and turns `<mark>` into a background
-  color. It is edited on `/admin/email-settings` with a variables key and preview,
-  along with the **cc
+  color. A **font** can be picked for the body from a fixed list of email-safe stacks
+  (default: none, so the mail app decides). It is edited on `/admin/email-settings` with
+  a variables key and preview, along with the **cc
   email** (default `gdec_h-o@g-groups.wisc.edu`; default-on per send; always the
   reply-to), the sender name and local part (the domain stays EMAIL_FROM's verified
   one), and **Mark the student scheduled when you send it** (default on). A send stamps
@@ -1588,7 +1589,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   template (`liquidjs`; no file includes; strict variables and filters; every value
   HTML-escaped by `outputEscape`; render limits; checked on save) that may use `<b> <i>
   <u> <mark>`, with `sanitize-html` enforcing that allowlist and `entities` decoding the
-  plain-text part, a variables key, a preview, the cc email (always the reply-to), the
+  plain-text part, a variables key, a body font (email-safe stacks, default none), a
+  preview, the cc email (always the reply-to), the
   sender name and local part on EMAIL_FROM's domain, the marks-scheduled toggle, and
   **Send a test to me** (the signed-in admin only, never the cc). `sendEmail` gains cc,
   reply-to, sender, an `Idempotency-Key`, and a returned outcome, and outside production
