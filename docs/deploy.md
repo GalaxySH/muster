@@ -1,15 +1,25 @@
 # Deploy & CI/CD
 
-CI/CD per PLAN §15: GitHub Actions runs the quality gate on every push, and a
+CI/CD per PLAN §15: GitHub Actions runs the quality gate on PRs and `main`, and a
 version tag deploys to the production box over SSH — automating the same
 `docker compose up -d --build` used for manual deploys.
 
 ## Workflows
 
-- **`.github/workflows/ci.yml`** — on every push (and PRs to `main`): lint,
-  typecheck, unit/integration tests, production `next build`. A Docker image
-  build check additionally runs on `main` and PRs (skipped on feature-branch
-  pushes to save minutes).
+- **`.github/workflows/ci.yml`** — on PRs to `main` and pushes to `main`: lint,
+  typecheck, unit/integration tests, production `next build`. Branch pushes
+  without a PR don't run it. The npm cache falls back to the newest older cache
+  when the lockfile changes, so the Font Awesome kit is rarely re-downloaded.
+- **`.github/workflows/docker-build.yml`** — the Docker image build check, on PRs
+  and `main`, only when the Dockerfile, package files, `.npmrc` or `next.config`
+  change. It uses the GitHub Actions layer cache.
+- **Font Awesome bandwidth:** the Pro kit (~166 MB) comes from Font Awesome's
+  registry, which bills by download bandwidth and stops serving when the quota
+  runs out. Only `@awesome.me` is mapped to it (`.npmrc`); every install path
+  caches it (CI's npm cache, the Dockerfile's BuildKit cache mount on the
+  server). Avoid anything that installs it cold in a loop, and don't run
+  `docker builder prune` on the server casually: the next deploy re-downloads
+  the kit.
 - **`.github/workflows/deploy.yml`** — on a `v*` tag push (or manual
   `workflow_dispatch`): SSH to the server, `git checkout` the exact tagged
   commit in the deploy clone, `docker compose up -d --build`, prune dangling

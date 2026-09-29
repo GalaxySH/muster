@@ -1,0 +1,58 @@
+# Docker image build check: catches Dockerfile and standalone-output breakage
+# before a tag reaches the server (the deploy still builds on the server).
+#
+# Runs only when something that shapes the image changes. The image's `npm ci`
+# starts cold on a fresh runner and would re-download the Font Awesome kit
+# (~166 MB, billed by bandwidth) every time; the checks job in ci.yml already
+# covers the Next.js build itself. The layer cache below reuses the install
+# when only the Dockerfile or build config changed.
+#
+# Required repository secret: FONTAWESOME_PACKAGE_TOKEN (see ci.yml).
+
+name: Docker build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - next.config.*
+      - .github/workflows/docker-build.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - next.config.*
+      - .github/workflows/docker-build.yml
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        env:
+          FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
+        with:
+          context: .
+          target: runner
+          push: false
+          secret-envs: fa_token=FONTAWESOME_PACKAGE_TOKEN
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1352,7 +1352,9 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
   schedule-image blobs stored, per §12). Install steps: script header +
   `docs/deploy.md`.
 - **CI/CD:** ✅ built (see `docs/deploy.md`). GitHub Actions: quality gate (lint/
-  typecheck/tests/build + Docker build check) on every push; deploy on `v*` tag via
+  typecheck/tests/build) on PRs and `main`, a Docker build check when image inputs
+  change (1.34: both cache the ~166 MB Font Awesome kit, whose registry bills by
+  bandwidth; see `docs/deploy.md`); deploy on `v*` tag via
   SSH — the server checks out the tagged commit and rebuilds the compose stack, then
   the workflow verifies `/api/health` (DB round-trip probe, also used as the compose
   `app` healthcheck and for external uptime monitoring) over SSH on the box's loopback
@@ -1603,6 +1605,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   carry are previewed and confirmed on every send. The dialog loads on demand, so the
   per-student page doesn't grow. `updateSubmission` moves out of the `"use server"` actions file into
   `lib/admin/update-submission.ts`. See `docs/scheduler-automation.md`.
+  **Ops, same release:** the Font Awesome registry (metered by bandwidth) cut off
+  installs after about 30 cold downloads of the 166 MB kit. CI now runs on PRs and
+  `main` only, its npm cache falls back to the newest older cache on a lockfile change,
+  the Docker build check runs only when image inputs change (with the GitHub Actions
+  layer cache), the Dockerfile's `npm ci` keeps a BuildKit cache mount, and only
+  `@awesome.me` resolves from the Font Awesome registry (the free `@fortawesome`
+  packages come from public npm, same tarballs).
 - **1.33 (2026-09-27)** — **The scheduler can edit every answer on the per-student page
   (§4.1, §10a).** The page showed the student's form but only some of it could be changed
   there, and several edits still demanded an upload. Now every field is editable and none

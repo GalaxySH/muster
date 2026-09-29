@@ -1,5 +1,8 @@
 # CI quality gate (PLAN §15): lint + typecheck + unit tests + production build
-# on every push, plus a Docker image build check where it matters (main + PRs).
+# on PRs to main and on main itself. Branch pushes without a PR don't run it:
+# each run is a chance to re-download the Font Awesome kit (~166 MB, billed by
+# bandwidth), and a branch and its PR can't share a cache. The Docker image
+# check lives in docker-build.yml.
 #
 # Required repository secret:
 #   FONTAWESOME_PACKAGE_TOKEN — Font Awesome Pro Kit install token (read by the
@@ -9,7 +12,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -26,12 +29,22 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
+
+      # The npm cache, keyed on the lockfile but falling back to the newest
+      # older cache, so a dependency change downloads only what changed and the
+      # kit comes from the cache. setup-node's own `cache: npm` has no fallback.
+      # The path and key prefix match what setup-node saved, so its caches still
+      # restore.
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.npm
+          key: node-cache-${{ runner.os }}-${{ runner.arch }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-cache-${{ runner.os }}-${{ runner.arch }}-npm-
 
       - name: Install dependencies
         env:
           FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Lint
         run: npm run lint
@@ -45,17 +58,3 @@ jobs:
       # `next build` relaxes env validation itself (NEXT_PHASE) — no secrets needed.
       - name: Production build
         run: npm run build
-
-  # Catches Dockerfile/standalone-output breakage before a tag reaches the
-  # server. Skipped on feature-branch pushes to save runner minutes; the
-  # deploy still builds authoritatively on the server.
-  docker-build:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Build production image
-        env:
-          FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
-        run: docker build --target runner --secret id=fa_token,env=FONTAWESOME_PACKAGE_TOKEN .
