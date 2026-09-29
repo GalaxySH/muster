@@ -12,7 +12,10 @@ version tag deploys to the production box over SSH — automating the same
   when the lockfile changes, so the Font Awesome kit is rarely re-downloaded.
 - **`.github/workflows/docker-build.yml`** — the Docker image build check, on PRs
   and `main`, only when the Dockerfile, package files, `.npmrc` or `next.config`
-  change. It uses the GitHub Actions layer cache.
+  change. It restores the checks job's npm cache and copies it into the
+  Dockerfile's npm cache mount before building, so the image's `npm ci` doesn't
+  re-download the kit. (The repo only allows GitHub-owned actions, so no
+  `docker/*` actions.)
 - **Font Awesome bandwidth:** the Pro kit (~166 MB) comes from Font Awesome's
   registry, which bills by download bandwidth and stops serving when the quota
   runs out. Only `@awesome.me` is mapped to it (`.npmrc`); every install path

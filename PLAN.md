@@ -1608,8 +1608,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   **Ops, same release:** the Font Awesome registry (metered by bandwidth) cut off
   installs after about 30 cold downloads of the 166 MB kit. CI now runs on PRs and
   `main` only, its npm cache falls back to the newest older cache on a lockfile change,
-  the Docker build check runs only when image inputs change (with the GitHub Actions
-  layer cache), the Dockerfile's `npm ci` keeps a BuildKit cache mount, and only
+  the Docker build check runs only when image inputs change and seeds the image's npm
+  cache from that same cache, the Dockerfile's `npm ci` keeps a BuildKit cache mount, and only
   `@awesome.me` resolves from the Font Awesome registry (the free `@fortawesome`
   packages come from public npm, same tarballs).
 - **1.33 (2026-09-27)** — **The scheduler can edit every answer on the per-student page

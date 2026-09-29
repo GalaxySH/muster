@@ -33,13 +33,14 @@ jobs:
       # The npm cache, keyed on the lockfile but falling back to the newest
       # older cache, so a dependency change downloads only what changed and the
       # kit comes from the cache. setup-node's own `cache: npm` has no fallback.
-      # The path and key prefix match what setup-node saved, so its caches still
-      # restore.
+      # The path and key prefix match what setup-node saved (lowercase "x64",
+      # not runner.arch's "X64"), so its caches still restore. docker-build.yml
+      # restores the same cache.
       - uses: actions/cache@v4
         with:
           path: /home/runner/.npm
-          key: node-cache-${{ runner.os }}-${{ runner.arch }}-npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: node-cache-${{ runner.os }}-${{ runner.arch }}-npm-
+          key: node-cache-${{ runner.os }}-x64-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-cache-${{ runner.os }}-x64-npm-
 
       - name: Install dependencies
         env:
