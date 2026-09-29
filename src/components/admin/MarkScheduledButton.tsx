@@ -58,13 +58,14 @@ export function MarkScheduledButton({
     });
   }
 
-  const border = scheduled
-    ? "1px solid var(--color-text-success)"
-    : "1px solid var(--color-border-secondary)";
+  // Longhand border properties: React warns when the `border` shorthand
+  // changes while the caret's left-border override is set.
   const look: React.CSSProperties = {
     fontSize: 13,
     padding: "5px 12px",
-    border,
+    borderStyle: "solid",
+    borderWidth: 1,
+    borderColor: scheduled ? "var(--color-text-success)" : "var(--color-border-secondary)",
     background: scheduled ? "#e6f4ea" : "var(--color-background-primary)",
     color: scheduled ? "var(--color-text-success)" : "var(--color-text-primary)",
     cursor: pending ? "default" : "pointer",
@@ -95,7 +96,7 @@ export function MarkScheduledButton({
         style={{
           ...look,
           padding: "5px 8px",
-          borderLeft: "none",
+          borderLeftWidth: 0,
           borderRadius: "0 var(--border-radius-md) var(--border-radius-md) 0",
           cursor: "pointer",
         }}

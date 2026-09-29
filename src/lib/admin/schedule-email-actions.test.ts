@@ -45,10 +45,9 @@ const {
 
 const input = {
   startDate: "2026-10-04",
-  crossover: false,
-  crossoverPosition: "",
-  crossoverShift: "",
   firstShiftTime: "",
+  subject: DEFAULT_SCHEDULE_EMAIL.subject,
+  body: DEFAULT_SCHEDULE_EMAIL.body,
   includeCc: true,
   requestId: "3f1c2d9e-aaaa-bbbb-cccc-1234567890ab",
 };
@@ -95,6 +94,27 @@ describe("sendScheduleEmail", () => {
       scheduleEmailSentAt: expect.any(Date),
       scheduled: true,
     });
+  });
+
+  it("sends the dialog's edited subject and text with the saved font", async () => {
+    config = { ...DEFAULT_SCHEDULE_EMAIL, font: "georgia" };
+    await sendScheduleEmail("sfhauge@wisc.edu", {
+      ...input,
+      subject: "Schedule for {{ first_name }}",
+      body: "Hi {{ first_name }}, one shift is a <b>Dishwasher</b> shift.",
+    });
+    const msg = sendEmail.mock.calls[0]![0];
+    expect(msg.subject).toBe("Schedule for Stefan");
+    expect(msg.text).toBe("Hi Stefan, one shift is a Dishwasher shift.");
+    expect(msg.html).toContain("<b>Dishwasher</b>");
+    expect(msg.html).toContain("Georgia");
+  });
+
+  it("refuses an edited template that doesn't render, without sending", async () => {
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", { ...input, body: "{{ nope }}" });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/problem/);
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it("leaves out the cc when unticked but keeps the reply-to", async () => {

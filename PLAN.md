@@ -234,10 +234,12 @@ but `/change-requests` itself and the admin queue stay reachable.
   scheduler sends the "your schedule is posted" email from the per-student page:
   **Send schedule email…** in the menu beside **Mark scheduled** opens a confirmation
   dialog with a live preview. It never goes out on its own or in bulk. The dialog takes
-  the start date (default: the next Sunday after today), a **cross-over** checkbox (off
-  by default) that reveals the other position + shift, and an optional first-shift time
-  (suggestable from the current run's weekday rows). Cross-over shifts can't be
-  represented in a run, so those are always typed. The student's **current-run shifts**
+  the start date (default: the next Sunday after today) and an optional first-shift time
+  (suggestable from the current run's weekday rows), and has **Preview** and **Edit**
+  tabs: Edit holds a copy of the saved subject and text for this one email, so a
+  one-off paragraph (such as a cross-over shift, which a run can't represent) is typed
+  there and the saved template is untouched. The server validates and renders the
+  edited copy the same way as the saved one. The student's **current-run shifts**
   are available as `schedule_table` (two columns, Day and Shift times, one row per day
   with overlapping shifts merged) and `schedule_list` (one line per day); weekend
   shifts carry their rotation letter (A, B, or E for every weekend) with no
@@ -1577,10 +1579,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a
-  confirmation dialog with the start date (default: the next Sunday after today), a
-  cross-over checkbox (off by default) with the other position + shift, an optional
-  first-shift time (suggested from the current run's weekday rows), a live preview, and
-  a default-on **Also send to** the cc email. The template can show the student's
+  confirmation dialog with the start date (default: the next Sunday after today), an
+  optional first-shift time (suggested from the current run's weekday rows), Preview and
+  Edit tabs (the email can be edited for that one send, starting from the saved
+  template), and a default-on **Also send to** the cc email. The template can show the student's
   current-run shifts through `schedule_table` (Day and Shift times) or `schedule_list`,
   built by the app and inserted after sanitizing, with weekend rotation letters (A/B/E)
   and no dates. Sending stamps `submissions.schedule_email_sent_at` (reused, not dropped, so

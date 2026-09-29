@@ -45,8 +45,6 @@ export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
 
 {{ schedule_table }}{% endif %}
 
-{% if crossover %}Due to lack of shift availability for {{ position }}, one of your weekly shifts ({{ crossover_shift }}) is a {{ crossover_position }} shift. Please refer to shift leads or managers if you have any questions while on shift.{% endif %}
-
 {% if first_shift_time %}Please note that your first shift is scheduled for tomorrow at {{ first_shift_time }}.{% endif %}`,
   cc: "gdec_h-o@g-groups.wisc.edu",
   fromName: "GDEC Scheduling",
@@ -91,10 +89,6 @@ export interface ScheduleEmailVars {
   position: string;
   /** "YYYY-MM-DD". Rendered as a date, so templates format it with `| date:`. */
   start_date: string;
-  /** Whether the cross-over paragraph applies (the dialog's checkbox). */
-  crossover: boolean;
-  crossover_position: string;
-  crossover_shift: string;
   first_shift_time: string;
 }
 
@@ -102,10 +96,6 @@ export interface ScheduleEmailVars {
 export interface ScheduleEmailInput {
   /** "YYYY-MM-DD". */
   startDate: string;
-  /** The cross-over checkbox; off by default. Its two fields only count when on. */
-  crossover: boolean;
-  crossoverPosition: string;
-  crossoverShift: string;
   firstShiftTime: string;
 }
 
@@ -125,9 +115,6 @@ export function buildScheduleEmailVars(
     full_name: student.displayName.trim(),
     position: student.position,
     start_date: input.startDate,
-    crossover: input.crossover,
-    crossover_position: input.crossover ? input.crossoverPosition.trim() : "",
-    crossover_shift: input.crossover ? input.crossoverShift.trim() : "",
     first_shift_time: input.firstShiftTime.trim(),
   };
 }
@@ -140,12 +127,7 @@ export function validateScheduleEmailInput(input: ScheduleEmailInput): string | 
   ) {
     return "Pick a start date.";
   }
-  const fields = [input.crossoverPosition, input.crossoverShift, input.firstShiftTime];
-  if (fields.some((f) => f.length > 200)) return "Keep each field under 200 characters.";
-  if (input.crossover) {
-    if (!input.crossoverPosition.trim()) return "Pick the position the cross-over shift is in.";
-    if (!input.crossoverShift.trim()) return "Add the cross-over shift.";
-  }
+  if (input.firstShiftTime.length > 200) return "Keep the first shift time under 200 characters.";
   return null;
 }
 
@@ -169,18 +151,6 @@ export const SCHEDULE_EMAIL_VARIABLES: { name: string; about: string }[] = [
     about: "The same shifts as one line per day. Blank when they have none.",
   },
   {
-    name: "crossover",
-    about: "True when you tick the cross-over box while sending. Use it with {% if crossover %}.",
-  },
-  {
-    name: "crossover_position",
-    about: "The other position, when the cross-over box is ticked.",
-  },
-  {
-    name: "crossover_shift",
-    about: "That shift, e.g. Tuesday 2 to 5 PM, when the cross-over box is ticked.",
-  },
-  {
     name: "first_shift_time",
     about: "Their first shift time, when it's tomorrow. Blank otherwise.",
   },
@@ -192,9 +162,6 @@ export const SAMPLE_VARS: ScheduleEmailVars = {
   full_name: "Alex Example",
   position: "Culinary Assistant",
   start_date: "2026-10-04",
-  crossover: true,
-  crossover_position: "Dishwasher",
-  crossover_shift: "Tuesday 2 to 5 PM",
   first_shift_time: "7:00 AM",
 };
 
@@ -285,13 +252,7 @@ export function renderScheduleEmail(
  * and with every optional value blank. Returns the error to show, or null.
  */
 export function checkScheduleTemplate(template: ScheduleEmailTemplate): string | null {
-  const blank: ScheduleEmailVars = {
-    ...SAMPLE_VARS,
-    crossover: false,
-    crossover_position: "",
-    crossover_shift: "",
-    first_shift_time: "",
-  };
+  const blank: ScheduleEmailVars = { ...SAMPLE_VARS, first_shift_time: "" };
   try {
     for (const [vars, shifts] of [
       [SAMPLE_VARS, SAMPLE_SHIFTS],
@@ -307,12 +268,20 @@ export function checkScheduleTemplate(template: ScheduleEmailTemplate): string |
   }
 }
 
+/**
+ * Validate a subject and text: the saved template, or the edited copy sent from
+ * the dialog. Returns the error to show, or null.
+ */
+export function validateScheduleTemplate(t: ScheduleEmailTemplate): string | null {
+  if (!t.subject.trim()) return "Add a subject.";
+  if (t.subject.length > 200) return "Keep the subject under 200 characters.";
+  if (!t.body.trim()) return "Add the email text.";
+  if (t.body.length > 20_000) return "The email text is too long.";
+  return checkScheduleTemplate(t);
+}
+
 /** Validate a config before saving. Returns the error to show, or null. */
 export function validateScheduleEmailConfig(c: ScheduleEmailConfig): string | null {
-  if (!c.subject.trim()) return "Add a subject.";
-  if (c.subject.length > 200) return "Keep the subject under 200 characters.";
-  if (!c.body.trim()) return "Add the email text.";
-  if (c.body.length > 20_000) return "The email text is too long.";
   if (c.cc.trim() && !isEmailShaped(c.cc.trim()))
     return "The cc email doesn't look like an email address.";
   if (!c.fromName.trim() || c.fromName.length > 80 || /[<>"\r\n]/.test(c.fromName)) {
@@ -322,7 +291,7 @@ export function validateScheduleEmailConfig(c: ScheduleEmailConfig): string | nu
     return "The sender address can only use letters, numbers, dots, dashes, underscores and plus signs.";
   }
   if (!EMAIL_FONTS.some((f) => f.id === c.font)) return "Pick a font from the list.";
-  return checkScheduleTemplate(c);
+  return validateScheduleTemplate(c);
 }
 
 /** The domain of EMAIL_FROM ("GDEC Scheduling <no-reply@re.hauge.rocks>"). */

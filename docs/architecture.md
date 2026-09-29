@@ -1138,7 +1138,10 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   the edited email already match the default. A saved template never follows later
   changes to the coded default, so reset is how an admin picks up a new one.
 - **Actions:** `lib/admin/schedule-email-actions.ts` (`saveScheduleEmailConfig`,
-  `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`). A send
+  `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`).
+  `sendScheduleEmail` takes the dialog's subject and text and checks them with
+  `validateScheduleTemplate` (the same lengths and render checks as a save) before
+  rendering them with the saved font, cc and sender. A send
   refuses when the master switch is off, passes an `Idempotency-Key` minted when the
   dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
   `scheduled` when `marksScheduled` is on) through `updateSubmission`, which lives in
@@ -1148,9 +1151,11 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   `SendScheduleEmailDialog`, loaded with `next/dynamic` so Liquid and `sanitize-html`
   download only when it opens. The per-student page passes the template, cc, sender,
   toggle, master-switch state, and the student's current-run rows (the schedule table
-  and the first-shift suggestion; the send action re-reads them). The cross-over
-  paragraph hangs off the `crossover` variable, set by a dialog checkbox that is off by
-  default and reveals the position and shift fields. Student details shows "Schedule email sent" once the column is set.
+  and the first-shift suggestion; the send action re-reads them). The dialog has
+  Preview and Edit tabs. Edit starts from the saved subject and text and changes only
+  this send ("Undo my changes" restores it); one-off text such as a cross-over shift
+  goes there, since there is no cross-over variable. Student details shows "Schedule
+  email sent" once the column is set.
 - **Test safety:** `sendEmail` returns an `EmailOutcome` (`sent` | `suppressed` |
   `logged` | `blocked`). Outside production it filters every `to`/`cc` through
   `EMAIL_TEST_RECIPIENTS` (pure `lib/email/guard.ts`): a main recipient not on the list

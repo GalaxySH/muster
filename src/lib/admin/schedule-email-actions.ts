@@ -20,6 +20,7 @@ import {
   renderScheduleEmail,
   validateScheduleEmailConfig,
   validateScheduleEmailInput,
+  validateScheduleTemplate,
   type ScheduleEmailConfig,
   type ScheduleEmailInput,
   type ScheduleEmailVars,
@@ -83,7 +84,7 @@ export async function resetScheduleEmailTemplate(): Promise<AdminActionResult> {
 }
 
 /**
- * Render the saved template and send it. The reply-to is always the cc email,
+ * Render the config's template and send it. The reply-to is always the cc email,
  * even when the cc box is unticked, so replies reach the team.
  */
 async function deliver(
@@ -147,24 +148,29 @@ export async function sendScheduleEmailTest(): Promise<ScheduleEmailSendResult> 
 
 /**
  * Send one student their schedule email, then stamp `schedule_email_sent_at`
- * (and mark them scheduled when that setting is on). `requestId` is minted
+ * (and mark them scheduled when that setting is on). The subject and text are
+ * the dialog's copy of the template, edited for this one email or not; the
+ * font, cc and sender come from the saved settings. `requestId` is minted
  * when the dialog opens, so a double click can't send twice.
  */
 export async function sendScheduleEmail(
   studentEmail: string,
-  input: ScheduleEmailInput & { includeCc: boolean; requestId: string },
+  input: ScheduleEmailInput & {
+    subject: string;
+    body: string;
+    includeCc: boolean;
+    requestId: string;
+  },
 ): Promise<ScheduleEmailSendResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const fields: ScheduleEmailInput = {
     startDate: String(input.startDate ?? ""),
-    crossover: input.crossover === true,
-    crossoverPosition: String(input.crossoverPosition ?? ""),
-    crossoverShift: String(input.crossoverShift ?? ""),
     firstShiftTime: String(input.firstShiftTime ?? ""),
   };
-  const inputError = validateScheduleEmailInput(fields);
+  const template = { subject: String(input.subject ?? ""), body: String(input.body ?? "") };
+  const inputError = validateScheduleEmailInput(fields) ?? validateScheduleTemplate(template);
   if (inputError) return { ok: false, error: inputError };
   if (!/^[\w-]{8,100}$/.test(String(input.requestId ?? ""))) {
     return { ok: false, error: "Close this window and try again." };
@@ -176,7 +182,7 @@ export async function sendScheduleEmail(
   const position =
     (await positionOptions()).find((p) => p.id === student.positionId)?.name ?? "your position";
 
-  const config = await getScheduleEmailConfig();
+  const config = { ...(await getScheduleEmailConfig()), ...template };
   const vars = buildScheduleEmailVars({ displayName: student.displayName, position }, fields);
   // The shifts the current run gives them: what the dialog previewed.
   const shifts = (await loadStudentCurrentAssignments(email))?.cells ?? [];

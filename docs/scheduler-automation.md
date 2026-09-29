@@ -155,9 +155,9 @@ Checked against Resend's send-email API reference:
 6. **Per-student split button + dialog** (console code in `components/admin` and
    `lib/admin`, which respects the module rules):
    - "Mark scheduled" stays visible. A caret beside it opens **Send schedule email…**.
-   - Fields: start date (a date input, default the Sunday of next week), cross-over
-     position and shift (optional), and first shift time (optional, prefilled when
-     possible).
+   - Fields: start date (a date input, default the Sunday of next week) and first
+     shift time (optional, prefilled when possible). Preview and Edit tabs; Edit
+     changes the subject and text for this send only (decision 12).
    - After a send, the student is marked scheduled if the setting is on.
    - A live preview and a **"Also send to <cc email>"** checkbox, on by default.
    - Send is disabled while pending. The server action re-checks admin, re-renders
@@ -245,13 +245,18 @@ These override the proposal above wherever the two differ.
    weekend) with no explanation, and there are no dates. There is no separate
    checkbox: the template decides whether they appear.
 9. **Cross-over paragraph:** tied to the `crossover` variable, set by a dialog checkbox
-   that is off by default.
+   that is off by default. *Superseded by 12.*
 10. **Body font:** a setting on the template, picked from email-safe font stacks
     (Arial, Calibri, Verdana, Tahoma, Trebuchet MS, Georgia, Times New Roman, Courier
     New), defaulting to none so the mail app decides.
 11. **Default template:** the owner's version, which bolds the term and start date,
     highlights the contact address, and names the student's position. A
     confirmation-gated **Reset to default** restores the subject, text and font only.
+12. **Editable per send:** the dialog has Preview and Edit tabs, and Edit starts from
+    the saved subject and text. Changes apply to that one email only. With that in
+    place, the cross-over checkbox and the `crossover`, `crossover_position` and
+    `crossover_shift` variables were removed: the scheduler types that paragraph into
+    the email when it applies.
 
 ### Open questions
 
