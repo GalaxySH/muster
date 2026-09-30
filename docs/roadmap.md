@@ -16,9 +16,9 @@ change is high-stakes: small, well-tested diffs, nothing destructive. The two
 originally deadline-bound items both landed ahead of the fall window: SL
 weekend-close picking (3.2, v0.46) and the batch schedule-created email (2.4,
 v0.42). Ops is finished too: the nightly backup cron was installed 2026-07-30
-(verification commands in `docs/deploy.md` § Backups). What remains is **Tier
-6.1**'s deferred column drop (step two) and the loose ends in "Still open" at
-the foot of this file. PLAN 0.99 (2026-07-30) shipped an owner-directed admin
+(verification commands in `docs/deploy.md` § Backups). What remains is the
+loose ends in "Still open" at the foot of this file (6.1's column drop was
+cancelled in PLAN 1.34, which reuses the column). PLAN 0.99 (2026-07-30) shipped an owner-directed admin
 UX pass: native schedule-page buttons, one Save per position, the position
 capacity warning, and the per-student schedule editor with manual overrides,
 plus 6.1 step one: the batch schedule-created email is removed. PLAN 1.00
@@ -512,9 +512,11 @@ Per CLAUDE.md's production rule this is a live system, so the removal is taken
 in the two steps this item prescribed. **Step one shipped 2026-07-30 (PLAN
 0.99):** the admin send surface, its action, the recipient preview/throttle
 path, and the hub nav card are removed; `schedule_email_sent_at` stays in the
-schema, dead. **Step two is outstanding:** drop the column once a full schedule
-cycle has passed, confirming the scheduler is not mid-cycle on a send first (no
-migration exists yet).
+schema, dead. **Step two is cancelled (PLAN 1.34, 2026-09-28):** the per-student
+schedule email (sent by hand from the per-student page, one student at a time, after
+the schedule is in W2W, with any run shifts it shows previewed before sending) reuses
+`schedule_email_sent_at` as its last-sent date, so the column stays. See
+`docs/scheduler-automation.md`.
 
 ## Tier 7 — Configuration safety (2026-08-04 audit)
 

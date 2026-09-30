@@ -172,9 +172,9 @@ export const submissions = mysqlTable("submissions", {
   // notes per student. Set by admins in the per-student view, never by students.
   scheduled: boolean("scheduled").notNull().default(false),
   schedulerNotes: text("scheduler_notes"),
-  // DEPRECATED: the batch "your schedule is ready" email (roadmap 2.4) was removed
-  // in 0.99 (roadmap 6.1). Nothing reads or writes this column anymore; the physical
-  // drop is deferred to a later release, once a schedule cycle has passed.
+  // When an admin last sent this student the "your schedule is posted" email from
+  // their page (docs/scheduler-automation.md). Null = never sent. The column dates
+  // from the removed batch email (roadmap 2.4/6.1) and was reused rather than dropped.
   scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
   // When the student clicked "Yes, that's me" on /me. Null = they still owe the
   // confirmation, so /me shows the confirm card. The row itself is not proof: an

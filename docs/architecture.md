@@ -84,8 +84,9 @@ from the cutoff-derived `excused` flag. The hub's imminent-travel alert reads it
 admin-views section). (4) a **batch schedule-ready email** at
 `/admin/schedule-email` — **removed in 0.99 (roadmap 6.1)**; its lasting piece is the
 split of `email/resend.ts` into a generic `sendEmail` core + template callers, which
-the magic-link mail and the change digest still sit on (the dead
-`submissions.scheduleEmailSentAt` column awaits a deferred drop); (5) **computed
+the magic-link mail and the change digest still sit on (its
+`submissions.scheduleEmailSentAt` column is reused by the per-student schedule email,
+1.34; see that section); (5) **computed
 high-demand** — the red bar
 derives from live selection counts (pure `domain/demand.ts`): each (block × day) cell
 is gated on its own block target (at least `desiredCapacity` takers) plus an absolute
@@ -1092,6 +1093,74 @@ roster-probing input) and sends no email; the raw URL and the student's email co
 the client, which shows them in the shared `Modal` + `MagicLinkCopy`. The email is **not**
 in the URL (redemption stays bound to token+email); the modal shows it separately as the
 reminder the student needs to enter at `/magic/redeem`.
+
+## Schedule email (per student, PLAN 1.34)
+
+The "your schedule is posted" email a scheduler sends one student after entering their
+schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automation.md`.
+
+- **Pure core:** `lib/email/schedule-email.ts` holds the config type + default template,
+  `parseScheduleEmailConfig`, the Liquid engine (`liquidjs` with a no-files `FS`, so
+  `include`/`render`/`layout` fail; `strictVariables`, `strictFilters`, `jsTruthy` so a
+  blank optional field is falsy; `outputEscape: "escape"` so every value is HTML-escaped;
+  `timezoneOffset: 0` with `start_date` passed as UTC midnight so the `date` filter
+  keeps the day; parse/render/memory limits), `renderScheduleEmail`, `checkScheduleTemplate` /
+  `validateScheduleEmailConfig` (run on save), `buildScheduleEmailVars` +
+  `validateScheduleEmailInput` (shared by the dialog preview and the server send), and
+  the dialog's date helpers (`chicagoToday`, `nextSunday`, `suggestFirstShiftTime`, which
+  reads only weekday and every-weekend rows since A/B weeks have no dates). The client
+  renders the same code for live previews; the server re-renders from the saved config
+  on send.
+- **Render pipeline** (`renderScheduleEmail`): Liquid renders the body once, with values
+  escaped and `schedule_table` / `schedule_list` bound to plain-text placeholders (or ""
+  when the student has no shifts, so `{% if schedule_table %}` works). `lib/email/format.ts`
+  then makes the HTML part (blank lines become paragraphs, `sanitize-html` keeps only
+  `p br b strong i em u` plus `<mark>` rewritten to a background-colored span, and drops
+  empty paragraphs) and the plain-text part (`sanitize-html` with no tags, then
+  `entities` decoding). Only after sanitizing are the placeholders replaced: the table
+  (`lib/email/schedule-table.ts`: Day and Shift times, Monday first, overlaps merged with
+  `mergeRanges` within each rotation, weekend times suffixed "(A)", "(B)" or "(E)", no
+  dates) in the HTML, the list in the text. The generated
+  markup never passes through the author allowlist, and the allowlist never needs table
+  tags. The dialog and settings previews render `html` with `dangerouslySetInnerHTML`,
+  which is safe because of that order.
+- **Settings:** one JSON key, `schedule_email` (`getScheduleEmailConfig` in
+  `lib/settings.ts`), edited by `ScheduleEmailSettingsPanel` on `/admin/email-settings`.
+  The cc email is always the reply-to; the sender's domain always comes from
+  `EMAIL_FROM` (Resend only sends from the verified domain), so only the name and local
+  part are editable. The body font is an id from `EMAIL_FONTS` (`lib/email/format.ts`),
+  never free text: an unknown stored id reads as "default" and an unknown one is refused
+  on save. `renderScheduleEmail` wraps the finished HTML in a `font-family` div and puts
+  the same stack on each table cell (desktop Outlook doesn't carry it into tables).
+  **Reset to default** (`resetScheduleEmailTemplate`, behind a confirmation modal) writes
+  `DEFAULT_SCHEDULE_EMAIL`'s subject, body and font over the saved config and keeps the
+  cc, sender and marks-scheduled toggle; the button is disabled while both the saved and
+  the edited email already match the default. A saved template never follows later
+  changes to the coded default, so reset is how an admin picks up a new one.
+- **Actions:** `lib/admin/schedule-email-actions.ts` (`saveScheduleEmailConfig`,
+  `sendScheduleEmailTest` to the signed-in admin with no cc, `sendScheduleEmail`).
+  `sendScheduleEmail` takes the dialog's subject and text and checks them with
+  `validateScheduleTemplate` (the same lengths and render checks as a save) before
+  rendering them with the saved font, cc and sender. A send
+  refuses when the master switch is off, passes an `Idempotency-Key` minted when the
+  dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
+  `scheduled` when `marksScheduled` is on) through `updateSubmission`, which lives in
+  the `server-only` `lib/admin/update-submission.ts` so it can't become a client-callable
+  action.
+- **UI:** `MarkScheduledButton` is a split button; its caret menu opens
+  `SendScheduleEmailDialog`, loaded with `next/dynamic` so Liquid and `sanitize-html`
+  download only when it opens. The per-student page passes the template, cc, sender,
+  toggle, master-switch state, and the student's current-run rows (the schedule table
+  and the first-shift suggestion; the send action re-reads them). The dialog has
+  Preview and Edit tabs. Edit starts from the saved subject and text and changes only
+  this send ("Undo my changes" restores it); one-off text such as a cross-over shift
+  goes there, since there is no cross-over variable. Student details shows "Schedule
+  email sent" once the column is set.
+- **Test safety:** `sendEmail` returns an `EmailOutcome` (`sent` | `suppressed` |
+  `logged` | `blocked`). Outside production it filters every `to`/`cc` through
+  `EMAIL_TEST_RECIPIENTS` (pure `lib/email/guard.ts`): a main recipient not on the list
+  blocks the message, a cc not on it is dropped, and an unset list delivers nothing.
+  This covers the magic-link mail and the digest too.
 
 ## Test-account manager
 

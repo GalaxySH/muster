@@ -2,11 +2,7 @@ import { z } from "zod";
 import { parseKey } from "@/lib/crypto/secretbox";
 import { isDevLoginEnabled } from "@/lib/auth/policy";
 import { isDigestSchedulerEnabled } from "@/lib/changes/digest-schedule";
-import {
-  DEV_AUTH_SECRET,
-  DEV_ENCRYPTION_KEY,
-  findProductionEnvIssues,
-} from "@/lib/env-guard";
+import { DEV_AUTH_SECRET, DEV_ENCRYPTION_KEY, findProductionEnvIssues } from "@/lib/env-guard";
 
 /**
  * Validated, typed access to environment variables.
@@ -24,6 +20,9 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
   EMAIL_FROM: z.string().default("GDEC Scheduling <no-reply@re.hauge.rocks>"),
+  // Outside production, email is only ever delivered to these addresses (comma
+  // separated). Unset means nothing is delivered from dev or test at all.
+  EMAIL_TEST_RECIPIENTS: z.string().default(""),
   ADMIN_EMAILS: z.string().default(""),
   // Contact address shown to students in the app's "questions?" copy. When
   // unset the copy falls back to a neutral phrase, so no blank or placeholder

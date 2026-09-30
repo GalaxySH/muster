@@ -1,0 +1,70 @@
+# Docker image build check: catches Dockerfile and standalone-output breakage
+# before a tag reaches the server (the deploy still builds on the server).
+#
+# Runs only when something that shapes the image changes; the checks job in
+# ci.yml already covers the Next.js build itself. The image's `npm ci` would
+# otherwise start cold and re-download the Font Awesome kit (~166 MB, billed by
+# bandwidth), so the job restores the npm cache the checks job saves and copies
+# it into BuildKit's npm cache mount before building. Only GitHub-owned actions
+# are allowed in this repo, so this is plain `docker build`, not docker/*
+# actions.
+#
+# Required repository secret: FONTAWESOME_PACKAGE_TOKEN (see ci.yml).
+
+name: Docker build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - next.config.*
+      - .github/workflows/docker-build.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - next.config.*
+      - .github/workflows/docker-build.yml
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The same cache ci.yml's checks job saves (read-only here).
+      - uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.npm
+          key: node-cache-${{ runner.os }}-x64-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-cache-${{ runner.os }}-x64-npm-
+
+      # Copy it into the cache mount the Dockerfile's `npm ci` uses (same
+      # target, so the same mount id, on this runner's builder).
+      - name: Seed the image's npm cache
+        run: |
+          mkdir -p /home/runner/.npm
+          docker build -f - /home/runner/.npm <<'EOF'
+          FROM alpine:3
+          RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+              --mount=type=bind,target=/seed \
+              cp -a /seed/. /root/.npm/
+          EOF
+
+      - name: Build production image
+        env:
+          FONTAWESOME_PACKAGE_TOKEN: ${{ secrets.FONTAWESOME_PACKAGE_TOKEN }}
+        run: docker build --target runner --secret id=fa_token,env=FONTAWESOME_PACKAGE_TOKEN .

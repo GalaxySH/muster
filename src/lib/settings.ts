@@ -14,6 +14,7 @@ import {
   type LateTravelPolicy,
 } from "@/lib/domain/travel";
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
+import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
 import {
   effectiveExcludedTitles,
   SETTING_EXCLUDED_ROSTER_TITLES,
@@ -64,6 +65,8 @@ export const SETTING_SCHEDULE_PARAMS = "schedule_params";
 export const SETTING_CHANGE_REQUESTS_ENABLED = "change_requests_enabled";
 /** "1"/"0": whether students see the high-demand marks on their grid (roadmap 2.5). Absent ⇒ shown. */
 export const SETTING_HIGH_DEMAND_MARKS = "high_demand_marks";
+/** JSON ScheduleEmailConfig for the "schedule is posted" email. Absent ⇒ the default template. */
+export const SETTING_SCHEDULE_EMAIL = "schedule_email";
 
 export async function getSetting(key: string): Promise<string | null> {
   const [row] = await getDb()
@@ -175,6 +178,15 @@ export async function getChangeRequestsEnabled(): Promise<boolean> {
  */
 export async function getHighDemandMarksEnabled(): Promise<boolean> {
   return (await getSetting(SETTING_HIGH_DEMAND_MARKS)) !== "0";
+}
+
+/**
+ * The "schedule is posted" email's template, cc, sender, and whether a send
+ * marks the student scheduled (admin-set on /admin/email-settings). The default
+ * applies field by field until saved.
+ */
+export async function getScheduleEmailConfig(): Promise<ScheduleEmailConfig> {
+  return parseScheduleEmailConfig(await getSetting(SETTING_SCHEDULE_EMAIL));
 }
 
 /** Parse a stored ISO instant, treating an unparseable value as absent. */

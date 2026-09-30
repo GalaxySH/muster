@@ -8,9 +8,14 @@ WORKDIR /app
 # for this RUN only, so it never persists in an image layer (verify with
 # `docker history`). Build needs BuildKit (the `# syntax` line above enables it);
 # compose passes the secret via the top-level `secrets:` block.
+# The npm cache is a BuildKit cache mount, kept between builds on the same
+# machine, so a lockfile change only downloads the packages that changed. That
+# matters for the Font Awesome kit: it's ~166 MB and its registry bills by
+# bandwidth. `docker builder prune` clears the cache; the next build refills it.
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=secret,id=fa_token \
-    FONTAWESOME_PACKAGE_TOKEN="$(cat /run/secrets/fa_token)" npm ci
+    --mount=type=cache,target=/root/.npm,sharing=locked \
+    FONTAWESOME_PACKAGE_TOKEN="$(cat /run/secrets/fa_token)" npm ci --prefer-offline
 
 # --- builder: compile the Next.js standalone bundle ---
 # This stage retains the full source + deps, so it doubles as the "migrator"

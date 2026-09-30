@@ -1,0 +1,247 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SCHEDULE_EMAIL, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
+
+// Every collaborator is I/O, so they're stubbed: sendEmail never runs for real.
+vi.mock("server-only", () => ({}));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/env", () => ({
+  env: { EMAIL_FROM: "GDEC Scheduling <no-reply@re.hauge.rocks>" },
+}));
+const requireAdmin = vi.fn();
+vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: () => requireAdmin() }));
+const sendEmail = vi.fn();
+vi.mock("@/lib/email/resend", () => ({ sendEmail: (m: unknown) => sendEmail(m) }));
+vi.mock("@/lib/positions/data", () => ({
+  positionOptions: async () => [{ id: "ca", name: "Culinary Assistant" }],
+}));
+const loadStudentCurrentAssignments = vi.fn();
+vi.mock("@/lib/schedule/data", () => ({
+  loadStudentCurrentAssignments: (e: string) => loadStudentCurrentAssignments(e),
+}));
+const findStudentByEmail = vi.fn();
+vi.mock("@/lib/roster/lookup", () => ({
+  findStudentByEmail: (e: string) => findStudentByEmail(e),
+}));
+let config: ScheduleEmailConfig = DEFAULT_SCHEDULE_EMAIL;
+let emailEnabled = true;
+const setSetting = vi.fn();
+vi.mock("@/lib/settings", () => ({
+  getEmailSendingEnabled: async () => emailEnabled,
+  getScheduleEmailConfig: async () => config,
+  setSetting: (k: string, v: string) => setSetting(k, v),
+  SETTING_SCHEDULE_EMAIL: "schedule_email",
+}));
+const updateSubmission = vi.fn();
+vi.mock("./update-submission", () => ({
+  updateSubmission: (e: string, patch: unknown) => updateSubmission(e, patch),
+}));
+
+const {
+  sendScheduleEmail,
+  sendScheduleEmailTest,
+  saveScheduleEmailConfig,
+  resetScheduleEmailTemplate,
+} = await import("./schedule-email-actions");
+
+const input = {
+  startDate: "2026-10-04",
+  firstShiftTime: "",
+  subject: DEFAULT_SCHEDULE_EMAIL.subject,
+  body: DEFAULT_SCHEDULE_EMAIL.body,
+  includeCc: true,
+  requestId: "3f1c2d9e-aaaa-bbbb-cccc-1234567890ab",
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  config = DEFAULT_SCHEDULE_EMAIL;
+  emailEnabled = true;
+  requireAdmin.mockResolvedValue({ ok: true, email: "sfhauge@wisc.edu" });
+  findStudentByEmail.mockResolvedValue({
+    email: "sfhauge@wisc.edu",
+    displayName: "Stefan Hauge",
+    positionId: "ca",
+  });
+  sendEmail.mockImplementation(async (m: { cc: string[] }) => ({ outcome: "sent", cc: m.cc }));
+  loadStudentCurrentAssignments.mockResolvedValue({
+    runId: "run-1",
+    cells: [
+      { blockId: "b1", day: "tue", cohort: "weekday", source: "engine", start: 390, end: 600 },
+    ],
+  });
+  updateSubmission.mockResolvedValue({ ok: true });
+});
+
+describe("sendScheduleEmail", () => {
+  it("sends with the cc, reply-to, sender and idempotency key, then stamps and marks scheduled", async () => {
+    const res = await sendScheduleEmail("SFHauge@wisc.edu", input);
+    expect(res).toEqual({
+      ok: true,
+      message: "Sent to sfhauge@wisc.edu, with a copy to gdec_h-o@g-groups.wisc.edu.",
+    });
+    const msg = sendEmail.mock.calls[0]![0];
+    expect(msg).toMatchObject({
+      to: "sfhauge@wisc.edu",
+      cc: ["gdec_h-o@g-groups.wisc.edu"],
+      replyTo: "gdec_h-o@g-groups.wisc.edu",
+      from: "GDEC Scheduling <no-reply@re.hauge.rocks>",
+      idempotencyKey: `schedule-email-${input.requestId}`,
+    });
+    expect(msg.text).toContain("Sunday, October 4");
+    expect(msg.text).toContain("Tuesday: 6:30 AM to 10:00 AM");
+    expect(msg.html).toContain(">Tuesday</td>");
+    expect(updateSubmission).toHaveBeenCalledWith("sfhauge@wisc.edu", {
+      scheduleEmailSentAt: expect.any(Date),
+      scheduled: true,
+    });
+  });
+
+  it("sends the dialog's edited subject and text with the saved font", async () => {
+    config = { ...DEFAULT_SCHEDULE_EMAIL, font: "georgia" };
+    await sendScheduleEmail("sfhauge@wisc.edu", {
+      ...input,
+      subject: "Schedule for {{ first_name }}",
+      body: "Hi {{ first_name }}, one shift is a <b>Dishwasher</b> shift.",
+    });
+    const msg = sendEmail.mock.calls[0]![0];
+    expect(msg.subject).toBe("Schedule for Stefan");
+    expect(msg.text).toBe("Hi Stefan, one shift is a Dishwasher shift.");
+    expect(msg.html).toContain("<b>Dishwasher</b>");
+    expect(msg.html).toContain("Georgia");
+  });
+
+  it("refuses an edited template that doesn't render, without sending", async () => {
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", { ...input, body: "{{ nope }}" });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/problem/);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("leaves out the cc when unticked but keeps the reply-to", async () => {
+    await sendScheduleEmail("sfhauge@wisc.edu", { ...input, includeCc: false });
+    expect(sendEmail.mock.calls[0]![0]).toMatchObject({
+      cc: [],
+      replyTo: "gdec_h-o@g-groups.wisc.edu",
+    });
+  });
+
+  it("doesn't claim a copy went out when the cc was dropped", async () => {
+    sendEmail.mockResolvedValue({ outcome: "sent", cc: [] });
+    expect((await sendScheduleEmail("sfhauge@wisc.edu", input)).message).toBe(
+      "Sent to sfhauge@wisc.edu.",
+    );
+  });
+
+  it("only stamps the sent date when marking scheduled is off", async () => {
+    config = { ...DEFAULT_SCHEDULE_EMAIL, marksScheduled: false };
+    await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(updateSubmission).toHaveBeenCalledWith("sfhauge@wisc.edu", {
+      scheduleEmailSentAt: expect.any(Date),
+    });
+  });
+
+  it("refuses when email sending is off, without sending or stamping", async () => {
+    emailEnabled = false;
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(res.ok).toBe(false);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("doesn't stamp when sending is turned off between the check and the send", async () => {
+    sendEmail.mockResolvedValue({ outcome: "suppressed", cc: [] });
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/turned off/);
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("doesn't stamp when the test guard blocks the message", async () => {
+    sendEmail.mockResolvedValue({ outcome: "blocked", cc: [] });
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/EMAIL_TEST_RECIPIENTS/);
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("doesn't stamp when Resend refuses", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sendEmail.mockRejectedValue(new Error("Resend send failed (422)"));
+    expect((await sendScheduleEmail("sfhauge@wisc.edu", input)).ok).toBe(false);
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("rejects bad input and non-admins before sending", async () => {
+    expect((await sendScheduleEmail("sfhauge@wisc.edu", { ...input, startDate: "" })).ok).toBe(
+      false,
+    );
+    requireAdmin.mockResolvedValue({ ok: false, error: "Admins only." });
+    expect(await sendScheduleEmail("sfhauge@wisc.edu", input)).toEqual({
+      ok: false,
+      error: "Admins only.",
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendScheduleEmailTest", () => {
+  it("sends only to the signed-in admin, with no cc", async () => {
+    const res = await sendScheduleEmailTest();
+    expect(res.ok).toBe(true);
+    expect(sendEmail.mock.calls[0]![0]).toMatchObject({ to: "sfhauge@wisc.edu", cc: [] });
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("refuses when email sending is off", async () => {
+    emailEnabled = false;
+    const res = await sendScheduleEmailTest();
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/turned off/);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveScheduleEmailConfig", () => {
+  it("stores a valid config", async () => {
+    expect(await saveScheduleEmailConfig(DEFAULT_SCHEDULE_EMAIL)).toEqual({ ok: true });
+    expect(JSON.parse(setSetting.mock.calls[0]![1])).toEqual(DEFAULT_SCHEDULE_EMAIL);
+  });
+
+  it("refuses a broken template", async () => {
+    const res = await saveScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, body: "{{ nope }}" });
+    expect(res.ok).toBe(false);
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+});
+
+it("saves the chosen font", async () => {
+  await saveScheduleEmailConfig({ ...DEFAULT_SCHEDULE_EMAIL, font: "arial" });
+  expect(JSON.parse(setSetting.mock.calls[0]![1]).font).toBe("arial");
+});
+
+describe("resetScheduleEmailTemplate", () => {
+  it("restores the subject, text and font but keeps the other settings", async () => {
+    config = {
+      ...DEFAULT_SCHEDULE_EMAIL,
+      subject: "Custom",
+      body: "Custom body",
+      font: "georgia",
+      cc: "team@wisc.edu",
+      fromName: "Dining Team",
+      marksScheduled: false,
+    };
+    expect(await resetScheduleEmailTemplate()).toEqual({ ok: true });
+    expect(JSON.parse(setSetting.mock.calls[0]![1])).toEqual({
+      ...DEFAULT_SCHEDULE_EMAIL,
+      cc: "team@wisc.edu",
+      fromName: "Dining Team",
+      marksScheduled: false,
+    });
+  });
+
+  it("refuses non-admins", async () => {
+    requireAdmin.mockResolvedValue({ ok: false, error: "Admins only." });
+    expect((await resetScheduleEmailTemplate()).ok).toBe(false);
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+});

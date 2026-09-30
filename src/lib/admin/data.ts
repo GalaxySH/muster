@@ -75,6 +75,8 @@ export interface StudentDetail {
     updatedAt: Date;
     scheduled: boolean;
     schedulerNotes: string;
+    /** When an admin last sent the schedule email; null when never. */
+    scheduleEmailSentAt: Date | null;
   } | null;
   /** The student's own picks (machine-assigned cells excluded). */
   selection: SelectedShift[];
@@ -190,6 +192,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       updatedAt: subRow.updatedAt,
       scheduled: subRow.scheduled,
       schedulerNotes: subRow.schedulerNotes ?? "",
+      scheduleEmailSentAt: subRow.scheduleEmailSentAt,
     };
 
     const selRows = await db
