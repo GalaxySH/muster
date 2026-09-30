@@ -148,6 +148,14 @@ describe("sendScheduleEmail", () => {
     expect(updateSubmission).not.toHaveBeenCalled();
   });
 
+  it("doesn't stamp when sending is turned off between the check and the send", async () => {
+    sendEmail.mockResolvedValue({ outcome: "suppressed", cc: [] });
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/turned off/);
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
   it("doesn't stamp when the test guard blocks the message", async () => {
     sendEmail.mockResolvedValue({ outcome: "blocked", cc: [] });
     const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
@@ -182,6 +190,14 @@ describe("sendScheduleEmailTest", () => {
     expect(res.ok).toBe(true);
     expect(sendEmail.mock.calls[0]![0]).toMatchObject({ to: "sfhauge@wisc.edu", cc: [] });
     expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("refuses when email sending is off", async () => {
+    emailEnabled = false;
+    const res = await sendScheduleEmailTest();
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/turned off/);
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });
 
