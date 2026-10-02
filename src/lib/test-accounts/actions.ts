@@ -130,9 +130,9 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
 
   // schedule_assignments cascades off students, so deleting the account would
   // strip its shifts out of the schedule with no warning. Nothing keeps a test
-  // account off it: the per-student grid applies no on-roster check
-  // (schedule/manual.ts), so an admin can hand-place one. Refused rather than
-  // reported, the same way a position with run rows on its blocks is
+  // account off it: the current run may still have hand-placed rows from before
+  // the on-roster check in schedule/manual.ts. Refused rather than reported, the
+  // same way a position with run rows on its blocks is
   // (positions/actions.ts), and checked before anything else is deleted so a
   // refusal costs no rows and no Drive files.
   //
