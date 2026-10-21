@@ -52,6 +52,7 @@ export default async function TravelPage({
   if (!student) {
     return (
       <Page>
+        <AppHeader />
         <h1>Travel excusals</h1>
         <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
         <Link href="/me">Back</Link>
@@ -98,6 +99,7 @@ export default async function TravelPage({
   if (access.access === "no-group") {
     return (
       <Page>
+        <AppHeader />
         <h1>Travel excusals</h1>
         <NoGroupNotice />
         <Link href="/me">Back</Link>

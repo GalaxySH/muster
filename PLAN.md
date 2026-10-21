@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.34
-- **Last updated:** 2026-09-27
+- **Version:** 1.35
+- **Last updated:** 2026-10-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -825,6 +825,9 @@ columns from the roster.
 
 ## 10. Admin View / Outputs
 
+- **Student finder:** ✅ for admins, every page's header carries a search box on the
+  right (`/` to focus) that filters the on-roster names and emails client-side and jumps
+  to the student's page. Students never receive the roster (1.35).
 - **Response list:** all submissions, sortable/searchable, **fast prev/next
   navigation** between students and back to the full list (hard requirement). **Group +
   flag filters live in the URL** (roadmap 2.2) so they survive the hop into the
@@ -1578,6 +1581,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.35 (2026-10-20)** — **The student finder moves into the page header (§10).** The
+  hub's quick-search now lives in the shared `AppHeader`, on the right of the breadcrumb
+  row, so an admin can jump to any student from every page that has the header,
+  student-facing pages included (an admin walking the form sees it too). `AppHeader`
+  becomes an async server component: it resolves the session and reads the on-roster
+  names (`listRosterNames` in `roster/lookup.ts`) only for an admin, so the roster never
+  ships to a student's page. The component moves from `components/admin` to
+  `components/StudentQuickSearch.tsx`, since the header is form-core code and may not
+  import the console. The landing page `/` renders the header for admins only, so
+  students see it unchanged, and the form pages' dead-end notices (not on the roster, no
+  group, no position on `/availability`, `/course-schedule`, `/travel`, `/closes`) gain
+  the header they were missing. Mobile: under 640px the finder takes its own full-width row,
+  and on touch screens the input is 16px (no iOS zoom on focus), results are taller tap
+  targets, and the `/` hint is hidden. Layout moved from inline styles to
+  `globals.css` (`.app-header`, `.student-search-*`) for the media queries.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a

@@ -21,6 +21,7 @@ export default async function AvailabilityPage() {
   if (!form) {
     return (
       <Page>
+        <AppHeader />
         <h1>Availability</h1>
         <p>You&apos;re not on the current roster, so there&apos;s no form to fill out yet.</p>
         <Link href="/me">Back</Link>
@@ -33,6 +34,7 @@ export default async function AvailabilityPage() {
   if (access.access === "no-group") {
     return (
       <Page>
+        <AppHeader />
         <h1>Availability</h1>
         <NoGroupNotice />
         <Link href="/me">Back</Link>
@@ -43,6 +45,7 @@ export default async function AvailabilityPage() {
   if (!form.position) {
     return (
       <Page>
+        <AppHeader />
         <h1>Availability</h1>
         <p>
           Your position isn&apos;t set yet. Choosing your position during onboarding is coming soon;

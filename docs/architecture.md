@@ -711,9 +711,16 @@ generator (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`, plus the engine/manua
 colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the one admin
 UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
 A2). The split is what lets a travel or responses page import the shared kit without
-taking on the engine's vocabulary. `StudentQuickSearch` is a client island: the roster is small
-enough to filter locally, so results are instant and there is no request per keystroke
-(`/` focuses it).
+taking on the engine's vocabulary. The student finder (`components/StudentQuickSearch.tsx`)
+is not part of the hub any more: since 1.35 the shared `AppHeader` renders it for admins on
+every page. `AppHeader` is an async server component that resolves the session itself and
+calls `listRosterNames` (`roster/lookup.ts`) only when `isAdmin`, so the roster never ships
+to a student's page; that gate is what `AppHeader.test.tsx` pins. Both files sit in the form
+core (`src/components/*.tsx`), which is why neither may import `components/admin` or
+`lib/admin`. The finder is a client island: the roster is small enough to filter locally,
+so results are instant and there is no request per keystroke (`/` focuses it). Its layout
+lives in `globals.css` (`.app-header`, `.student-search-*`) so it can wrap to a full-width
+row under 640px and grow its tap targets on coarse pointers.
 
 The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the To-review
 tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is

@@ -34,7 +34,6 @@ import {
   masonryStyle,
 } from "@/components/admin/ui";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { StudentQuickSearch } from "@/components/admin/StudentQuickSearch";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
 import { loadAdminDashboard } from "@/lib/admin/dashboard";
 import {
@@ -81,9 +80,6 @@ export default async function AdminPage() {
             <span style={muted}>as of {clock(now)}</span>
           </div>
         </div>
-        <StudentQuickSearch
-          students={snapshot.students.map((s) => ({ email: s.email, displayName: s.displayName }))}
-        />
       </div>
 
       <div className="admin-shell">

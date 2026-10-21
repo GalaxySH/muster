@@ -152,6 +152,132 @@ body {
   }
 }
 
+/* The shared page header (components/AppHeader.tsx): breadcrumbs on the left
+   and, for admins, the student finder pushed to the right. When the crumbs
+   leave no room the finder wraps to its own row, still right-aligned; on a
+   phone it takes that row's full width. */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+.student-search {
+  position: relative;
+  flex: 0 1 300px;
+  min-width: 0;
+  margin-left: auto;
+}
+.student-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  padding: 5px 10px;
+  cursor: text;
+}
+.student-search-field:focus-within {
+  border-color: var(--color-text-info);
+}
+.student-search-icon {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+.student-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.student-search-kbd {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.student-search-menu {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.student-search-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.student-search-item--active {
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+}
+.student-search-empty {
+  color: var(--color-text-tertiary);
+  cursor: default;
+}
+.student-search-email {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+@media (max-width: 640px) {
+  .student-search {
+    flex-basis: 100%;
+  }
+}
+/* Touch screens: no keyboard to press "/" on, a 16px input so iOS doesn't zoom
+   the page on focus, and results tall enough to tap. */
+@media (pointer: coarse) {
+  .student-search-kbd {
+    display: none;
+  }
+  .student-search-field {
+    padding: 8px 12px;
+  }
+  .student-search-input {
+    font-size: 16px;
+  }
+  .student-search-item {
+    padding: 9px 10px;
+    font-size: 15px;
+  }
+  .student-search-menu {
+    max-height: min(320px, 50vh);
+  }
+}
+
 /* Admin hub shell (app/admin/page.tsx): the nav rail beside the status body.
    On a wide screen the rail is a grid column sized to its own content, and every
    link is one compact row, so the whole rail fits a desktop screen without
