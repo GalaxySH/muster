@@ -1267,6 +1267,18 @@ upserts, so a submission, name and position always survive. Rows skipped for an 
 title deliberately don't count as "seen", so retitling someone into the excluded list
 retires them.
 
+The same departure also runs `releaseDepartedSchedules` (v1.35): it unmarks
+`submissions.scheduled` for everyone just taken off-roster and drops their rows from the
+CURRENT run only, batched over the whole deactivated set rather than per email. This is
+the same pair of steps `applyPositionChange` already runs on a position change, for the
+same reason, stated in that module's own comment: a schedule the student isn't going to
+work is gone, so the marker saying it was built has to go with it. Left set, a rehire
+later (a new import re-listing them, `onRoster: true` again) would still read as frozen
+and the generator would carry their pre-departure shifts into the new run verbatim
+instead of rebuilding them. Superseded and pinned runs are untouched, same as a position
+change: they stay the record of what was true while the student really was on the
+roster.
+
 Because a departure is *inferred* from an absence rather than stated anywhere, the
 **absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
 `ABSENCE_GUARD_SHARE` (20%) of the current roster would go, `importRoster` throws

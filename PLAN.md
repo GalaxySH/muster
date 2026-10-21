@@ -1578,6 +1578,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.35 (2026-10-20)** — **A rehired student stayed frozen on their old schedule
+  (§4.2, §10a).** Leaving the roster only ever flipped `onRoster` off; it never touched
+  `submissions.scheduled` or that student's rows in the current run. Since `scheduled`
+  is the generator's whole freeze model, a student who came back later (re-listed in a
+  later import) was still read as frozen and the next generated run carried their
+  pre-departure shifts forward verbatim instead of rebuilding them. `importRoster` now
+  runs the same release `applyPositionChange` already runs on a position change,
+  batched over the whole deactivated set: unmark `scheduled` and drop their rows from
+  the CURRENT run (never superseded or pinned runs). No migration; existing columns.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a
