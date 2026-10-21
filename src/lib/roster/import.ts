@@ -9,7 +9,12 @@
  * administrative marker and is deliberately not read. Because a departure is
  * inferred from an absence, the **absence guard** is all-or-nothing: past its
  * limit the whole import is refused before anything is written, rather than
- * applying part of a file that looks wrong.
+ * applying part of a file that looks wrong. Someone taken off the roster has
+ * their SL closes released in the same transaction (summary `closesReleased`):
+ * after their Resignation Effective Date when the workbook has a People
+ * Leaving sheet that dates them; otherwise their closes from today on are
+ * released only if the admin says so (`releaseUndatedCloses`), and the import
+ * stops to ask (RosterClosesPrompt) before writing anything.
  *
  * Titles map to positions through the DB-owned roster_title_mappings table
  * (alias chains resolved), and a student whose stored position differs from
@@ -29,11 +34,14 @@ import {
   rosterTitleMappings,
   positions,
   appSettings,
+  closeClaims,
+  closeSlots,
   submissions,
   scheduleRuns,
   scheduleAssignments,
 } from "@/lib/db/schema";
 import { applyPositionChange, type DbTx } from "@/lib/positions/apply-change";
+import { chicagoToday } from "@/lib/domain/time";
 import { readRosterGrid, type WorkbookSource } from "./read-workbook";
 import {
   buildEffectiveTitleMap,
@@ -45,7 +53,11 @@ import {
   parseRoster,
   reconcileAdmins,
   evaluateAbsenceGuard,
+  extractResignationDates,
+  planCloseReleases,
   RosterGuardError,
+  RosterClosesPrompt,
+  type DatedCloseClaim,
 } from "./parse";
 
 /** One student whose stored position differed from the sheet's (names, not ids). */
@@ -86,6 +98,13 @@ export interface ImportSummary {
    * (their submission stays; admin access comes from admin_users).
    */
   movedToAdmin: string[];
+  /**
+   * SL close claims given back to the pool: held by someone this import took
+   * off the roster, on a close after their People Leaving Resignation
+   * Effective Date, or from today on when undated and the admin said to.
+   * One entry per claim (slot date `yyyy-mm-dd`).
+   */
+  closesReleased: { email: string; date: string }[];
   skipped: { reason: string; detail: string }[];
   unmappedTitles: Record<string, number>;
   byPosition: Record<string, number>;
@@ -107,6 +126,12 @@ export interface ImportOptions {
   sheetName?: string;
   /** Run even when the guard would refuse the import for taking too many people off. */
   allowMassDeactivation?: boolean;
+  /**
+   * The admin's answer for leavers with no resignation date who hold closes
+   * from today on: true frees those closes, false keeps them. Left unset, the
+   * import stops with RosterClosesPrompt when there is anything to ask.
+   */
+  releaseUndatedCloses?: boolean;
 }
 
 export async function importRoster({
@@ -115,9 +140,13 @@ export async function importRoster({
   importedBy,
   sheetName: requestedSheet,
   allowMassDeactivation = false,
+  releaseUndatedCloses,
 }: ImportOptions): Promise<ImportSummary> {
-  const { sheetName, grid } = await readRosterGrid(workbook, requestedSheet);
+  const { sheetName, grid, leavingGrid } = await readRosterGrid(workbook, requestedSheet);
   const rows = extractRosterRows(grid);
+  const resignations = leavingGrid
+    ? extractResignationDates(leavingGrid)
+    : new Map<string, string>();
 
   // The title map is DB-owned (seeded once from the code fixture, extended by
   // ghost resolution on /admin/positions); aliases canonicalize before writes.
@@ -169,6 +198,29 @@ export async function importRoster({
   }
 
   const deactivate = [...new Set([...deactivatedByAbsence, ...movedToAdmin])];
+
+  // Closes held by the people leaving: after their People Leaving date they
+  // go back to the pool; with no date, the admin decides about today onward.
+  // Like the guard, the question is asked before anything is written.
+  const held =
+    deactivate.length === 0
+      ? []
+      : await db
+          .select({
+            closeSlotId: closeClaims.closeSlotId,
+            studentEmail: closeClaims.studentEmail,
+            date: closeSlots.date,
+          })
+          .from(closeClaims)
+          .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
+          .where(inArray(closeClaims.studentEmail, deactivate));
+  const plan = planCloseReleases(held, new Set(deactivate), resignations, chicagoToday(new Date()));
+  const toClaimList = (claims: DatedCloseClaim[]) =>
+    claims.map((c) => ({ email: c.studentEmail, date: c.date }));
+  if (plan.undated.length > 0 && releaseUndatedCloses === undefined) {
+    throw new RosterClosesPrompt(toClaimList(plan.undated));
+  }
+  const release = releaseUndatedCloses ? [...plan.dated, ...plan.undated] : plan.dated;
 
   const positionName = new Map(positionRows.map((p) => [p.id, p.name]));
   const nameOf = (id: string | null) => (id === null ? null : (positionName.get(id) ?? id));
@@ -241,6 +293,18 @@ export async function importRoster({
       await releaseDepartedSchedules(tx, deactivate);
     }
 
+    // The same delete as an admin unassign. Leads hold at most a few claims each.
+    for (const c of release) {
+      await tx
+        .delete(closeClaims)
+        .where(
+          and(
+            eq(closeClaims.closeSlotId, c.closeSlotId),
+            eq(closeClaims.studentEmail, c.studentEmail),
+          ),
+        );
+    }
+
     await tx.insert(rosterImports).values({
       id: importId,
       rowCount: parsed.students.length + parsed.admins.length,
@@ -263,6 +327,7 @@ export async function importRoster({
     adminsUpserted: parsed.admins.length,
     deactivatedByAbsence,
     movedToAdmin,
+    closesReleased: toClaimList(release),
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

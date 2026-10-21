@@ -23,10 +23,15 @@ export type WorkbookSource = string | Buffer;
  */
 export const ROSTER_SHEET_CANDIDATES = ["Gordon", "People Coming"] as const;
 
+/** The PCPL workbook's leavers sheet, read only for resignation dates. */
+export const LEAVING_SHEET = "People Leaving";
+
 export interface RosterGrid {
   /** The worksheet the rows came from, or null for a CSV (which has no sheets). */
   sheetName: string | null;
   grid: string[][];
+  /** The People Leaving sheet, or null when the workbook has none (or is a CSV). */
+  leavingGrid: string[][] | null;
 }
 
 /** One cell as text. Dates become `yyyy-mm-dd` so the parse layer only sees strings. */
@@ -87,7 +92,8 @@ function isXlsx(bytes: Buffer): boolean {
 
 /**
  * Read a roster sheet into a grid. `sheetName` picks a worksheet in a
- * multi-sheet workbook; it is ignored for a CSV.
+ * multi-sheet workbook; it is ignored for a CSV. A People Leaving sheet, when
+ * present, comes back alongside it from the same load.
  */
 export async function readRosterGrid(
   source: WorkbookSource,
@@ -96,7 +102,7 @@ export async function readRosterGrid(
   const bytes = typeof source === "string" ? await readFile(source) : source;
 
   if (!isXlsx(bytes)) {
-    return { sheetName: null, grid: parseCsv(decodeCp1252(bytes)) };
+    return { sheetName: null, grid: parseCsv(decodeCp1252(bytes)), leavingGrid: null };
   }
 
   const wb = new ExcelJS.Workbook();
@@ -104,5 +110,10 @@ export async function readRosterGrid(
   // the runtime accepts a Node Buffer fine, so bridge the declared type.
   await wb.xlsx.load(bytes as unknown as Parameters<ExcelJS.Xlsx["load"]>[0]);
   const ws = pickWorksheet(wb, sheetName);
-  return { sheetName: ws.name, grid: worksheetGrid(ws) };
+  const leaving = wb.getWorksheet(LEAVING_SHEET);
+  return {
+    sheetName: ws.name,
+    grid: worksheetGrid(ws),
+    leavingGrid: leaving ? worksheetGrid(leaving) : null,
+  };
 }
