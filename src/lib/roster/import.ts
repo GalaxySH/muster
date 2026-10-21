@@ -36,8 +36,11 @@ import {
   appSettings,
   closeClaims,
   closeSlots,
+  submissions,
+  scheduleRuns,
+  scheduleAssignments,
 } from "@/lib/db/schema";
-import { applyPositionChange } from "@/lib/positions/apply-change";
+import { applyPositionChange, type DbTx } from "@/lib/positions/apply-change";
 import { chicagoToday } from "@/lib/domain/time";
 import { readRosterGrid, type WorkbookSource } from "./read-workbook";
 import {
@@ -287,6 +290,7 @@ export async function importRoster({
     // submission are kept, so someone re-listed later comes straight back.
     if (deactivate.length > 0) {
       await tx.update(students).set({ onRoster: false }).where(inArray(students.email, deactivate));
+      await releaseDepartedSchedules(tx, deactivate);
     }
 
     // The same delete as an admin unassign. Leads hold at most a few claims each.
@@ -329,4 +333,40 @@ export async function importRoster({
     byPosition,
     positionChanges,
   };
+}
+
+/**
+ * A departed student's schedule, if any, no longer applies: unmark the
+ * generator's freeze (`submissions.scheduled`) and drop their rows from the
+ * CURRENT run. Mirrors the same two steps `applyPositionChange` runs for a
+ * position change (`positions/apply-change.ts`), for the same reason: left
+ * set, `scheduled` would freeze a later rehire out of the next generated run
+ * on the strength of a schedule from before they left. Superseded and pinned
+ * runs are untouched, since they're the record of what was true while the
+ * student really was on the roster.
+ *
+ * Batched rather than per email (`apply-change.ts`'s `removeCurrentRunShifts`
+ * is one-at-a-time, built for a single position change): the absence guard
+ * alone can pass up to 20% of the roster through here in one import.
+ */
+export async function releaseDepartedSchedules(tx: DbTx, emails: string[]): Promise<void> {
+  if (emails.length === 0) return;
+
+  await tx
+    .update(submissions)
+    .set({ scheduled: false })
+    .where(inArray(submissions.studentEmail, emails));
+
+  const [run] = await tx
+    .select({ id: scheduleRuns.id })
+    .from(scheduleRuns)
+    .where(eq(scheduleRuns.status, "current"))
+    .limit(1);
+  if (!run) return;
+
+  await tx
+    .delete(scheduleAssignments)
+    .where(
+      and(eq(scheduleAssignments.runId, run.id), inArray(scheduleAssignments.studentEmail, emails)),
+    );
 }

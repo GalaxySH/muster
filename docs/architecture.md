@@ -121,7 +121,7 @@ refreshed board; `admin-actions.ts` idempotent inventory generation that never r
 claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
 place or pull leads directly, through the same locking insert, and `removeCloseSlot`
 (v0.57) which deletes one shift outright — claims cascade after a client confirm).
-The **roster import** also releases claims (v1.35): someone it takes off the roster loses
+The **roster import** also releases claims (v1.36): someone it takes off the roster loses
 their closes after their People Leaving resignation date, or, with no date, from today
 on if the admin says so (see the roster import section). It deletes `close_claims` rows
 directly inside its own transaction rather than calling `admin-actions.ts`, which is
@@ -1273,7 +1273,19 @@ upserts, so a submission, name and position always survive. Rows skipped for an 
 title deliberately don't count as "seen", so retitling someone into the excluded list
 retires them.
 
-**Leavers' closes (v1.35).** `readRosterGrid` also returns the workbook's optional
+The same departure also runs `releaseDepartedSchedules` (v1.35): it unmarks
+`submissions.scheduled` for everyone just taken off-roster and drops their rows from the
+CURRENT run only, batched over the whole deactivated set rather than per email. This is
+the same pair of steps `applyPositionChange` already runs on a position change, for the
+same reason, stated in that module's own comment: a schedule the student isn't going to
+work is gone, so the marker saying it was built has to go with it. Left set, a rehire
+later (a new import re-listing them, `onRoster: true` again) would still read as frozen
+and the generator would carry their pre-departure shifts into the new run verbatim
+instead of rebuilding them. Superseded and pinned runs are untouched, same as a position
+change: they stay the record of what was true while the student really was on the
+roster.
+
+**Leavers' closes (v1.36).** `readRosterGrid` also returns the workbook's optional
 **People Leaving** sheet (`leavingGrid`, null for a CSV or the Gordon tracker, which never
 has one), loaded in the same pass. `extractResignationDates` (pure) reads only its Email
 and Resignation Effective Date columns, in memory, never stored; a malformed sheet just

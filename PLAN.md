@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.35
+- **Version:** 1.36
 - **Last updated:** 2026-10-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -188,7 +188,7 @@ but `/change-requests` itself and the admin queue stay reachable.
   taken off the roster drop out of listed/required responses; their submission, name and
   position are retained in the DB. The import never deletes, except leavers' SL close
   claims (below).
-- **Leavers' weekend closes (§18a, 1.35)** — a Shift Lead the import takes off the roster
+- **Leavers' weekend closes (§18a, 1.36)** — a Shift Lead the import takes off the roster
   gives their closes back to the pool. When the workbook has a **People Leaving** sheet
   (the PCPL workbook; the Gordon tracker never has one), its **Resignation Effective
   Date** decides: closes strictly after that date are released automatically. Only that
@@ -1521,7 +1521,7 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   goes through the **same locking insert** as student claims (`closes/claim-write.ts`,
   shared by `actions.ts` and `admin-actions.ts`), so capacity and the 3-claim limit
   hold even against a concurrent student pick; removal returns the seat to the pool.
-- **Leavers (1.35):** a roster import that takes a lead off the roster releases their
+- **Leavers (1.36):** a roster import that takes a lead off the roster releases their
   closes after their resignation date, or asks the admin when there is no date (§4.2).
 - **Entities:** `CloseSlot` / `CloseClaim` (§9). Claimed counts are derived (COUNT),
   never stored.
@@ -1591,7 +1591,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.35 (2026-10-20)** — **Leavers give their weekend closes back (§4.2, §18a).** Before,
+- **1.36 (2026-10-20)** — **Leavers give their weekend closes back (§4.2, §18a).** Before,
   a Shift Lead taken off the roster kept every close claim, so those spots stayed taken on
   `/admin/closes`. The roster import now releases them: when the workbook has a People
   Leaving sheet, closes strictly after the leaver's **Resignation Effective Date** go back
@@ -1604,6 +1604,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   `planCloseReleases`); `chicagoToday` moved from `email/schedule-email.ts` to
   `domain/time.ts` so the importer and the email dialog share it. No migration. Known gap:
   the closes backup sheet catches up on the next claim change or a manual Rebuild.
+- **1.35 (2026-10-20)** — **A rehired student stayed frozen on their old schedule
+  (§4.2, §10a).** Leaving the roster only ever flipped `onRoster` off; it never touched
+  `submissions.scheduled` or that student's rows in the current run. Since `scheduled`
+  is the generator's whole freeze model, a student who came back later (re-listed in a
+  later import) was still read as frozen and the next generated run carried their
+  pre-departure shifts forward verbatim instead of rebuilding them. `importRoster` now
+  runs the same release `applyPositionChange` already runs on a position change,
+  batched over the whole deactivated set: unmark `scheduled` and drop their rows from
+  the CURRENT run (never superseded or pinned runs). No migration; existing columns.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a
