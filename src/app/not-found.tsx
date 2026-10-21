@@ -2,8 +2,8 @@ import { AppHeader } from "@/components/AppHeader";
 import { Page, PrimaryLink } from "@/components/ui";
 
 /**
- * App-wide 404 (Next.js `not-found` convention). Static and session-free, so it
- * renders the same for signed-in and signed-out visitors; the Home crumb and
+ * App-wide 404 (Next.js `not-found` convention). It renders the same for every
+ * visitor apart from the admin's student finder in AppHeader; the Home crumb and
  * button lead to /me, which bounces to /signin when needed.
  */
 export default function NotFound() {

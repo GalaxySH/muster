@@ -35,6 +35,7 @@ export default async function ClosesPage() {
   if (access.access === "no-group") {
     return (
       <Page>
+        <AppHeader />
         <h1>Weekend closes</h1>
         <NoGroupNotice />
         <Link href="/me">Back</Link>

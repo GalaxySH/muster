@@ -717,9 +717,16 @@ generator (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`, plus the engine/manua
 colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the one admin
 UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
 A2). The split is what lets a travel or responses page import the shared kit without
-taking on the engine's vocabulary. `StudentQuickSearch` is a client island: the roster is small
-enough to filter locally, so results are instant and there is no request per keystroke
-(`/` focuses it).
+taking on the engine's vocabulary. The student finder (`components/StudentQuickSearch.tsx`)
+is not part of the hub any more: since 1.37 the shared `AppHeader` renders it for admins on
+every page. `AppHeader` is an async server component that resolves the session itself and
+calls `listRosterNames` (`roster/lookup.ts`) only when `isAdmin`, so the roster never ships
+to a student's page; that gate is what `AppHeader.test.tsx` pins. Both files sit in the form
+core (`src/components/*.tsx`), which is why neither may import `components/admin` or
+`lib/admin`. The finder is a client island: the roster is small enough to filter locally,
+so results are instant and there is no request per keystroke (`/` focuses it). Its layout
+lives in `globals.css` (`.app-header`, `.student-search-*`) so it can wrap to a full-width
+row under 640px and grow its tap targets on coarse pointers.
 
 The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the To-review
 tile has somewhere to link: `todo` = submitted and not yet marked scheduled. A draft is
@@ -995,7 +1002,14 @@ roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets
 greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
 and the bottom "Admin access" card is then reserved for admins who are also students.
 This is a render-time branch only: it adds no query, so `loadFlowState` stays the single
-source of hub state.
+source of hub state. Since 1.37 that card's button is `components/AdminHomeRedirect.tsx`,
+which forwards to `/admin` after `ADMIN_REDIRECT_MS` (4s): a darker fill wipes across the
+button and the redirect fires on the fill's `animationend` rather than a separate timer,
+so what the admin sees is what runs (a background tab, where animations pause, doesn't
+jump unseen). Any `pointerdown`/`keydown`/`focusin` outside the button cancels it, which
+keeps sign-out and the header's student finder from racing it; `router.replace` keeps
+`/me` out of history. Reduced motion swaps the wipe for a colour fade of the same length,
+so the `animationend` still arrives. Admins who are also students are not redirected.
 
 ## Unified navigation
 

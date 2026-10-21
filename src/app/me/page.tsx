@@ -5,6 +5,7 @@ import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
+import { AdminHomeRedirect } from "@/components/AdminHomeRedirect";
 import { InfoCard, Page, PrimaryLink } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
@@ -21,7 +22,8 @@ export default async function MePage() {
     getChangeRequestsEnabled(),
   ]);
   // Admins are staff, so they have no roster row and no form to fill out. Give them the
-  // dashboard rather than the off-roster notice meant for students.
+  // dashboard rather than the off-roster notice meant for students, and take them there
+  // after a moment, since it is the only place this page leads.
   const adminHome = !flow.onRoster && session.isAdmin;
 
   return (
@@ -34,7 +36,7 @@ export default async function MePage() {
 
       {adminHome ? (
         <InfoCard title="You're signed in as an admin">
-          <PrimaryLink href="/admin">Open the admin dashboard</PrimaryLink>
+          <AdminHomeRedirect href="/admin" />
         </InfoCard>
       ) : !flow.onRoster ? (
         <InfoCard title="We don't recognize this account">

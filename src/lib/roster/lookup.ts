@@ -13,7 +13,7 @@
  * schedule view, or a W2W upload.
  */
 import "server-only";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, adminUsers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -33,6 +33,15 @@ export async function findStudentByEmail(email: string): Promise<StudentRecord |
 /** Query filter for roster members: `.where(onRosterStudent())`. */
 export function onRosterStudent() {
   return eq(students.onRoster, true);
+}
+
+/** Every on-roster name and email, by name: the header's student finder lists these. */
+export async function listRosterNames(): Promise<{ email: string; displayName: string }[]> {
+  return getDb()
+    .select({ email: students.email, displayName: students.displayName })
+    .from(students)
+    .where(onRosterStudent())
+    .orderBy(asc(students.displayName), asc(students.email));
 }
 
 /** True if the email is in the roster-imported admin_users table. */

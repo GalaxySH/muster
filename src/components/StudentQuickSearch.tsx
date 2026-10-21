@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMagnifyingGlass } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 
 /**
- * Jump straight to one student from the admin hub (roadmap 4.1).
+ * Jump straight to one student from any page (roadmap 4.1). AppHeader renders it
+ * for admins only, so an admin can look someone up without going back to the hub.
  *
- * The admin almost always arrives wanting a specific person, and the alternative
- * is the response list plus a scroll. The roster is small enough (~400 names) to
- * ship to the client and filter locally, so results are instant and there is no
- * request per keystroke. Press "/" anywhere on the page to focus it.
+ * The roster is small enough (~400 names) to ship to the client and filter
+ * locally, so results are instant and there is no request per keystroke. Press
+ * "/" anywhere on the page to focus it. Layout and the mobile rules live in
+ * globals.css (.student-search-*), since inline styles can't express media queries.
  */
 export function StudentQuickSearch({
   students,
@@ -25,7 +28,11 @@ export function StudentQuickSearch({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const el = e.target as HTMLElement | null;
-      const typing = el?.tagName === "INPUT" || el?.tagName === "TEXTAREA" || el?.isContentEditable;
+      const typing =
+        el?.tagName === "INPUT" ||
+        el?.tagName === "TEXTAREA" ||
+        el?.tagName === "SELECT" ||
+        el?.isContentEditable;
       if (e.key === "/" && !typing) {
         e.preventDefault();
         inputRef.current?.focus();
@@ -46,6 +53,7 @@ export function StudentQuickSearch({
   const go = (email: string) => {
     setOpen(false);
     setQuery("");
+    inputRef.current?.blur();
     router.push(`/admin/students/${encodeURIComponent(email)}`);
   };
 
@@ -69,16 +77,19 @@ export function StudentQuickSearch({
   }
 
   return (
-    <div style={{ position: "relative", minWidth: 280 }}>
-      <label style={wrap}>
-        <span aria-hidden style={{ color: "var(--color-text-tertiary)", fontSize: 13 }}>
-          Find
-        </span>
+    <div className="student-search">
+      <label className="student-search-field">
+        <FontAwesomeIcon icon={faMagnifyingGlass} className="student-search-icon" />
         <input
           ref={inputRef}
           value={query}
-          placeholder="a student by name or email"
+          placeholder="Find a student"
           aria-label="Find a student by name or email"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          enterKeyHint="go"
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
@@ -88,15 +99,15 @@ export function StudentQuickSearch({
           // Blur closes the menu, but not before a click on a result lands.
           onBlur={() => window.setTimeout(() => setOpen(false), 120)}
           onKeyDown={onKeyDown}
-          style={input}
+          className="student-search-input"
         />
-        <kbd style={kbd}>/</kbd>
+        <kbd className="student-search-kbd">/</kbd>
       </label>
 
       {open && query.trim() !== "" && (
-        <div style={menu}>
+        <div className="student-search-menu">
           {matches.length === 0 ? (
-            <div style={{ ...item, color: "var(--color-text-tertiary)" }}>No matches.</div>
+            <div className="student-search-item student-search-empty">No matches.</div>
           ) : (
             matches.map((s, i) => (
               <button
@@ -104,13 +115,12 @@ export function StudentQuickSearch({
                 type="button"
                 onMouseDown={() => go(s.email)}
                 onMouseEnter={() => setActive(i)}
-                style={{
-                  ...item,
-                  ...(i === active ? itemActive : null),
-                }}
+                className={
+                  "student-search-item" + (i === active ? " student-search-item--active" : "")
+                }
               >
                 <span>{s.displayName}</span>
-                <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{s.email}</span>
+                <span className="student-search-email">{s.email}</span>
               </button>
             ))
           )}
@@ -119,70 +129,3 @@ export function StudentQuickSearch({
     </div>
   );
 }
-
-const wrap: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  padding: "5px 10px",
-};
-
-const input: React.CSSProperties = {
-  border: 0,
-  outline: 0,
-  flex: 1,
-  fontSize: 14,
-  fontFamily: "var(--font-sans)",
-  background: "transparent",
-  color: "var(--color-text-primary)",
-  minWidth: 0,
-};
-
-const kbd: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--color-text-tertiary)",
-  border: "0.5px solid var(--color-border-tertiary)",
-  borderRadius: 4,
-  padding: "0 4px",
-};
-
-const menu: React.CSSProperties = {
-  position: "absolute",
-  zIndex: 20,
-  top: "100%",
-  left: 0,
-  right: 0,
-  marginTop: 4,
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-  padding: 4,
-  maxHeight: 320,
-  overflowY: "auto",
-};
-
-const item: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: 1,
-  width: "100%",
-  padding: "5px 8px",
-  border: 0,
-  borderRadius: "var(--border-radius-md)",
-  background: "transparent",
-  color: "var(--color-text-primary)",
-  fontSize: 13,
-  fontFamily: "var(--font-sans)",
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const itemActive: React.CSSProperties = {
-  background: "var(--color-background-info)",
-  color: "var(--color-text-info)",
-};

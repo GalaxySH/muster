@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.36
+- **Version:** 1.37
 - **Last updated:** 2026-10-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -836,6 +836,9 @@ columns from the roster.
 
 ## 10. Admin View / Outputs
 
+- **Student finder:** ✅ for admins, every page's header carries a search box on the
+  right (`/` to focus) that filters the on-roster names and emails client-side and jumps
+  to the student's page. Students never receive the roster (1.37).
 - **Response list:** all submissions, sortable/searchable, **fast prev/next
   navigation** between students and back to the full list (hard requirement). **Group +
   flag filters live in the URL** (roadmap 2.2) so they survive the hop into the
@@ -1591,6 +1594,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.37 (2026-10-20)** — **The student finder moves into the page header (§10).** The
+  hub's quick-search now lives in the shared `AppHeader`, on the right of the breadcrumb
+  row, so an admin can jump to any student from every page that has the header,
+  student-facing pages included (an admin walking the form sees it too). `AppHeader`
+  becomes an async server component: it resolves the session and reads the on-roster
+  names (`listRosterNames` in `roster/lookup.ts`) only for an admin, so the roster never
+  ships to a student's page. The component moves from `components/admin` to
+  `components/StudentQuickSearch.tsx`, since the header is form-core code and may not
+  import the console. The landing page `/` renders the header for admins only, so
+  students see it unchanged, and the form pages' dead-end notices (not on the roster, no
+  group, no position on `/availability`, `/course-schedule`, `/travel`, `/closes`) gain
+  the header they were missing. Mobile: under 640px the finder takes its own full-width row,
+  and on touch screens the input is 16px (no iOS zoom on focus), results are taller tap
+  targets, and the `/` hint is hidden. Layout moved from inline styles to
+  `globals.css` (`.app-header`, `.student-search-*`) for the media queries.
+  **Same release: admins are forwarded from `/me` to the dashboard.** For an admin with
+  no roster row, `/me` only leads to `/admin`, so its button now takes them there after
+  4 seconds, shown as a darker fill wiping across the button (`AdminHomeRedirect`); the
+  redirect fires when the wipe ends. Any click, key press or focus elsewhere on the page
+  (sign out, the student finder) cancels it, and `/me` is replaced in history so Back
+  from the dashboard doesn't bounce. Admins who are also students are not redirected.
 - **1.36 (2026-10-20)** — **Leavers give their weekend closes back (§4.2, §18a).** Before,
   a Shift Lead taken off the roster kept every close claim, so those spots stayed taken on
   `/admin/closes`. The roster import now releases them: when the workbook has a People
