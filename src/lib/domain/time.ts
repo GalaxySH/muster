@@ -1,5 +1,5 @@
 /**
- * Time-of-day helpers for shift blocks.
+ * Time-of-day helpers for shift blocks, plus today's local date.
  *
  * Times are represented internally as **minutes since midnight** (0–1439),
  * which makes overlap and duration math trivial. The human-facing notation
@@ -102,4 +102,14 @@ export function minutesBetween(range: TimeRange): number {
 /** True if two ranges share any interior time. Touching endpoints don't count. */
 export function overlaps(a: TimeRange, b: TimeRange): boolean {
   return a.start < b.end && b.start < a.end;
+}
+
+/** Today's date in Madison as "YYYY-MM-DD". */
+export function chicagoToday(now: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }

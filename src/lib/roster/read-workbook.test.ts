@@ -88,6 +88,23 @@ describe("readRosterGrid (xlsx)", () => {
     expect(grid[10_000]).toEqual([]);
   });
 
+  it("also hands back the People Leaving sheet when the workbook has one", async () => {
+    const buf = await workbookBuffer((wb) => {
+      addUnitSheet(wb, "People Coming", []);
+      const ws = wb.addWorksheet("People Leaving");
+      ws.getRow(1).values = ["Name", "Email ", "Resignation Effective Date"];
+      ws.getRow(2).values = ["Lee L", "lee@wisc.edu", new Date(Date.UTC(2026, 9, 2))];
+    });
+    const { sheetName, leavingGrid } = await readRosterGrid(buf);
+    expect(sheetName).toBe("People Coming");
+    expect(leavingGrid?.[1]).toEqual(["Lee L", "lee@wisc.edu", "2026-10-02"]);
+  });
+
+  it("has no leaving grid when the workbook has no People Leaving sheet", async () => {
+    const buf = await workbookBuffer((wb) => addUnitSheet(wb, "Gordon", []));
+    expect((await readRosterGrid(buf)).leavingGrid).toBeNull();
+  });
+
   it("keeps rows after a blank row mid-sheet", async () => {
     const buf = await workbookBuffer((wb) =>
       addUnitSheet(wb, "Gordon", [
@@ -104,8 +121,9 @@ describe("readRosterGrid (xlsx)", () => {
 describe("readRosterGrid (csv)", () => {
   it("parses CSV bytes and reports no sheet name", async () => {
     const csv = "Name,Title,Status,Email,International\nAnn A,Dishwasher,Active,ann@wisc.edu,No\n";
-    const { sheetName, grid } = await readRosterGrid(Buffer.from(csv, "utf8"));
+    const { sheetName, grid, leavingGrid } = await readRosterGrid(Buffer.from(csv, "utf8"));
     expect(sheetName).toBeNull();
+    expect(leavingGrid).toBeNull();
     expect(grid[1]?.[3]).toBe("ann@wisc.edu");
   });
 

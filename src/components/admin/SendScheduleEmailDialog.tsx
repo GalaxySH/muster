@@ -17,9 +17,9 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { ActionButton } from "@/components/ui";
 import { sendScheduleEmail } from "@/lib/admin/schedule-email-actions";
+import { chicagoToday } from "@/lib/domain/time";
 import {
   buildScheduleEmailVars,
-  chicagoToday,
   nextSunday,
   renderScheduleEmail,
   suggestFirstShiftTime,

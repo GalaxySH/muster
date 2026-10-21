@@ -11,7 +11,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { getAppSession } from "@/lib/auth/session";
 import { validateRosterUpload } from "./upload-validation";
-import { RosterFormatError, RosterGuardError } from "./parse";
+import { RosterClosesPrompt, RosterFormatError, RosterGuardError } from "./parse";
 import { importRoster, type ImportSummary } from "./import";
 
 /** The refused-import detail the panel needs to offer the override. */
@@ -27,6 +27,11 @@ export interface RosterImportResult {
   summary?: ImportSummary;
   /** Set when the absence guard refused the import; nothing was written. */
   guard?: RosterGuardBlock;
+  /**
+   * Set when undated leavers hold closes from today on and the admin must say
+   * whether to free them; nothing was written.
+   */
+  closesPrompt?: { email: string; date: string }[];
 }
 
 export async function importRosterFromUpload(formData: FormData): Promise<RosterImportResult> {
@@ -41,6 +46,8 @@ export async function importRosterFromUpload(formData: FormData): Promise<Roster
 
   const sheetName = String(formData.get("sheetName") ?? "").trim();
   const allowMassDeactivation = formData.get("allowMassDeactivation") === "1";
+  const closesAnswer = formData.get("releaseUndatedCloses");
+  const releaseUndatedCloses = closesAnswer === null ? undefined : closesAnswer === "1";
 
   const workbook = Buffer.from(await file.arrayBuffer());
   try {
@@ -50,13 +57,20 @@ export async function importRosterFromUpload(formData: FormData): Promise<Roster
       importedBy: session.email,
       sheetName: sheetName || undefined,
       allowMassDeactivation,
+      releaseUndatedCloses,
     });
     // The roster feeds every active-student surface; refresh them all.
     revalidatePath("/admin/roster");
     revalidatePath("/admin/responses");
     revalidatePath("/admin/non-responses");
+    if (summary.closesReleased.length > 0) {
+      revalidatePath("/admin/closes");
+      revalidatePath("/closes");
+    }
     return { ok: true, summary };
   } catch (e) {
+    // Not a failure: the panel asks the admin and re-sends the same file.
+    if (e instanceof RosterClosesPrompt) return { ok: false, closesPrompt: e.claims };
     console.error("Roster import failed:", e);
     // The guard refused the whole import: hand back the detail so the panel can
     // list who would go and offer the override.

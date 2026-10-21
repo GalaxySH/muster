@@ -5,6 +5,8 @@ import {
   parseHireDate,
   reconcileAdmins,
   evaluateAbsenceGuard,
+  extractResignationDates,
+  planCloseReleases,
   RosterFormatError,
   RosterGuardError,
   type RawRosterRow,
@@ -335,6 +337,165 @@ describe("reconcileAdmins", () => {
     expect(reconcileAdmins(parsed, new Set(["zed@wisc.edu", "abe@wisc.edu"]))).toEqual([
       "abe@wisc.edu",
       "zed@wisc.edu",
+    ]);
+  });
+});
+
+describe("extractResignationDates", () => {
+  // The PCPL People Leaving sheet's real shape (header on row 1, "Email " with
+  // a trailing space); the PII columns are present and must be left behind.
+  const LEAVING_HEADER = [
+    "Name",
+    "Position Title",
+    "Campus ID",
+    "Email ",
+    "Cell Phone #",
+    "Accepted By",
+    "Date Received",
+    "Resignation Effective Date",
+    "Reason for Leaving",
+  ];
+  const leaver = (email: string, effective: string) => [
+    "Roe, Jamie",
+    "Student Shift Lead",
+    "0000000000",
+    email,
+    "555",
+    "XX",
+    "2026-09-01",
+    effective,
+    "Other",
+  ];
+
+  it("maps each leaver's email to their resignation effective date", () => {
+    const dates = extractResignationDates([
+      LEAVING_HEADER,
+      leaver(" JR@wisc.edu ", "2026-10-02"),
+      leaver("ab@wisc.edu", "2026/9/5"),
+    ]);
+    expect(dates).toEqual(
+      new Map([
+        ["jr@wisc.edu", "2026-10-02"],
+        ["ab@wisc.edu", "2026-09-05"],
+      ]),
+    );
+  });
+
+  it("keeps the latest date when someone left more than once", () => {
+    const dates = extractResignationDates([
+      LEAVING_HEADER,
+      leaver("jr@wisc.edu", "2026-10-02"),
+      leaver("jr@wisc.edu", "2025-05-10"),
+    ]);
+    expect(dates.get("jr@wisc.edu")).toBe("2026-10-02");
+  });
+
+  it("skips rows without an email or a usable date", () => {
+    const dates = extractResignationDates([
+      LEAVING_HEADER,
+      leaver("", "2026-10-02"),
+      leaver("na@wisc.edu", "N/A"),
+      leaver("blank@wisc.edu", ""),
+    ]);
+    expect(dates.size).toBe(0);
+  });
+
+  it("reads an empty sheet as no leavers", () => {
+    expect(extractResignationDates([]).size).toBe(0);
+    expect(extractResignationDates([LEAVING_HEADER]).size).toBe(0);
+  });
+
+  it("reads a sheet with no usable header or date column as no dates", () => {
+    // The sheet is optional, so a malformed one must never block an import.
+    expect(
+      extractResignationDates([
+        ["Name", "Email"],
+        ["A", "a@wisc.edu"],
+      ]).size,
+    ).toBe(0);
+    expect(extractResignationDates([["just notes"], ["more notes"]]).size).toBe(0);
+  });
+});
+
+describe("planCloseReleases", () => {
+  const claim = (studentEmail: string, date: string) => ({
+    closeSlotId: `slot-${date}`,
+    studentEmail,
+    date,
+  });
+  const TODAY = "2026-10-20";
+  const departed = (...emails: string[]) => new Set(emails);
+
+  it("releases a dated leaver's closes after their effective date without asking", () => {
+    const plan = planCloseReleases(
+      [
+        claim("lead@wisc.edu", "2026-10-30"),
+        claim("lead@wisc.edu", "2026-10-31"),
+        claim("lead@wisc.edu", "2026-10-24"),
+      ],
+      departed("lead@wisc.edu"),
+      new Map([["lead@wisc.edu", "2026-10-30"]]),
+      TODAY,
+    );
+    // The close on the effective date itself is kept: "after" is strict.
+    expect(plan).toEqual({ dated: [claim("lead@wisc.edu", "2026-10-31")], undated: [] });
+  });
+
+  it("holds an undated leaver's closes from today on for the admin to decide", () => {
+    // No People Leaving sheet (the Gordon tracker), or no row/date for them.
+    const plan = planCloseReleases(
+      [
+        claim("gone@wisc.edu", "2026-10-17"),
+        claim("gone@wisc.edu", "2026-10-20"),
+        claim("gone@wisc.edu", "2026-10-23"),
+      ],
+      departed("gone@wisc.edu"),
+      new Map(),
+      TODAY,
+    );
+    expect(plan).toEqual({
+      dated: [],
+      undated: [claim("gone@wisc.edu", "2026-10-20"), claim("gone@wisc.edu", "2026-10-23")],
+    });
+  });
+
+  it("has nothing to ask when an undated leaver holds only past closes", () => {
+    const plan = planCloseReleases(
+      [claim("gone@wisc.edu", "2026-10-17")],
+      departed("gone@wisc.edu"),
+      new Map(),
+      TODAY,
+    );
+    expect(plan).toEqual({ dated: [], undated: [] });
+  });
+
+  it("only touches people this import took off the roster", () => {
+    // Still listed, or off the roster already (test accounts never are on
+    // it): a resignation date alone releases nothing.
+    const plan = planCloseReleases(
+      [claim("back@wisc.edu", "2026-12-04"), claim("test@wisc.edu", "2026-12-05")],
+      departed(),
+      new Map([["back@wisc.edu", "2026-05-10"]]),
+      TODAY,
+    );
+    expect(plan).toEqual({ dated: [], undated: [] });
+  });
+
+  it("orders each list by person, then date", () => {
+    const { undated } = planCloseReleases(
+      [
+        claim("b@wisc.edu", "2026-11-07"),
+        claim("a@wisc.edu", "2026-11-14"),
+        claim("a@wisc.edu", "2026-11-06"),
+      ],
+      departed("a@wisc.edu", "b@wisc.edu"),
+      new Map(),
+      TODAY,
+    );
+    expect(undated.map((c) => `${c.studentEmail} ${c.date}`)).toEqual([
+      "a@wisc.edu 2026-11-06",
+      "a@wisc.edu 2026-11-14",
+      "b@wisc.edu 2026-11-07",
     ]);
   });
 });

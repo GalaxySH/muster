@@ -9,13 +9,17 @@
  *
  * When the absence guard refuses an import, nothing was written; the panel
  * lists who would have gone and keeps the chosen file so the admin can tick
- * the override and submit the same file again.
+ * the override and submit the same file again. The closes question (leads
+ * leaving with no resignation date who hold closes from today on) works the
+ * same way: nothing is written until the admin answers, and each answer
+ * re-sends the same file.
  */
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { importRosterFromUpload, type RosterGuardBlock } from "@/lib/roster/actions";
 import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";
 import { validateRosterUpload } from "@/lib/roster/upload-validation";
+import { formatCloseDate } from "@/lib/domain/close-claims";
 import { ActionButton, InfoCard } from "@/components/ui";
 
 const SKIP_REASON_LABEL: Record<string, string> = {
@@ -30,12 +34,15 @@ export function RosterImportPanel() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [guard, setGuard] = useState<RosterGuardBlock | null>(null);
+  const [closesPrompt, setClosesPrompt] = useState<ImportSummary["closesReleased"] | null>(null);
   const [sheetName, setSheetName] = useState("");
   const [allowMass, setAllowMass] = useState(false);
 
-  function runImport() {
+  /** `closesAnswer` is the admin's reply to the closes question, once asked. */
+  function runImport(closesAnswer?: boolean) {
     setSummary(null);
     setGuard(null);
+    setClosesPrompt(null);
     const file = fileRef.current?.files?.[0];
     if (!file) {
       setError("Choose the roster tracker (.xlsx or .csv) first.");
@@ -53,9 +60,15 @@ export function RosterImportPanel() {
     formData.set("file", file);
     if (sheetName.trim()) formData.set("sheetName", sheetName.trim());
     if (allowMass) formData.set("allowMassDeactivation", "1");
+    if (closesAnswer !== undefined) formData.set("releaseUndatedCloses", closesAnswer ? "1" : "0");
 
     startTransition(async () => {
       const res = await importRosterFromUpload(formData);
+      if (res.closesPrompt) {
+        // Nothing was written; keep the file so the answer can re-send it.
+        setClosesPrompt(res.closesPrompt);
+        return;
+      }
       if (!res.ok || !res.summary) {
         setError(res.error ?? "Import failed. Please try again.");
         // Nothing was written; keep the file so the override can re-send it.
@@ -90,7 +103,7 @@ export function RosterImportPanel() {
             style={{ fontSize: 14, padding: "4px 6px", width: 120 }}
           />
         </label>
-        <ActionButton onClick={runImport} pending={pending} pendingLabel="Importing…">
+        <ActionButton onClick={() => runImport()} pending={pending} pendingLabel="Importing…">
           Import roster
         </ActionButton>
       </div>
@@ -120,8 +133,40 @@ export function RosterImportPanel() {
               />
               Take them off the roster
             </label>
-            <ActionButton onClick={runImport} pending={pending} pendingLabel="Importing…">
+            <ActionButton onClick={() => runImport()} pending={pending} pendingLabel="Importing…">
               Import again
+            </ActionButton>
+          </div>
+        </div>
+      )}
+      {closesPrompt && (
+        <div role="status" style={guardBox}>
+          <p style={{ margin: "0 0 6px", fontWeight: 600 }}>
+            These leads are leaving the roster and still hold weekend closes from today on. Take
+            them off these closes?
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+            {closesPrompt.map((c) => (
+              <li key={`${c.email}-${c.date}`}>
+                {c.email} · {formatCloseDate(c.date)}
+              </li>
+            ))}
+          </ul>
+          <div style={overrideRow}>
+            <ActionButton
+              onClick={() => runImport(true)}
+              pending={pending}
+              pendingLabel="Importing…"
+            >
+              Take them off
+            </ActionButton>
+            <ActionButton
+              onClick={() => runImport(false)}
+              pending={pending}
+              pendingLabel="Importing…"
+              variant="secondary"
+            >
+              Keep them on
             </ActionButton>
           </div>
         </div>
@@ -227,6 +272,21 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
             {summary.deactivatedByAbsence.map((email) => (
               <li key={email}>{email}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {summary.closesReleased.length > 0 && (
+        <div style={quietBox}>
+          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
+            Closes opened up because the lead left ({summary.closesReleased.length}):
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+            {summary.closesReleased.map((c) => (
+              <li key={`${c.email}-${c.date}`}>
+                {c.email} · {formatCloseDate(c.date)}
+              </li>
             ))}
           </ul>
         </div>

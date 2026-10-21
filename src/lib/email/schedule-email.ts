@@ -309,16 +309,6 @@ export function buildFromAddress(c: ScheduleEmailConfig, emailFrom: string): str
 
 const DAYS: Day[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-/** Today's date in Madison as "YYYY-MM-DD". */
-export function chicagoToday(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Chicago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
 /** A "YYYY-MM-DD" date as UTC midnight. */
 function toUtc(iso: string): Date {
   const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);

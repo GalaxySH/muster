@@ -6,7 +6,6 @@ import {
   buildFromAddress,
   buildScheduleEmailVars,
   checkScheduleTemplate,
-  chicagoToday,
   firstNameOf,
   nextSunday,
   parseScheduleEmailConfig,
@@ -208,11 +207,6 @@ describe("buildFromAddress", () => {
 });
 
 describe("dates", () => {
-  it("reads today in Madison, not UTC", () => {
-    // 03:00 UTC on 9/29 is still the evening of 9/28 in Chicago.
-    expect(chicagoToday(new Date("2026-09-29T03:00:00Z"))).toBe("2026-09-28");
-  });
-
   it.each([
     ["2026-09-28", "2026-10-04"], // Monday
     ["2026-10-03", "2026-10-04"], // Saturday

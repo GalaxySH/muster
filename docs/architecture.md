@@ -121,6 +121,12 @@ refreshed board; `admin-actions.ts` idempotent inventory generation that never r
 claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
 place or pull leads directly, through the same locking insert, and `removeCloseSlot`
 (v0.57) which deletes one shift outright — claims cascade after a client confirm).
+The **roster import** also releases claims (v1.36): someone it takes off the roster loses
+their closes after their People Leaving resignation date, or, with no date, from today
+on if the admin says so (see the roster import section). It deletes `close_claims` rows
+directly inside its own transaction rather than calling `admin-actions.ts`, which is
+console code the form core can't import; so the closes backup sheet only catches up on
+the next claim change or a manual Rebuild.
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
 board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
@@ -712,7 +718,7 @@ colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the o
 UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
 A2). The split is what lets a travel or responses page import the shared kit without
 taking on the engine's vocabulary. The student finder (`components/StudentQuickSearch.tsx`)
-is not part of the hub any more: since 1.35 the shared `AppHeader` renders it for admins on
+is not part of the hub any more: since 1.37 the shared `AppHeader` renders it for admins on
 every page. `AppHeader` is an async server component that resolves the session itself and
 calls `listRosterNames` (`roster/lookup.ts`) only when `isAdmin`, so the roster never ships
 to a student's page; that gate is what `AppHeader.test.tsx` pins. Both files sit in the form
@@ -996,7 +1002,7 @@ roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets
 greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
 and the bottom "Admin access" card is then reserved for admins who are also students.
 This is a render-time branch only: it adds no query, so `loadFlowState` stays the single
-source of hub state. Since 1.35 that card's button is `components/AdminHomeRedirect.tsx`,
+source of hub state. Since 1.37 that card's button is `components/AdminHomeRedirect.tsx`,
 which forwards to `/admin` after `ADMIN_REDIRECT_MS` (4s): a darker fill wipes across the
 button and the redirect fires on the fill's `animationend` rather than a separate timer,
 so what the admin sees is what runs (a background tab, where animations pause, doesn't
@@ -1280,6 +1286,34 @@ summary field `movedToAdmin`).
 upserts, so a submission, name and position always survive. Rows skipped for an excluded
 title deliberately don't count as "seen", so retitling someone into the excluded list
 retires them.
+
+The same departure also runs `releaseDepartedSchedules` (v1.35): it unmarks
+`submissions.scheduled` for everyone just taken off-roster and drops their rows from the
+CURRENT run only, batched over the whole deactivated set rather than per email. This is
+the same pair of steps `applyPositionChange` already runs on a position change, for the
+same reason, stated in that module's own comment: a schedule the student isn't going to
+work is gone, so the marker saying it was built has to go with it. Left set, a rehire
+later (a new import re-listing them, `onRoster: true` again) would still read as frozen
+and the generator would carry their pre-departure shifts into the new run verbatim
+instead of rebuilding them. Superseded and pinned runs are untouched, same as a position
+change: they stay the record of what was true while the student really was on the
+roster.
+
+**Leavers' closes (v1.36).** `readRosterGrid` also returns the workbook's optional
+**People Leaving** sheet (`leavingGrid`, null for a CSV or the Gordon tracker, which never
+has one), loaded in the same pass. `extractResignationDates` (pure) reads only its Email
+and Resignation Effective Date columns, in memory, never stored; a malformed sheet just
+yields no dates. After the absence guard, the orchestrator loads the close claims of
+everyone it is taking off the roster (`deactivatedByAbsence` + `movedToAdmin` only, so
+already-off-roster people such as test accounts are never touched) and
+`planCloseReleases` (pure) splits them: `dated` = strictly after the person's
+resignation date, released without asking; `undated` = from today (America/Chicago,
+`chicagoToday` in `domain/time.ts`) on for a leaver with no date. If `undated` is
+non-empty and `releaseUndatedCloses` is unset, it throws `RosterClosesPrompt` **before
+the transaction**, exactly like the guard: nothing is written, `actions.ts` returns
+`closesPrompt`, and the panel asks "Take them off" / "Keep them on", re-sending the
+same file with the answer (CLI: `--release-closes` / `--keep-closes`). Released
+claims are deleted in the import transaction (summary `closesReleased`).
 
 Because a departure is *inferred* from an absence rather than stated anywhere, the
 **absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
