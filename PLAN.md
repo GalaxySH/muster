@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.34
-- **Last updated:** 2026-09-27
+- **Version:** 1.35
+- **Last updated:** 2026-10-20
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -186,7 +186,18 @@ but `/change-requests` itself and the admin queue stay reachable.
   off-roster (`reconcileAdmins` in `roster/parse.ts`; the admin_users upsert alone would
   leave the stale student row active), reported in the summary as moved to admin. People
   taken off the roster drop out of listed/required responses; their submission, name and
-  position are retained in the DB. The import never deletes.
+  position are retained in the DB. The import never deletes, except leavers' SL close
+  claims (below).
+- **Leavers' weekend closes (§18a, 1.35)** — a Shift Lead the import takes off the roster
+  gives their closes back to the pool. When the workbook has a **People Leaving** sheet
+  (the PCPL workbook; the Gordon tracker never has one), its **Resignation Effective
+  Date** decides: closes strictly after that date are released automatically. Only that
+  column and Email are read, in memory, and never stored (§9, §12). When there is no date
+  for a leaver (no sheet, no row, blank or "N/A") and they hold closes from today on, the
+  import **stops before writing anything** and asks the admin whether to take them off
+  those closes (panel buttons, or `--release-closes` / `--keep-closes` on the CLI), then
+  re-runs with the answer. Only people this import takes off the roster are considered,
+  never someone already off it. Past closes are kept.
 - **Absence guard** — since a departure is *inferred* from an absence, a partial or
   wrong-sheet upload could retire most of the roster in one go. The guard is therefore
   **all-or-nothing**: if more than **20%** of the current roster would be taken off, the
@@ -1510,6 +1521,8 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
   goes through the **same locking insert** as student claims (`closes/claim-write.ts`,
   shared by `actions.ts` and `admin-actions.ts`), so capacity and the 3-claim limit
   hold even against a concurrent student pick; removal returns the seat to the pool.
+- **Leavers (1.35):** a roster import that takes a lead off the roster releases their
+  closes after their resignation date, or asks the admin when there is no date (§4.2).
 - **Entities:** `CloseSlot` / `CloseClaim` (§9). Claimed counts are derived (COUNT),
   never stored.
 - **Boundary:** this is *student self-service claiming* of a constrained pool — still
@@ -1578,6 +1591,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.35 (2026-10-20)** — **Leavers give their weekend closes back (§4.2, §18a).** Before,
+  a Shift Lead taken off the roster kept every close claim, so those spots stayed taken on
+  `/admin/closes`. The roster import now releases them: when the workbook has a People
+  Leaving sheet, closes strictly after the leaver's **Resignation Effective Date** go back
+  to the pool automatically (the sheet is optional and read only for Email + that date,
+  never stored); when there is no date and the leaver holds closes from today on, the
+  import stops before writing anything and asks the admin whether to take them off
+  (`RosterClosesPrompt`, the same refuse-then-resend shape as the absence guard; CLI
+  `--release-closes` / `--keep-closes`). Only people this import takes off the roster are
+  considered. Pure seams in `roster/parse.ts` (`extractResignationDates`,
+  `planCloseReleases`); `chicagoToday` moved from `email/schedule-email.ts` to
+  `domain/time.ts` so the importer and the email dialog share it. No migration. Known gap:
+  the closes backup sheet catches up on the next claim change or a manual Rebuild.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a

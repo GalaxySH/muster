@@ -7,6 +7,7 @@ import {
   hhmmToMinutes,
   minutesBetween,
   overlaps,
+  chicagoToday,
   type TimeRange,
 } from "./time";
 
@@ -116,5 +117,12 @@ describe("formatSpan", () => {
 
   it("shows a midnight end as 12a", () => {
     expect(formatSpan(parseTime("7:45p"), 1440)).toBe("7:45p to 12a");
+  });
+});
+
+describe("chicagoToday", () => {
+  it("reads today in Madison, not UTC", () => {
+    // 03:00 UTC on 9/29 is still the evening of 9/28 in Chicago.
+    expect(chicagoToday(new Date("2026-09-29T03:00:00Z"))).toBe("2026-09-28");
   });
 });

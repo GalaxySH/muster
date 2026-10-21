@@ -8,10 +8,13 @@
  * column. Status is an administrative marker that says nothing about roster
  * membership, so it is deliberately not read.
  *
- * **Being listed in the sheet is what puts someone on the roster.** The
- * tracker has one sheet per dining unit and no leavers sheet; people come off
- * the roster by dropping out of the sheet, which the caller applies through
- * `evaluateAbsenceGuard`.
+ * **Being listed in the sheet is what puts someone on the roster.** People
+ * come off the roster by dropping out of the sheet, which the caller applies
+ * through `evaluateAbsenceGuard`. The People Leaving sheet is optional (the
+ * Gordon tracker never has one); when present it is read for one thing only,
+ * each leaver's Resignation Effective Date (`extractResignationDates`), which
+ * decides which of their SL closes are freed (`planCloseReleases`). It is
+ * never stored.
  *
  * The title-to-position map and the excluded-title set are injected by the
  * caller (the importer builds them from roster_title_mappings and
@@ -278,6 +281,99 @@ export function reconcileAdmins(
       .filter((email) => onRosterEmails.has(email) && !studentEmails.has(email)),
   );
   return [...flip].sort();
+}
+
+// ---------------------------------------------------------------------------
+// Leavers' closes
+// ---------------------------------------------------------------------------
+
+/**
+ * Each leaver's Resignation Effective Date (`yyyy-mm-dd`) from the People
+ * Leaving sheet, keyed by normalized email. Only those two columns are read.
+ * Rows with no email or no parseable date (blank, "N/A") are skipped; someone
+ * listed twice keeps their latest date. The sheet is optional, so one without
+ * a usable header just yields no dates (and the admin is asked instead).
+ */
+export function extractResignationDates(grid: readonly (readonly string[])[]): Map<string, string> {
+  const dates = new Map<string, string>();
+  let headerRow: number;
+  try {
+    headerRow = findHeaderRow(grid);
+  } catch {
+    return dates;
+  }
+  const headers = grid[headerRow]!.map(normalizeTitle);
+  const emailCol = findColumn(headers, EMAIL_MATCHERS)!;
+  const dateCol = findColumn(headers, [contains("effective date"), contains("resignation")]);
+  if (dateCol === null) return dates;
+
+  for (let r = headerRow + 1; r < grid.length; r++) {
+    const row = grid[r]!;
+    const email = normalizeEmail(row[emailCol] ?? "");
+    const date = parseHireDate(row[dateCol] ?? "")
+      ?.toISOString()
+      .slice(0, 10);
+    if (!email || !date) continue;
+    const prior = dates.get(email);
+    if (!prior || date > prior) dates.set(email, date);
+  }
+  return dates;
+}
+
+/** A close claim with its slot's date, as the importer loads it. */
+export interface DatedCloseClaim {
+  closeSlotId: string;
+  studentEmail: string;
+  /** The slot's date, `yyyy-mm-dd`. */
+  date: string;
+}
+
+export interface CloseReleasePlan {
+  /** After a leaver's Resignation Effective Date (strictly): released without asking. */
+  dated: DatedCloseClaim[];
+  /**
+   * From `today` on, held by a leaver the People Leaving sheet doesn't date (no
+   * sheet, or no usable date): released only when the admin says so.
+   */
+  undated: DatedCloseClaim[];
+}
+
+/**
+ * Which close claims go back to the pool when people leave the roster. Only
+ * `departed` (taken off in this import) are considered; each list is sorted by
+ * person, then date.
+ */
+export function planCloseReleases(
+  claims: readonly DatedCloseClaim[],
+  departed: ReadonlySet<string>,
+  resignations: ReadonlyMap<string, string>,
+  today: string,
+): CloseReleasePlan {
+  const plan: CloseReleasePlan = { dated: [], undated: [] };
+  const sorted = claims
+    .filter((c) => departed.has(c.studentEmail))
+    .sort((a, b) => a.studentEmail.localeCompare(b.studentEmail) || a.date.localeCompare(b.date));
+  for (const c of sorted) {
+    const effective = resignations.get(c.studentEmail);
+    if (effective === undefined) {
+      if (c.date >= today) plan.undated.push(c);
+    } else if (c.date > effective) {
+      plan.dated.push(c);
+    }
+  }
+  return plan;
+}
+
+/**
+ * Leads leaving the roster with no resignation date still hold closes from
+ * today on, and the admin hasn't said whether to free them. Thrown before
+ * anything is written; the admin re-runs with their answer.
+ */
+export class RosterClosesPrompt extends Error {
+  constructor(readonly claims: { email: string; date: string }[]) {
+    super("These leads are leaving the roster and still hold weekend closes from today on.");
+    this.name = "RosterClosesPrompt";
+  }
 }
 
 // ---------------------------------------------------------------------------

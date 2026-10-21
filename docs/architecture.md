@@ -121,6 +121,12 @@ refreshed board; `admin-actions.ts` idempotent inventory generation that never r
 claimed slots, plus `assignCloseClaim`/`unassignCloseClaim` (v0.53) so the admin can
 place or pull leads directly, through the same locking insert, and `removeCloseSlot`
 (v0.57) which deletes one shift outright — claims cascade after a client confirm).
+The **roster import** also releases claims (v1.35): someone it takes off the roster loses
+their closes after their People Leaving resignation date, or, with no date, from today
+on if the admin says so (see the roster import section). It deletes `close_claims` rows
+directly inside its own transaction rather than calling `admin-actions.ts`, which is
+console code the form core can't import; so the closes backup sheet only catches up on
+the next claim change or a manual Rebuild.
 The SL-only **`/closes`** wizard step sits between travel and exit (weekend-grouped
 board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every 10 s,
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
@@ -1266,6 +1272,22 @@ summary field `movedToAdmin`).
 upserts, so a submission, name and position always survive. Rows skipped for an excluded
 title deliberately don't count as "seen", so retitling someone into the excluded list
 retires them.
+
+**Leavers' closes (v1.35).** `readRosterGrid` also returns the workbook's optional
+**People Leaving** sheet (`leavingGrid`, null for a CSV or the Gordon tracker, which never
+has one), loaded in the same pass. `extractResignationDates` (pure) reads only its Email
+and Resignation Effective Date columns, in memory, never stored; a malformed sheet just
+yields no dates. After the absence guard, the orchestrator loads the close claims of
+everyone it is taking off the roster (`deactivatedByAbsence` + `movedToAdmin` only, so
+already-off-roster people such as test accounts are never touched) and
+`planCloseReleases` (pure) splits them: `dated` = strictly after the person's
+resignation date, released without asking; `undated` = from today (America/Chicago,
+`chicagoToday` in `domain/time.ts`) on for a leaver with no date. If `undated` is
+non-empty and `releaseUndatedCloses` is unset, it throws `RosterClosesPrompt` **before
+the transaction**, exactly like the guard: nothing is written, `actions.ts` returns
+`closesPrompt`, and the panel asks "Take them off" / "Keep them on", re-sending the
+same file with the answer (CLI: `--release-closes` / `--keep-closes`). Released
+claims are deleted in the import transaction (summary `closesReleased`).
 
 Because a departure is *inferred* from an absence rather than stated anywhere, the
 **absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
