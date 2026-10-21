@@ -1596,6 +1596,12 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   and on touch screens the input is 16px (no iOS zoom on focus), results are taller tap
   targets, and the `/` hint is hidden. Layout moved from inline styles to
   `globals.css` (`.app-header`, `.student-search-*`) for the media queries.
+  **Same release: admins are forwarded from `/me` to the dashboard.** For an admin with
+  no roster row, `/me` only leads to `/admin`, so its button now takes them there after
+  4 seconds, shown as a darker fill wiping across the button (`AdminHomeRedirect`); the
+  redirect fires when the wipe ends. Any click, key press or focus elsewhere on the page
+  (sign out, the student finder) cancels it, and `/me` is replaced in history so Back
+  from the dashboard doesn't bounce. Admins who are also students are not redirected.
 - **1.34 (2026-09-28)** — **Per-student schedule email (§10a).** The scheduler sends a
   new student the "your schedule is posted" email from their page instead of by hand.
   **Mark scheduled** becomes a split button whose menu opens **Send schedule email…**: a

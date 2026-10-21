@@ -996,7 +996,14 @@ roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets
 greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
 and the bottom "Admin access" card is then reserved for admins who are also students.
 This is a render-time branch only: it adds no query, so `loadFlowState` stays the single
-source of hub state.
+source of hub state. Since 1.35 that card's button is `components/AdminHomeRedirect.tsx`,
+which forwards to `/admin` after `ADMIN_REDIRECT_MS` (4s): a darker fill wipes across the
+button and the redirect fires on the fill's `animationend` rather than a separate timer,
+so what the admin sees is what runs (a background tab, where animations pause, doesn't
+jump unseen). Any `pointerdown`/`keydown`/`focusin` outside the button cancels it, which
+keeps sign-out and the header's student finder from racing it; `router.replace` keeps
+`/me` out of history. Reduced motion swaps the wipe for a colour fade of the same length,
+so the `animationend` still arrives. Admins who are also students are not redirected.
 
 ## Unified navigation
 

@@ -278,6 +278,48 @@ body {
   }
 }
 
+/* The admin's /me dashboard button (components/AdminHomeRedirect.tsx): a darker
+   fill wipes across it, and the redirect fires when the wipe ends. Reduced
+   motion swaps the wipe for a colour fade over the same time, so the
+   animationend that triggers the redirect still arrives. */
+.admin-redirect {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.admin-redirect-label {
+  position: relative;
+  z-index: 1;
+}
+.admin-redirect-fill {
+  position: absolute;
+  inset: 0;
+  background: #0b3d80;
+  transform-origin: left center;
+  animation: admin-redirect-wipe var(--redirect-ms, 4000ms) linear forwards;
+}
+@keyframes admin-redirect-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-redirect-fill {
+    animation-name: admin-redirect-fade;
+  }
+}
+@keyframes admin-redirect-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Admin hub shell (app/admin/page.tsx): the nav rail beside the status body.
    On a wide screen the rail is a grid column sized to its own content, and every
    link is one compact row, so the whole rail fits a desktop screen without
