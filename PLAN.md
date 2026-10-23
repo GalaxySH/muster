@@ -1594,6 +1594,18 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.39 (2026-10-22)** — **A last-resort "Clear from schedule" button on
+  `/admin/students/[email]` (§10a).** The per-student grid's schedule mode has always
+  refused a one-click Clear (wiping a schedule should not be one click inside the grid),
+  but a student's rows sometimes need to be gone in a way removing them cell by cell
+  isn't worth. `clearStudentSchedule(studentEmail)` (`src/lib/schedule/manual.ts`)
+  deletes every `schedule_assignments` row the current run holds for that student in one
+  `DELETE`, skipping the `applyScheduleEdits` batch machinery entirely since a pure
+  removal can never trip the day-conflict or labor rules that exist to guard additions.
+  `ClearStudentScheduleButton` shows only when the student actually holds current-run
+  rows, as a quiet two-step inline confirm under the Student details card. Their
+  availability response and `shift_selections` are untouched; only the current
+  schedule's rows for them are gone, and the next Update schedule can re-place them.
 - **1.38 (2026-10-22)** — **The per-student coverage card is condensed (§10a).** The
   card on `/admin/students/[email]` sits in a narrow column, so it drops the Target
   column and the Night/Evening/Close pills and tightens cell padding, needing less
