@@ -49,6 +49,7 @@ import { CoverageGrid, CoverageLegend } from "@/components/admin/CoverageGrid";
 import { RevertInternalButton } from "@/components/admin/RevertInternalButton";
 import { StudentPositionChanger } from "@/components/admin/StudentPositionChanger";
 import { StudentGroupChanger } from "@/components/admin/StudentGroupChanger";
+import { ClearStudentScheduleButton } from "@/components/admin/ClearStudentScheduleButton";
 import { RequestedHoursEditor } from "@/components/admin/RequestedHoursEditor";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
@@ -822,6 +823,18 @@ export default async function StudentDetailPage({
               currentGroupId={detail.groupId}
               options={allGroups}
             />
+            {/* Last resort: wipe this student's rows from the current run
+                outright, for when they're wrong in a way editing the grid
+                cell by cell isn't worth it. Only shown when there's
+                something there to clear. */}
+            {schedule && schedule.cells.length > 0 && (
+              <div style={{ borderTop: "1px solid var(--color-border-secondary)", paddingTop: 10 }}>
+                <ClearStudentScheduleButton
+                  studentEmail={detail.email}
+                  count={schedule.cells.length}
+                />
+              </div>
+            )}
           </div>
         </section>
 
