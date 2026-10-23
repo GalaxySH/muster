@@ -580,7 +580,9 @@ cards). The rest:
   full-width panel under the dashboard into the masonry as its last card;
   `CoverageGrid`'s opt-in `stacked` prop stacks Weekdays over Weekends so they fit a
   column, each table scrolling sideways inside the card. `/admin/schedule` keeps the
-  side-by-side default.
+  side-by-side default. The card also opts into `compact` (v1.38): no Target column and
+  no tier/close pills on the Shift column, so the grid needs less horizontal scrolling
+  next to the card's own narrow width. `/admin/schedule` keeps the full columns.
 - **Availability and schedule card.** It opens on **Edit schedule** whenever a current
   run exists (the tab is disabled otherwise, so Edit preferences stays the fallback). In
   Edit preferences a read-only chip beside the rotation pill ("Sched A", "Sched B",
@@ -1599,7 +1601,10 @@ coverage view, no generator yet. Standard layering:
   (`demandCellKey` → `AssignedCellCounts`, weekend as `A·B`), or null for the
   availability supply. The per-student page fills it from `loadPositionAssignedCells(runId,
   positionId)` rather than a whole `loadCurrentSchedule`; both that and the whole-run
-  loader tally rows through the same `tallyAssignedCells`.
+  loader tally rows through the same `tallyAssignedCells`. The per-student page also
+  passes `compact` (v1.38), which drops the Target column and the Night/Evening/Close
+  pills and tightens cell padding; `/admin/schedule` doesn't set it, so its grid is
+  unchanged.
 - **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
   summary `StatTile` row, then per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position

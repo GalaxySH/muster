@@ -96,4 +96,28 @@ describe("CoverageGrid", () => {
     expect(screen.getByText("No blocks configured.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
+
+  // The lone weekday block: latest end makes it the close, and a night end
+  // makes it the night tier, so it carries both pills at once.
+  const nightCloseBlock = block({ id: "close", start: 20 * 60, end: 23 * 60 });
+
+  it("drops the Target column and tier/close pills in compact mode", () => {
+    render(<CoverageGrid rows={buildCoverageRows([nightCloseBlock], [])} assignedCells={null} compact />);
+    const headers = within(weekdayTable())
+      .getAllByRole("columnheader")
+      .map((th) => th.textContent);
+    expect(headers).not.toContain("Target");
+    expect(screen.queryByText("Night")).not.toBeInTheDocument();
+    expect(screen.queryByText("Close")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Target column and pills when compact is not set", () => {
+    render(<CoverageGrid rows={buildCoverageRows([nightCloseBlock], [])} assignedCells={null} />);
+    const headers = within(weekdayTable())
+      .getAllByRole("columnheader")
+      .map((th) => th.textContent);
+    expect(headers).toContain("Target");
+    expect(screen.getByText("Night")).toBeInTheDocument();
+    expect(screen.getByText("Close")).toBeInTheDocument();
+  });
 });

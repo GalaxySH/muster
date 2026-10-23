@@ -836,7 +836,7 @@ export default async function StudentDetailPage({
             <p style={{ margin: "0 0 10px", fontSize: 13 }}>
               <CoverageLegend />
             </p>
-            <CoverageGrid rows={coverageRows} assignedCells={assignedCells} stacked />
+            <CoverageGrid rows={coverageRows} assignedCells={assignedCells} stacked compact />
           </section>
         )}
       </div>

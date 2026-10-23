@@ -1594,6 +1594,12 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.38 (2026-10-22)** — **The per-student coverage card is condensed (§10a).** The
+  card on `/admin/students/[email]` sits in a narrow column, so it drops the Target
+  column and the Night/Evening/Close pills and tightens cell padding, needing less
+  horizontal scrolling for a single position's shifts. `CoverageGrid` takes an opt-in
+  `compact` prop alongside the existing `stacked` one; `/admin/schedule` doesn't set it
+  and is unchanged.
 - **1.37 (2026-10-20)** — **The student finder moves into the page header (§10).** The
   hub's quick-search now lives in the shared `AppHeader`, on the right of the breadcrumb
   row, so an admin can jump to any student from every page that has the header,
