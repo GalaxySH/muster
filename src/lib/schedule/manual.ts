@@ -283,3 +283,41 @@ export async function applyScheduleEdits(
   await refreshAfterEdit(email);
   return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
 }
+
+export interface ClearStudentScheduleResult {
+  ok: boolean;
+  error?: string;
+  /** Rows actually deleted, 0 when the student already had none. */
+  removed?: number;
+}
+
+/**
+ * Admin last resort: delete every one of the student's rows from the current
+ * run outright, no plan involved. A removal alone can never trip the
+ * day-conflict or labor rules `planScheduleEdits` guards additions against,
+ * so there is nothing to plan or lock for: one DELETE scoped to (run,
+ * student) is the whole operation. For when their rows need to be gone and
+ * clicking each one off in the grid, or deleting the whole response, is more
+ * than the problem calls for.
+ */
+export async function clearStudentSchedule(
+  studentEmail: string,
+): Promise<ClearStudentScheduleResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const email = normalizeEmail(studentEmail);
+  if (!email) return { ok: false, error: "No student was named." };
+
+  const run = await loadCurrentRunRow();
+  if (!run) return { ok: false, error: NO_RUN_MESSAGE };
+
+  const db = getDb();
+  const [result] = await db
+    .delete(scheduleAssignments)
+    .where(
+      and(eq(scheduleAssignments.runId, run.id), eq(scheduleAssignments.studentEmail, email)),
+    );
+
+  if (result.affectedRows > 0) await refreshAfterEdit(email);
+  return { ok: true, removed: result.affectedRows };
+}

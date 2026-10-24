@@ -33,6 +33,7 @@ export function CoverageGrid({
   rows,
   assignedCells,
   stacked = false,
+  compact = false,
 }: {
   rows: readonly CoverageRow[];
   assignedCells: AssignedCellMap;
@@ -41,6 +42,12 @@ export function CoverageGrid({
    * table still scrolls sideways on its own when it is wider than the card.
    */
   stacked?: boolean;
+  /**
+   * Tighter columns for the per-student card: no Target column and no
+   * tier/close pills on the Shift column, so the grid needs less horizontal
+   * scrolling next to a single position's other cards.
+   */
+  compact?: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -49,6 +56,8 @@ export function CoverageGrid({
       </p>
     );
   }
+
+  const thStyle = compact ? compactThStyle : tableThStyle;
 
   return (
     <div style={stacked ? stackedLayout : sideBySideLayout}>
@@ -61,10 +70,10 @@ export function CoverageGrid({
             <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
-                  <th style={{ ...tableThStyle, textAlign: "left" }}>Shift</th>
-                  <th style={tableThStyle}>Target</th>
+                  <th style={{ ...thStyle, textAlign: "left" }}>Shift</th>
+                  {!compact && <th style={thStyle}>Target</th>}
                   {dayRows[0]!.cells.map((c) => (
-                    <th key={c.day} style={tableThStyle}>
+                    <th key={c.day} style={thStyle}>
                       {DAY_LABEL[c.day]}
                     </th>
                   ))}
@@ -72,7 +81,12 @@ export function CoverageGrid({
               </thead>
               <tbody>
                 {dayRows.map((row) => (
-                  <CoverageTableRow key={row.blockId} row={row} assignedCells={assignedCells} />
+                  <CoverageTableRow
+                    key={row.blockId}
+                    row={row}
+                    assignedCells={assignedCells}
+                    compact={compact}
+                  />
                 ))}
               </tbody>
             </table>
@@ -86,19 +100,24 @@ export function CoverageGrid({
 function CoverageTableRow({
   row,
   assignedCells,
+  compact,
 }: {
   row: CoverageRow;
   assignedCells: AssignedCellMap;
+  compact: boolean;
 }) {
+  const tdStyle = compact ? compactTdStyle : tableTdStyle;
   return (
     <tr>
-      <td style={{ ...tableTdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
+      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
         {formatSpan(row.start, row.end)}
-        {row.tier === "night" && <span style={nightTag}>Night</span>}
-        {row.tier === "evening" && <span style={eveningTag}>Evening</span>}
-        {row.isClose && <span style={closeTag}>Close</span>}
+        {!compact && row.tier === "night" && <span style={nightTag}>Night</span>}
+        {!compact && row.tier === "evening" && <span style={eveningTag}>Evening</span>}
+        {!compact && row.isClose && <span style={closeTag}>Close</span>}
       </td>
-      <td style={{ ...tableTdStyle, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
+      {!compact && (
+        <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
+      )}
       {row.cells.map((cell) => {
         const counts = assignedCells?.get(demandCellKey(row.blockId, cell.day));
         const assigned = assignedCells ? assignedCellCount(row.dayType, counts) : 0;
@@ -116,7 +135,7 @@ function CoverageTableRow({
             dayLabel={DAY_LABEL[cell.day]}
             shiftLabel={formatSpan(row.start, row.end)}
             supply={cell.count}
-            style={{ ...tableTdStyle, ...coverageStatusStyles[status] }}
+            style={{ ...tdStyle, ...coverageStatusStyles[status] }}
           >
             {shown}
             {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
@@ -151,6 +170,9 @@ const stackedLayout: React.CSSProperties = {
   flexDirection: "column",
   gap: 14,
 };
+
+const compactThStyle: React.CSSProperties = { ...tableThStyle, padding: "3px 6px" };
+const compactTdStyle: React.CSSProperties = { ...tableTdStyle, padding: "3px 6px" };
 
 export const coverageStatusStyles: Record<CoverageStatus, React.CSSProperties> = {
   ok: { background: "#e6f4ea", color: "#196127" },

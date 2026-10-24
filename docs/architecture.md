@@ -482,7 +482,11 @@ generate-first note until a run exists) is the SAME trial/save shape since 1.15.
 build a local trial of the run's rows for this student and write nothing; Save sends the
 whole diff to `applyScheduleEdits` as one transaction (see the schedule generation
 section), and Reset drops it. There is no Clear in schedule mode: wiping a schedule
-should not be one click. A click that would break the unique-coverage rule is refused on
+should not be one click inside the grid itself. The Student details card below carries
+its own last-resort `ClearStudentScheduleButton` (v1.39) instead, a quiet two-step
+button separate from the grid, for when their rows are wrong in a way cell-by-cell
+editing isn't worth it; see the schedule generation section's Clearing entry. A click
+that would break the unique-coverage rule is refused on
 the spot, in the sentence the server would use (`dayConflictMessage`, shared so the two
 cannot paraphrase each other); a removal is always allowed in a trial, since a later add
 in the same batch can make it legal and the save-time check on the final state is the
@@ -580,7 +584,9 @@ cards). The rest:
   full-width panel under the dashboard into the masonry as its last card;
   `CoverageGrid`'s opt-in `stacked` prop stacks Weekdays over Weekends so they fit a
   column, each table scrolling sideways inside the card. `/admin/schedule` keeps the
-  side-by-side default.
+  side-by-side default. The card also opts into `compact` (v1.38): no Target column and
+  no tier/close pills on the Shift column, so the grid needs less horizontal scrolling
+  next to the card's own narrow width. `/admin/schedule` keeps the full columns.
 - **Availability and schedule card.** It opens on **Edit schedule** whenever a current
   run exists (the tab is disabled otherwise, so Edit preferences stays the fallback). In
   Edit preferences a read-only chip beside the rotation pill ("Sched A", "Sched B",
@@ -1599,7 +1605,10 @@ coverage view, no generator yet. Standard layering:
   (`demandCellKey` → `AssignedCellCounts`, weekend as `A·B`), or null for the
   availability supply. The per-student page fills it from `loadPositionAssignedCells(runId,
   positionId)` rather than a whole `loadCurrentSchedule`; both that and the whole-run
-  loader tally rows through the same `tallyAssignedCells`.
+  loader tally rows through the same `tallyAssignedCells`. The per-student page also
+  passes `compact` (v1.38), which drops the Target column and the Night/Evening/Close
+  pills and tightens cell padding; `/admin/schedule` doesn't set it, so its grid is
+  unchanged.
 - **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
   summary `StatTile` row, then per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
@@ -1834,6 +1843,21 @@ Pinned column, every row including current) and `SaveRunButton` (next to
 styled after `RestoreRunButton` and `GenerateScheduleButton` respectively —
 neither needs a confirm step, since both actions are purely additive/
 reversible and never touch the live current run.
+
+**Clearing one student (1.39).** `clearStudentSchedule(studentEmail)` in `manual.ts` is
+the per-student counterpart to `clearScheduleRun`: a last-resort `DELETE` scoped to
+`(run_id = current, student_email)`, for when a student's rows are wrong in a way
+editing the grid cell by cell is more trouble than it's worth. It deliberately skips
+`applyScheduleEdits`/`planScheduleEdits` entirely: a removal alone can never trip the
+day-conflict or labor rules that machinery exists to guard additions against, so there
+is nothing to plan or lock for, and no new run is written (unlike `clearScheduleRun`,
+which appends an empty one). Refuses the same `NO_RUN_MESSAGE` as a schedule edit when
+no run exists. `ClearStudentScheduleButton` renders only when
+`loadStudentCurrentAssignments` found the student holding rows, under the Student
+details card, as a quiet two-step inline confirm (`RevertInternalButton`'s shape, not
+`DeleteResponseButton`'s `window.confirm`) rather than a primary action, since the
+student's own response and `shift_selections` are never touched: only their current-run
+`schedule_assignments` rows are gone, and the next **Update schedule** can re-place them.
 
 **The freeze model:** `submissions.scheduled` (PLAN §10a) is the only *persisted*
 way to protect a **student** from regeneration. (`schedule_runs.pinned`, added in
