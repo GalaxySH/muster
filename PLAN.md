@@ -153,7 +153,8 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
 **Always-available mini-flow — schedule change requests (roadmap 3.1):** separate from
 the wizard and NOT window-gated: any known student can send a request all semester from
 `/me` → **`/change-requests`** (day, or **Multiple** (the default, 1.33), + shift time in
-their own words, with quick-insert pills for their position's shift spans, + comment, since
+their own words, with quick-insert pills for their position's shift spans plus a
+**Multiple** pill every position gets (1.40), + comment, since
 the actual W2W schedule isn't modeled here; a **permanent vs one-time** checkbox; and up to
 3 optional **supporting-proof files**, relayed to Drive like all evidence — the form
 states that changes due to events/extracurriculars must include proof). Pure validation
@@ -1594,6 +1595,11 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.40 (2026-11-01)** — **A "Multiple" shift-time quick insert on `/change-requests`
+  (§3.1).** The pills under the shift-time box offered only the targeted person's own
+  block spans, so a request about several shifts had to be typed out. `shiftTimeOptions`
+  now always ends with `MULTIPLE_SHIFT_TIMES` ("Multiple"), whatever the position, and
+  it is the only pill for someone without a position. It inserts like any other pill.
 - **1.39 (2026-10-22)** — **A last-resort "Clear from schedule" button on
   `/admin/students/[email]` (§10a).** The per-student grid's schedule mode has always
   refused a one-click Clear (wiping a schedule should not be one click inside the grid),

@@ -39,11 +39,14 @@ export function changeRequestDayLabel(day: ChangeRequestDay): string {
 /** The part of a shift block the quick-insert shift times need. */
 export type ShiftTimeBlock = Pick<ShiftBlock, "dayType" | "start" | "end">;
 
+/** The quick insert every position gets, for a request covering several shifts. */
+export const MULTIPLE_SHIFT_TIMES = "Multiple";
+
 /**
  * The shift times to offer as quick inserts for a request: the position's
  * blocks for the chosen day's type (every block for "multiple"), one entry per
- * distinct span, earliest first, in the app's usual "4p to 8p" notation.
- * Callers pass live blocks only.
+ * distinct span, earliest first, in the app's usual "4p to 8p" notation, then
+ * "Multiple" last whatever the position. Callers pass live blocks only.
  */
 export function shiftTimeOptions(
   blocks: readonly ShiftTimeBlock[],
@@ -57,7 +60,8 @@ export function shiftTimeOptions(
   }
   return [...spans.values()]
     .sort((a, b) => a.start - b.start || a.end - b.end)
-    .map((s) => formatSpan(s.start, s.end));
+    .map((s) => formatSpan(s.start, s.end))
+    .concat(MULTIPLE_SHIFT_TIMES);
 }
 
 /**

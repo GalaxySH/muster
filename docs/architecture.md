@@ -253,8 +253,10 @@ and every list, the queue, and the digest print it through `changeRequestDayLabe
 ("Multiple days"). The form opens on **Multiple** (`CHANGE_REQUEST_DAY_OPTIONS` puts it
 first). Under the shift-time box sits a row of **quick-insert pills**, one per distinct
 shift span of the targeted person's position: the pure `shiftTimeOptions(blocks, day)`
-filters by day type (Multiple shows both), dedupes identical spans, and labels them with
-`formatSpan`; `insertShiftTime` fills or appends (", "-joined, never twice). The page
+filters by day type (Multiple shows both), dedupes identical spans, labels them with
+`formatSpan`, and always ends with a **Multiple** pill (`MULTIPLE_SHIFT_TIMES`, 1.40) for
+every position, so it is the lone pill when there are no blocks; `insertShiftTime` fills
+or appends (", "-joined, never twice). The page
 passes the initial target's blocks (the `?student=` employee, else the signed-in user);
 picking another employee fetches theirs through the admin-gated `adminShiftTimeBlocks`,
 which returns only `dayType/start/end`. On the per-student page each request row carries

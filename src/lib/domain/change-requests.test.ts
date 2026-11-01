@@ -121,11 +121,21 @@ describe("shiftTimeOptions", () => {
   ];
 
   it("shows a weekday's blocks, sorted by start then end", () => {
-    expect(shiftTimeOptions(blocks, "wed")).toEqual(["7a to 10a", "7a to 11a", "4p to 8p"]);
+    expect(shiftTimeOptions(blocks, "wed")).toEqual([
+      "7a to 10a",
+      "7a to 11a",
+      "4p to 8p",
+      "Multiple",
+    ]);
   });
 
   it("shows the weekend blocks on Saturday and Sunday", () => {
-    expect(shiftTimeOptions(blocks, "sat")).toEqual(["9a to 1p", "4p to 8p", "7p to 12a"]);
+    expect(shiftTimeOptions(blocks, "sat")).toEqual([
+      "9a to 1p",
+      "4p to 8p",
+      "7p to 12a",
+      "Multiple",
+    ]);
     expect(shiftTimeOptions(blocks, "sun")).toEqual(shiftTimeOptions(blocks, "sat"));
   });
 
@@ -136,11 +146,13 @@ describe("shiftTimeOptions", () => {
       "9a to 1p",
       "4p to 8p",
       "7p to 12a",
+      "Multiple",
     ]);
   });
 
-  it("is empty with no blocks", () => {
-    expect(shiftTimeOptions([], "multiple")).toEqual([]);
+  it("offers Multiple on its own with no blocks", () => {
+    expect(shiftTimeOptions([], "multiple")).toEqual(["Multiple"]);
+    expect(shiftTimeOptions([], "mon")).toEqual(["Multiple"]);
   });
 });
 
