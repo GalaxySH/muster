@@ -1595,6 +1595,30 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.43 (2026-11-01)** — **Dependency security update + full-app security audit.** All 57
+  open Dependabot alerts (5 critical, 27 high) are resolved in the lockfile: `next`
+  15.5.19 → **15.5.28** (staying on the 15.5 backport line; the image-optimizer and
+  Windows RCEs, Server Action SSRF/DoS, and cache-confusion fixes), `next-auth`
+  beta.31 → **beta.32** (`@auth/core` 0.41.3: the homoglyph-`@` email check, fail-open
+  config errors, provider-bound OAuth check cookies), **zod 3 → 4** (only `lib/env.ts`
+  uses it: `z.url()` and `refine({ error })`; validation still fails closed),
+  `sanitize-html` 2.18.1, `mysql2` 3.24.6, `vitest` 4.1.12 / `vite` 8.3.5, `sharp`
+  0.35.5, and in-range bumps of `nanoid`, `js-yaml`, and `brace-expansion`. Four
+  transitive pins are lifted through `package.json` `overrides`: `postcss` under `next`
+  (Next pins 8.4.31), `uuid` 11 under `exceljs` (it only calls `v4`), `esbuild` 0.25
+  under the unused `@esbuild-kit` loader drizzle-kit still lists, and `brace-expansion@1`.
+  Left as is: npm audit's one moderate `minimatch` globparts DoS (GHSA-g3hv-75wg-m249,
+  not a Dependabot alert), reached only through eslint and exceljs's zip writer with
+  fixed patterns; its fix is an API-breaking major for those consumers. A **full-app
+  security sweep** (the `security-review` method over the whole codebase plus the 0.26
+  checklist) found **no HIGH or MEDIUM issues**. Re-verified: server-side
+  `hd=wisc.edu`, per-request admin recompute, atomic single-use hashed magic links,
+  the dev-login triple gate + production env guard, a server-side admin or ownership
+  gate on every server action and route handler, the evidence proxy's ownership check
+  + type allowlist + `nosniff`, CSV formula-prefixing and RAW Sheets writes, Liquid
+  `outputEscape` + the sanitize-html allowlist on the schedule email, parameterized SQL
+  only, AES-256-GCM with random IVs, constant-time cron auth, Drive OAuth state checks,
+  and the Apache headers / container hardening.
 - **1.42 (2026-11-01)** — **Drive deletes go to the trash (§12).** Every Drive delete
   the app makes (replaced or removed proofs, deleted responses, change-request proofs,
   test-account cleanup, the connection test's file) used to be a permanent `DELETE`.
