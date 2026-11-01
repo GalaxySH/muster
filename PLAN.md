@@ -901,7 +901,7 @@ columns from the roster.
 - **Delete response:** ✅ admins can permanently delete a submission from the response
   list (per-row) or the per-student header. The submission row is removed (cascading its
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
-  file is best-effort deleted from Drive (no orphaned bytes), and the running sheet is
+  file is best-effort moved to the Drive trash (1.42), and the running sheet is
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
 - **Sign-in analytics:** ✅ `/admin/analytics` (linked from the hub) reports who on the
   roster has logged in, who has not, and how recently, from a **`students.last_seen_at`**
@@ -1595,6 +1595,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.42 (2026-11-01)** — **Drive deletes go to the trash (§12).** Every Drive delete
+  the app makes (replaced or removed proofs, deleted responses, change-request proofs,
+  test-account cleanup, the connection test's file) used to be a permanent `DELETE`.
+  `deleteFile` (`drive/api.ts`) now sets `trashed: true` instead, so a file can be
+  restored from the Drive trash until Drive empties it (30 days). It stays within the
+  `drive.file` grant. A restored file does not reappear in the app, since its row is
+  still gone.
 - **1.41 (2026-11-01)** — **Ctrl+Enter saves the text dialogs on `/admin/students/[email]`
   (§10a).** The Scheduling notes and Student notes editors, the extracurricular details
   dialog, and the change-request Edit dialog save on Ctrl+Enter (Cmd+Enter on a Mac) as

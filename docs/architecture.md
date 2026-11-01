@@ -779,7 +779,9 @@ The admin grants
 distinct from student sign-in); the refresh token is stored **AES-256-GCM encrypted**
 (`crypto/secretbox.ts`) in `admin_google_grants` — never in a cookie. `drive/relay.ts` is
 the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST + a
-`google-auth-library` token from `drive/oauth.ts`). Student uploads go through
+`google-auth-library` token from `drive/oauth.ts`). Delete means **move to the Drive
+trash** (`trashed: true`, 1.42), never a permanent delete; a file restored from the trash
+does not come back into the app. Student uploads go through
 `evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
 the app**. `drive.file` files aren't browsable, so they're served back through an
 authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`

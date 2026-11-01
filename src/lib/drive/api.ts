@@ -258,13 +258,20 @@ export async function downloadFile(accessToken: string, fileId: string): Promise
   return { bytes, mimeType: meta.mimeType ?? "application/octet-stream" };
 }
 
-/** Permanently delete a file by id (used to clean up the connection test). */
+/**
+ * Delete a file by id by moving it to the Drive trash, where it can still be
+ * restored until Drive empties it (30 days). Never a permanent delete.
+ */
 export async function deleteFile(accessToken: string, fileId: string): Promise<void> {
   const res = await fetch(
-    `${FILES_URL}/${encodeURIComponent(fileId)}?supportsAllDrives=true`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+    `${FILES_URL}/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ trashed: true }),
+    },
   );
-  // 204 = deleted, 404 = already gone, both fine.
+  // 200 = trashed, 404 = already gone, both fine.
   if (!res.ok && res.status !== 404) {
     throw new Error(`Drive delete failed (${res.status}): ${await safeText(res)}`);
   }
