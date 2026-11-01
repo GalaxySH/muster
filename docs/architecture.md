@@ -574,7 +574,10 @@ cards). The rest:
 - **Notes.** Scheduling notes and student notes are one component, `NotesCard`
   (`kind: "scheduling" | "student"`): the full text as `pre-wrap` paragraphs (never a
   text box, never truncated; "No notes." when empty), edited in a modal opened by the
-  header's **Edit** or a **double-click** on the text. Scheduling notes save through
+  header's **Edit** or a **double-click** on the text, and saved by Save or
+  **Ctrl/Cmd+Enter** (`submitOnCtrlEnter` in `components/ui.tsx`, 1.41, which clicks the
+  form's submit button so a pending save can't go twice; the extracurricular details and
+  change-request Edit dialogs use it too, the schedule email dialog does not). Scheduling notes save through
   `saveSchedulerNotes` (`lib/admin/actions.ts`), student notes through
   `saveStudentNotesFor`, which has the same gating and stamp rule as desired hours.
   Both of those availability actions share a private `writeAnswerFor` (gate via `requireEditableStudent`,

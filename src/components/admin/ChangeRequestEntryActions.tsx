@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { deleteChangeRequest, updateChangeRequest } from "@/lib/changes/admin-actions";
 import { CHANGE_REQUEST_DAY_OPTIONS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
 
 export function ChangeRequestEntryActions({
   id,
@@ -119,6 +119,7 @@ export function ChangeRequestEntryActions({
                 defaultValue={comment}
                 required
                 rows={4}
+                onKeyDown={submitOnCtrlEnter}
                 style={{ padding: 6, fontFamily: "inherit" }}
               />
             </label>

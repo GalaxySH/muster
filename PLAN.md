@@ -1595,6 +1595,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.41 (2026-11-01)** — **Ctrl+Enter saves the text dialogs on `/admin/students/[email]`
+  (§10a).** The Scheduling notes and Student notes editors, the extracurricular details
+  dialog, and the change-request Edit dialog save on Ctrl+Enter (Cmd+Enter on a Mac) as
+  well as the Save button; a plain Enter still adds a line. The shared
+  `submitOnCtrlEnter` (`components/ui.tsx`) clicks the form's submit button, so a save
+  already in flight (button disabled) is never sent twice. The schedule email dialog is
+  left out on purpose: a keystroke should not send an email.
 - **1.40 (2026-11-01)** — **A "Multiple" shift-time quick insert on `/change-requests`
   (§3.1).** The pills under the shift-time box offered only the targeted person's own
   block spans, so a request about several shifts had to be typed out. `shiftTimeOptions`

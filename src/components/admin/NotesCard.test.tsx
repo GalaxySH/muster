@@ -76,6 +76,39 @@ describe("NotesCard", () => {
     expect(saveStudent).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["Ctrl", { ctrlKey: true }],
+    ["Cmd", { metaKey: true }],
+  ] as const)("saves on %s+Enter in the text box", async (_, modifier) => {
+    saveStudent.mockResolvedValue({ ok: true });
+    renderCard("student");
+    fireEvent.click(screen.getByRole("button", { name: "Edit student notes" }));
+    const box = screen.getByLabelText("Student notes");
+    fireEvent.change(box, { target: { value: "Evenings only" } });
+    fireEvent.keyDown(box, { key: "Enter", ...modifier });
+
+    await waitFor(() => expect(saveStudent).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("does not save on a plain Enter", () => {
+    renderCard("student");
+    fireEvent.click(screen.getByRole("button", { name: "Edit student notes" }));
+    fireEvent.keyDown(screen.getByLabelText("Student notes"), { key: "Enter" });
+    expect(saveStudent).not.toHaveBeenCalled();
+  });
+
+  it("does not save twice while a save is pending", async () => {
+    saveStudent.mockReturnValue(new Promise(() => {}));
+    renderCard("student");
+    fireEvent.click(screen.getByRole("button", { name: "Edit student notes" }));
+    const box = screen.getByLabelText("Student notes");
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    expect(await screen.findByRole("button", { name: "Saving…" })).toBeDisabled();
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    expect(saveStudent).toHaveBeenCalledTimes(1);
+  });
+
   it("stays open with the error when the save is refused", async () => {
     saveScheduling.mockResolvedValue({ ok: false, error: "You are not signed in." });
     renderCard("scheduling");

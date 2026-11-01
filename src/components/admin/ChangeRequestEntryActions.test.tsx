@@ -57,6 +57,21 @@ describe("ChangeRequestEntryActions", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it("saves on Ctrl+Enter in the comment", async () => {
+    renderActions();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const comment = screen.getByLabelText(/comment/i);
+    fireEvent.change(comment, { target: { value: "Lab moved to Thursday." } });
+    fireEvent.keyDown(comment, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(updateChangeRequest).toHaveBeenCalledWith(
+        "req-1",
+        expect.objectContaining({ comment: "Lab moved to Thursday." }),
+      ),
+    );
+  });
+
   it("keeps the editor open with the error when the save is refused", async () => {
     vi.mocked(updateChangeRequest).mockResolvedValue({
       ok: false,
