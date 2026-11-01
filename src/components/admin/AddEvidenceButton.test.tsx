@@ -56,6 +56,17 @@ describe("AddEvidenceButton", () => {
     expect(addExtracurricularFile).not.toHaveBeenCalled();
   });
 
+  it("saves extracurricular details on Ctrl+Enter", async () => {
+    openModal("extracurricular", "Band");
+    const details = screen.getByLabelText(/details/i);
+    fireEvent.change(details, { target: { value: "Band, Tue 6-8pm" } });
+    fireEvent.keyDown(details, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Band, Tue 6-8pm", "stu@wisc.edu"),
+    );
+  });
+
   it("uploads the proof and saves changed details when a file is picked", async () => {
     const file = openModal("extracurricular", "Band");
     fireEvent.change(file, { target: { files: [png()] } });

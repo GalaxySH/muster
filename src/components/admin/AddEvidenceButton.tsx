@@ -20,7 +20,7 @@ import {
 import { ACCEPT, FORMAT_HINT } from "@/components/evidence/shared";
 import { TravelDateRange } from "@/components/evidence/TravelDateRange";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
 
 export type EvidenceKind = "course" | "travel" | "extracurricular";
 
@@ -129,6 +129,7 @@ export function AddEvidenceButton({
                     name="notes"
                     defaultValue={currentNotes}
                     placeholder="The activity, including dates and times"
+                    onKeyDown={submitOnCtrlEnter}
                     style={{ padding: 8, width: "100%", boxSizing: "border-box", resize: "none" }}
                   />
                 </label>

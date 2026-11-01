@@ -49,8 +49,10 @@ describe("ChangeRequestsPanel shift times", () => {
     expect(shiftBox().value).toBe("4p to 8p, 9a to 1p");
   });
 
-  it("shows no shift times without a position", () => {
+  it("always offers Multiple, even without a position", () => {
     render(<ChangeRequestsPanel initial={[]} initialBlocks={[]} />);
-    expect(screen.queryByRole("button", { name: /^Add / })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Add / })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Add Multiple" }));
+    expect(shiftBox().value).toBe("Multiple");
   });
 });

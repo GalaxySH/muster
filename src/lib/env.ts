@@ -14,7 +14,7 @@ import { DEV_AUTH_SECRET, DEV_ENCRYPTION_KEY, findProductionEnvIssues } from "@/
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
-  NEXTAUTH_URL: z.string().url().default("http://localhost:3000"),
+  NEXTAUTH_URL: z.url().default("http://localhost:3000"),
   AUTH_SECRET: z.string().min(1).default(DEV_AUTH_SECRET),
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
@@ -33,7 +33,7 @@ const schema = z.object({
     .string()
     .default(DEV_ENCRYPTION_KEY)
     .refine((v) => tryParseKey(v), {
-      message: "must be a base64-encoded 256-bit key (`openssl rand -base64 32`)",
+      error: "must be a base64-encoded 256-bit key (`openssl rand -base64 32`)",
     }),
   // Destination Drive folder for evidence relay (a Shared Drive folder id; §12).
   DRIVE_FOLDER_ID: z.string().default(""),

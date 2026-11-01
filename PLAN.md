@@ -153,7 +153,8 @@ flip to **submitted** happens exactly once, at the final exit step (§13).
 **Always-available mini-flow — schedule change requests (roadmap 3.1):** separate from
 the wizard and NOT window-gated: any known student can send a request all semester from
 `/me` → **`/change-requests`** (day, or **Multiple** (the default, 1.33), + shift time in
-their own words, with quick-insert pills for their position's shift spans, + comment, since
+their own words, with quick-insert pills for their position's shift spans plus a
+**Multiple** pill every position gets (1.40), + comment, since
 the actual W2W schedule isn't modeled here; a **permanent vs one-time** checkbox; and up to
 3 optional **supporting-proof files**, relayed to Drive like all evidence — the form
 states that changes due to events/extracurriculars must include proof). Pure validation
@@ -900,7 +901,7 @@ columns from the roster.
 - **Delete response:** ✅ admins can permanently delete a submission from the response
   list (per-row) or the per-student header. The submission row is removed (cascading its
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
-  file is best-effort deleted from Drive (no orphaned bytes), and the running sheet is
+  file is best-effort moved to the Drive trash (1.42), and the running sheet is
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
 - **Sign-in analytics:** ✅ `/admin/analytics` (linked from the hub) reports who on the
   roster has logged in, who has not, and how recently, from a **`students.last_seen_at`**
@@ -1594,6 +1595,49 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.43 (2026-11-01)** — **Dependency security update + full-app security audit.** All 57
+  open Dependabot alerts (5 critical, 27 high) are resolved in the lockfile: `next`
+  15.5.19 → **15.5.28** (staying on the 15.5 backport line; the image-optimizer and
+  Windows RCEs, Server Action SSRF/DoS, and cache-confusion fixes), `next-auth`
+  beta.31 → **beta.32** (`@auth/core` 0.41.3: the homoglyph-`@` email check, fail-open
+  config errors, provider-bound OAuth check cookies), **zod 3 → 4** (only `lib/env.ts`
+  uses it: `z.url()` and `refine({ error })`; validation still fails closed),
+  `sanitize-html` 2.18.1, `mysql2` 3.24.6, `vitest` 4.1.12 / `vite` 8.3.5, `sharp`
+  0.35.5, and in-range bumps of `nanoid`, `js-yaml`, and `brace-expansion`. Four
+  transitive pins are lifted through `package.json` `overrides`: `postcss` under `next`
+  (Next pins 8.4.31), `uuid` 11 under `exceljs` (it only calls `v4`), `esbuild` 0.25
+  under the unused `@esbuild-kit` loader drizzle-kit still lists, and `brace-expansion@1`.
+  Left as is: npm audit's one moderate `minimatch` globparts DoS (GHSA-g3hv-75wg-m249,
+  not a Dependabot alert), reached only through eslint and exceljs's zip writer with
+  fixed patterns; its fix is an API-breaking major for those consumers. A **full-app
+  security sweep** (the `security-review` method over the whole codebase plus the 0.26
+  checklist) found **no HIGH or MEDIUM issues**. Re-verified: server-side
+  `hd=wisc.edu`, per-request admin recompute, atomic single-use hashed magic links,
+  the dev-login triple gate + production env guard, a server-side admin or ownership
+  gate on every server action and route handler, the evidence proxy's ownership check
+  + type allowlist + `nosniff`, CSV formula-prefixing and RAW Sheets writes, Liquid
+  `outputEscape` + the sanitize-html allowlist on the schedule email, parameterized SQL
+  only, AES-256-GCM with random IVs, constant-time cron auth, Drive OAuth state checks,
+  and the Apache headers / container hardening.
+- **1.42 (2026-11-01)** — **Drive deletes go to the trash (§12).** Every Drive delete
+  the app makes (replaced or removed proofs, deleted responses, change-request proofs,
+  test-account cleanup, the connection test's file) used to be a permanent `DELETE`.
+  `deleteFile` (`drive/api.ts`) now sets `trashed: true` instead, so a file can be
+  restored from the Drive trash until Drive empties it (30 days). It stays within the
+  `drive.file` grant. A restored file does not reappear in the app, since its row is
+  still gone.
+- **1.41 (2026-11-01)** — **Ctrl+Enter saves the text dialogs on `/admin/students/[email]`
+  (§10a).** The Scheduling notes and Student notes editors, the extracurricular details
+  dialog, and the change-request Edit dialog save on Ctrl+Enter (Cmd+Enter on a Mac) as
+  well as the Save button; a plain Enter still adds a line. The shared
+  `submitOnCtrlEnter` (`components/ui.tsx`) clicks the form's submit button, so a save
+  already in flight (button disabled) is never sent twice. The schedule email dialog is
+  left out on purpose: a keystroke should not send an email.
+- **1.40 (2026-11-01)** — **A "Multiple" shift-time quick insert on `/change-requests`
+  (§3.1).** The pills under the shift-time box offered only the targeted person's own
+  block spans, so a request about several shifts had to be typed out. `shiftTimeOptions`
+  now always ends with `MULTIPLE_SHIFT_TIMES` ("Multiple"), whatever the position, and
+  it is the only pill for someone without a position. It inserts like any other pill.
 - **1.39 (2026-10-22)** — **A last-resort "Clear from schedule" button on
   `/admin/students/[email]` (§10a).** The per-student grid's schedule mode has always
   refused a one-click Clear (wiping a schedule should not be one click inside the grid),

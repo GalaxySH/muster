@@ -109,7 +109,7 @@ export async function relayDownload(fileId: string): Promise<DownloadResult> {
   return downloadFile(accessToken, fileId);
 }
 
-/** Best-effort delete of a relayed file (when a student replaces/removes it). */
+/** Best-effort delete (to the Drive trash) of a relayed file a student replaced or removed. */
 export async function relayDelete(fileId: string): Promise<void> {
   const grant = await getActiveDriveGrant();
   if (!grant) return;

@@ -3,7 +3,8 @@
 /**
  * A free-text notes card on the per-student page: the full text as readable
  * paragraphs, edited in a modal opened by the header's "Edit" or by
- * double-clicking the text. One mechanism for both notes the page carries:
+ * double-clicking the text, saved by the Save button or Ctrl+Enter. One
+ * mechanism for both notes the page carries:
  *
  * - **scheduling**: the scheduler's own notes (PLAN §10a), `saveSchedulerNotes`.
  * - **student**: the student's note from the availability form, saved back on
@@ -18,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { saveSchedulerNotes } from "@/lib/admin/actions";
 import { saveStudentNotesFor } from "@/lib/availability/actions";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
 import { SectionLabel, panelStyle } from "@/components/admin/ui";
 
 export type NotesKind = "scheduling" | "student";
@@ -111,6 +112,7 @@ export function NotesCard({
               placeholder={placeholder}
               rows={6}
               autoFocus
+              onKeyDown={submitOnCtrlEnter}
               aria-label={title}
               style={textarea}
             />

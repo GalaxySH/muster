@@ -253,8 +253,10 @@ and every list, the queue, and the digest print it through `changeRequestDayLabe
 ("Multiple days"). The form opens on **Multiple** (`CHANGE_REQUEST_DAY_OPTIONS` puts it
 first). Under the shift-time box sits a row of **quick-insert pills**, one per distinct
 shift span of the targeted person's position: the pure `shiftTimeOptions(blocks, day)`
-filters by day type (Multiple shows both), dedupes identical spans, and labels them with
-`formatSpan`; `insertShiftTime` fills or appends (", "-joined, never twice). The page
+filters by day type (Multiple shows both), dedupes identical spans, labels them with
+`formatSpan`, and always ends with a **Multiple** pill (`MULTIPLE_SHIFT_TIMES`, 1.40) for
+every position, so it is the lone pill when there are no blocks; `insertShiftTime` fills
+or appends (", "-joined, never twice). The page
 passes the initial target's blocks (the `?student=` employee, else the signed-in user);
 picking another employee fetches theirs through the admin-gated `adminShiftTimeBlocks`,
 which returns only `dayType/start/end`. On the per-student page each request row carries
@@ -572,7 +574,10 @@ cards). The rest:
 - **Notes.** Scheduling notes and student notes are one component, `NotesCard`
   (`kind: "scheduling" | "student"`): the full text as `pre-wrap` paragraphs (never a
   text box, never truncated; "No notes." when empty), edited in a modal opened by the
-  header's **Edit** or a **double-click** on the text. Scheduling notes save through
+  header's **Edit** or a **double-click** on the text, and saved by Save or
+  **Ctrl/Cmd+Enter** (`submitOnCtrlEnter` in `components/ui.tsx`, 1.41, which clicks the
+  form's submit button so a pending save can't go twice; the extracurricular details and
+  change-request Edit dialogs use it too, the schedule email dialog does not). Scheduling notes save through
   `saveSchedulerNotes` (`lib/admin/actions.ts`), student notes through
   `saveStudentNotesFor`, which has the same gating and stamp rule as desired hours.
   Both of those availability actions share a private `writeAnswerFor` (gate via `requireEditableStudent`,
@@ -774,7 +779,9 @@ The admin grants
 distinct from student sign-in); the refresh token is stored **AES-256-GCM encrypted**
 (`crypto/secretbox.ts`) in `admin_google_grants` — never in a cookie. `drive/relay.ts` is
 the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST + a
-`google-auth-library` token from `drive/oauth.ts`). Student uploads go through
+`google-auth-library` token from `drive/oauth.ts`). Delete means **move to the Drive
+trash** (`trashed: true`, 1.42), never a permanent delete; a file restored from the trash
+does not come back into the app. Student uploads go through
 `evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
 the app**. `drive.file` files aren't browsable, so they're served back through an
 authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`

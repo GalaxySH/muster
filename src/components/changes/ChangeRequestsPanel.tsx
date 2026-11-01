@@ -8,7 +8,8 @@
  * extra employee field (type-to-search) to send a request on someone's
  * behalf, plus a resolve-on-submission checkbox for changes already handled;
  * the list below follows whoever the form targets. Under the shift time, the
- * target's position offers its shift times as one-click inserts.
+ * target's position offers its shift times as one-click inserts, plus a
+ * "Multiple" one for everyone.
  */
 import { useRef, useState, useTransition } from "react";
 import {
@@ -165,21 +166,19 @@ export function ChangeRequestsPanel({
                 style={input}
               />
             </label>
-            {shiftTimes.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {shiftTimes.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setShiftText((cur) => insertShiftTime(cur, t))}
-                    aria-label={`Add ${t}`}
-                    style={shiftTimePill}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {shiftTimes.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setShiftText((cur) => insertShiftTime(cur, t))}
+                  aria-label={`Add ${t}`}
+                  style={shiftTimePill}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <label style={{ ...field, marginTop: 10 }}>
