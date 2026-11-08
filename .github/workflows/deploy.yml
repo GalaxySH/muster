@@ -1,19 +1,25 @@
-# Production deploy (PLAN §15): on a version tag (or manual dispatch), SSH to
-# the server, check out the exact tagged commit in the existing deploy clone,
-# and rebuild the compose stack — the same `docker compose up -d --build` used
-# for manual deploys. Afterwards the app's health endpoint must come back up,
-# checked on the box at its loopback bind (Cloudflare Bot Fight Mode 403s the
-# runner, so the public URL can't be polled from CI).
+# Production deploy (PLAN §15): on a version tag (or manual dispatch), ask the
+# server to build the exact commit this workflow ran for. Afterwards the app's
+# health endpoint must come back up, checked on the box at its loopback bind
+# (Cloudflare Bot Fight Mode 403s the runner, so the public URL can't be polled
+# from CI).
+#
+# The deploy key is restricted to a forced command, so the steps themselves live
+# in ops/deploy/muster-deploy.sh on the server. This workflow can only call
+# `deploy <sha>` and `health`; see "Deploy key" in docs/deploy.md.
+#
+# Rollback: run this workflow by hand and enter the tag to return to. Tagging an
+# older commit won't work if that commit predates the forced command, because a
+# tag push runs the workflow from the tagged commit.
 #
 # Required repository secrets:
 #   DEPLOY_HOST         — server hostname or IP
-#   DEPLOY_USER         — SSH user (must be able to run docker compose)
+#   DEPLOY_USER         — SSH user that owns the rootless Docker daemon
 #   DEPLOY_SSH_KEY      — private key for that user (a dedicated deploy key)
-#   DEPLOY_PATH         — absolute path of the repo clone on the server
 #   DEPLOY_KNOWN_HOSTS  — optional; `ssh-keyscan <host>` output to pin the host
 #                         key (falls back to scanning at deploy time if unset)
 #
-# Server prerequisites (one-time): the clone at DEPLOY_PATH with a fetchable
+# Server prerequisites (one-time): the clone at /opt/muster with a fetchable
 # `origin`, and the production `.env` beside compose.yaml (see .env.example).
 
 name: Deploy
@@ -22,6 +28,14 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to deploy, e.g. v1.40. Leave blank for the selected branch's commit."
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 # Never run two deploys at once; let a queued one wait, not cancel a live one.
 concurrency:
@@ -47,26 +61,31 @@ jobs:
             ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           fi
 
-      - name: Deploy tagged commit on server
+      - name: Choose commit
+        id: target
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        # Resolve to a SHA here (tags can be moved; SHAs can't). The server only
+        # accepts a full SHA that is on main.
+        run: |
+          if [ -z "$VERSION" ]; then
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$VERSION" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+            echo "Not a version tag: $VERSION" >&2
+            exit 1
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$VERSION" --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy commit on server
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           SSH_USER: ${{ secrets.DEPLOY_USER }}
-          TARGET_DIR: ${{ secrets.DEPLOY_PATH }}
-        # Deploy the exact commit this workflow ran for (tags can be moved;
-        # SHAs can't). The remote script is a quoted heredoc — nothing in it
-        # expands on the runner; TARGET_DIR/REF travel as remote env vars,
-        # printf-%q-quoted so the remote shell can't re-split them on spaces.
-        run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" \
-            "TARGET_DIR=$(printf %q "$TARGET_DIR") REF=$(printf %q "$GITHUB_SHA") bash -s" <<'REMOTE'
-          set -euo pipefail
-          cd "$TARGET_DIR"
-          git fetch --tags --force origin
-          git checkout --detach "$REF"
-          docker compose up -d --build
-          # Drop dangling images from previous builds so the disk doesn't fill.
-          docker image prune -f
-          REMOTE
+          SHA: ${{ steps.target.outputs.sha }}
+        run: ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" deploy "$SHA"
 
       - name: Verify health endpoint
         env:
@@ -77,18 +96,5 @@ jobs:
         # can't be scoped per-path on the free plan. The loopback check tests the
         # thing that matters here anyway (did the new container come up); the host
         # Apache proxies the same 127.0.0.1:3000, so a healthy loopback means the
-        # edge serves too. Same quoted heredoc pattern as the deploy step.
-        run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          echo "Waiting for http://127.0.0.1:3000/api/health ..."
-          for i in $(seq 1 30); do
-            if curl -fsS --max-time 10 http://127.0.0.1:3000/api/health; then
-              echo; echo "Healthy."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "App did not become healthy within 5 minutes." >&2
-          exit 1
-          REMOTE
+        # edge serves too.
+        run: ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" health
