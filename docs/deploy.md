@@ -22,13 +22,15 @@ version tag deploys to the production box over SSH — automating the same
   caches it (CI's npm cache, the Dockerfile's BuildKit cache mount on the
   server). Avoid anything that installs it cold in a loop, and don't run
   `docker builder prune` on the server casually: the next deploy re-downloads
-  the kit.
+  the kit. The deploy's own cache cleanup skips cache mounts for this reason.
 - **`.github/workflows/deploy.yml`** — on a `v*` tag push (or manual
-  `workflow_dispatch`): SSH to the server, `git checkout` the exact tagged
-  commit in the deploy clone, `docker compose up -d --build`, prune dangling
-  images, then over SSH poll `http://127.0.0.1:3000/api/health` on the box until
-  healthy (fails the run after 5 minutes). The check runs on the box, not against
-  the public URL, because Cloudflare Bot Fight Mode 403s the GitHub runner and
+  `workflow_dispatch`, with an optional tag to return to): SSH to the server,
+  which runs `ops/deploy/muster-deploy.sh` as a forced command. It refuses
+  anything not on `main`, `git checkout`s the exact commit in the deploy clone,
+  runs `docker compose up -d --build`, prunes dangling images, and caps the build
+  cache at 20 GB. A second SSH call polls `http://127.0.0.1:3000/api/health` on
+  the box until healthy (fails the run after 5 minutes). The check runs on the
+  box, not against the public URL, because Cloudflare Bot Fight Mode 403s the GitHub runner and
   can't be scoped per-path on the free plan; the host Apache proxies the same
   loopback port, so a healthy loopback means the edge serves too. Deploys are
   serialized (`concurrency`), never cancelled mid-run.
@@ -39,14 +41,13 @@ version tag deploys to the production box over SSH — automating the same
 | --- | --- |
 | `FONTAWESOME_PACKAGE_TOKEN` | Font Awesome Pro Kit install token (same one used locally / in Docker; install-time only) |
 | `DEPLOY_HOST` | server hostname or IP |
-| `DEPLOY_USER` | SSH user that can run `docker compose` (in the `docker` group) |
-| `DEPLOY_SSH_KEY` | private key for a **dedicated** deploy keypair (`ssh-keygen -t ed25519 -C muster-deploy`); public half in the user's `authorized_keys` |
-| `DEPLOY_PATH` | absolute path of the repo clone on the server (e.g. `/opt/muster`) |
+| `DEPLOY_USER` | SSH user that owns the rootless Docker daemon |
+| `DEPLOY_SSH_KEY` | private key for a **dedicated** deploy keypair (`ssh-keygen -t ed25519 -C muster-deploy`); public half set up as in "Deploy key" below |
 | `DEPLOY_KNOWN_HOSTS` | *(optional, recommended)* output of `ssh-keyscan <host>` — pins the host key; without it the workflow scans at deploy time |
 
 ## Server prerequisites (one-time)
 
-1. Repo cloned at `DEPLOY_PATH` with a fetchable `origin` (read-only GitHub
+1. Repo cloned at `/opt/muster` with a fetchable `origin` (read-only GitHub
    deploy key is enough — the workflow only fetches).
 2. Production `.env` beside `compose.yaml` (see `.env.example`). compose
    hard-requires `DATABASE_URL`, `NEXTAUTH_URL`, `AUTH_SECRET`,
@@ -129,6 +130,35 @@ version tag deploys to the production box over SSH — automating the same
    (The manual route skips the due-check; with `CRON_SECRET` unset it always
    refuses, 503.)
 
+## Deploy key
+
+The deploy key can only run `ops/deploy/muster-deploy.sh`, so a leaked key can
+redeploy commits already on `main` but can't open a shell, read `.env`, or tunnel
+to the database. It doesn't defend against someone who can push to `main`, because
+a deploy runs that code.
+
+The key lives in a root-owned file, since the deploy user owns its home folder and
+could otherwise replace `~/.ssh`. As root, replacing `<deploy-user>`:
+
+1. Install the script (command in its header).
+2. Add `/etc/ssh/sshd_config.d/20-deploy-key.conf`:
+
+   ```
+   Match User <deploy-user>
+       AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+   ```
+
+3. Put the public key in `/etc/ssh/authorized_keys/<deploy-user>` (root-owned, 644):
+
+   ```
+   command="/usr/local/bin/muster-deploy",restrict ssh-ed25519 AAAA... muster-deploy
+   ```
+
+4. Check with `sshd -t`, then `systemctl reload ssh`.
+
+After changing the script in the repo, reinstall it, because a deploy doesn't
+update the installed copy.
+
 ## Releasing
 
 ```bash
@@ -137,9 +167,12 @@ git tag v1.0.0 && git push origin v1.0.0   # → Deploy workflow runs
 ```
 
 Watch the Actions run; it ends by verifying `/api/health` on the box's loopback
-bind over SSH (not the public URL; see the deploy.yml note above). Rollback = deploy
-the previous tag's commit again (on the server: `git checkout <prev-tag> &&
-docker compose up -d --build`, or push a new tag pointing at it).
+bind over SSH (not the public URL; see the deploy.yml note above).
+
+Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
+Don't push a new tag at an older commit: a tag push runs that commit's workflow,
+and one from before the forced command is refused. Migrations aren't reversed, so
+check that the older code works with the current schema first.
 
 ## Backups
 
