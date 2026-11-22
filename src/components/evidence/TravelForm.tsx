@@ -11,6 +11,7 @@
  */
 import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
+import { TRAVEL_STANDING_LABEL, travelStanding } from "@/lib/domain/travel";
 import {
   Thumb,
   DriveDisconnectedBanner,
@@ -126,7 +127,7 @@ export function TravelForm({
                 <div>
                   {t.startDate} → {t.endDate}{" "}
                   <span style={t.excused ? excusedBadge : lateBadge}>
-                    {t.excused ? "excused" : "not excused (late)"}
+                    {TRAVEL_STANDING_LABEL[travelStanding(t)]}
                   </span>
                 </div>
                 {t.note && <div style={{ color: "#666" }}>{t.note}</div>}

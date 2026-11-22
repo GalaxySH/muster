@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.37
-- **Last updated:** 2026-10-20
+- **Version:** 1.44
+- **Last updated:** 2026-11-21
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -693,7 +693,9 @@ columns from the roster.
   `extracurricularFileIds?` (Drive `fileId`s), `extracurricularNotes?`,
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
   §10a), `scheduleEmailSentAt?` (when an admin last sent the per-student schedule email,
-  1.34; the column dates from the removed batch email and was reused, not dropped), `status` (`draft`|`submitted`). *No image bytes stored in-app.*
+  1.34; the column dates from the removed batch email and was reused, not dropped), `status` (`draft`|`submitted`),
+  `submittedVia` (`muster`|`google_form`, 1.44: `google_form` marks a Google Form response
+  an admin pasted in, `docs/form-paste.md`; its `submittedAt` is the form's timestamp). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
   **The student's own record, and only theirs** (1.07): admin edits never write this
   table, so what the student submitted is always preserved verbatim.
@@ -1595,6 +1597,33 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.44 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
+  answer the Google Form instead of Muster can be brought in by copy and paste, with no
+  link between the sheet and the app. A bound Apps Script on the response sheet
+  (`integrations/form-sheet/`, **Muster > Copy response for Muster**) copies one row as
+  `MUSTER-FORM v1` plus JSON, keyed by developer metadata on each column, with the uploads
+  embedded (originals, or Drive's 2400 px render for large images and HEIC). On
+  `/admin/students/[email]`, **Paste form response** checks the paste (version, and that
+  the email is this student's), previews every change next to what's on file with a
+  checkbox each (matching answers, already-imported files, and travel already on file
+  start unchecked), and Apply runs the checked steps through the existing on-behalf
+  actions, reporting each result. Pure parsing and planning live in
+  `lib/admin/form-paste.ts`, the step runner in `lib/admin/form-paste-apply.ts`. A pasted
+  response **counts as a response**: the new additive column `submissions.submitted_via`
+  (`muster` default | `google_form`, migration 0036) is set with status submitted and the
+  form's timestamp as `submitted_at` (`recordFormResponse`; refused when the student
+  already submitted in Muster), shown as a "via Google Form" tag in the response list and
+  the student header. Preferred name, opening/closing preference, unkeyed questions, and
+  uploads that couldn't be copied go into the **scheduling notes** as plain lines, and
+  each imported upload leaves a footer line `form-file: <form driveId> -> <muster fileId>`
+  so a re-paste skips files still attached. Travel ranges (`MM/DD-MM/DD`, year from the
+  form timestamp) become entries, with proofs paired **in order, best effort**; a range
+  with no proof is stored **not excused** (`addTravelRequest` takes `excused=0` on behalf).
+  Those entries read "not excused (no proof)" rather than late everywhere (new
+  `travelStanding` in `domain/travel.ts`: unexcused with proof is late, without proof is
+  unproven) and don't count toward `travel_late`. The upload actions now return the new
+  `fileId`. The roster position is never written; a mismatch with the form's answer is a
+  warning.
 - **1.43 (2026-11-01)** — **Dependency security update + full-app security audit.** All 57
   open Dependabot alerts (5 critical, 27 high) are resolved in the lockfile: `next`
   15.5.19 → **15.5.28** (staying on the 15.5 backport line; the image-optimizer and

@@ -72,6 +72,8 @@ export interface StudentDetail {
     desiredHours: number | null;
     studentNotes: string;
     submittedAt: Date | null;
+    /** "google_form" when the response was pasted in from the Google Form. */
+    submittedVia: "muster" | "google_form";
     updatedAt: Date;
     scheduled: boolean;
     schedulerNotes: string;
@@ -189,6 +191,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
       desiredHours: subRow.desiredHours,
       studentNotes: subRow.studentNotes ?? "",
       submittedAt: subRow.submittedAt,
+      submittedVia: subRow.submittedVia,
       updatedAt: subRow.updatedAt,
       scheduled: subRow.scheduled,
       schedulerNotes: subRow.schedulerNotes ?? "",
@@ -299,6 +302,8 @@ export interface ResponseRow {
   /** Open (unresolved, not withdrawn) change requests, badged next to the name. */
   openChangeRequests: number;
   submittedAt: Date | null;
+  /** True when the response was pasted in from the Google Form. */
+  viaGoogleForm: boolean;
   /** Null for students with no submission row. */
   updatedAt: Date | null;
 }
@@ -367,6 +372,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       scheduled: submissions.scheduled,
       desiredHours: submissions.desiredHours,
       submittedAt: submissions.submittedAt,
+      submittedVia: submissions.submittedVia,
       updatedAt: submissions.updatedAt,
     })
     .from(students)
@@ -427,6 +433,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       flagCount: flagTypes.length,
       openChangeRequests: openRequestsByEmail.get(r.email) ?? 0,
       submittedAt: r.submittedAt,
+      viaGoogleForm: r.submittedVia === "google_form",
       updatedAt: r.updatedAt,
     };
   });
@@ -572,8 +579,10 @@ export interface UpcomingTravelEntry {
   startDate: string; // ISO yyyy-mm-dd (inclusive)
   endDate: string; // ISO yyyy-mm-dd (inclusive)
   note: string | null;
-  /** False when the entry was added after the cutoff (late, PLAN §8). */
+  /** False when the entry was added after the cutoff (late, PLAN §8), or
+   *  recorded without proof by the form import (see `travelStanding`). */
   excused: boolean;
+  proofFileId: string | null;
   /** Admin review marker: the scheduler has accounted for this trip. */
   resolved: boolean;
 }
@@ -601,6 +610,7 @@ export async function loadUpcomingTravel(
       endDate: travelRequests.endDate,
       note: travelRequests.note,
       excused: travelRequests.excused,
+      proofFileId: travelRequests.proofFileId,
       resolved: travelRequests.resolved,
     })
     .from(travelRequests)
@@ -620,6 +630,7 @@ export async function loadUpcomingTravel(
     endDate: toIsoDate(r.endDate),
     note: r.note ?? null,
     excused: r.excused,
+    proofFileId: r.proofFileId ?? null,
     resolved: r.resolved,
   }));
 

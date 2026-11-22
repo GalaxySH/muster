@@ -224,6 +224,9 @@ export function ResponseList({
                   <td data-label="Position">{r.positionName ?? "—"}</td>
                   <td data-label="Status">
                     <span style={STATUS_BADGE[r.status]}>{r.status}</span>
+                    {r.status === "submitted" && r.viaGoogleForm && (
+                      <span style={viaFormBadge}>via Google Form</span>
+                    )}
                   </td>
                   <td data-label="Hours" className="cell-right" style={{ whiteSpace: "nowrap" }}>
                     <HoursCell
@@ -397,6 +400,11 @@ const offRosterBadge: React.CSSProperties = {
   background: "var(--color-background-secondary)",
   color: "var(--color-text-secondary)",
   fontWeight: 400,
+};
+const viaFormBadge: React.CSSProperties = {
+  ...offRosterBadge,
+  marginLeft: 4,
+  whiteSpace: "nowrap",
 };
 const changeRequestPill: React.CSSProperties = {
   ...badge,

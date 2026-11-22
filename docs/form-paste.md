@@ -7,8 +7,8 @@ per-student page. Nothing links the sheet to the app: no API calls, no credentia
 stored sheet ID. The only contract between them is the payload format below.
 
 - **Sheet side (built):** a bound Apps Script in `integrations/form-sheet/`.
-- **Muster side (not built yet):** the paste panel, preview and apply. Its agreed design
-  is in "Muster side" below.
+- **Muster side (built, PLAN 1.44):** **Paste form response** on the per-student page.
+  See "Muster side" below.
 
 The rule of thumb is that **the sheet copies and Muster interprets**. The script sends
 answers as the text the sheet shows and never parses them, apart from pulling Drive IDs
@@ -131,10 +131,17 @@ How each kind of upload is encoded:
 
 Every entry keeps `sourceUrl`, which points at the original.
 
-## Muster side (agreed design, not built)
+## Muster side
 
-- **Where:** a paste panel on `/admin/students/[email]`. It's console code that calls the
-  existing on-behalf actions, which the module rules allow.
+- **Where:** the **Paste form response** button in the header of `/admin/students/[email]`
+  (`components/admin/FormPasteButton.tsx`). It's console code that calls the existing
+  on-behalf actions, which the module rules allow.
+- **Code:** `lib/admin/form-paste.ts` is pure (`parsePaste`, `parseTravelDates`,
+  `splitNotes`/`buildNotes`, `buildPlan`). `lib/admin/form-paste-apply.ts` runs the
+  checked steps against injected actions, uploads first so the footer records every file
+  that landed, and keeps going past a failure. `lib/admin/form-paste-actions.ts` holds
+  the two writes no existing action covered: `saveEveryWeekendFor` and
+  `recordFormResponse`.
 - **Checks before anything is written:** the header line and version must match, and the
   payload email must match the page's student.
 - **Preview:** shows each field next to what's on file, with a checkbox per field. Apply
@@ -147,20 +154,28 @@ How each field maps:
 | `desiredHours` | Requested hours | `saveDesiredHoursFor` |
 | `studentNotes` | Student notes | `saveStudentNotesFor` |
 | `extracurricularNotes` | Extracurricular details | `saveExtracurricularNotes` |
-| `everyWeekend` | Every-weekend opt-in | |
+| `everyWeekend` | Every-weekend opt-in | `saveEveryWeekendFor` (the student's own answer, not the internal copy) |
 | `courseSchedule` | Course schedule | `uploadCourseSchedule` (replace) |
 | `extracurricularFiles` | Extracurricular files | `addExtracurricularFile` per file |
 | `travelDates` + `travelProof` | Travel entries | `addTravelRequest` per range |
 
-- **Response type.** A pasted response counts as a response. A new submissions column
-  tags it "via Google Form", and the form timestamp becomes the submit time.
+- **Response type.** A pasted response counts as a response. `submissions.submitted_via`
+  is set to `google_form`, status to submitted, and the form timestamp becomes the submit
+  time. A student who already submitted in Muster keeps their own submission: that step
+  starts unchecked and the action refuses it.
+- **What starts unchecked:** answers that match what's on file, files the footer says are
+  still attached, travel whose exact dates are already on file, notes lines already in
+  the notes, and a response already counted with the same timestamp.
 - **Preferred name and opening/closing preference** are added as plain-text lines in the
   scheduling notes. They get no new columns and no special UI.
 - **Upload tracking lives in the scheduling notes,** as a footer of plain `key: value`
   lines, one per imported file: `form-file: <form driveId> -> <muster fileId>`. On paste,
   a file counts as already imported only when its form `driveId` is in the footer **and**
   the Muster file named on that line is still attached to the student. Otherwise the file
-  is uploaded through the relay and its line is added or replaced.
+  is uploaded through the relay and its line is added or replaced. Footer lines whose
+  Muster file is gone are dropped the next time the notes are written. Travel proofs are
+  the exception: a travel entry is matched by its dates, not the footer, since an
+  existing proof can't be attached to a new entry.
 - **Travel dates.** The form's text is `MM/DD-MM/DD` ranges separated by commas, with the
   space after a comma optional. Exact duplicate ranges are dropped. A range becomes one
   travel entry, editable in the preview before Apply. Year rule:
@@ -174,6 +189,14 @@ How each field maps:
   - A range left with no proof is still added, but stored **not excused**. This differs
     from the manual on-behalf path, where an admin entry is always excused, so the import
     passes `excused` explicitly.
-  - Proofs beyond the last range are listed as links in the last entry's note.
+  - Proofs beyond the last range are listed as links in the last entry's note. Proofs with
+    no dates at all go into the scheduling notes as links.
+  - A proof that could only come as a link counts as no proof; its link goes in the
+    entry's note.
+  - These entries read "not excused (no proof)", never "late" (`travelStanding` in
+    `domain/travel.ts`), and they don't raise `travel_late`.
+- **Uploads that can't be copied** (link-only files, extra course schedules) go into the
+  scheduling notes as their name and Drive link.
+- **Hours or yes/no answers that don't read** go into the notes as written.
 - **Positions are never written.** The form has options that aren't Muster positions
   (DAB, Retail & Cafe), so a mismatch with the roster is shown as a warning only.

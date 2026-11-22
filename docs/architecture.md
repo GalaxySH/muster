@@ -558,6 +558,29 @@ New admin pages: `/admin/travel` (2.3); `/admin/schedule-email` (2.4) was added 
 too and removed in 0.99 (roadmap 6.1). Wireframe design tokens (`--color-*`,
 `--border-radius-*`) live in `globals.css`.
 
+### Google Form paste import (1.44)
+
+**Paste form response** in the per-student header (`FormPasteButton`) brings in one
+Google Form response copied by the sheet script. The full contract and rules are in
+`docs/form-paste.md`; the layering:
+
+- `lib/admin/form-paste.ts` is pure: it parses the `MUSTER-FORM v1` text, reads the
+  answers, and builds a plan of steps from the paste plus an `OnFile` snapshot the page
+  already has (no extra query). Each step carries its preview text, what's on file, and
+  whether it starts checked.
+- `lib/admin/form-paste-apply.ts` runs the checked steps against a `PasteActions` object.
+  The component passes the real server actions; the tests pass fakes. Uploads run first
+  so the notes footer (`form-file: <driveId> -> <fileId>`) is written from what actually
+  landed. Every step reports its own result, and a failure never stops the rest.
+- Writes go through the existing on-behalf actions. The upload actions return the new
+  Drive `fileId` for the footer, and `addTravelRequest` honors `excused=0` from an admin.
+  `lib/admin/form-paste-actions.ts` adds `saveEveryWeekendFor` (re-syncs
+  `revalidation_failed` like desired hours) and `recordFormResponse` (status submitted,
+  `submitted_via = google_form`, the form's timestamp, a responses-sheet refresh).
+- `submitted_via` shows as a "via Google Form" tag in `ResponseList` and the student
+  header. `travelStanding` in `domain/travel.ts` keeps an imported no-proof entry from
+  reading as late on every travel surface and in the export.
+
 ### Every answer is editable on the per-student page (1.33)
 
 The per-student page lets the scheduler change anything the student's form collects,

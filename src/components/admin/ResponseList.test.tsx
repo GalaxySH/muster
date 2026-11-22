@@ -26,6 +26,7 @@ const row = (over: Partial<ResponseRow> & { email: string; displayName: string }
   flagCount: 0,
   openChangeRequests: 0,
   submittedAt: new Date("2026-08-05T12:00:00Z"),
+  viaGoogleForm: false,
   updatedAt: new Date("2026-08-05T12:00:00Z"),
   ...over,
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `submissions` ADD `submitted_via` enum('muster','google_form') DEFAULT 'muster' NOT NULL;

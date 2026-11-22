@@ -135,6 +135,24 @@ describe("buildExportMatrix", () => {
     expect(cell("Travel")).toBe("2026-09-06→2026-09-08 (excused)");
   });
 
+  it("says no proof rather than late for an unexcused entry without proof", () => {
+    const [, row] = buildExportMatrix([
+      aggregate({
+        travel: [
+          {
+            startDate: "2026-12-18",
+            endDate: "2027-01-18",
+            excused: false,
+            note: null,
+            proofFileId: null,
+          },
+        ],
+      }),
+    ]);
+    const cell = (h: (typeof EXPORT_HEADERS)[number]) => row![EXPORT_HEADERS.indexOf(h)];
+    expect(cell("Travel")).toBe("2026-12-18→2027-01-18 (no proof)");
+  });
+
   it("marks internally adjusted responses", () => {
     const [, row] = buildExportMatrix([aggregate({ internalAdjusted: true })]);
     const cell = (h: (typeof EXPORT_HEADERS)[number]) => row![EXPORT_HEADERS.indexOf(h)];

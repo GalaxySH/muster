@@ -54,3 +54,28 @@ export function defaultTravelCutoff(now: Date): Date {
   // To represent 00:00 CST in a UTC Date, add 6 hours (i.e. 06:00 UTC).
   return new Date(Date.UTC(now.getUTCFullYear(), 8, 1, 6, 0, 0)); // month 8 = September
 }
+
+/**
+ * How a stored travel entry stands. Unexcused used to mean late, and still does
+ * whenever there is proof: students can't save an entry without one. An
+ * unexcused entry with NO proof is one an admin recorded that way, which the
+ * Google Form import does for a range that came without proof
+ * (docs/form-paste.md). That one isn't late, so it reads differently and never
+ * counts toward `travel_late`.
+ */
+export type TravelStanding = "excused" | "late" | "unproven";
+
+export function travelStanding(entry: {
+  excused: boolean;
+  proofFileId: string | null;
+}): TravelStanding {
+  if (entry.excused) return "excused";
+  return entry.proofFileId ? "late" : "unproven";
+}
+
+/** The badge text for each standing, shared by the student and admin views. */
+export const TRAVEL_STANDING_LABEL: Record<TravelStanding, string> = {
+  excused: "excused",
+  late: "not excused (late)",
+  unproven: "not excused (no proof)",
+};

@@ -24,6 +24,7 @@ import {
 export const dayTypeEnum = ["weekday", "weekend"] as const;
 export const dayEnum = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 export const submissionStatusEnum = ["draft", "submitted"] as const;
+export const submittedViaEnum = ["muster", "google_form"] as const;
 export const flagTypeEnum = [
   "auto_assigned_weekend",
   "travel_late",
@@ -187,6 +188,12 @@ export const submissions = mysqlTable("submissions", {
    * they submit (a draft has no submit time).
    */
   submittedAt: datetime("submitted_at", { mode: "date" }),
+  /**
+   * Where the response came from: Muster's own form, or a Google Form response
+   * an admin pasted in (docs/form-paste.md). A pasted one is submitted with the
+   * form's timestamp as `submitted_at`. Only meaningful once status is submitted.
+   */
+  submittedVia: mysqlEnum("submitted_via", submittedViaEnum).notNull().default("muster"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   /**
    * When the STUDENT last changed their own answers. Deliberately NOT
