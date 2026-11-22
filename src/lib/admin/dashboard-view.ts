@@ -156,12 +156,8 @@ export interface DashboardSnapshot {
   w2wMapIssues: MapIssue[];
   /** Environment/settings toggles the alert layer reads to catch silent misconfig. */
   config: {
-    /** RESEND_API_KEY is set; when false, "sending on" still delivers nothing. */
-    resendConfigured: boolean;
     /** DRIVE_FOLDER_ID is set; when false, uploads land in a personal Drive. */
     driveFolderConfigured: boolean;
-    /** NODE_ENV === "production"; some misconfigs only bite (or only matter) in prod. */
-    isProduction: boolean;
     /** Effective travel-excusal cutoff (admin value or the 9/1 default). */
     travelCutoff: Date;
     /** The admin's late policy: true = travel past the cutoff is accepted as late (PLAN §8). */
@@ -553,20 +549,6 @@ function buildAlerts(
         linkLabel: "Positions",
       });
     }
-  }
-
-  // Sending is on but there is no Resend key, so every message (sign-in links,
-  // schedule emails, the digest) is only logged. Production only: dev leaves the
-  // key empty on purpose, and the System status row reads a healthy "sending on".
-  if (s.config.isProduction && s.email.sendingEnabled && !s.config.resendConfigured) {
-    danger.push({
-      id: "email-no-key",
-      severity: "danger",
-      title: "Email is on but no Resend key is set, so nothing actually sends.",
-      detail: "Sign-in links and schedule emails are only written to the server log.",
-      href: "/admin/email-settings",
-      linkLabel: "Email",
-    });
   }
 
   if (s.closes.hasInventory && !s.closes.feasible) {

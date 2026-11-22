@@ -98,6 +98,8 @@ const form = (email: string) => {
 };
 
 const EMAIL = "training-barista@test.muster.invalid";
+/** A dev-created test-group member from before the synthetic domain. */
+const LEGACY_EMAIL = "old-test@wisc.edu";
 const testAccount = { students: [{ groupId: TEST_GROUP_ID }] };
 
 beforeEach(() => {
@@ -114,15 +116,27 @@ describe("deleteTestAccount", () => {
     expect(deletes).toEqual(["submissions", "magic_links", "students"]);
   });
 
-  // schedule_assignments cascades off students, so the delete would strip the
-  // account's shifts out of every saved run without saying so.
-  it("refuses an account that holds shifts in a saved run", async () => {
+  // Synthetic-domain accounts are placed on purpose and their rows never reach
+  // the schedule, so the shifts cascade away with the account.
+  it("deletes a test account that holds shifts, taking the shifts with it", async () => {
     const { deletes } = useDb({
       ...testAccount,
       submissions: [{ id: "s1" }],
       schedule_assignments: [{ runId: "r1" }],
     });
-    await expect(deleteTestAccount(form(EMAIL))).rejects.toThrow(
+    await deleteTestAccount(form(EMAIL));
+    expect(deletes).toEqual(["submissions", "magic_links", "students"]);
+  });
+
+  // schedule_assignments cascades off students, so deleting anyone else in the
+  // test group would strip their shifts out of every saved run without saying so.
+  it("refuses a legacy test-group account that holds shifts in a saved run", async () => {
+    const { deletes } = useDb({
+      ...testAccount,
+      submissions: [{ id: "s1" }],
+      schedule_assignments: [{ runId: "r1" }],
+    });
+    await expect(deleteTestAccount(form(LEGACY_EMAIL))).rejects.toThrow(
       "REDIRECT /admin/test-users?error=in-schedule",
     );
     expect(deletes).toEqual([]);
@@ -140,7 +154,7 @@ describe("deleteTestAccount", () => {
       submissions: [{ id: "s1" }],
       schedule_assignments: [{ runId: "r1" }],
     });
-    await expect(deleteTestAccount(form(EMAIL))).rejects.toThrow("REDIRECT");
+    await expect(deleteTestAccount(form(LEGACY_EMAIL))).rejects.toThrow("REDIRECT");
     expect(joins).toContain("schedule_assignments:schedule_runs");
   });
 

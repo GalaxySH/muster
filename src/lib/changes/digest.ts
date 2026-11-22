@@ -31,7 +31,7 @@ export interface ChangeDigestRunResult {
   requestCount: number;
   recipientCount: number;
   /** Why nothing was sent (absent on success). */
-  reason?: "no-requests" | "digest-off" | "no-recipients" | "email-off";
+  reason?: "no-requests" | "digest-off" | "no-recipients" | "email-off" | "not-delivered";
 }
 
 export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDigestRunResult> {
@@ -52,8 +52,16 @@ export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDig
   if (!(await getEmailSendingEnabled())) return { ...base, reason: "email-off" };
 
   const email = buildChangeDigestEmail(pending, env.NEXTAUTH_URL);
+  let delivered = 0;
   for (const to of recipients) {
-    await sendEmail({ to, ...email });
+    const { outcome } = await sendEmail({ to, ...email });
+    if (outcome === "sent") delivered += 1;
+  }
+  // A message only logged (no Resend key) or blocked by the dev test-recipient
+  // guard reached nobody, so the rows stay unstamped for a later digest rather
+  // than reading as reported.
+  if (delivered === 0) {
+    return { ...base, recipientCount: recipients.length, reason: "not-delivered" };
   }
 
   await getDb()

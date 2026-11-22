@@ -164,6 +164,23 @@ describe("sendScheduleEmail", () => {
     expect(updateSubmission).not.toHaveBeenCalled();
   });
 
+  it("doesn't stamp or mark scheduled when there's no email service and it was only logged", async () => {
+    sendEmail.mockResolvedValue({ outcome: "logged", cc: [] });
+    const res = await sendScheduleEmail("sfhauge@wisc.edu", input);
+    expect(res.ok).toBe(true);
+    expect(res.message).toMatch(/server log/);
+    expect(res.message).toMatch(/wasn't marked as sent/);
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("refuses a test account without sending or stamping", async () => {
+    const res = await sendScheduleEmail("trainee@test.muster.invalid", input);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/test accounts/i);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
   it("doesn't stamp when Resend refuses", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     sendEmail.mockRejectedValue(new Error("Resend send failed (422)"));
