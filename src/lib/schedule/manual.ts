@@ -51,9 +51,12 @@ import { toDomainBlock } from "@/lib/db/mappers";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { effectiveRotation } from "@/lib/availability/effective";
+import { onRosterStudent } from "@/lib/roster/lookup";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
+const OFF_ROSTER_MESSAGE =
+  "This student is no longer on the roster, so they can't be added to the schedule.";
 /**
  * The run moved under the save. Named rather than paraphrased because the
  * admin's trial is still on screen and re-composing it against the new run is
@@ -121,6 +124,18 @@ export async function applyScheduleEdits(
   }
 
   const db = getDb();
+  // Every scheduling surface hides students who left the roster (1.26), so a
+  // row placed for one would count nowhere the scheduler looks. Only additions
+  // are refused: removing a departed student's leftover rows stays allowed.
+  if (adds.length > 0) {
+    const [listed] = await db
+      .select({ email: students.email })
+      .from(students)
+      .where(and(eq(students.email, email), onRosterStudent()))
+      .limit(1);
+    if (!listed) return fail(OFF_ROSTER_MESSAGE);
+  }
+
   const run = await loadCurrentRunRow();
   if (!run) return fail(NO_RUN_MESSAGE);
 

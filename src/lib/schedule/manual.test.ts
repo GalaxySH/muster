@@ -24,12 +24,12 @@ import { getTableName, type Table } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { clearStudentSchedule } from "./manual";
+import { applyScheduleEdits, clearStudentSchedule } from "./manual";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
 interface Write {
-  op: "delete";
+  op: "delete" | "transaction";
   table: string;
 }
 
@@ -46,10 +46,11 @@ interface QueryChain {
 
 /**
  * Stand-in for the drizzle handle: a `schedule_runs` select answers from
- * `runs`, and every delete is logged and resolves to `[{ affectedRows }]`,
- * the shape `clearStudentSchedule` destructures.
+ * `runs`, a `students` select from `rosterRows` (the on-roster lookup), and
+ * every delete is logged and resolves to `[{ affectedRows }]`, the shape
+ * `clearStudentSchedule` destructures. A transaction is logged and never run.
  */
-function fakeDb(runs: unknown[] = [], affectedRows = 0) {
+function fakeDb(runs: unknown[] = [], affectedRows = 0, rosterRows: unknown[] = []) {
   const writes: Write[] = [];
   const select = (): QueryChain => {
     let table = "";
@@ -62,12 +63,18 @@ function fakeDb(runs: unknown[] = [], affectedRows = 0) {
       orderBy: () => chain,
       limit: () => chain,
       then: (fulfil, reject) =>
-        Promise.resolve(table === "schedule_runs" ? runs : []).then(fulfil, reject),
+        Promise.resolve(
+          table === "schedule_runs" ? runs : table === "students" ? rosterRows : [],
+        ).then(fulfil, reject),
     };
     return chain;
   };
   const handle = {
     select: () => select(),
+    transaction: () => {
+      writes.push({ op: "transaction", table: "" });
+      return Promise.resolve([]);
+    },
     delete: (t: unknown) => {
       writes.push({ op: "delete", table: nameOf(t) });
       const chain = {
@@ -139,5 +146,44 @@ describe("clearStudentSchedule", () => {
     await clearStudentSchedule("  S@WISC.EDU  ");
 
     expect(vi.mocked(revalidatePath).mock.calls.flat()).toContain("/admin/students/s%40wisc.edu");
+  });
+});
+
+describe("applyScheduleEdits roster check", () => {
+  const cell = { blockId: "b1", day: "mon" } as never;
+
+  beforeEach(() => {
+    vi.mocked(requireAdmin).mockResolvedValue({ ok: true, email: "boss@wisc.edu" });
+  });
+
+  it("refuses to add a shift for a student who left the roster, and writes nothing", async () => {
+    const { handle, writes } = fakeDb([{ id: "run-1", status: "current" }], 0, []);
+    vi.mocked(getDb).mockReturnValue(handle as never);
+
+    const res = await applyScheduleEdits("gone@wisc.edu", [], [cell]);
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/no longer on the roster/i);
+    expect(writes).toEqual([]);
+  });
+
+  it("lets an on-roster student through to the run check", async () => {
+    const { handle } = fakeDb([], 0, [{ email: "s@wisc.edu" }]);
+    vi.mocked(getDb).mockReturnValue(handle as never);
+
+    const res = await applyScheduleEdits("s@wisc.edu", [], [cell]);
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/generate a schedule/i);
+  });
+
+  it("still lets an admin remove a departed student's rows", async () => {
+    const { handle } = fakeDb([], 0, []);
+    vi.mocked(getDb).mockReturnValue(handle as never);
+
+    const res = await applyScheduleEdits("gone@wisc.edu", [cell], []);
+
+    expect(res.error).not.toMatch(/roster/i);
+    expect(res.error).toMatch(/generate a schedule/i);
   });
 });
