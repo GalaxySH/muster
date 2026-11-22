@@ -265,8 +265,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   a variables key and preview, along with the **cc
   email** (default `gdec_h-o@g-groups.wisc.edu`; default-on per send; always the
   reply-to), the sender name and local part (the domain stays EMAIL_FROM's verified
-  one), and **Mark the student scheduled when you send it** (default on). A send stamps
-  `scheduleEmailSentAt`, shown in Student details once set. Outside production,
+  one), and **Mark the student scheduled when you send it** (default on). A send that
+  actually goes out stamps `scheduleEmailSentAt`, shown in Student details once set (one
+  only logged, with no email service, records nothing; test accounts are refused). Outside production,
   `sendEmail` only delivers to `EMAIL_TEST_RECIPIENTS`. See
   `docs/scheduler-automation.md`.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
@@ -1610,7 +1611,16 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   still lands, since it proves the scheduler fired. (3) `applyScheduleEdits` refuses a
   batch that adds a shift for a student who is not on the roster (`onRosterStudent()`),
   closing the hole 1.26 named. Removals and the clear-schedule button stay allowed.
-  Test accounts are off-roster, so the grid no longer places them either.
+  **Test accounts** (the synthetic domain, `isTestAccountEmail`) are exempt and can be
+  placed on purpose: the same on-roster filter keeps their rows off the schedule page,
+  coverage, the sheet and the W2W export, so they show only on the account's own page.
+  Generation leaves them out of the previous run's rows, so a regenerate clears them
+  rather than reporting the account as having left the roster, and deleting a
+  synthetic-domain account no longer refuses over its shifts (they cascade; other
+  test-group members keep the guard). (4) The per-student schedule email stamps
+  `scheduleEmailSentAt` (and the scheduled mark) only on a `sent` outcome: a send that
+  was only logged says so and records nothing. It also refuses a test account, whose
+  address can't be delivered to.
 - **1.46 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
   answer the Google Form instead of Muster can be brought in by copy and paste, with no
   link between the sheet and the app. A bound Apps Script on the response sheet

@@ -1203,7 +1203,9 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   rendering them with the saved font, cc and sender. A send
   refuses when the master switch is off, passes an `Idempotency-Key` minted when the
   dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
-  `scheduled` when `marksScheduled` is on) through `updateSubmission`, which lives in
+  `scheduled` when `marksScheduled` is on; since 1.47 that means a `sent` outcome, so a
+  message only logged for lack of a Resend key records nothing, and a test account is
+  refused before sending) through `updateSubmission`, which lives in
   the `server-only` `lib/admin/update-submission.ts` so it can't become a client-callable
   action.
 - **UI:** `MarkScheduledButton` is a split button; its caret menu opens
@@ -1246,11 +1248,13 @@ to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
 (never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
 test-group membership AND the synthetic domain);
-delete only ever removes test-group members, refuses while the account still holds
-shifts in the **current** run (`schedule_assignments` cascades off `students`, and
-before 1.47 the per-student grid applied no on-roster check, so a test account could be
-hand-placed into it; since 1.47 the grid refuses to add shifts for any off-roster
-student, test accounts included, but rows placed earlier can still be there). The guard is scoped to the current run deliberately: the grid edits only that
+delete only ever removes test-group members. **Shifts (1.47):** the per-student grid
+refuses to add shifts for off-roster students except synthetic-domain test accounts,
+which may be placed on purpose; the on-roster filter keeps their rows off every
+schedule surface, generation drops them from the previous run's rows, and deleting
+such an account lets its rows cascade. Any other test-group member (a legacy
+`@wisc.edu` account) is refused while it still holds shifts in the **current** run
+(`schedule_assignments` cascades off `students`). That guard is scoped to the current run deliberately: the grid edits only that
 run, so guarding over superseded runs too would leave such an account permanently
 undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
 `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
@@ -1666,7 +1670,7 @@ coverage view, no generator yet. Standard layering:
   write path, `schedule/manual.ts`, refuses instead of filtering (1.47): a batch that
   adds a shift for a student `onRosterStudent()` does not match fails with a message and
   writes nothing. Removals stay allowed, so a departed student's leftover rows can still
-  be cleared.
+  be cleared. Synthetic-domain test accounts are exempt (see the test-account manager).
 
 ## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
 
