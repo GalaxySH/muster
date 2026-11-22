@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.44
+- **Version:** 1.46
 - **Last updated:** 2026-11-21
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -694,7 +694,7 @@ columns from the roster.
   `desiredHours?`, `studentNotes?`, `scheduled: bool` + `schedulerNotes?` (admin-side —
   §10a), `scheduleEmailSentAt?` (when an admin last sent the per-student schedule email,
   1.34; the column dates from the removed batch email and was reused, not dropped), `status` (`draft`|`submitted`),
-  `submittedVia` (`muster`|`google_form`, 1.44: `google_form` marks a Google Form response
+  `submittedVia` (`muster`|`google_form`, 1.46: `google_form` marks a Google Form response
   an admin pasted in, `docs/form-paste.md`; its `submittedAt` is the form's timestamp). *No image bytes stored in-app.*
 - **ShiftSelection**: `submissionId`, `shiftBlockId`, `day`, `available: bool`.
   **The student's own record, and only theirs** (1.07): admin edits never write this
@@ -1597,7 +1597,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.44 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
+- **1.46 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
   answer the Google Form instead of Muster can be brought in by copy and paste, with no
   link between the sheet and the app. A bound Apps Script on the response sheet
   (`integrations/form-sheet/`, **Muster > Copy response for Muster**) copies one row as

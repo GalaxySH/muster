@@ -7,7 +7,7 @@ per-student page. Nothing links the sheet to the app: no API calls, no credentia
 stored sheet ID. The only contract between them is the payload format below.
 
 - **Sheet side (built):** a bound Apps Script in `integrations/form-sheet/`.
-- **Muster side (built, PLAN 1.44):** **Paste form response** on the per-student page.
+- **Muster side (built, PLAN 1.46):** **Paste form response** on the per-student page.
   See "Muster side" below.
 
 The rule of thumb is that **the sheet copies and Muster interprets**. The script sends

@@ -558,7 +558,7 @@ New admin pages: `/admin/travel` (2.3); `/admin/schedule-email` (2.4) was added 
 too and removed in 0.99 (roadmap 6.1). Wireframe design tokens (`--color-*`,
 `--border-radius-*`) live in `globals.css`.
 
-### Google Form paste import (1.44)
+### Google Form paste import (1.46)
 
 **Paste form response** in the per-student header (`FormPasteButton`) brings in one
 Google Form response copied by the sheet script. The full contract and rules are in
