@@ -70,7 +70,11 @@ export default async function AdminTravelPage() {
                     </div>
                     <div style={rowRight}>
                       <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        {!entry.excused && <span style={dangerPillStyle}>late</span>}
+                        {!entry.excused && (
+                          <span style={dangerPillStyle}>
+                            {entry.proofFileId ? "late" : "no proof"}
+                          </span>
+                        )}
                         <span style={dateRange}>{fmtRange(entry.startDate, entry.endDate)}</span>
                       </span>
                       <TravelResolvedCheckbox id={entry.id} resolved={entry.resolved} />

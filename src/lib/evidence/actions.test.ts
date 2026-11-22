@@ -165,9 +165,31 @@ describe("addTravelRequest proof rule", () => {
 
     const res = await addTravelRequest(travelForm(pngFile()));
 
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, fileId: "DRIVE1" });
     expect(relayUpload).toHaveBeenCalledTimes(1);
     expect(inserts[0]!.values.proofFileId).toBe("DRIVE1");
+  });
+
+  it("lets an admin store an entry as not excused", async () => {
+    asAdminFor();
+    const { inserts } = useDb();
+    const form = travelForm();
+    form.set("excused", "0");
+
+    await addTravelRequest(form);
+
+    expect(inserts[0]!.values.excused).toBe(false);
+  });
+
+  it("ignores the excused field from a student", async () => {
+    asStudent();
+    const { inserts } = useDb();
+    const form = travelForm(pngFile());
+    form.set("excused", "0");
+
+    await addTravelRequest(form);
+
+    expect(inserts[0]!.values.excused).toBe(true);
   });
 
   it("refuses a student who attached nothing", async () => {
@@ -197,7 +219,7 @@ describe("addTravelRequest proof rule", () => {
 
     const res = await addTravelRequest(travelForm(pngFile()));
 
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, fileId: "DRIVE1" });
     expect(inserts[0]!.values.proofFileId).toBe("DRIVE1");
   });
 });

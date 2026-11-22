@@ -31,6 +31,8 @@ import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 export interface ActionResult {
   ok: boolean;
   error?: string;
+  /** The Drive fileId an upload was stored as, when it stored one. */
+  fileId?: string;
 }
 
 /**
@@ -118,7 +120,7 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
       .where(eq(submissions.id, submissionId));
     if (prev?.courseScheduleFileId) await relayDelete(prev.courseScheduleFileId);
     revalidateEvidence("/course-schedule", who);
-    return { ok: true };
+    return { ok: true, fileId };
   } catch (e) {
     return { ok: false, error: relayError(e) };
   }
@@ -181,7 +183,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
     await db.insert(extracurricularFiles).values({ id: randomUUID(), submissionId, fileId });
     await touchSubmission(submissionId, who);
     revalidateEvidence("/course-schedule", who);
-    return { ok: true };
+    return { ok: true, fileId };
   } catch (e) {
     return { ok: false, error: relayError(e) };
   }
@@ -234,7 +236,9 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   // "refuse" (the default) stores nothing on/after the cutoff, so every entry
   // is excused; "accept-and-flag" keeps accepting but stores the entry
   // unexcused (late). An admin adding an entry for them IS the excusal call, so
-  // the cutoff doesn't stop it and the entry is stored excused either way.
+  // the cutoff doesn't stop it and the entry is stored excused, unless the admin
+  // says otherwise with `excused=0` (the Google Form import does that for a
+  // range that came with no proof, docs/form-paste.md).
   const now = new Date();
   const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
   const decision = decideTravelSubmission(now, cutoff, policy);
@@ -244,7 +248,9 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
       error: `The travel deadline (${cutoff.toLocaleDateString()}) has passed. New travel can no longer be added.`,
     };
   }
-  const excused = who.onBehalf || (decision.allowed && decision.excused);
+  const excused = who.onBehalf
+    ? formData.get("excused") !== "0"
+    : decision.allowed && decision.excused;
 
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
@@ -289,7 +295,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
     });
     await touchSubmission(submissionId, who);
     revalidateEvidence("/travel", who);
-    return { ok: true };
+    return { ok: true, ...(proofFileId ? { fileId: proofFileId } : {}) };
   } catch (e) {
     return { ok: false, error: relayError(e) };
   }

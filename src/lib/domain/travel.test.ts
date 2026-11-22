@@ -4,7 +4,23 @@ import {
   defaultTravelCutoff,
   decideTravelSubmission,
   LATE_TRAVEL_POLICY,
+  travelStanding,
 } from "./travel";
+
+describe("travelStanding", () => {
+  it("is excused whenever the entry is", () => {
+    expect(travelStanding({ excused: true, proofFileId: null })).toBe("excused");
+    expect(travelStanding({ excused: true, proofFileId: "f" })).toBe("excused");
+  });
+
+  it("is late when an unexcused entry has proof", () => {
+    expect(travelStanding({ excused: false, proofFileId: "f" })).toBe("late");
+  });
+
+  it("is unproven when an unexcused entry has no proof", () => {
+    expect(travelStanding({ excused: false, proofFileId: null })).toBe("unproven");
+  });
+});
 
 describe("isTravelExcused", () => {
   const cutoff = new Date("2026-09-01T00:00:00Z"); // global 9/1 cutoff

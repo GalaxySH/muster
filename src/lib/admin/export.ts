@@ -11,7 +11,15 @@
 import { computeCapacity, distinctSelectedDays } from "@/lib/domain/capacity";
 import { hourCap } from "@/lib/domain/caps";
 import { formatTime } from "@/lib/domain/time";
+import { travelStanding, type TravelStanding } from "@/lib/domain/travel";
 import { ALL_DAYS, DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+
+/** The short travel standing the export writes after each range. */
+const EXPORT_STANDING: Record<TravelStanding, string> = {
+  excused: "excused",
+  late: "late",
+  unproven: "no proof",
+};
 
 export interface ExportTravel {
   startDate: string;
@@ -142,7 +150,7 @@ export function buildExportMatrix(rows: readonly ExportAggregate[]): string[][] 
       r.travel
         .map(
           (t) =>
-            `${t.startDate}→${t.endDate} (${t.excused ? "excused" : "late"})` +
+            `${t.startDate}→${t.endDate} (${EXPORT_STANDING[travelStanding(t)]})` +
             (t.proofFileId ? ` ${driveLink(t.proofFileId)}` : ""),
         )
         .join(" | "),

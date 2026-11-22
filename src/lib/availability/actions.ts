@@ -35,7 +35,7 @@
  * submission row, since there is no internal copy of either.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getAppSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
@@ -216,10 +216,18 @@ async function writeSelectionAndFlags(
     // Late travel (unexcused entries) → flag for the scheduler (§8). Under the
     // active "refuse" late policy (domain/travel.ts) unexcused rows can't be
     // created, so this stays dormant until the policy flips to accept-and-flag.
+    // An unexcused entry with no proof isn't late (`travelStanding`), so it's
+    // left out.
     const lateTravel = await tx
       .select({ id: travelRequests.id })
       .from(travelRequests)
-      .where(and(eq(travelRequests.submissionId, submissionId), eq(travelRequests.excused, false)));
+      .where(
+        and(
+          eq(travelRequests.submissionId, submissionId),
+          eq(travelRequests.excused, false),
+          isNotNull(travelRequests.proofFileId),
+        ),
+      );
     if (lateTravel.length > 0) {
       await tx.insert(flags).values({
         id: randomUUID(),

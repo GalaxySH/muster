@@ -29,11 +29,13 @@ import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claim
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import { weekendCohortOf } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
+import { TRAVEL_STANDING_LABEL, travelStanding } from "@/lib/domain/travel";
 import { DAY_LABEL, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
 import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import type { DbFlagType } from "@/lib/db/schema";
 import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
+import { FormPasteButton } from "@/components/admin/FormPasteButton";
 import { NotesCard } from "@/components/admin/NotesCard";
 import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
@@ -273,7 +275,7 @@ export default async function StudentDetailPage({
   const grid = position
     ? buildAdminGrid(blocks, gridSelection, gridAutoAssigned, highDemand, schedule?.cells ?? [])
     : null;
-  const lateTravelCount = evidence.travel.filter((t) => !t.excused).length;
+  const lateTravelCount = evidence.travel.filter((t) => travelStanding(t) === "late").length;
   const cap = hourCap(detail.international);
   // Both null before any generation, which is also when schedule mode is off.
   // Measured off the run's own rows rather than the grid: a row carried on a
@@ -324,6 +326,9 @@ export default async function StudentDetailPage({
           {status !== "submitted" && (
             <span style={status === "draft" ? draftPill : missingPill}>{status}</span>
           )}
+          {status === "submitted" && submission?.submittedVia === "google_form" && (
+            <span style={viaFormPill}>via Google Form</span>
+          )}
           {submission && (
             <ResponseStamps submittedAt={submission.submittedAt} updatedAt={submission.updatedAt} />
           )}
@@ -333,6 +338,26 @@ export default async function StudentDetailPage({
           >
             New change request
           </Link>
+          <FormPasteButton
+            studentEmail={detail.email}
+            onFile={{
+              positionName: position?.name ?? null,
+              desiredHours: submission?.desiredHours ?? null,
+              everyWeekendOptIn: submission?.everyWeekendOptIn ?? false,
+              studentNotes: submission?.studentNotes ?? "",
+              extracurricularNotes: evidence.extracurricularNotes,
+              schedulerNotes: submission?.schedulerNotes ?? "",
+              courseScheduleFileId: evidence.courseScheduleFileId,
+              extracurricularFileIds: evidence.extracurricularFiles.map((f) => f.fileId),
+              travel: evidence.travel.map((t) => ({
+                startDate: t.startDate,
+                endDate: t.endDate,
+                proofFileId: t.proofFileId,
+              })),
+              submittedVia: submission?.status === "submitted" ? submission.submittedVia : null,
+              submittedAt: submission?.submittedAt?.toISOString() ?? null,
+            }}
+          />
           <GenerateMagicLinkButton studentEmail={detail.email} />
           <MarkScheduledButton
             scheduled={submission?.scheduled ?? false}
@@ -592,7 +617,7 @@ export default async function StudentDetailPage({
                     <div>
                       {t.startDate} → {t.endDate}{" "}
                       <span style={t.excused ? successPillStyle : dangerPillStyle}>
-                        {t.excused ? "excused" : "not excused (late)"}
+                        {TRAVEL_STANDING_LABEL[travelStanding(t)]}
                       </span>
                     </div>
                     {t.note && <div style={{ color: "var(--color-text-secondary)" }}>{t.note}</div>}
@@ -1194,6 +1219,14 @@ const cardUnsubmitted: React.CSSProperties = {
   boxShadow: "0 0 0 1px var(--color-border-danger)",
 };
 /** Started but not sent: highlighted, not alarming. */
+/** A response pasted in from the Google Form (docs/form-paste.md). */
+const viaFormPill: React.CSSProperties = {
+  background: "var(--color-background-secondary)",
+  color: "var(--color-text-secondary)",
+  border: "1px solid var(--color-border-secondary)",
+  borderRadius: 10,
+  padding: "1px 8px",
+};
 const draftPill: React.CSSProperties = {
   background: "var(--color-background-warning)",
   color: "var(--color-text-warning)",
