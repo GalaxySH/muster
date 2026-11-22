@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      body {
+        font:
+          13px/1.45 Inter,
+          Roboto,
+          Arial,
+          sans-serif;
+        color: #26222e;
+        margin: 0;
+        padding: 4px 2px;
+      }
+      h2 {
+        font-size: 17px;
+        margin: 0 0 2px;
+      }
+      .sub {
+        color: #6b6478;
+        margin-bottom: 10px;
+      }
+      .note {
+        border-radius: 6px;
+        padding: 7px 10px;
+        margin: 6px 0;
+      }
+      .warn {
+        background: #fff1dc;
+        border: 1px solid #f3c27a;
+      }
+      .info {
+        background: #eef7ee;
+        border: 1px solid #a8d5a8;
+      }
+      .err {
+        background: #fde8e8;
+        border: 1px solid #f0a3a3;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 6px 0 10px;
+      }
+      td {
+        padding: 3px 6px;
+        border-bottom: 1px solid #eee9f3;
+        vertical-align: top;
+      }
+      td.k {
+        color: #6b6478;
+        width: 38%;
+      }
+      .tag {
+        display: inline-block;
+        padding: 0 6px;
+        border-radius: 9px;
+        font-size: 11px;
+        background: #ece6f5;
+        color: #5b3f86;
+      }
+      .tag.bad {
+        background: #fde8e8;
+        color: #a12a2a;
+      }
+      .bar {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        padding: 10px 0 2px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      button {
+        font: inherit;
+        border-radius: 6px;
+        padding: 7px 14px;
+        border: 1px solid #5b3f86;
+        background: #fff;
+        color: #5b3f86;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #5b3f86;
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        color: #6b6478;
+      }
+      #fallback {
+        width: 100%;
+        height: 70px;
+        font: 11px monospace;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading">Gathering row <?= row ?> and its uploads…</div>
+    <div id="main" style="display: none">
+      <h2 id="name"></h2>
+      <div class="sub" id="meta"></div>
+      <div id="notes"></div>
+      <table id="fields"></table>
+      <div id="filesBox"></div>
+      <textarea id="fallback" readonly></textarea>
+      <div class="bar">
+        <button class="primary" id="copy">Copy for Muster</button>
+        <button id="undo" style="display: none">Undo green</button>
+        <button onclick="google.script.host.close()">Close</button>
+        <span id="status"></span>
+      </div>
+    </div>
+    <div id="fail" class="note err" style="display: none"></div>
+
+    <script>
+      const SHEET = <?!= JSON.stringify(sheetName) ?>;
+      const ROW = <?!= JSON.stringify(row) ?>;
+      let data = null;
+
+      const el = (id) => document.getElementById(id);
+      const esc = (s) =>
+        String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const note = (cls, html) => (el("notes").innerHTML += '<div class="note ' + cls + '">' + html + "</div>");
+      const kb = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB");
+
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler((e) => {
+          el("loading").style.display = "none";
+          el("fail").style.display = "block";
+          el("fail").textContent = e.message || String(e);
+        })
+        .musterBuildCopy(SHEET, ROW);
+
+      function render(d) {
+        data = d;
+        el("loading").style.display = "none";
+        el("main").style.display = "block";
+        el("name").textContent = d.name || d.email || "Row " + d.row;
+        el("meta").textContent = [d.email, "submitted " + d.submittedAt, "row " + d.row, kb(d.text.length)]
+          .filter(Boolean)
+          .join("  ·  ");
+
+        if (d.superseded) note("warn", "This row is marked as superseded (orange). Muster should get the newer response.");
+        for (const n of d.newer) note("warn", "A newer response from this student is in row " + n.row + ".");
+        if (d.alreadyCopied) note("info", "This row is already marked as copied (green).");
+
+        el("fields").innerHTML = d.fields
+          .filter((f) => f.value !== "")
+          .map((f) => '<tr><td class="k">' + esc(f.label) + "</td><td>" + esc(f.value) + "</td></tr>")
+          .join("");
+
+        let fh = "";
+        if (d.files.length) {
+          fh += '<table><tr><td colspan="2"><b>Uploads</b></td></tr>';
+          for (const f of d.files) {
+            const tag =
+              f.encoding === "link"
+                ? '<span class="tag bad">link only: ' + esc(f.error) + "</span>"
+                : '<span class="tag">' + (f.encoding === "resized" ? "resized" : "original") + "</span>";
+            fh += '<tr><td class="k">' + esc(f.label) + "</td><td>" + esc(f.name || "(unnamed)") + " " + tag + "</td></tr>";
+          }
+          fh += "</table>";
+        }
+        if (d.unkeyed.length) {
+          fh +=
+            '<div class="note warn">These columns have no field key, so they go as plain notes: ' +
+            d.unkeyed.map(esc).join("; ") +
+            ".</div>";
+        }
+        el("filesBox").innerHTML = fh;
+      }
+
+      el("copy").onclick = async () => {
+        const ok = await copyText(data.text);
+        if (!ok) {
+          el("status").textContent = "Couldn't reach the clipboard. Press Ctrl+C now (the text is selected).";
+          return;
+        }
+        el("copy").disabled = true;
+        if (data.superseded) {
+          el("status").textContent = "Copied. Row left orange.";
+          return;
+        }
+        el("status").textContent = "Copied. Marking the row green…";
+        google.script.run
+          .withSuccessHandler((marked) => {
+            el("status").textContent = marked ? "Copied. Row marked green." : "Copied.";
+            if (marked) el("undo").style.display = "";
+          })
+          .withFailureHandler((e) => (el("status").textContent = "Copied, but marking failed: " + e.message))
+          .musterMarkCopied(SHEET, ROW);
+      };
+
+      el("undo").onclick = () => {
+        el("undo").disabled = true;
+        google.script.run
+          .withSuccessHandler(() => {
+            el("status").textContent = "Copied. Row colour restored.";
+            el("undo").style.display = "none";
+          })
+          .musterUndoMark(SHEET, ROW);
+      };
+
+      // The async clipboard API is often blocked inside Sheets dialogs, so fall back to a
+      // selected textarea and execCommand, which works from the click.
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (e) {}
+        const ta = el("fallback");
+        ta.value = text;
+        ta.style.display = "block";
+        ta.focus();
+        ta.select();
+        let ok = false;
+        try {
+          ok = document.execCommand("copy");
+        } catch (e) {}
+        if (ok) ta.style.display = "none";
+        return ok;
+      }
+    </script>
+  </body>
+</html>

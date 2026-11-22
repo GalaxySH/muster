@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      body {
+        font:
+          13px/1.45 Inter,
+          Roboto,
+          Arial,
+          sans-serif;
+        color: #26222e;
+        margin: 0;
+        padding: 4px 2px;
+      }
+      p {
+        margin: 0 0 8px;
+        color: #6b6478;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      td {
+        padding: 4px 6px;
+        border-bottom: 1px solid #eee9f3;
+        vertical-align: middle;
+      }
+      td.h {
+        width: 58%;
+      }
+      td.c {
+        color: #9a93a6;
+        width: 28px;
+      }
+      select {
+        font: inherit;
+        width: 100%;
+      }
+      tr.sug select {
+        background: #fff8e6;
+      }
+      .bar {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        padding: 10px 0 2px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      button {
+        font: inherit;
+        border-radius: 6px;
+        padding: 7px 14px;
+        border: 1px solid #5b3f86;
+        background: #fff;
+        color: #5b3f86;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #5b3f86;
+        color: #fff;
+      }
+      #status {
+        color: #6b6478;
+      }
+      #status.err {
+        color: #a12a2a;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      Pick what each question means to Muster. Keys stay attached to their column even if the
+      question is reworded. Yellow rows are suggestions; check them before saving. Columns left
+      blank still go to Muster as plain notes.
+    </p>
+    <table id="t">
+      <tr>
+        <td>Loading…</td>
+      </tr>
+    </table>
+    <div class="bar">
+      <button class="primary" id="save">Save keys</button>
+      <button onclick="google.script.host.close()">Close</button>
+      <span id="status"></span>
+    </div>
+    <script>
+      const SHEET = <?!= JSON.stringify(sheetName) ?>;
+      const el = (id) => document.getElementById(id);
+      const esc = (s) =>
+        String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      google.script.run
+        .withSuccessHandler((m) => {
+          const opts = (sel) =>
+            '<option value="">(not sent as a field)</option>' +
+            m.fields
+              .map((f) => '<option value="' + f.key + '"' + (f.key === sel ? " selected" : "") + ">" + esc(f.label) + "</option>")
+              .join("");
+          el("t").innerHTML = m.rows
+            .filter((r) => r.header)
+            .map(
+              (r) =>
+                '<tr class="' + (r.suggested ? "sug" : "") + '"><td class="c">' + r.col + '</td><td class="h">' +
+                esc(r.header) + '</td><td><select data-col="' + r.col + '">' + opts(r.key) + "</select></td></tr>",
+            )
+            .join("");
+        })
+        .withFailureHandler((e) => (el("t").innerHTML = "<tr><td>" + esc(e.message) + "</td></tr>"))
+        .musterKeysModel();
+
+      el("save").onclick = () => {
+        const assign = {};
+        for (const s of document.querySelectorAll("select")) assign[s.dataset.col] = s.value;
+        el("status").className = "";
+        el("status").textContent = "Saving…";
+        google.script.run
+          .withSuccessHandler((n) => {
+            el("status").textContent = "Saved " + n + " keys.";
+            for (const tr of document.querySelectorAll("tr.sug")) tr.className = "";
+          })
+          .withFailureHandler((e) => {
+            el("status").className = "err";
+            el("status").textContent = e.message;
+          })
+          .musterSaveKeys(SHEET, assign);
+      };
+    </script>
+  </body>
+</html>
