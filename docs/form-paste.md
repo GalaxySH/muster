@@ -79,7 +79,7 @@ The colours are the owner's manual convention, and the script follows it:
   green, and the dialog offers Undo, which restores the previous colours.
 - **Orange `#ff9900`:** a newer response from the same student supersedes this row. The
   dialog warns about it and never recolours it.
-- **Red:** the script leaves these rows alone.
+- **Red and any other colour** mean nothing to the script, which leaves them alone.
 
 The dialog also warns when another row from the same email is newer.
 
@@ -157,12 +157,10 @@ How each field maps:
 - **Preferred name and opening/closing preference** are added as plain-text lines in the
   scheduling notes. They get no new columns and no special UI.
 - **Upload tracking lives in the scheduling notes,** as a footer of plain `key: value`
-  lines, for example `form-file: <driveId>`.
-  - On paste, a file whose `driveId` already appears there is skipped. Any other file is
-    uploaded through the relay and its line is added.
-  - Possible refinement: record `form-file: <driveId> -> <muster fileId>`, so that a match
-    only counts while that Muster file is still attached. As written, removing the Muster
-    copy would block the next paste from uploading it again.
+  lines, one per imported file: `form-file: <form driveId> -> <muster fileId>`. On paste,
+  a file counts as already imported only when its form `driveId` is in the footer **and**
+  the Muster file named on that line is still attached to the student. Otherwise the file
+  is uploaded through the relay and its line is added or replaced.
 - **Travel dates.** The form's text is `MM/DD-MM/DD` ranges separated by commas, with the
   space after a comma optional. Exact duplicate ranges are dropped. A range becomes one
   travel entry, editable in the preview before Apply. Year rule:
@@ -170,12 +168,12 @@ How each field maps:
   - January through July takes the next year
   - an end date earlier than its start rolls into the following year (`12/18-01/18`)
   - one row has a summer range (`05/08-08/23`), which these rules place in the summer after the semester
-- **Open question: pairing travel proofs with travel dates.** A row has N proof files and M
-  date ranges, with nothing linking them. A Muster travel entry has at most one proof, and
-  removing the entry trashes that proof. So the preview has to pair them:
-  - When N = M, pair them in order, as a suggestion.
-  - Otherwise, the scheduler picks a proof for each range.
-  - A proof can't be shared between two entries, because removing one entry would trash the other's proof.
-  - Leftover proofs go on the last entry's note as links.
+- **Pairing travel proofs with travel dates is best effort.** Nothing on the form links a
+  proof to a range, so proofs are matched to ranges in order (proof 1 with range 1, and so
+  on), whether or not that's accurate.
+  - A range left with no proof is still added, but stored **not excused**. This differs
+    from the manual on-behalf path, where an admin entry is always excused, so the import
+    passes `excused` explicitly.
+  - Proofs beyond the last range are listed as links in the last entry's note.
 - **Positions are never written.** The form has options that aren't Muster positions
   (DAB, Retail & Cafe), so a mismatch with the roster is shown as a warning only.

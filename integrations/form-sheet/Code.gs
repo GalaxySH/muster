@@ -86,6 +86,15 @@ function readKeys_(sheet) {
   return keys;
 }
 
+// Metadata can only sit on a whole column, which Apps Script recognises from "F:F" notation,
+// not from a range that merely spans every row.
+function columnA1_(col) {
+  let letters = "";
+  for (let n = col; n > 0; n = Math.floor((n - 1) / 26))
+    letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters;
+  return letters + ":" + letters;
+}
+
 function headers_(sheet) {
   const width = sheet.getLastColumn();
   return width ? sheet.getRange(1, 1, 1, width).getDisplayValues()[0] : [];
@@ -151,7 +160,7 @@ function musterSaveKeys(sheetName, assign) {
   for (const key of Object.keys(seen)) {
     const col = Number(seen[key]);
     sheet
-      .getRange(1, col, sheet.getMaxRows(), 1)
+      .getRange(columnA1_(col))
       .addDeveloperMetadata(META_KEY, key, SpreadsheetApp.DeveloperMetadataVisibility.DOCUMENT);
   }
   return Object.keys(seen).length;
