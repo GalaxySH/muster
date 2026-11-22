@@ -230,7 +230,9 @@ shows no control), and the per-student header email is a `SelectableEmail` islan
 request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
 idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
-rows unstamped so requests are never silently lost) and is triggered by the **in-app
+rows unstamped so requests are never silently lost; since 1.47 a message that was only
+logged or blocked by the test-recipient guard is not a send, and the run returns
+`not-delivered`) and is triggered by the **in-app
 scheduler** in `changes/scheduler.ts`: started once per server process from
 `src/instrumentation.ts` (Node runtime only; production always, dev only behind
 `DIGEST_SCHEDULER_DEV` so local servers and Playwright runs never send spontaneously),
@@ -648,8 +650,7 @@ Three layers, and the split is the point:
 green line otherwise. Rows disappear when fixed; they are never greyed out. The dangers
 are the states that silently stop a student submitting (Drive disconnected, Drive
 connected but **failing**, no group, a group whose window is `unconfigured`, a **position
-whose shift blocks a student can never satisfy**, email switched on with **no Resend key**
-in prod) or that mean stored data is now wrong (`revalidation_failed`, a dead digest
+whose shift blocks a student can never satisfy**) or that mean stored data is now wrong (`revalidation_failed`, a dead digest
 scheduler); warnings are things to get to. The no-group and unconfigured-window cases were
 previously **invisible**: `windowState()` already returned `unconfigured` and
 `resolveStudentAccess()` already denied `no-group`, but nothing surfaced either to a human.
@@ -676,7 +677,9 @@ pure seam rather than re-deriving:
   is still open, a **recently closed window** that left members unsubmitted, and the
   running **responses / SL-closes sheets that have never synced** while there is data to
   mirror. Boot-time misconfig (`GOOGLE_CLIENT_ID`/`SECRET` empty, `NEXTAUTH_URL` still
-  localhost) is caught earlier, in `env-guard.ts`, which refuses to start prod.
+  localhost, and since 1.47 `RESEND_API_KEY` empty or `EMAIL_FROM` not a sender address)
+  is caught earlier, in `env-guard.ts`, which refuses to start prod. That retired the
+  hub's `email-no-key` danger, which could only fire in production.
 - **Imminent unresolved travel** (`travel-imminent-unresolved`, a warning): any travel
   entry starting within `IMMINENT_TRAVEL_DAYS` (2) days that no one has ticked resolved,
   naming up to three students. The snapshot no longer carries a `travelCount: number`;
@@ -1244,9 +1247,10 @@ admin-minted token is the **only** door in. Rails: create refuses existing rows
 (never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
 test-group membership AND the synthetic domain);
 delete only ever removes test-group members, refuses while the account still holds
-shifts in the **current** run (`schedule_assignments` cascades off `students`, and the
-per-student grid applies no on-roster check, so an admin can hand-place a test account
-into it). The guard is scoped to the current run deliberately: the grid edits only that
+shifts in the **current** run (`schedule_assignments` cascades off `students`, and
+before 1.47 the per-student grid applied no on-roster check, so a test account could be
+hand-placed into it; since 1.47 the grid refuses to add shifts for any off-roster
+student, test accounts included, but rows placed earlier can still be there). The guard is scoped to the current run deliberately: the grid edits only that
 run, so guarding over superseded runs too would leave such an account permanently
 undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
 `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
@@ -1658,10 +1662,11 @@ coverage view, no generator yet. Standard layering:
   disappears. Two deliberate exceptions: `listScheduleRuns` still counts **stored** rows,
   so run history stays reproducible and will legitimately differ from the filtered run
   view; and the name lookup behind the report is left unfiltered, because the existing
-  "N left the roster and were dropped" warning has to keep naming those people. Known
-  gap: `schedule/manual.ts` can still hand-place a departed student. It is a write path,
-  where filtering would silently default a missing profile rather than refuse, so it
-  needs an explicit refusal instead.
+  "N left the roster and were dropped" warning has to keep naming those people. The
+  write path, `schedule/manual.ts`, refuses instead of filtering (1.47): a batch that
+  adds a shift for a student `onRosterStudent()` does not match fails with a message and
+  writes nothing. Removals stay allowed, so a departed student's leftover rows can still
+  be cleared.
 
 ## Schedule generation (docs/schedule-generation-plan.md Phase B, v0.84-0.85)
 

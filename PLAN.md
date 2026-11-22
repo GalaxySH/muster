@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.46
-- **Last updated:** 2026-11-21
+- **Version:** 1.47
+- **Last updated:** 2026-11-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -1597,6 +1597,20 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.47 (2026-11-22)** — **Missing email config stops a production boot, and the grid
+  won't place a departed student (§14, §10a; issues #10, #18).** (1) `env-guard.ts` now
+  refuses to start production when `RESEND_API_KEY` is empty or `EMAIL_FROM` is not a
+  sender address (`addr@domain` or `Name <addr@domain>`). `EMAIL_FROM` loses its
+  baked-in `re.hauge.rocks` default, so the sender is always deploy configuration. The
+  hub's `email-no-key` danger could only fire in production, which can no longer boot
+  that way, so it and the snapshot's `resendConfigured` / `isProduction` fields are
+  removed. (2) `runChangeDigest` counts a recipient as reached only on a `sent` outcome:
+  when every message was only logged (no key) or blocked by the test-recipient guard,
+  the requests stay unstamped and the run returns `not-delivered`. The last-run stamp
+  still lands, since it proves the scheduler fired. (3) `applyScheduleEdits` refuses a
+  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`),
+  closing the hole 1.26 named. Removals and the clear-schedule button stay allowed.
+  Test accounts are off-roster, so the grid no longer places them either.
 - **1.46 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
   answer the Google Form instead of Muster can be brought in by copy and paste, with no
   link between the sheet and the app. A bound Apps Script on the response sheet
