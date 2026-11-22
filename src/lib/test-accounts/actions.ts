@@ -129,25 +129,32 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
   if (!stu || stu.groupId !== TEST_GROUP_ID) fail("not-found");
 
   // schedule_assignments cascades off students, so deleting the account would
-  // strip its shifts out of the schedule with no warning. Nothing keeps a test
-  // account off it: the per-student grid applies no on-roster check
-  // (schedule/manual.ts), so an admin can hand-place one. Refused rather than
+  // strip its shifts out of the schedule with no warning. Refused rather than
   // reported, the same way a position with run rows on its blocks is
   // (positions/actions.ts), and checked before anything else is deleted so a
   // refusal costs no rows and no Drive files.
+  //
+  // Synthetic-domain accounts skip it: the grid places them on purpose
+  // (schedule/manual.ts), and as off-roster students their rows never reach the
+  // schedule, so their shifts simply go with them. The guard still covers
+  // anyone else in the test group, such as a legacy @wisc.edu account.
   //
   // Scoped to the current run on purpose. Superseded runs can also hold rows for
   // this account, but the grid only edits the current one, so guarding on those
   // would leave the account permanently undeletable with no way to clear it. The
   // run the scheduler is working from is the one worth protecting; older runs
   // lose a synthetic row from their history, which is what a test account is.
-  const [assigned] = await db
-    .select({ runId: scheduleAssignments.runId })
-    .from(scheduleAssignments)
-    .innerJoin(scheduleRuns, eq(scheduleAssignments.runId, scheduleRuns.id))
-    .where(and(eq(scheduleAssignments.studentEmail, email), eq(scheduleRuns.status, "current")))
-    .limit(1);
-  if (assigned) fail("in-schedule");
+  if (!isTestAccountEmail(email)) {
+    const [assigned] = await db
+      .select({ runId: scheduleAssignments.runId })
+      .from(scheduleAssignments)
+      .innerJoin(scheduleRuns, eq(scheduleAssignments.runId, scheduleRuns.id))
+      .where(
+        and(eq(scheduleAssignments.studentEmail, email), eq(scheduleRuns.status, "current")),
+      )
+      .limit(1);
+    if (assigned) fail("in-schedule");
+  }
 
   const [sub] = await db
     .select({ id: submissions.id })

@@ -35,6 +35,7 @@ interface Write {
 
 interface QueryChain {
   from(table: unknown): QueryChain;
+  leftJoin(...args: unknown[]): QueryChain;
   where(...args: unknown[]): QueryChain;
   orderBy(...args: unknown[]): QueryChain;
   limit(...args: unknown[]): QueryChain;
@@ -59,6 +60,7 @@ function fakeDb(runs: unknown[] = [], affectedRows = 0, rosterRows: unknown[] = 
         table = nameOf(t);
         return chain;
       },
+      leftJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: () => chain,
@@ -175,6 +177,16 @@ describe("applyScheduleEdits roster check", () => {
 
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/generate a schedule/i);
+  });
+
+  it("lets an admin place a test account, which is off the roster by design", async () => {
+    const { handle, writes } = fakeDb([{ id: "run-1", status: "current" }], 0, []);
+    vi.mocked(getDb).mockReturnValue(handle as never);
+
+    const res = await applyScheduleEdits("trainee@test.muster.invalid", [], [cell]);
+
+    expect(res.ok).toBe(true);
+    expect(writes).toEqual([{ op: "transaction", table: "" }]);
   });
 
   it("still lets an admin remove a departed student's rows", async () => {

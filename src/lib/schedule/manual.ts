@@ -52,6 +52,7 @@ import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { effectiveRotation } from "@/lib/availability/effective";
 import { onRosterStudent } from "@/lib/roster/lookup";
+import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
@@ -127,7 +128,10 @@ export async function applyScheduleEdits(
   // Every scheduling surface hides students who left the roster (1.26), so a
   // row placed for one would count nowhere the scheduler looks. Only additions
   // are refused: removing a departed student's leftover rows stays allowed.
-  if (adds.length > 0) {
+  // Test accounts are off-roster by design and may be placed: the same filter
+  // keeps their rows off the schedule, the coverage and the W2W export, so they
+  // show only on the account's own page.
+  if (adds.length > 0 && !isTestAccountEmail(email)) {
     const [listed] = await db
       .select({ email: students.email })
       .from(students)

@@ -40,6 +40,7 @@ import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
 import { onRosterStudent } from "@/lib/roster/lookup";
+import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import {
   applyScopeFreeze,
   normalizeScope,
@@ -313,7 +314,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           })
           .from(scheduleAssignments)
           .where(eq(scheduleAssignments.runId, currentRun.id))
-      ).map((r) => ({ ...r, cohort: r.cohort as Cohort }))
+      )
+        // Hand-placed test-account rows are never carried, and leaving them out
+        // here keeps them from reading as someone who left the roster.
+        .filter((r) => !isTestAccountEmail(r.studentEmail))
+        .map((r) => ({ ...r, cohort: r.cohort as Cohort }))
     : [];
 
   // Scoping: freeze everyone outside the chosen positions for this run only, so
