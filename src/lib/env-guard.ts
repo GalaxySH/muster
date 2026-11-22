@@ -18,10 +18,15 @@ export interface ProductionGuardValues {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   NEXTAUTH_URL: string;
+  RESEND_API_KEY: string;
+  EMAIL_FROM: string;
 }
 
 /** A base URL still pointing at the local dev host (localhost or 127.0.0.1). */
 const isLocalhostUrl = (url: string): boolean => /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+
+/** `addr@domain` or `Name <addr@domain>`: an address that ends in a domain. */
+const hasSenderAddress = (from: string): boolean => /[^\s<]@[^\s>]+>?\s*$/.test(from.trim());
 
 /**
  * Problems that must block a production boot. Empty outside production so
@@ -60,6 +65,18 @@ export function findProductionEnvIssues(
   if (isLocalhostUrl(values.NEXTAUTH_URL)) {
     issues.push(
       "NEXTAUTH_URL is still localhost. Set the public URL or OAuth redirects and email links break",
+    );
+  }
+  // Without a Resend key every email is only written to the log, so magic
+  // links and the digest go quiet while everything reads healthy. EMAIL_FROM
+  // has no default; it must name a sender on the key's verified domain, and
+  // the schedule email builds its From from that domain (fromDomain).
+  if (values.RESEND_API_KEY.trim() === "") {
+    issues.push("RESEND_API_KEY is not set. Sign-in links and every other email will not send");
+  }
+  if (!hasSenderAddress(values.EMAIL_FROM)) {
+    issues.push(
+      "EMAIL_FROM is not a sender address. Set e.g. `Name <no-reply@your-verified-domain>`",
     );
   }
   return issues;
