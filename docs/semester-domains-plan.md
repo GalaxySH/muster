@@ -141,17 +141,28 @@ on a global row.
   `group_members`, keyed by term and email. One reader,
   `groupOf(db, email, termId)`, replaces the direct column reads
   (`resolveStudentAccess`, the sweep, the assigners, the admin lists).
-- Creating a draft term copies the current term's group **definitions** (name,
-  lock setting, which one is default) with empty windows and no members. The
-  admin can rename, add or remove groups before activating.
+- A group belongs to the term it was created in and to no other. Nothing is
+  copied from one term to the next.
+- Three **system groups** are created automatically with every term, marked by a
+  new `groups.kind` column (`default`, `test`, `noop`; null for an ordinary
+  group):
+  - **Default**: the group the sweep assigns people to. Created with no window.
+    The admin can still point the default flag at another group, as today.
+  - **Test**: the test-account group, with its 2000 to 2100 window. `kind`
+    replaces the fixed `TEST_GROUP_ID` check, since each term now has its own
+    row.
+  - **NOOP**: a group whose window can never be set, for people who are on the
+    roster but should not get the form. Today that is an ordinary group kept
+    closed by convention; as a system group the window editor refuses it.
+  System groups cannot be deleted or renamed.
 - Nothing is reset at activation. The old term's groups, windows and members
   stay exactly as they were, and a student simply has no membership in the new
   term yet. No group already means no form access, so a new term starts closed
   until the admin assigns people and opens a window. That is the safe default.
 - The default sweep's sticky marker now lives per term, so the sweep catches
   everyone again each semester without a reset step.
-- The test group and its members are carried into the new term at activation,
-  with its 2000 to 2100 window, so test accounts keep working.
+- Test accounts are synthetic and not on any roster, so activation enrolls every
+  existing test account in the new term's test group and they keep working.
 
 This replaces two things the first draft had: clearing windows and membership at
 activation, and snapshotting a group name into `term_members`.
@@ -304,7 +315,10 @@ migrate` exits 1 silently on SQL errors. So the schema change is
 5. Groups: add `groups.term_id` with the same default, add
    `UNIQUE(term_id, name)` and then drop the name-only unique index. Create
    `group_members` and backfill it from `students.group_id` and
-   `group_assigned_auto`. **`students.group_id` is left in place and still
+   `group_assigned_auto`. Add `groups.kind`, set from the existing default flag
+   and the `dev-test` id; the fall NOOP group is marked by hand on
+   `/admin/groups` after deploy, or created if there is none.
+   **`students.group_id` is left in place and still
    written** until the contract release, so a rollback finds it current.
 6. Closes (ships with Phase 3, same expand pattern): add
    `terms.close_requirement` default 3, create `close_requirements`, and insert a
@@ -391,15 +405,15 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 ### Phase 4: new terms and the flip
 
 - Create a draft term from the Semester tab: season and year, with every date
-  prefilled from the season and editable. Group definitions are copied in
-  (§2.5) and can be edited before activating.
+  prefilled from the season and editable. Its three system groups are created
+  with it (§2.5), and the admin can add ordinary groups before activating.
 - Per-term Drive folder and sheet keys (§2.6).
 - Per-term blocks (§2.4), starting with the block-id audit.
 - **Activate**, one admin action with a preflight page that states exactly what
   will happen and requires typing the term name:
   1. Final sync of the closing term's three sheets (best effort, reported).
   2. In one transaction: snapshot `term_members`; copy live blocks; clear
-     position return dates; carry the test group over; create close
+     position return dates; enroll test accounts in the new test group; create close
      requirements for the current Shift Leads; set `current_term_id`; stamp
      `activated_at`.
 - Switching back to an earlier term is the same pointer update with no resets
@@ -488,7 +502,7 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 
 - The digest scheduler and the health endpoint do not depend on the term.
 - Test accounts live in the test group, whose window is 2000 to 2100. Activation
-  carries that group and its members into the new term.
+  enrolls every test account in the new term's test group.
 - Deleting a group only ever touches the current term's group; an old term's
   groups are read-only.
 - `scripts/generate-availability.ts` and `tune-schedule-params.ts` need the term
@@ -551,7 +565,9 @@ derivations) is written test-first like the rest of the domain layer.
 
 Recommendations are given; none blocks Phase 1.
 
-Settled on 2026-11-23: groups and membership are term-scoped (§2.5); the
+Settled on 2026-11-23: groups and membership are term-scoped, with default,
+test and NOOP groups created for every term and nothing else carried over
+(§2.5); the
 late-travel setting moves onto the term with the cutoff (§2.1); close
 requirements are per term and per Shift Lead (§2.8).
 
