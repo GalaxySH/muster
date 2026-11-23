@@ -59,6 +59,8 @@ A new `terms` table. One row per semester.
 | `starts_on` date | First day of work. Replaces `DEFAULT_SEMESTER_START`. |
 | `ends_on` date | Last day. With `starts_on`, the default close inventory range. |
 | `travel_cutoff` datetime | Replaces the `travel_cutoff` setting and the Sept 1 default. Prefilled as midnight Central on `starts_on` minus one day (today's 9/1 against a 9/2 start). |
+| `late_travel_accept` boolean | What happens to travel entered after the cutoff: refused (false, the default for every new term) or accepted and flagged as not excused. Replaces the `late_travel_accept` setting. It sits beside the date it qualifies. |
+| `close_requirement` int | The default number of weekend closes a Shift Lead owes this term (§2.8). Prefilled 3. |
 | `new_hire_cutoff` date | Hired on or after this counts as new. Replaces the June 1 rule in `flow/returner.ts`. Prefilled June 1 for a fall term, November 1 of the prior year for spring. |
 | `schedule_note` text | The exit page sentence about when to expect a schedule. Prefilled from `starts_on` ("about a week before the semester starts"). |
 | `activated_at` datetime | When it became current. Null for a draft. Analytics reads it. |
@@ -68,12 +70,8 @@ The **current term** is one pointer: `app_settings.current_term_id`. Flipping th
 app to another semester is one row update. A term with no `activated_at` is a
 draft the admin can prepare ahead of time.
 
-Not on the term, on purpose: the late-travel policy, email switches, digest
-recipients, engine params, excluded roster titles and the W2W maps. They are
-policy or plumbing and stay global. `REQUIRED_CLOSE_CLAIMS = 3` also stays a
-constant: it is a labor rule (PLAN §18a) used in a dozen places including client
-components, not a fact about a semester. Making it per-term is listed as optional
-in §9.
+Not on the term, on purpose: email switches, digest recipients, engine params,
+excluded roster titles and the W2W maps. They are plumbing and stay global.
 
 ### 2.2 What gets a `term_id`
 
@@ -84,9 +82,12 @@ in §9.
 | `schedule_runs` | `term_id` NOT NULL | "Current run" and retention become per term. Assignments follow the run. |
 | `shift_plans` | `term_id` NOT NULL | "Current plan" becomes per term. |
 | `change_requests` | `term_id` NOT NULL | The student's list and the 3 per 24h cap show the current term. The admin queue stays unscoped so open requests are never lost at a flip. |
-| `shift_blocks` | `term_id` NOT NULL (Phase 3) | See §2.4. |
+| `shift_blocks` | `term_id` NOT NULL (Phase 4) | See §2.4. |
+| `groups` | `term_id` NOT NULL; `UNIQUE(term_id, name)` replaces `UNIQUE(name)` | Each term has its own groups and windows (§2.5). |
+| `group_members` (new) | `term_id`, `student_email`, `group_id`, `assigned_auto`; PK `(term_id, student_email)` | Membership leaves `students.group_id` (§2.5). |
+| `close_requirements` (new) | `term_id`, `student_email`, `required`, `set_by`, `set_at`; PK `(term_id, student_email)` | One Shift Lead's own close count for the term (§2.8). |
 
-Untouched and global: `students`, `positions`, `groups`, `position_changes`,
+Untouched and global: `students` (apart from losing `group_id`), `positions`, `position_changes`,
 `admin_users`, `admin_google_grants`, `roster_title_mappings`, `roster_imports`,
 `magic_links`, `w2w_employees`, `w2w_position_map`.
 
@@ -99,9 +100,9 @@ all three modules, auth-adjacent). It is the wrong trade for a live app.
 Instead: **`students` always describes the current term**, exactly as today, and
 activating a new term writes the closing term's roster to a frozen
 **`term_members`** table (`term_id`, `email`, `display_name`, `position_id`,
-`position_name`, `group_name`, `international`, `hired_on`), one row per
+`position_name`, `international`, `hired_on`), one row per
 on-roster student at that moment. Names are snapshotted beside ids for the same
-reason `position_changes` does it. Archive readers (§5, Phase 4) take their
+reason `position_changes` does it. Archive readers (§5, Phase 5) take their
 roster from `term_members`; live readers do not change.
 
 ### 2.4 Shift blocks: copy on activation
@@ -122,7 +123,7 @@ What this buys:
 
 Block ids today are `position-daytype-start-end` for seeded blocks and UUIDs for
 admin-created ones. Copies get fresh UUIDs. Nothing may parse meaning out of a
-block id; Phase 3 starts with an audit that confirms it.
+block id; Phase 4 starts with an audit that confirms it.
 
 `positions.return_date` is per-term data on a global row. Activation records the
 old values in the snapshot and clears them, so `/travel` never shows a spring
@@ -130,14 +131,30 @@ student a fall return date.
 
 ### 2.5 Groups and windows
 
-Activation always clears every group's `opens_at` and `closes_at`. A null window
-already means "form locked", so a new term starts closed until the admin opens
-it. That is the safe default.
+Groups and their membership are **term-scoped**. A form window is a fact about
+one semester, and who is a "new student" changes every term, so neither belongs
+on a global row.
 
-Membership is the admin's call at activation, default **clear**: `group_id` null
-and `group_assigned_auto` false for everyone outside the test group, so the
-default sweep works again (it skips anyone it ever swept). Keeping membership is
-offered for the case where groups do not change.
+- `groups` gains `term_id`. A term's groups are its own rows, with their own
+  windows, `lock_after_submit` and default flag.
+- Membership moves off `students.group_id` and `group_assigned_auto` into
+  `group_members`, keyed by term and email. One reader,
+  `groupOf(db, email, termId)`, replaces the direct column reads
+  (`resolveStudentAccess`, the sweep, the assigners, the admin lists).
+- Creating a draft term copies the current term's group **definitions** (name,
+  lock setting, which one is default) with empty windows and no members. The
+  admin can rename, add or remove groups before activating.
+- Nothing is reset at activation. The old term's groups, windows and members
+  stay exactly as they were, and a student simply has no membership in the new
+  term yet. No group already means no form access, so a new term starts closed
+  until the admin assigns people and opens a window. That is the safe default.
+- The default sweep's sticky marker now lives per term, so the sweep catches
+  everyone again each semester without a reset step.
+- The test group and its members are carried into the new term at activation,
+  with its 2000 to 2100 window, so test accounts keep working.
+
+This replaces two things the first draft had: clearing windows and membership at
+activation, and snapshotting a group name into `term_members`.
 
 ### 2.6 Drive
 
@@ -169,6 +186,68 @@ Rule for the data layer: **low-level readers take `termId` explicitly; the edge
 (page, action, script) resolves it once.** No ambient default inside a query
 helper, because a default is exactly what lets a call site forget.
 
+### 2.8 Weekend closes: a requirement per Shift Lead
+
+Today every Shift Lead owes exactly `REQUIRED_CLOSE_CLAIMS = 3`, a constant used
+in about a dozen places. A lead who joins or is promoted partway through a
+semester is not expected to work the full number, and there is no way to say so.
+
+**Model**
+
+- `terms.close_requirement` is the term's default.
+- `close_requirements` holds one row per Shift Lead per term with that lead's own
+  number. The row is **created with the default as it stands at that moment**
+  and never follows the default afterwards. Changing the default only affects
+  rows created later.
+- The constant is deleted. Every use reads the lead's row instead.
+
+**When a row is created.** One idempotent statement,
+`ensureCloseRequirements(tx, termId)`, inserts a row for every current Shift
+Lead who lacks one in the term. It runs wherever someone can become a Shift
+Lead or a term can gain leads:
+
+- the end of a roster import (new leads and promotions),
+- `applyPositionChange`, which every other position move already goes through
+  (admin edit, alias, ghost resolution, roster title map),
+- test account creation,
+- term activation (the leads already on the roster),
+- generating the close inventory.
+
+Running one statement at each of those is deliberate. A per-event insert at each
+call site would be five places to forget; a statement that fills every gap makes
+a missed call site self-healing at the next one. If a read ever finds a Shift
+Lead with no row, it shows the term default marked as unassigned and the admin
+page offers to fix it; it never silently treats them as owing nothing.
+
+A lead who is moved off Shift Lead keeps their row. If they come back in the same
+term they keep the number they had.
+
+**Rules**
+
+- A lead can claim up to their own number, and no more.
+- A lead can submit once they hold **at least** their number. (Today's check is
+  "exactly 3"; "at least" is what makes lowering a number safe.)
+- A requirement of 0 means the closes step is not shown to that lead at all.
+- Lowering a number below what a lead already holds releases nothing. The admin
+  tab shows them as over and they can unpick.
+- Raising a number after a lead has submitted leaves them short. The admin tab
+  shows them as short. In a group that locks after submit they cannot get back
+  in to pick (the existing fourth defect in roadmap 7.3), so the admin assigns
+  the extra closes there or reopens them.
+
+**Admin surface** (`/admin/closes`)
+
+- The lead list gains each lead's required number beside what they have picked,
+  with short and over called out.
+- Edit one lead's number in place, or select several and set them together.
+- The term default is edited on the Semester tab and shown here read-only, with
+  how many leads are on it and how many have a custom number.
+
+**Backfill.** The fall term gets a default of 3 and a row of 3 for every current
+Shift Lead, so nothing changes until an admin edits a number.
+
+PLAN §18a is rewritten to match.
+
 ## 3. Consolidation this makes possible
 
 The refactoring rule says a change must leave the code simpler. These are the
@@ -191,8 +270,13 @@ seam that carries the term:
    `DEFAULT_SEMESTER_START` all collapse into reads of the term row.
 7. **Roadmap 7.3 closes** (cross-term claims, wrong-year default) and the
    spring-default items in 7.5 close, as a side effect.
-8. **`TravelCutoffPanel`** leaves `/admin/groups`; the cutoff is edited with the
-   other term dates.
+8. **`TravelCutoffPanel`** leaves `/admin/groups`; the cutoff and what happens
+   after it are edited with the other term dates.
+9. **`REQUIRED_CLOSE_CLAIMS` goes away.** Its dozen uses, including the copy in
+   four pages and a client component, read one per-lead value instead (§2.8).
+10. **Group membership has one reader.** `groupOf` replaces the scattered
+    `students.group_id` reads, and the "swept once, never swept again" marker
+    stops needing a manual reset (§2.5).
 
 Deliberate duplication is not touched: `domain/scheduling/validate.ts`, the
 `submissions.scheduled` freeze, and target staffing on the positions path stay
@@ -217,6 +301,14 @@ migrate` exits 1 silently on SQL errors. So the schema change is
    drop `submissions_student_email_unique`. The foreign key to `students` needs
    an index led by `student_email` at every moment; dropping first fails.
 4. Add `term_members` (empty).
+5. Groups: add `groups.term_id` with the same default, add
+   `UNIQUE(term_id, name)` and then drop the name-only unique index. Create
+   `group_members` and backfill it from `students.group_id` and
+   `group_assigned_auto`. **`students.group_id` is left in place and still
+   written** until the contract release, so a rollback finds it current.
+6. Closes (ships with Phase 3, same expand pattern): add
+   `terms.close_requirement` default 3, create `close_requirements`, and insert a
+   row of 3 for every current Shift Lead.
 
 The column default stays for now. It means the old container, still serving
 during the build and migrate window, keeps working, and a rollback to the
@@ -224,7 +316,8 @@ previous image is safe: old code against the expanded schema behaves exactly as
 before.
 
 **Contract (a later release, after soak):** drop the defaults, so an insert that
-forgets `term_id` fails loudly instead of landing in fall. In the meantime the
+forgets `term_id` fails loudly instead of landing in fall, and drop
+`students.group_id` and `students.group_assigned_auto`. In the meantime the
 Drizzle schema declares the columns with no default, so TypeScript already
 requires every insert to supply it.
 
@@ -234,7 +327,7 @@ production backup before tagging, with the troubleshooting probe from
 
 ## 5. Phases
 
-Each phase is its own PR and its own release. Phases 1 to 3 are required before
+Each phase is its own PR and its own release. Phases 1 to 4 are required before
 the spring form opens.
 
 ### Phase 1: term-scope everything, no behavior change
@@ -255,6 +348,9 @@ With one term in the database, the app must behave identically.
   term.
 - Change requests: stamp `term_id`; the student list and rate cap read the
   current term.
+- Groups: `groups.term_id`, `group_members`, and `groupOf` replacing every
+  `students.group_id` read. Writers update both the new table and the old
+  column until the contract release.
 - `deleteTestAccount` deletes the account's submissions in **every** term (the
   student row cannot be deleted otherwise).
 - Docs: PLAN (data model, changelog, version), `architecture.md`.
@@ -264,7 +360,8 @@ With one term in the database, the app must behave identically.
 Still one term. This is where fall leaves the code.
 
 - `/admin/terms` ("Semester" under Configuration on the hub): edit the current
-  term's name, start, end, travel cutoff, new-hire cutoff and schedule note.
+  term's name, start, end, travel cutoff, what happens to late travel, new-hire
+  cutoff and schedule note.
 - `DEFAULT_SEMESTER_START`, the travel cutoff, the close range default and the
   returner boundary read the term (§3 item 6).
 - Schedule email: a `{{term}}` variable; default subject and body use it instead
@@ -277,26 +374,46 @@ Still one term. This is where fall leaves the code.
 - Close dates show the year (roadmap 7.3).
 - CSV download names include the term slug.
 
-### Phase 3: new terms and the flip
+### Phase 3: a close requirement per Shift Lead
+
+Everything in §2.8. It needs Phase 1's term-scoped closes and nothing from
+Phase 4, and it is useful on its own for the leads promoted this fall.
+
+- `terms.close_requirement`, `close_requirements`, the backfill, and
+  `ensureCloseRequirements` at its five call sites.
+- `REQUIRED_CLOSE_CLAIMS` removed; claim cap, submit gate, the closes step's
+  "required" test and all copy read the lead's number. The pure rules go in
+  `domain/close-claims.ts` test-first.
+- `/admin/closes`: required beside picked, single and batch edit.
+- The default on the Semester tab.
+- The "Muster SL Closes" sheet gains the required column.
+
+### Phase 4: new terms and the flip
 
 - Create a draft term from the Semester tab: season and year, with every date
-  prefilled from the season and editable.
+  prefilled from the season and editable. Group definitions are copied in
+  (§2.5) and can be edited before activating.
 - Per-term Drive folder and sheet keys (§2.6).
 - Per-term blocks (§2.4), starting with the block-id audit.
 - **Activate**, one admin action with a preflight page that states exactly what
   will happen and requires typing the term name:
   1. Final sync of the closing term's three sheets (best effort, reported).
   2. In one transaction: snapshot `term_members`; copy live blocks; clear
-     position return dates; clear group windows; clear membership if chosen;
-     set `current_term_id`; stamp `activated_at`.
+     position return dates; carry the test group over; create close
+     requirements for the current Shift Leads; set `current_term_id`; stamp
+     `activated_at`.
 - Switching back to an earlier term is the same pointer update with no resets
   and no snapshot, for undoing a mistaken flip in the first minutes. It is
   refused once the new term has any submission, unless forced.
 - Analytics: "signed in" means `last_seen_at >= activated_at`.
 - A written rollover runbook in `docs/` (order: create draft, configure,
-  activate, import the new tracker, set windows, generate closes).
+  activate, import the new tracker, assign groups and set windows, generate
+  closes, adjust close requirements).
 
-### Phase 4: browsing an old term
+### Phase 5: browsing an old term
+
+After the flip to spring, this is how fall is looked at from inside Muster. The
+data is kept either way; this phase is only about having pages for it.
 
 - `/admin/terms/[id]`: headline counts, the response list, the per-student
   response (availability, travel, proofs, flags, notes), the close claims and
@@ -307,12 +424,12 @@ Still one term. This is where fall leaves the code.
   and the existing pure view builders, so there is one read path and no second
   set of pages.
 
-Until Phase 4 ships, an old term is still reachable three ways: its frozen Drive
+Until Phase 5 ships, an old term is still reachable three ways: its frozen Drive
 sheets, its proofs folder, and the database.
 
-### Phase 5: contract and cleanup
+### Phase 6: contract and cleanup
 
-Drop the column defaults (§4), delete the retired settings keys and any helper
+Drop the column defaults and the old group columns (§4), delete the retired settings keys and any helper
 left with a single caller, and update `CLAUDE.md`'s current-state section.
 
 ## 6. Edge cases
@@ -323,15 +440,21 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
   shows the confirm card and every step is empty. This is the acceptance test
   for the whole feature.
 - A student has a tab open across the flip and saves. Every student write goes
-  through `requireEditableStudent`, and the flip clears every window, so the
-  save is refused as "form closed". Nothing can be written into the old term or
-  half-written into the new one. Verify this explicitly.
+  through `requireEditableStudent`, and nobody has a group in the new term at
+  the moment of the flip, so the save is refused. Nothing can be written into
+  the old term or half-written into the new one. Verify this explicitly.
 - `lockAfterSubmit` reads the current term's submission, so a fall submission no
   longer locks a returner out of spring.
 - A student opens a fall proof link after the flip: `studentOwnsFile` checks the
   current term only, so it is refused. Admin proof viewing is unaffected.
-- Shift Leads: fall claims no longer count toward spring's three, and the closes
-  step is dormant again until spring inventory exists.
+- Shift Leads: fall claims no longer count toward spring's requirement, and the
+  closes step is dormant again until spring inventory exists.
+- A student promoted to Shift Lead mid-term gets a requirement row at the
+  default as soon as the position change lands. Until an admin lowers it they
+  are asked for the full number, so the closes tab calls out leads whose row is
+  newer than the term's activation.
+- A lead with a requirement of 0 never sees the closes step and is never blocked
+  by it.
 - A student whose position changes between terms: the fall snapshot keeps the
   old position; `position_changes` keeps the history as today.
 - Someone who left and comes back two terms later: the roster import re-lists
@@ -364,8 +487,10 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 **System**
 
 - The digest scheduler and the health endpoint do not depend on the term.
-- Test accounts live in the test group, whose window is 2000 to 2100. The window
-  reset and membership reset both skip that group.
+- Test accounts live in the test group, whose window is 2000 to 2100. Activation
+  carries that group and its members into the new term.
+- Deleting a group only ever touches the current term's group; an old term's
+  groups are read-only.
 - `scripts/generate-availability.ts` and `tune-schedule-params.ts` need the term
   in their inserts and snapshot shape.
 - A missing or dangling `current_term_id` must fail closed: student forms lock
@@ -426,12 +551,18 @@ derivations) is written test-first like the rest of the domain layer.
 
 Recommendations are given; none blocks Phase 1.
 
-1. **Group membership at a flip:** clear by default (recommended) or keep.
-2. **Archive depth:** ship Phases 1 to 3 first and rely on the frozen sheets
-   until Phase 4 (recommended), or hold the flip until old terms are browsable.
-3. **Late-travel policy:** stay global (recommended) or move to the term.
-4. **Required close count:** stay the constant 3 (recommended) or become a term
-   field.
-5. **Term naming:** season plus year covers fall and spring. If a summer term or
+Settled on 2026-11-23: groups and membership are term-scoped (§2.5); the
+late-travel setting moves onto the term with the cutoff (§2.1); close
+requirements are per term and per Shift Lead (§2.8).
+
+Still open:
+
+1. **Does the flip to spring wait for Phase 5?** Recommended: no. Flip after
+   Phase 4 and read fall from its frozen Drive sheets until the console pages
+   exist.
+2. **Mid-term promotions:** a newly promoted lead starts at the full default and
+   an admin lowers it (recommended, simple and visible), or new rows created
+   after the term's start date begin at 0 until an admin sets them.
+3. **Term naming:** season plus year covers fall and spring. If a summer term or
    two overlapping terms are ever needed, the slug allows it but "one current
    term" does not; that would be a separate design.
