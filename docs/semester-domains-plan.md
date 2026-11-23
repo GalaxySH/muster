@@ -270,6 +270,9 @@ the same as an empty one, and the table needs sideways scrolling.
 - **Lead progress becomes a table**: name, required, picked and status (short,
   done, over), with row checkboxes for the batch edit and a filter for leads who
   are short.
+- **Lead progress is collapsible.** The section header keeps the one-line
+  summary ("Missing closes from 2 of 14 SLs") visible when collapsed. It opens
+  collapsed when every lead is done and expanded when anyone is short or over.
 - Removing a close stays behind its confirmation and moves into a row menu, so
   the destructive control is no longer the same weight as the names.
 
