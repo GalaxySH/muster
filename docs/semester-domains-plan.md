@@ -143,17 +143,13 @@ on a global row.
   (`resolveStudentAccess`, the sweep, the assigners, the admin lists).
 - A group belongs to the term it was created in and to no other. Nothing is
   copied from one term to the next.
-- Three **system groups** are created automatically with every term, marked by a
-  new `groups.kind` column (`default`, `test`, `noop`; null for an ordinary
-  group):
+- Two **system groups** are created automatically with every term, marked by a
+  new `groups.kind` column (`default`, `test`; null for an ordinary group):
   - **Default**: the group the sweep assigns people to. Created with no window.
     The admin can still point the default flag at another group, as today.
   - **Test**: the test-account group, with its 2000 to 2100 window. `kind`
     replaces the fixed `TEST_GROUP_ID` check, since each term now has its own
     row.
-  - **NOOP**: a group whose window can never be set, for people who are on the
-    roster but should not get the form. Today that is an ordinary group kept
-    closed by convention; as a system group the window editor refuses it.
   System groups cannot be deleted or renamed.
 - Nothing is reset at activation. The old term's groups, windows and members
   stay exactly as they were, and a student simply has no membership in the new
@@ -316,8 +312,7 @@ migrate` exits 1 silently on SQL errors. So the schema change is
    `UNIQUE(term_id, name)` and then drop the name-only unique index. Create
    `group_members` and backfill it from `students.group_id` and
    `group_assigned_auto`. Add `groups.kind`, set from the existing default flag
-   and the `dev-test` id; the fall NOOP group is marked by hand on
-   `/admin/groups` after deploy, or created if there is none.
+   and the `dev-test` id.
    **`students.group_id` is left in place and still
    written** until the contract release, so a rollback finds it current.
 6. Closes (ships with Phase 3, same expand pattern): add
@@ -405,7 +400,7 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 ### Phase 4: new terms and the flip
 
 - Create a draft term from the Semester tab: season and year, with every date
-  prefilled from the season and editable. Its three system groups are created
+  prefilled from the season and editable. Its two system groups are created
   with it (§2.5), and the admin can add ordinary groups before activating.
 - Per-term Drive folder and sheet keys (§2.6).
 - Per-term blocks (§2.4), starting with the block-id audit.
@@ -565,8 +560,8 @@ derivations) is written test-first like the rest of the domain layer.
 
 Recommendations are given; none blocks Phase 1.
 
-Settled on 2026-11-23: groups and membership are term-scoped, with default,
-test and NOOP groups created for every term and nothing else carried over
+Settled on 2026-11-23: groups and membership are term-scoped, with default
+and test groups created for every term and nothing else carried over
 (§2.5); the
 late-travel setting moves onto the term with the cutoff (§2.1); close
 requirements are per term and per Shift Lead (§2.8).
