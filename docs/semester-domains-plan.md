@@ -488,9 +488,8 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 - Shift Leads: fall claims no longer count toward spring's requirement, and the
   closes step is dormant again until spring inventory exists.
 - A student promoted to Shift Lead mid-term gets a requirement row at the
-  default as soon as the position change lands. Until an admin lowers it they
-  are asked for the full number, so the closes tab calls out leads whose row is
-  newer than the term's activation.
+  default as soon as the position change lands, and is asked for the full
+  number until an admin lowers it. The closes tab does not mark late additions.
 - A lead with a requirement of 0 never sees the closes step and is never blocked
   by it.
 - A student whose position changes between terms: the fall snapshot keeps the
@@ -596,13 +595,12 @@ late-travel setting moves onto the term with the cutoff (§2.1); close
 requirements are per term and per Shift Lead (§2.8).
 
 The flip to spring happens after Phase 4 and does not wait for the old-term
-pages in Phase 5; until then fall is read from its frozen Drive sheets.
+pages in Phase 5; until then fall is read from its frozen Drive sheets. A lead
+promoted mid-term starts at the full default, with no late-add marker on the
+closes tab.
 
-Still open:
+Not decided, and not needed yet:
 
-1. **Mid-term promotions:** a newly promoted lead starts at the full default and
-   an admin lowers it (recommended, simple and visible), or new rows created
-   after the term's start date begin at 0 until an admin sets them.
-2. **Term naming:** season plus year covers fall and spring. If a summer term or
+1. **Term naming:** season plus year covers fall and spring. If a summer term or
    two overlapping terms are ever needed, the slug allows it but "one current
    term" does not; that would be a separate design.
