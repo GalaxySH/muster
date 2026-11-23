@@ -54,14 +54,14 @@ A new `terms` table. One row per semester.
 
 | Column | Meaning |
 |---|---|
-| `id` varchar(32) PK | Slug, e.g. `2026-fall`, `2027-spring`. Generated from season and year. |
-| `name` | Display name, e.g. "Fall 2026". Used in copy and email. |
+| `id` varchar(32) PK | A slug made from the name when the term is created, e.g. `spring-2027`, with a number added if it is taken. It never changes afterwards, so renaming a term is safe. The legacy term is `2026-fall`. |
+| `name` varchar(64), unique | Whatever the admin calls the term, e.g. "Fall 2026" or "Spring 2027". Free text, editable at any time. Used in copy, email and the Drive folder name. |
 | `starts_on` date | First day of work. Replaces `DEFAULT_SEMESTER_START`. |
 | `ends_on` date | Last day. With `starts_on`, the default close inventory range. |
 | `travel_cutoff` datetime | Replaces the `travel_cutoff` setting and the Sept 1 default. Prefilled as midnight Central on `starts_on` minus one day (today's 9/1 against a 9/2 start). |
 | `late_travel_accept` boolean | What happens to travel entered after the cutoff: refused (false, the default for every new term) or accepted and flagged as not excused. Replaces the `late_travel_accept` setting. It sits beside the date it qualifies. |
 | `close_requirement` int | The default number of weekend closes a Shift Lead owes this term (§2.8). Prefilled 3. |
-| `new_hire_cutoff` date | Hired on or after this counts as new. Replaces the June 1 rule in `flow/returner.ts`. Prefilled June 1 for a fall term, November 1 of the prior year for spring. |
+| `new_hire_cutoff` date | Hired on or after this counts as new. Replaces the June 1 rule in `flow/returner.ts`. Prefilled three months before `starts_on` (June 2 against a September 2 start, close to today's June 1). |
 | `schedule_note` text | The exit page sentence about when to expect a schedule. Prefilled from `starts_on` ("about a week before the semester starts"). |
 | `activated_at` datetime | When it became current. Null for a draft. Analytics reads it. |
 | `created_at`, `created_by` | Audit. |
@@ -167,7 +167,9 @@ activation, and snapshotting a group name into `term_members`.
 
 A new term gets its own folder under `DRIVE_FOLDER_ID`, named after the term,
 holding its own `proofs/` and its own three sheets. Cached ids move from fixed
-`app_settings` keys to term-suffixed keys (`responses_sheet_id:2027-spring`).
+`app_settings` keys to term-suffixed keys (`responses_sheet_id:spring-2027`).
+The folder is found by its cached id, so renaming a term later breaks nothing;
+the rename is pushed to the Drive folder name as a best-effort extra.
 The legacy fall term keeps its existing ids and its files at the root, so
 nothing in Drive moves or is renamed.
 
@@ -179,7 +181,7 @@ archive at no cost. Activation runs one last sync of all three first.
 
 A new `src/lib/terms/` module, a shared root like `lib/db` (importable by form
 core, generator, W2W and console; it imports none of them; `eslint.config.mjs`
-says so explicitly). Pure term math (default dates per season, slug, validation)
+says so explicitly). Pure term math (default dates from the start date, slug, validation)
 goes in `src/lib/domain/terms.ts`, test-first.
 
 - `getCurrentTermId(db)`: plain function taking a `Database` or `DbTx`. The
@@ -431,8 +433,9 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 
 ### Phase 4: new terms and the flip
 
-- Create a draft term from the Semester tab: season and year, with every date
-  prefilled from the season and editable. Its two system groups are created
+- Create a draft term from the Semester tab: a name of the admin's choosing and
+  a start and end date. Every other date is prefilled from the start date and
+  editable. The name must be unique and non-empty; it can be changed later. Its two system groups are created
   with it (§2.5), and the admin can add ordinary groups before activating.
 - Per-term Drive folder and sheet keys (§2.6).
 - Per-term blocks (§2.4), starting with the block-id audit.
@@ -602,8 +605,5 @@ pages in Phase 5; until then fall is read from its frozen Drive sheets. A lead
 promoted mid-term starts at the full default, with no late-add marker on the
 closes tab.
 
-Not decided, and not needed yet:
-
-1. **Term naming:** season plus year covers fall and spring. If a summer term or
-   two overlapping terms are ever needed, the slug allows it but "one current
-   term" does not; that would be a separate design.
+Terms are named freely by the admin (§2.1). Terms never overlap: exactly one is
+current at a time, and it is set once per term.
