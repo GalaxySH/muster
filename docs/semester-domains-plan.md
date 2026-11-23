@@ -250,6 +250,33 @@ term they keep the number they had.
 - The term default is edited on the Semester tab and shown here read-only, with
   how many leads are on it and how many have a custom number.
 
+**Closes tab layout.** The tab is rebuilt in the same phase, since the
+requirement work touches every part of it anyway.
+
+Today `CloseClaimsTable` is a seven-column table in which the leads on a close
+are a comma-separated run of links, each trailed by a small red ✕, with the
+"add a lead" picker in its own column. Names blur together, a full close looks
+the same as an empty one, and the table needs sideways scrolling.
+
+- **One chip per assigned lead.** Each assignment is its own bordered chip with
+  the name and a remove control, so who is on a close reads at a glance.
+- **Open spots are visible.** Each unfilled spot is a dashed placeholder, so
+  capacity shows as a row of filled and empty places instead of two number
+  columns. The first placeholder holds the "add a lead" picker.
+- **Grouped by weekend.** Friday and Saturday of the same weekend sit together
+  under a month heading, with the year shown (roadmap 7.3).
+- **State is visible.** A full close, a close with room, and an over-filled
+  close are distinguishable without reading the counts.
+- **Lead progress becomes a table**: name, required, picked and status (short,
+  done, over), with row checkboxes for the batch edit and a filter for leads who
+  are short.
+- Removing a close stays behind its confirmation and moves into a row menu, so
+  the destructive control is no longer the same weight as the names.
+
+Built as static mockups first (`docs/wireframes/`) and agreed before the
+component is written, then checked in the running app at desktop and phone
+width.
+
 **Backfill.** The fall term gets a default of 3 and a row of 3 for every current
 Shift Lead, so nothing changes until an admin edits a number.
 
@@ -393,7 +420,9 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 - `REQUIRED_CLOSE_CLAIMS` removed; claim cap, submit gate, the closes step's
   "required" test and all copy read the lead's number. The pure rules go in
   `domain/close-claims.ts` test-first.
-- `/admin/closes`: required beside picked, single and batch edit.
+- `/admin/closes` rebuilt: assignments as chips with visible open spots, closes
+  grouped by weekend, and a lead progress table with single and batch edit
+  (§2.8, "Closes tab layout"). Mockup agreed first.
 - The default on the Semester tab.
 - The "Muster SL Closes" sheet gains the required column.
 
@@ -566,14 +595,14 @@ and test groups created for every term and nothing else carried over
 late-travel setting moves onto the term with the cutoff (§2.1); close
 requirements are per term and per Shift Lead (§2.8).
 
+The flip to spring happens after Phase 4 and does not wait for the old-term
+pages in Phase 5; until then fall is read from its frozen Drive sheets.
+
 Still open:
 
-1. **Does the flip to spring wait for Phase 5?** Recommended: no. Flip after
-   Phase 4 and read fall from its frozen Drive sheets until the console pages
-   exist.
-2. **Mid-term promotions:** a newly promoted lead starts at the full default and
+1. **Mid-term promotions:** a newly promoted lead starts at the full default and
    an admin lowers it (recommended, simple and visible), or new rows created
    after the term's start date begin at 0 until an admin sets them.
-3. **Term naming:** season plus year covers fall and spring. If a summer term or
+2. **Term naming:** season plus year covers fall and spring. If a summer term or
    two overlapping terms are ever needed, the slug allows it but "one current
    term" does not; that would be a separate design.
