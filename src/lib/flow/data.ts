@@ -22,7 +22,7 @@ import {
   type WizardStepKey,
 } from "./steps";
 import { isReturningStudent } from "./returner";
-import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 import { submissionOf } from "@/lib/terms/scope";
 
 export type FlowAccess =
@@ -105,7 +105,7 @@ async function loadSubmissionProgress(email: string): Promise<SubmissionProgress
       confirmedAt: submissions.confirmedAt,
     })
     .from(submissions)
-    .where(submissionOf(email, await currentTermId()))
+    .where(submissionOf(email, await workingTermId()))
     .limit(1);
   return {
     courseScheduleFileId: sub?.courseScheduleFileId ?? null,
@@ -148,7 +148,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     positionId: form.student.positionId,
     positionName: form.position?.name ?? null,
     international: form.student.international,
-    returning: isReturningStudent(form.student.hiredOn, (await currentTerm()).newHireCutoff),
+    returning: isReturningStudent(form.student.hiredOn, (await workingTerm()).newHireCutoff),
     access,
     status: flowStatus(inputs),
     closes,

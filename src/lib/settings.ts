@@ -15,10 +15,22 @@ import {
 } from "@/lib/domain/travel";
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
-import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/config-data";
 
+/**
+ * The Drive keys below are per term: read and write them through
+ * `termSettingKey(base, termId)`. The bare keys are the ones the release
+ * before 1.55 used; migration 0046 copied them to the term that existed then.
+ */
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
+/** The cached id of a term's own Drive folder. Per term, like the keys beside it. */
+export const SETTING_TERM_FOLDER_ID = "term_folder_id";
+/**
+ * The id of the one term whose files live at the Drive root instead of in a
+ * folder of their own: the term that existed before terms had folders.
+ */
+export const SETTING_DRIVE_ROOT_TERM = "drive_root_term";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
 export const SETTING_RESPONSES_SHEET_SYNCED_AT = "responses_sheet_synced_at";
 export const SETTING_CLOSES_SHEET_ID = "closes_sheet_id";
@@ -92,7 +104,7 @@ export async function deleteSetting(key: string): Promise<void> {
  * the admin moved it off the term's default, the day before the term starts.
  */
 export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boolean }> {
-  const term = await currentTerm();
+  const term = await workingTerm();
   return {
     cutoff: term.travelCutoff,
     isCustom: term.travelCutoff.getTime() !== defaultTravelCutoff(term.startsOn).getTime(),
@@ -106,7 +118,7 @@ export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boole
  * ("accept-and-flag"), and finalize raises the travel_late flag.
  */
 export async function getLateTravelPolicy(): Promise<LateTravelPolicy> {
-  return (await currentTerm()).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
+  return (await workingTerm()).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
 }
 
 /**
@@ -146,7 +158,7 @@ export async function getChangeDigestRecipients(): Promise<string[]> {
  * without this server-only module.
  */
 export async function getRosterConfig(): Promise<EffectiveRosterConfig> {
-  return loadRosterConfig(getDb(), await currentTermId());
+  return loadRosterConfig(getDb(), await workingTermId());
 }
 
 /**

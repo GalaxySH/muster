@@ -9,11 +9,11 @@
  */
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { getAppSession } from "@/lib/auth/session";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { validateRosterUpload } from "./upload-validation";
 import { RosterClosesPrompt, RosterFormatError, RosterGuardError } from "./parse";
 import { importRoster, type ImportSummary } from "./import";
-import { currentTermId } from "@/lib/terms/current";
+import { currentTermId } from "@/lib/terms/working";
 
 /** The refused-import detail the panel needs to offer the override. */
 export interface RosterGuardBlock {
@@ -36,9 +36,11 @@ export interface RosterImportResult {
 }
 
 export async function importRosterFromUpload(formData: FormData): Promise<RosterImportResult> {
-  const session = await getAppSession();
-  if (!session) return { ok: false, error: "You are not signed in." };
-  if (!session.isAdmin) return { ok: false, error: "Admins only." };
+  // The page names the semester it is showing, so a tab left on another one
+  // cannot import into the wrong roster.
+  const termId = String(formData.get("termId") ?? "");
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false, error: "No file was provided." };
@@ -54,9 +56,10 @@ export async function importRosterFromUpload(formData: FormData): Promise<Roster
   try {
     const summary = await importRoster({
       db: getDb(),
-      termId: await currentTermId(),
+      termId,
+      updatePeople: termId === (await currentTermId()),
       workbook,
-      importedBy: session.email,
+      importedBy: gate.email,
       sheetName: sheetName || undefined,
       allowMassDeactivation,
       releaseUndatedCloses,

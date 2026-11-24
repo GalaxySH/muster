@@ -17,6 +17,27 @@ export interface TermDetails {
   closeRequirement: number;
 }
 
+/**
+ * The term a request works in (docs/semester-domains-plan.md §2.9). A selection
+ * counts only for an admin and only when it names a real term; everyone else,
+ * and every other case, gets the current term.
+ */
+export function chooseWorkingTerm(input: {
+  current: string;
+  selected: string | null;
+  isAdmin: boolean;
+  selectedExists: boolean;
+}): string {
+  const { current, selected, isAdmin, selectedExists } = input;
+  return selected && isAdmin && selectedExists ? selected : current;
+}
+
+/**
+ * The app_settings key for something one term owns: its Drive folder, its
+ * proofs folder, each of its sheets (docs/semester-domains-plan.md §2.6).
+ */
+export const termSettingKey = (base: string, termId: string): string => `${base}:${termId}`;
+
 export const TERM_NAME_MAX = 64;
 export const SCHEDULE_NOTE_MAX = 500;
 

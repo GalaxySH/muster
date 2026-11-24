@@ -71,7 +71,7 @@ export type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface PositionChangeInput {
   email: string;
-  /** The current term: the one whose submission and run this change touches. */
+  /** The term whose submission and run this change touches. */
   termId: string;
   fromPositionId: string | null;
   toPositionId: string | null;

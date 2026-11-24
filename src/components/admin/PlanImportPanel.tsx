@@ -9,6 +9,7 @@
  * here only to save the scheduler from picking it twice.
  */
 import { useRef, useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import { useRouter } from "next/navigation";
 import {
   importShiftPlanFromUpload,
@@ -20,6 +21,7 @@ import { validateW2wCsvUpload } from "@/lib/w2w/upload-validation";
 import { ActionButton } from "@/components/ui";
 
 export function PlanImportPanel() {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -36,6 +38,7 @@ export function PlanImportPanel() {
     setError(null);
     const formData = new FormData();
     formData.set("file", file);
+    formData.set("termId", termId);
     formData.set("rotationWeek", rotationWeek);
     if (applyCapacity) formData.set("applyCapacity", "1");
     if (createRun) formData.set("createRun", "1");

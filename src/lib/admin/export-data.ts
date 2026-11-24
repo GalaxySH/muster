@@ -14,7 +14,7 @@ import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 const toIsoDate = (d: Date | string): string =>
@@ -22,7 +22,7 @@ const toIsoDate = (d: Date | string): string =>
 
 export async function loadExportData(): Promise<ExportAggregate[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
 
   const base = await db
     .select({

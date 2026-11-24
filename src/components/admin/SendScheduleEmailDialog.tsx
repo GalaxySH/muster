@@ -34,7 +34,7 @@ export interface ScheduleEmailDialogProps {
   studentEmail: string;
   displayName: string;
   positionName: string;
-  /** The current term's name, for `{{term}}`. */
+  /** The working term's name, for `{{term}}`. */
   termName: string;
   template: ScheduleEmailTemplate;
   cc: string;

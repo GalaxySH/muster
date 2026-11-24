@@ -4,19 +4,18 @@
  * (docs/semester-domains-plan.md §2.3). The group on the same row is written by
  * lib/groups/membership.ts.
  *
- * Every write here also keeps the retired `students.position_id`, `on_roster`
- * and `roster_title` columns in step. Nothing reads them; they stay current
- * only so the previous release still works if a deploy is rolled back, and
- * they go when the contract migration drops them. While the app has one term
- * that is always right. Once an admin can work in an earlier term, these
- * mirrors must follow the current term only.
+ * A write to the current term also keeps the retired `students.position_id`,
+ * `on_roster` and `roster_title` columns in step (`isCurrentTermSql`). Nothing
+ * reads them; they stay current only so the previous release still works if a
+ * deploy is rolled back, and they go when the contract migration drops them.
+ * A write to an earlier term leaves them alone.
  *
  * A shared root like lib/db: plain, no `server-only`, because the roster import
  * and the dev scripts run from the CLI.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { students, termMembers } from "@/lib/db/schema";
-import type { DbOrTx } from "./term-id";
+import { isCurrentTermSql, type DbOrTx } from "./term-id";
 
 export interface RosterPlace {
   positionId: string | null;
@@ -42,7 +41,7 @@ export async function enrollMember(
       legacyOnRoster: place.onRoster,
       legacyRosterTitle: place.rosterTitle,
     })
-    .where(eq(students.email, email));
+    .where(and(eq(students.email, email), isCurrentTermSql(termId)));
 }
 
 /** Move people who already belong to the term onto a position. */
@@ -60,7 +59,7 @@ export async function setMemberPosition(
   await db
     .update(students)
     .set({ legacyPositionId: positionId })
-    .where(inArray(students.email, emails));
+    .where(and(inArray(students.email, emails), isCurrentTermSql(termId)));
 }
 
 /**
@@ -74,5 +73,8 @@ export async function takeOffRoster(db: DbOrTx, termId: string, emails: string[]
     .update(termMembers)
     .set({ onRoster: false })
     .where(and(eq(termMembers.termId, termId), inArray(termMembers.studentEmail, emails)));
-  await db.update(students).set({ legacyOnRoster: false }).where(inArray(students.email, emails));
+  await db
+    .update(students)
+    .set({ legacyOnRoster: false })
+    .where(and(inArray(students.email, emails), isCurrentTermSql(termId)));
 }

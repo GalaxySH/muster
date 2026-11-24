@@ -18,7 +18,7 @@ import {
   positions,
   termMembers,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import {
   syncSheet,
   trySyncSheet,
@@ -37,7 +37,7 @@ import {
 import { ensureCloseRequirements } from "./requirements";
 import { insertCloseClaim } from "./claim-write";
 import { positionPicksCloses } from "./data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { closeClaimInTerm } from "@/lib/terms/scope";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 
@@ -60,12 +60,11 @@ export interface GenerateInventoryResult {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CAPACITY = 20;
 
-export async function generateCloseInventory(input: {
-  start: string;
-  end: string;
-  capacity: number;
-}): Promise<GenerateInventoryResult> {
-  const gate = await requireAdmin();
+export async function generateCloseInventory(
+  termId: string,
+  input: { start: string; end: string; capacity: number },
+): Promise<GenerateInventoryResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const { start, end } = input;
@@ -81,7 +80,6 @@ export async function generateCloseInventory(input: {
     return { ok: false, error: "That range contains no Fridays or Saturdays." };
 
   const db = getDb();
-  const termId = await currentTermId();
   const summary = await db.transaction(async (tx): Promise<InventorySummary> => {
     // The inventory is what switches closes on, so every lead has a number by then.
     await ensureCloseRequirements(tx, termId);
@@ -197,7 +195,7 @@ export async function removeCloseSlot(slotId: string): Promise<CloseAssignResult
   const [slot] = await db
     .select({ id: closeSlots.id })
     .from(closeSlots)
-    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, await currentTermId())))
+    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, await workingTermId())))
     .limit(1);
   if (!slot) return { ok: false, error: "That shift no longer exists." };
 
@@ -221,7 +219,7 @@ export async function unassignCloseClaim(
       and(
         eq(closeClaims.closeSlotId, slotId),
         eq(closeClaims.studentEmail, email),
-        closeClaimInTerm(await currentTermId()),
+        closeClaimInTerm(await workingTermId()),
       ),
     );
 
@@ -241,14 +239,15 @@ export interface SetCloseRequirementsResult {
  *
  * It releases nothing. A lead left holding more than their new number shows as
  * over and can unpick; one left short shows as short. Only people who hold a
- * closes position in the current term can be given a number, so an email from
- * a stale tab or another term is refused rather than written.
+ * closes position in the term can be given a number. The same people can be
+ * leads in two terms, so the page says which term it is showing.
  */
 export async function setCloseRequirements(
+  termId: string,
   emails: string[],
   required: number,
 ): Promise<SetCloseRequirementsResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!isValidCloseRequirement(required))
     return { ok: false, error: `Enter a whole number from 0 to ${MAX_CLOSE_REQUIREMENT}.` };
@@ -263,7 +262,6 @@ export async function setCloseRequirements(
   if (wanted.length === 0) return { ok: false, error: "Pick at least one lead." };
 
   const db = getDb();
-  const termId = await currentTermId();
   const leads = await db
     .select({ email: termMembers.studentEmail })
     .from(termMembers)

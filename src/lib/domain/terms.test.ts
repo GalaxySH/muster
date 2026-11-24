@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  chooseWorkingTerm,
   cleanTermDetails,
   termNamesIn,
   termYearFor,
@@ -95,5 +96,26 @@ describe("termNamesIn", () => {
 
   it("finds nothing in a template that uses the variable", () => {
     expect(termNamesIn("Your {{term}} work schedule", ["Fall 2026"])).toEqual([]);
+  });
+});
+
+describe("chooseWorkingTerm", () => {
+  const base = { current: "2027-spring", selected: "2026-fall", isAdmin: true, selectedExists: true };
+
+  it("gives an admin the term they selected", () => {
+    expect(chooseWorkingTerm(base)).toBe("2026-fall");
+  });
+
+  it("gives an admin the current term when they selected none", () => {
+    expect(chooseWorkingTerm({ ...base, selected: null })).toBe("2027-spring");
+  });
+
+  // A student can send any cookie they like; it must change nothing.
+  it("ignores a selection from anyone who is not an admin", () => {
+    expect(chooseWorkingTerm({ ...base, isAdmin: false })).toBe("2027-spring");
+  });
+
+  it("ignores a selection naming a term that does not exist", () => {
+    expect(chooseWorkingTerm({ ...base, selectedExists: false })).toBe("2027-spring");
   });
 });

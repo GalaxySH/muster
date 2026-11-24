@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOf } from "@/lib/terms/scope";
 
 export interface ExtracurricularFile {
@@ -43,7 +43,7 @@ const toIsoDate = (d: Date | string): string =>
 
 export async function loadEvidence(studentEmail: string): Promise<EvidenceView> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [sub] = await db
     .select()
     .from(submissions)
@@ -89,10 +89,10 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
   };
 }
 
-/** Load or create the student's (draft) submission for the current term and return its id. */
+/** Load or create the student's (draft) submission for the working term and return its id. */
 export async function ensureSubmissionId(studentEmail: string): Promise<string> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [existing] = await db
     .select({ id: submissions.id })
     .from(submissions)
@@ -140,7 +140,7 @@ export async function studentOwnsFile(studentEmail: string, fileId: string): Pro
   // A travel entry can carry no proof, so an empty id must never match one.
   if (!fileId) return false;
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [sub] = await db
     .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })
     .from(submissions)

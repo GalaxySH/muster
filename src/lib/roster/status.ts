@@ -8,7 +8,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { adminUsers, rosterImports, termMembers } from "@/lib/db/schema";
 import { listGhostTitles, type GhostTitle } from "@/lib/positions/data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 export interface RosterStatus {
   lastImport: {
@@ -31,7 +31,7 @@ export interface RosterStatus {
 
 export async function getRosterStatus(): Promise<RosterStatus> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [last] = await db
     .select({
       importedAt: rosterImports.importedAt,

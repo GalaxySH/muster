@@ -43,7 +43,7 @@ import {
 } from "./apply-change";
 import { syncOrphanFlagsForBlocks } from "./orphans";
 import { POSITION_NAME_MAX, slugifyPositionId } from "./slug";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { enrollMember, setMemberPosition } from "@/lib/terms/members";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 
@@ -132,13 +132,13 @@ export async function createPosition(name: string): Promise<ActionResult> {
   const clash = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(or(eq(positions.id, id), thisTermsPositionNamed(checked.name, await currentTermId())))
+    .where(or(eq(positions.id, id), thisTermsPositionNamed(checked.name, await workingTermId())))
     .limit(1);
   if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
 
   await db
     .insert(positions)
-    .values({ id, termId: await currentTermId(), name: checked.name, ...NEW_POSITION_DEFAULTS });
+    .values({ id, termId: await workingTermId(), name: checked.name, ...NEW_POSITION_DEFAULTS });
   revalidatePositions();
   return { ok: true };
 }
@@ -228,14 +228,14 @@ export async function savePosition(
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(thisTermsPosition(id, await currentTermId()))
+    .where(thisTermsPosition(id, await workingTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
   if (details) {
     const clash = await db
       .select({ id: positions.id })
       .from(positions)
-      .where(and(thisTermsPositionNamed(details.name, await currentTermId()), ne(positions.id, id)))
+      .where(and(thisTermsPositionNamed(details.name, await workingTermId()), ne(positions.id, id)))
       .limit(1);
     if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
   }
@@ -308,7 +308,7 @@ export async function setPositionActive(id: string, active: boolean): Promise<Ac
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(thisTermsPosition(id, await currentTermId()))
+    .where(thisTermsPosition(id, await workingTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
@@ -340,7 +340,7 @@ export async function deletePosition(id: string): Promise<ActionResult> {
       const [row] = await tx
         .select({ id: positions.id, name: positions.name, picksCloses: positions.picksCloses })
         .from(positions)
-        .where(thisTermsPosition(id, await currentTermId()))
+        .where(thisTermsPosition(id, await workingTermId()))
         .limit(1)
         .for("update");
       if (!row) throw new DeleteRefused("Position not found.");
@@ -504,7 +504,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
       picksCloses: positions.picksCloses,
     })
     .from(positions)
-    .where(and(inArray(positions.id, [sourceId, targetId]), eq(positions.termId, await currentTermId())));
+    .where(and(inArray(positions.id, [sourceId, targetId]), eq(positions.termId, await workingTermId())));
   const source = rows.find((r) => r.id === sourceId);
   const target = rows.find((r) => r.id === targetId);
   if (!source || !target) return fail("Position not found.");
@@ -529,7 +529,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
   let failing = 0;
   let remapped = 0;
   await db.transaction(async (tx) => {
-    const termId = await currentTermId();
+    const termId = await workingTermId();
     const affected = await tx
       .select({ email: termMembers.studentEmail })
       .from(termMembers)
@@ -582,7 +582,7 @@ export async function clearAlias(id: string): Promise<ActionResult> {
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(thisTermsPosition(id, await currentTermId()))
+    .where(thisTermsPosition(id, await workingTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
@@ -612,7 +612,7 @@ export async function createBlock(
   const [pos] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(thisTermsPosition(positionId, await currentTermId()))
+    .where(thisTermsPosition(positionId, await workingTermId()))
     .limit(1);
   if (!pos) return { ok: false, error: "Position not found." };
 
@@ -628,7 +628,7 @@ export async function createBlock(
   // Block ids are opaque handles: the prefix keeps them readable, the random
   // suffix keeps them unique without encoding times that would go stale.
   const id = `${positionId}-${dayType}-${randomUUID().slice(0, 8)}`;
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   await db.transaction(async (tx) => {
     await tx
       .insert(shiftBlocks)
@@ -678,7 +678,7 @@ export async function deleteBlock(blockId: string): Promise<DeleteBlockResult> {
       const [row] = await tx
         .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
         .from(shiftBlocks)
-        .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await currentTermId())))
+        .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await workingTermId())))
         .limit(1)
         .for("update");
       if (!row) throw new DeleteRefused("Block not found.");
@@ -740,7 +740,7 @@ export async function restoreBlock(blockId: string): Promise<ActionResult> {
   const [row] = await db
     .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
     .from(shiftBlocks)
-    .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await currentTermId())))
+    .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await workingTermId())))
     .limit(1);
   if (!row) return { ok: false, error: "Block not found." };
   if (row.retiredAt === null) return { ok: false, error: "This shift is not removed." };
@@ -787,7 +787,7 @@ async function moveStudentsWithTitle(
   changedBy: string,
 ): Promise<TitleMoveSummary> {
   const normalized = normalizeTitle(rawTitle);
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await tx
     .select({
       email: termMembers.studentEmail,
@@ -812,7 +812,7 @@ async function moveStudentsWithTitle(
   for (const r of matched) {
     const change = await applyPositionChange(tx, {
       email: r.email,
-      termId: await currentTermId(),
+      termId: await workingTermId(),
       fromPositionId: r.positionId,
       toPositionId: positionId,
       source,
@@ -850,7 +850,7 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
   const clash = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(or(eq(positions.id, id), thisTermsPositionNamed(name, await currentTermId())))
+    .where(or(eq(positions.id, id), thisTermsPositionNamed(name, await workingTermId())))
     .limit(1);
   if (clash.length > 0) {
     return {
@@ -861,7 +861,7 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
   }
 
   let assigned = 0;
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   await db.transaction(async (tx) => {
     await tx.insert(positions).values({ id, termId, name, ...NEW_POSITION_DEFAULTS });
     // onDuplicateKeyUpdate covers a stale mapping row pointing at a deleted position.
@@ -898,7 +898,7 @@ export async function mapTitleToPosition(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(thisTermsPosition(positionId, await currentTermId()))
+    .where(thisTermsPosition(positionId, await workingTermId()))
     .limit(1);
   if (!target) return { ok: false, error: "Position not found.", assigned: 0 };
   if (target.mergedIntoId !== null) {
@@ -916,7 +916,7 @@ export async function mapTitleToPosition(
   await db.transaction(async (tx) => {
     await tx
       .insert(rosterTitleMappings)
-      .values({ termId: await currentTermId(), title: normalizeTitle(trimmed), positionId })
+      .values({ termId: await workingTermId(), title: normalizeTitle(trimmed), positionId })
       .onDuplicateKeyUpdate({ set: { positionId } });
     assigned = (
       await moveStudentsWithTitle(tx, trimmed, positionId, "ghost_resolution", gate.email)
@@ -968,7 +968,7 @@ export async function changeStudentPosition(
   if (!normalized) return fail("No student was named.");
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const student = await findStudentByEmail(normalized);
   if (!student) return fail("That employee is not a known student.");
   if (student.positionId === toPositionId) return fail("They already hold that position.");
@@ -1076,7 +1076,7 @@ export async function setRosterTitles(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(thisTermsPosition(positionId, await currentTermId()))
+    .where(thisTermsPosition(positionId, await workingTermId()))
     .limit(1);
   if (!target) return fail("Position not found.");
   // Same two guards the ghost resolution and the per-student move use: a title
@@ -1121,7 +1121,7 @@ export async function setRosterTitles(
       // is an update of the row it already has, not a second row.
       await tx
         .insert(rosterTitleMappings)
-        .values({ termId: await currentTermId(), title, positionId })
+        .values({ termId: await workingTermId(), title, positionId })
         .onDuplicateKeyUpdate({ set: { positionId } });
       const move = await moveStudentsWithTitle(
         tx,

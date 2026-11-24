@@ -39,7 +39,7 @@ import {
   TEST_GROUP_CLOSES_AT,
 } from "./constants";
 import { slugFromName, isValidTestSlug, testEmailFromSlug, isTestAccountEmail } from "./email";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { currentRunOf } from "@/lib/terms/scope";
 import { assignMembers, groupOf } from "@/lib/groups/membership";
 import { enrollMember } from "@/lib/terms/members";
@@ -84,7 +84,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
     .limit(1);
   if (existing) fail("exists");
 
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const testGroupId = await ensureTestGroup(termId);
 
   try {
@@ -136,7 +136,7 @@ async function ensureTestGroup(termId: string): Promise<string> {
 
 /** Whether this account is in the current term's test-accounts group. */
 async function isInTestGroup(email: string): Promise<boolean> {
-  const group = await groupOf(getDb(), email, await currentTermId());
+  const group = await groupOf(getDb(), email, await workingTermId());
   return group?.kind === "test";
 }
 
@@ -176,7 +176,7 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
       .where(
         and(
           eq(scheduleAssignments.studentEmail, email),
-          currentRunOf(await currentTermId()),
+          currentRunOf(await workingTermId()),
         ),
       )
       .limit(1);

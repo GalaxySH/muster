@@ -45,7 +45,7 @@ export function FormPasteButton({
 }: {
   studentEmail: string;
   onFile: OnFile;
-  /** The current term's start date, which gives the pasted travel dates their year. */
+  /** The working term's start date, which gives the pasted travel dates their year. */
   termStartsOn: string;
 }) {
   const router = useRouter();

@@ -11,6 +11,7 @@
  * open when anyone is short or over and closed when every lead is done.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setCloseRequirements } from "@/lib/closes/admin-actions";
@@ -55,6 +56,7 @@ export function CloseLeadProgress({
   leads: ShiftLeadProgress[];
   defaultRequirement: number;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -80,7 +82,7 @@ export function CloseLeadProgress({
     setPendingKey(key);
     startTransition(async () => {
       try {
-        const res = await setCloseRequirements(emails, required);
+        const res = await setCloseRequirements(termId, emails, required);
         if (res.ok) {
           after?.();
           router.refresh();

@@ -15,7 +15,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { positions, w2wPositionMap } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 export interface ActionResult {
   ok: boolean;
@@ -72,7 +72,7 @@ async function check(input: MappingInput): Promise<Checked> {
   const [target] = await getDb()
     .select({ name: positions.name, mergedIntoId: positions.mergedIntoId })
     .from(positions)
-    .where(and(eq(positions.id, input.musterPositionId), eq(positions.termId, await currentTermId())))
+    .where(and(eq(positions.id, input.musterPositionId), eq(positions.termId, await workingTermId())))
     .limit(1);
   if (!target) return { ok: false, error: "Pick a Muster position." };
   if (target.mergedIntoId !== null) {
@@ -113,7 +113,7 @@ async function findNameClash(
     .from(w2wPositionMap)
     .where(
       and(
-        eq(w2wPositionMap.termId, await currentTermId()),
+        eq(w2wPositionMap.termId, await workingTermId()),
         eq(w2wPositionMap.w2wPositionName, w2wPositionName),
         ne(w2wPositionMap.w2wPositionId, exceptId),
       ),
@@ -134,7 +134,7 @@ export async function createW2wMapping(input: MappingInput): Promise<ActionResul
   const value = checked.value;
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [existing] = await db
     .select({ name: w2wPositionMap.w2wPositionName })
     .from(w2wPositionMap)
@@ -168,7 +168,7 @@ export async function updateW2wMapping(
   const value = checked.value;
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   // Existence is checked directly. affectedRows counts CHANGED rows, so a
   // re-save of values already stored would otherwise be reported as a mapping
   // that no longer exists, and the admin would go add it back.
@@ -205,7 +205,7 @@ export async function deleteW2wMapping(w2wPositionId: string): Promise<ActionRes
 
   await getDb()
     .delete(w2wPositionMap)
-    .where(thisTermsMapping(w2wPositionId, await currentTermId()));
+    .where(thisTermsMapping(w2wPositionId, await workingTermId()));
   revalidateMapSurfaces();
   return { ok: true };
 }

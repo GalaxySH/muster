@@ -192,6 +192,14 @@ column on `terms` (default 3) and the `close_requirements` table, with a row of 
 everyone holding a closes position. The previous release reads neither, so rolling the
 image back needs nothing. Each statement can be re-run.
 
+**1.55 (semester domains, Phase 5).** Adds 0046, data only: it copies the cached Drive
+ids (proofs folder, the three sheets and their sync stamps) to keys ending in the
+term id and adds `drive_root_term`. The old keys are left in place and the previous
+release reads only those, so rolling the image back needs nothing. After a deploy,
+check that `responses_sheet_id:2026-fall` equals `responses_sheet_id` in
+`app_settings`; if the copy is missing, the next sync finds the sheet by name at the
+Drive root instead of making a new one.
+
 Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
 Don't push a new tag at an older commit: a tag push runs that commit's workflow,
 and one from before the forced command is refused. Migrations aren't reversed, so

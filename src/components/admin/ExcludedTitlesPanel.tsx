@@ -7,11 +7,13 @@
  * both the upload action and the CLI importer read the stored list.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { setExcludedRosterTitles } from "@/lib/admin/actions";
 
 export function ExcludedTitlesPanel({ titles }: { titles: string[] }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startSave] = useTransition();
   const [draft, setDraft] = useState(titles.join("\n"));
@@ -20,7 +22,7 @@ export function ExcludedTitlesPanel({ titles }: { titles: string[] }) {
   function save() {
     setMsg(null);
     startSave(async () => {
-      const res = await setExcludedRosterTitles(draft);
+      const res = await setExcludedRosterTitles(termId, draft);
       if (!res.ok) {
         setMsg({ ok: false, text: res.error ?? "Could not save." });
         return;

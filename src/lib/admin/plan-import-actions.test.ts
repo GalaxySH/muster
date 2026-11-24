@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // match and run building on its way to the recorded write log.
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: vi.fn() }));
+vi.mock("@/lib/auth/require-admin", () => {
+  const requireAdmin = vi.fn();
+  // The semester check has its own test; here it is the same gate.
+  return { requireAdmin, requireAdminIn: () => requireAdmin() };
+});
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
 vi.mock("@/lib/w2w/plan-data", () => ({ loadPlanMatchInputs: vi.fn() }));
 vi.mock("./sheet-sync", () => ({ SCHEDULE_SHEET: "schedule", trySyncSheet: vi.fn() }));

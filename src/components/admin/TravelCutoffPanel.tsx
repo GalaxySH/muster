@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import { useRouter } from "next/navigation";
 import { setTravelCutoff, setLateTravelAccepted } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
@@ -24,6 +25,7 @@ export function TravelCutoffPanel({
   isCustom: boolean;
   lateAccepted: boolean;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [date, setDate] = useState(toLocalInput(cutoffMs));
   const [pending, startTransition] = useTransition();
@@ -32,7 +34,7 @@ export function TravelCutoffPanel({
   function act(iso: string | null, okText: string) {
     setMsg(null);
     startTransition(async () => {
-      const res = await setTravelCutoff(iso);
+      const res = await setTravelCutoff(termId, iso);
       setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
       if (res.ok) router.refresh();
     });
@@ -41,7 +43,7 @@ export function TravelCutoffPanel({
   function toggleLate(accepted: boolean) {
     setMsg(null);
     startTransition(async () => {
-      const res = await setLateTravelAccepted(accepted);
+      const res = await setLateTravelAccepted(termId, accepted);
       setMsg({
         ok: res.ok,
         text: res.ok

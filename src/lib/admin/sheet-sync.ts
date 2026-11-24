@@ -3,7 +3,10 @@
  * target's matrix and push it into its sheet. Three targets exist (PLAN.md §10,
  * §12, §18a; docs/schedule-generation-plan.md Phase C): the running responses
  * sheet, the SL closes backup sheet, and the recommended-schedule sheet; each
- * carries its own Drive name, cached sheet id, and matrix builder.
+ * carries its own Drive name, cached sheet id, and matrix builder. Each term has
+ * its own three sheets (docs/semester-domains-plan.md §2.6), and everything here
+ * acts on the working term's: the matrix builders read it, and the cached id and
+ * the last-sync stamp are stored per term.
  *
  * Rate limit (per product decision): the cooldown is split by trigger. The
  * best-effort resync after a student submit/claim uses a hard 10-minute
@@ -23,6 +26,8 @@ import {
   SETTING_SCHEDULE_SHEET_SYNCED_AT,
 } from "@/lib/settings";
 import { upsertManagedSheet } from "@/lib/drive/relay";
+import { termSettingKey } from "@/lib/domain/terms";
+import { workingTermId } from "@/lib/terms/working";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { buildCloseClaimsMatrix } from "@/lib/closes/export";
 import { loadCurrentSchedule } from "@/lib/schedule/data";
@@ -38,9 +43,9 @@ export const SHEET_MANUAL_COOLDOWN_MS = 30 * 1000;
 export interface SheetTarget {
   /** Drive file name of the spreadsheet. */
   name: string;
-  /** app_settings key caching the spreadsheet id. */
+  /** app_settings key caching the spreadsheet id, before the term is added. */
   idSettingKey: string;
-  /** app_settings key holding the last successful sync instant. */
+  /** app_settings key holding the last successful sync instant, before the term is added. */
   syncedAtSettingKey: string;
   buildValues: () => Promise<string[][]>;
 }
@@ -90,13 +95,13 @@ export function cooldownRemainingMs(last: Date | null, now: Date, cooldownMs: nu
 }
 
 export async function getLastSheetSync(target: SheetTarget): Promise<Date | null> {
-  const v = await getSetting(target.syncedAtSettingKey);
+  const v = await getSetting(termSettingKey(target.syncedAtSettingKey, await workingTermId()));
   return v ? new Date(v) : null;
 }
 
 /** The Drive URL of a target's sheet, if one has been created. */
 export async function getSheetUrl(target: SheetTarget): Promise<string | null> {
-  const id = await getSetting(target.idSettingKey);
+  const id = await getSetting(termSettingKey(target.idSettingKey, await workingTermId()));
   return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : null;
 }
 
@@ -120,9 +125,10 @@ export async function syncSheet(
     };
   }
 
+  const termId = await workingTermId();
   const values = await target.buildValues();
-  const { url } = await upsertManagedSheet(target, values);
-  await setSetting(target.syncedAtSettingKey, now.toISOString());
+  const { url } = await upsertManagedSheet({ ...target, termId }, values);
+  await setSetting(termSettingKey(target.syncedAtSettingKey, termId), now.toISOString());
   return { synced: true, url, lastSyncedAt: now, nextEligibleAt: null };
 }
 

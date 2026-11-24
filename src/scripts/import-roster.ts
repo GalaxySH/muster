@@ -59,6 +59,7 @@ async function main() {
     const summary = await importRoster({
       db,
       termId: await getCurrentTermId(db),
+      updatePeople: true,
       workbook: filePath,
       importedBy,
       sheetName,

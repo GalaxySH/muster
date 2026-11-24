@@ -20,7 +20,7 @@ import {
   type WindowState,
 } from "@/lib/domain/window";
 import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOf, memberOf } from "@/lib/terms/scope";
 import { groupOf, inGroup, inNoGroup } from "@/lib/groups/membership";
 
@@ -41,7 +41,7 @@ export interface GroupRow {
 /** The term's groups (default first, then by name) with their members. */
 export async function listGroups(): Promise<GroupRow[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await db
     .select()
     .from(groups)
@@ -88,7 +88,7 @@ export async function getDefaultGroup(): Promise<typeof groups.$inferSelect | nu
   const [g] = await db
     .select()
     .from(groups)
-    .where(and(eq(groups.isDefault, true), eq(groups.termId, await currentTermId())))
+    .where(and(eq(groups.isDefault, true), eq(groups.termId, await workingTermId())))
     .limit(1);
   return g ?? null;
 }
@@ -128,7 +128,7 @@ export async function resolveStudentAccess(
 ): Promise<StudentAccess> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const grp = await groupOf(db, email, termId);
   if (!grp) return { access: "no-group" };
 
@@ -184,7 +184,7 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
   if (filters.onRoster !== undefined) conds.push(eq(termMembers.onRoster, filters.onRoster));
   if (filters.positionId === "none") conds.push(isNull(termMembers.positionId));
   else if (filters.positionId) conds.push(eq(termMembers.positionId, filters.positionId));
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   if (filters.groupId === "none") conds.push(inNoGroup(termId));
   else if (filters.groupId) conds.push(inGroup(filters.groupId));
   if (filters.search?.trim()) {

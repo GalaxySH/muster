@@ -6,7 +6,7 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
-import { currentTerm } from "@/lib/terms/current";
+import { workingTerm } from "@/lib/terms/working";
 
 /**
  * Final wizard step (PLAN §13). Sets expectations (these are preferences, not a
@@ -18,7 +18,7 @@ export default async function ExitPage() {
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email);
-  const { scheduleNote } = await currentTerm();
+  const { scheduleNote } = await workingTerm();
 
   return (
     <Page>

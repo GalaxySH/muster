@@ -124,8 +124,16 @@ export interface ImportSummary {
 
 export interface ImportOptions {
   db: Database;
-  /** The current term. The caller resolves it; this function never reads another. */
+  /** The term to import into. The caller resolves it; this function never reads another. */
   termId: string;
+  /**
+   * True when `termId` is the current term. Names, the international flag,
+   * hire dates and the admin list follow the current term: an import into an
+   * earlier one only changes that term's roster and adds people not seen
+   * before, so an old tracker cannot overwrite today's names or admins
+   * (docs/semester-domains-plan.md §2.3).
+   */
+  updatePeople: boolean;
   workbook: WorkbookSource;
   importedBy: string;
   /** Worksheet to read; defaults to the first of the term's sheet candidates present. */
@@ -143,6 +151,7 @@ export interface ImportOptions {
 export async function importRoster({
   db,
   termId,
+  updatePeople,
   workbook,
   importedBy,
   sheetName: requestedSheet,
@@ -253,11 +262,10 @@ export async function importRoster({
           hiredOn: s.hiredOn,
         })
         .onDuplicateKeyUpdate({
-          set: {
-            displayName: s.displayName,
-            international: s.international,
-            hiredOn: s.hiredOn,
-          },
+          set: updatePeople
+            ? { displayName: s.displayName, international: s.international, hiredOn: s.hiredOn }
+            : // Someone already known keeps what the current term says about them.
+              { email: s.email },
         });
       // The person above, their place in this term here.
       await enrollMember(tx, termId, s.email, {
@@ -297,7 +305,7 @@ export async function importRoster({
       });
     }
 
-    for (const a of parsed.admins) {
+    for (const a of updatePeople ? parsed.admins : []) {
       await tx
         .insert(adminUsers)
         .values({ email: a.email })

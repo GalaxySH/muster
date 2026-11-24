@@ -30,8 +30,20 @@ someone with no row was never part of that term.
   says so).
   - `term-id.ts`: `getCurrentTermId(db)`, plain and CLI-safe. It **throws** when the
     pointer is missing. Nothing may ever fall back to reading every term.
-  - `current.ts`: `currentTermId()`, the same read memoized per request with React
-    `cache`, so a page calling several loaders reads the pointer once. `currentTerm()`
+  - `working.ts` (1.55; it was `current.ts`): the term a request works in.
+    `currentTermId()` is the pointer read, memoized per request with React `cache`.
+    `workingTermId()` is what every loader and action calls: the current term,
+    unless the request carries the selection cookie (`TERM_COOKIE`), the session is
+    an admin's and the cookie names a term that exists, in which case it is that
+    term. The decision itself is the pure `chooseWorkingTerm` in `domain/terms.ts`.
+    The cookie is read before the pointer on purpose: reading it is what tells Next
+    the page belongs to a request, and the image is built with no database.
+    The session is only looked at when a cookie is present, so a student's request
+    costs nothing extra, and it is imported lazily because `auth/session` reads the
+    roster, which reads this file. `cookies()` throws where there is no request (the
+    digest scheduler, a script); that falls back to the current term, and Next's own
+    control-flow errors are passed on with `unstable_rethrow`. `selectTerm`
+    (`select-action.ts`) is the only writer of the cookie. `workingTerm()`
     is the row itself, for the code that needs the term's dates and rules: the travel
     cutoff and late-travel switch (through `getTravelCutoff` / `getLateTravelPolicy`
     in `lib/settings.ts`), the new-hire cutoff (`isReturningStudent`), the start date
@@ -59,15 +71,41 @@ someone with no row was never part of that term.
   also holds `TravelCutoffPanel` and warns when the saved schedule email names
   another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
   and the hub nav is grouped into "This semester" and "All semesters".
-- **Who resolves the term.** Request-side loaders and actions call `currentTermId()`
-  themselves: they are defined as "the current term's" data. Anything that takes a
+- **Who resolves the term.** Request-side loaders and actions call `workingTermId()`
+  themselves: they are defined as "the working term's" data. Call `currentTermId()`
+  only for something that must follow the term students are filling in whatever an
+  admin has selected, and say why at the call (today: the header's banner,
+  `selectTerm`, and the roster import's `updatePeople`). Anything that takes a
   database handle or a transaction (`importRoster`, `applyPositionChange`,
   `resolveDeferredCarryOver`, `releaseDepartedSchedules`, `writeRunAsCurrent`,
   `pruneStaleRuns`, `lib/groups/membership.ts`) takes `termId` as an argument, so its
   transaction body gains no read. **No server action accepts a term id from the
   client.** Where a client sends a row id (a group, a position, a block, a close slot,
   a run, a W2W mapping), the lookup also tests the term, so another term's row reads
-  as not found. That is what makes past terms read-only.
+  as not found. An admin reaches another term only by selecting it, which changes the working
+  term for the whole request.
+- **Actions that name no row (1.55).** The selection belongs to the browser, not
+  the tab, so a tab still showing fall can submit after another tab moved to spring.
+  An action that acts on a whole term takes the term id its page was rendered for
+  and gates with `requireAdminIn(termId)` (`auth/require-admin.ts`), which refuses
+  anything but the working term. The id comes from `useRenderedTermId()`
+  (`components/admin/RenderedTerm.tsx`), provided once by `app/admin/layout.tsx`; a
+  layout is not re-rendered on navigation, so it stays what the tab is showing.
+  When adding an admin action that takes no term-scoped row id, use this gate.
+  `TermSwitcher` also keeps one browser's tabs together (a tab reloads when another
+  changes the selection), which is a convenience, not the guard.
+- **Person facts and the retired columns follow the current term (1.55).**
+  `importRoster` takes `updatePeople`: false for an earlier term, where it leaves
+  names, the international flag, hire dates and `admin_users` alone. The mirrors in
+  `terms/members.ts` and `groups/membership.ts` carry `isCurrentTermSql(termId)` in
+  their WHERE, so a write to an earlier term does not touch them and the transaction
+  gains no read.
+- **Drive per term (1.55).** `drive/relay.ts` resolves a term's folder
+  (`termFolder`): the Drive root for the term named by `drive_root_term` (fall 2026),
+  otherwise a folder named after the term, found or created under the root and
+  cached. Proofs and the three sheets live in it, and every cached id and sync stamp
+  is stored under `termSettingKey(base, termId)`. `admin/sheet-sync.ts` acts on the
+  working term.
 - **`students LEFT JOIN submissions` puts the term in the ON clause**
   (`submissionOfStudent`), never the WHERE: a WHERE on the right side of a left join
   drops everyone who has not responded, and without the term the join returns one row
@@ -78,9 +116,9 @@ someone with no row was never part of that term.
   from, joins, updates or deletes `submissions` must use a scope predicate or address
   the row by id, with a short allowlist of statements that are right to read every
   term (each entry says why, and the list may only shrink).
-- **Tests.** `vitest.setup.ts` mocks `@/lib/terms/current` for every test file, so the
+- **Tests.** `vitest.setup.ts` mocks `@/lib/terms/working` for every test file, so the
   per-file database fakes never have to queue the pointer read. `term-id.test.ts`
-  tests the real seam.
+  tests the real pointer read and `working.test.ts` the real resolver.
 - **What is deliberately not term-scoped:** `students` (always the current term's
   roster), `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
   links, and the admin change-request queue.

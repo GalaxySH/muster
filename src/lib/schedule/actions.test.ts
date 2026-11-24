@@ -8,7 +8,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
-vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: vi.fn() }));
+vi.mock("@/lib/auth/require-admin", () => {
+  const requireAdmin = vi.fn();
+  // The semester check has its own test; here it is the same gate.
+  return { requireAdmin, requireAdminIn: () => requireAdmin() };
+});
 vi.mock("@/lib/settings", () => ({
   getSchedulingParams: vi.fn(),
   setSetting: vi.fn(),
@@ -111,7 +115,7 @@ describe("clearScheduleRun", () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
 
-    expect(await clearScheduleRun(true)).toEqual({ ok: false, error: "Admins only." });
+    expect(await clearScheduleRun("test-term", true)).toEqual({ ok: false, error: "Admins only." });
     expect(writes).toEqual([]);
   });
 
@@ -119,7 +123,7 @@ describe("clearScheduleRun", () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
 
-    expect(await clearScheduleRun(false)).toMatchObject({ ok: true });
+    expect(await clearScheduleRun("test-term", false)).toMatchObject({ ok: true });
 
     // The flip comes first, then the new row: no window with two current runs.
     const [flip] = writesTo(writes, "schedule_runs", "update");
@@ -135,7 +139,7 @@ describe("clearScheduleRun", () => {
   it("stamps the run as a snapshot over the whole roster", async () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
-    await clearScheduleRun(false);
+    await clearScheduleRun("test-term", false);
 
     // Not "generated": the scope ledger counts a generated run as a re-solve of
     // the slice it names, and a cleared run solved nothing.
@@ -146,7 +150,7 @@ describe("clearScheduleRun", () => {
   it("stores a report the run history can read back", async () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
-    await clearScheduleRun(false);
+    await clearScheduleRun("test-term", false);
     const [inserted] = writesTo(writes, "schedule_runs", "insert");
 
     // The stored JSON goes back through listScheduleRuns, which parses it
@@ -176,7 +180,7 @@ describe("clearScheduleRun", () => {
   it("clears the scheduled marks only when asked", async () => {
     const withFlag = fakeDb({}, 4);
     vi.mocked(getDb).mockReturnValue(withFlag.handle as never);
-    const res = await clearScheduleRun(true);
+    const res = await clearScheduleRun("test-term", true);
     expect(res).toEqual({ ok: true, unmarked: 4 });
     expect(writesTo(withFlag.writes, "submissions", "update")[0]?.values).toEqual({
       scheduled: false,
@@ -186,7 +190,7 @@ describe("clearScheduleRun", () => {
     vi.mocked(revalidatePath).mockClear();
     const without = fakeDb({}, 4);
     vi.mocked(getDb).mockReturnValue(without.handle as never);
-    expect(await clearScheduleRun(false)).toEqual({ ok: true, unmarked: 0 });
+    expect(await clearScheduleRun("test-term", false)).toEqual({ ok: true, unmarked: 0 });
     expect(writesTo(without.writes, "submissions", "update")).toEqual([]);
     expect(vi.mocked(revalidatePath).mock.calls.flat()).not.toContain("/admin/responses");
   });

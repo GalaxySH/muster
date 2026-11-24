@@ -16,7 +16,7 @@ import {
   submissions,
   travelRequests,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { updateSubmission } from "./update-submission";
 import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { loadOrphanedCells, syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
@@ -48,7 +48,7 @@ import {
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
 } from "./sheet-sync";
-import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { terms } from "@/lib/db/schema";
 import { submissionOf } from "@/lib/terms/scope";
@@ -131,7 +131,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
   const [sub] = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(submissionOf(email, await currentTermId()))
+    .where(submissionOf(email, await workingTermId()))
     .limit(1);
   if (!sub) return { ok: false, error: "No submission exists for this student." };
 
@@ -203,7 +203,7 @@ export async function removeOrphanedSelection(
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(submissionOf(email, await currentTermId()))
+    .where(submissionOf(email, await workingTermId()))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -262,14 +262,17 @@ export async function setTravelResolved(id: string, resolved: boolean): Promise<
 
 /**
  * Set (an ISO instant) or clear (null ⇒ back to the term's default, the day
- * before it starts) the current term's travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
+ * before it starts) the working term's travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
  * new entries under the active late-travel policy (domain/travel.ts).
  */
-export async function setTravelCutoff(iso: string | null): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function setTravelCutoff(
+  termId: string,
+  iso: string | null,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const term = await currentTerm();
+  const term = await workingTerm();
   const cutoff = iso === null ? defaultTravelCutoff(term.startsOn) : new Date(iso);
   if (Number.isNaN(cutoff.getTime())) return { ok: false, error: "Invalid date." };
   await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, term.id));
@@ -288,13 +291,13 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
  * unexcused ("accept-and-flag"); off restores the default "refuse". The hub's
  * cutoff-past alert reads this too.
  */
-export async function setLateTravelAccepted(accepted: boolean): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function setLateTravelAccepted(
+  termId: string,
+  accepted: boolean,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
-  await getDb()
-    .update(terms)
-    .set({ lateTravelAccept: accepted })
-    .where(eq(terms.id, await currentTermId()));
+  await getDb().update(terms).set({ lateTravelAccept: accepted }).where(eq(terms.id, termId));
   // The retired setting, kept in step for a rollback (see lib/settings.ts).
   await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
   revalidatePath("/admin/terms");
@@ -394,23 +397,29 @@ export interface SaveExcludedTitlesResult extends AdminActionResult {
  * the hardcoded SKIP_TITLES fixture applies only while the setting was
  * never saved.
  */
-export async function setExcludedRosterTitles(raw: string): Promise<SaveExcludedTitlesResult> {
-  const gate = await requireAdmin();
+export async function setExcludedRosterTitles(
+  termId: string,
+  raw: string,
+): Promise<SaveExcludedTitlesResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const titles = normalizeTitleList(raw);
-  await saveExcludedTitles(getDb(), await currentTermId(), titles);
+  await saveExcludedTitles(getDb(), termId, titles);
   revalidatePath("/admin/roster");
   return { ok: true, saved: titles };
 }
 
 /**
- * Save how the current term's roster tracker is read (edited on
+ * Save how the working term's roster tracker is read (edited on
  * /admin/roster): the sheets to look for, the titles that mean admin, and the
  * header names of columns the built-in matching can't find.
  */
-export async function setRosterReading(input: RosterReadingInput): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function setRosterReading(
+  termId: string,
+  input: RosterReadingInput,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const columns = input?.columns ?? {};
@@ -429,7 +438,7 @@ export async function setRosterReading(input: RosterReadingInput): Promise<Admin
   const error = validateRosterReading(reading);
   if (error) return { ok: false, error };
 
-  await saveRosterReading(getDb(), await currentTermId(), reading);
+  await saveRosterReading(getDb(), await workingTermId(), reading);
   revalidatePath("/admin/roster");
   return { ok: true };
 }

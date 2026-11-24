@@ -65,8 +65,8 @@ export type PositionChangeSource = (typeof positionChangeSourceEnum)[number];
 /**
  * A semester: the domain the app runs in (docs/semester-domains-plan.md).
  * Exactly one term is current at a time, named by the `current_term_id` row in
- * app_settings. Students only ever see the current term; every earlier term's
- * rows stay in place and stay readable by admins.
+ * app_settings. Students only ever see the current term. An admin can select
+ * another one and work in it (lib/terms/working.ts).
  *
  * `id` is a slug fixed at creation, so renaming a term never moves its rows.
  */

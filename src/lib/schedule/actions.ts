@@ -24,7 +24,7 @@ import {
 } from "@/lib/db/schema";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { applyInternalOverrides } from "@/lib/availability/effective";
 import { loadInternalCopiesByEmail } from "@/lib/availability/internal";
 import {
@@ -66,7 +66,7 @@ import {
 } from "./data";
 import { pruneStaleRuns, writeRunAsCurrent } from "./run-write";
 import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
-import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms/scope";
 
 /**
@@ -135,12 +135,14 @@ export interface GenerateOptions {
   scope?: ScheduleScope;
 }
 
-export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
-  const gate = await requireAdmin();
+export async function generateSchedule(
+  termId: string,
+  options: GenerateOptions = {},
+): Promise<GenerateResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const termId = await currentTermId();
   const [positionRows, blockRows, studentRows, selectionRows, internalByEmail, currentRun, params] =
     await Promise.all([
       db.select().from(positions).where(eq(positions.termId, termId)),
@@ -173,7 +175,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, submissionOfStudent(await currentTermId()))
+        .innerJoin(students, submissionOfStudent(await workingTermId()))
         .where(eligibleSubmittedFilter(termId)),
       loadInternalCopiesByEmail(),
       loadCurrentRunRow(),
@@ -205,7 +207,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // term and the engine deliberately has none. The cutoff is the term's
   // new-hire date, read once so every student in this run is judged against the
   // same boundary, and it is stored on the run so the run stays reproducible.
-  const term = await currentTerm();
+  const term = await workingTerm();
   const cutoff = term.newHireCutoff;
 
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
@@ -272,7 +274,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, submissionOfStudent(await currentTermId()))
+        .innerJoin(students, submissionOfStudent(await workingTermId()))
         .where(notSubmitted),
     ]);
 
@@ -486,11 +488,11 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   let error: string | null;
   try {
     error = await db.transaction(async (tx) => {
-      // Only a run of the current term can be restored: another term's run
+      // Only a run of the working term can be restored: another term's run
       // reads as gone, so it can never become this term's schedule.
       const [run] = await tx
         .select({ id: scheduleRuns.id, status: scheduleRuns.status })
@@ -543,7 +545,7 @@ export async function setRunPinned(runId: string, pinned: boolean): Promise<SetP
   const [result] = await db
     .update(scheduleRuns)
     .set({ pinned })
-    .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, await currentTermId())));
+    .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, await workingTermId())));
   if (result.affectedRows === 0) return { ok: false, error: "That run no longer exists." };
 
   revalidatePath("/admin/schedule");
@@ -646,12 +648,14 @@ const CLEARED_RUN_REPORT: StoredRunReport = {
  * after a clear they would have nothing to carry and the next run would leave
  * them empty.
  */
-export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<ClearScheduleResult> {
-  const gate = await requireAdmin();
+export async function clearScheduleRun(
+  termId: string,
+  alsoUnmarkScheduled: boolean,
+): Promise<ClearScheduleResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const termId = await currentTermId();
   let unmarked = 0;
   await db.transaction(async (tx) => {
     await writeRunAsCurrent(tx, {

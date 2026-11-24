@@ -29,7 +29,7 @@ import {
 } from "@/lib/domain/w2w-plan/map-health";
 import { buildMapResolver } from "@/lib/domain/w2w-plan/match";
 import type { W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { onRosterStudent } from "@/lib/terms/scope";
 
 /** One editable mapping row. */
@@ -82,7 +82,7 @@ interface MapHealthInputs {
  */
 async function loadMapHealthInputs(): Promise<MapHealthInputs> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [mapRows, positionRows, blockCountRows, planRows] = await Promise.all([
     // Ordered: resolution is first-wins by id and by name, so an unordered
     // read could resolve a duplicated name differently between requests.
@@ -250,7 +250,7 @@ export async function getW2wNameCoverage(): Promise<W2wNameCoverage> {
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(onRosterStudent(await currentTermId())),
+      .where(onRosterStudent(await workingTermId())),
     db.select({ email: w2wEmployees.email }).from(w2wEmployees),
   ]);
   const known = new Set(employeeRows.map((e) => e.email));

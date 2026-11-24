@@ -19,7 +19,7 @@ import {
   type RepairStudent,
 } from "@/lib/domain/w2w-plan/repair-seeds";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-plan/repair-seeds";
 
@@ -41,7 +41,7 @@ export async function loadRepairSeeds(
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(onRosterStudent(await currentTermId())),
+      .where(onRosterStudent(await workingTermId())),
   ]);
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
 

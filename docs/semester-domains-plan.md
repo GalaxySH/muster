@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phases 1 to 4 are built (PLAN 1.48, 1.49, 1.51, 1.53 and 1.54). Phases 5 to 7 are not.** Branch
+**Status: Phases 1 to 5 are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54 and 1.55). Phases 6 and 7 are not.** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -1294,3 +1294,85 @@ stacked-table layout (one labelled line per field) instead of the mockup's tight
 block, and the picker is a native select styled as the dashed spot.
 
 This closes the "not verified" note above about `setCloseRequirements`.
+
+## 15. Phase 5 as built (PLAN 1.55)
+
+Built as §2.9 and §5 describe, with these choices and differences.
+
+- **The resolver.** `lib/terms/working.ts` replaces `current.ts`.
+  `workingTermId()` reads the selection cookie, then the pointer (always, so a
+  broken install still fails closed), and only when a cookie is present does it
+  look at the session and at whether the term exists. The cookie comes first
+  because the admin layout calls the resolver: with the pointer first, the build
+  tried to prerender admin pages and query a database it does not have. The
+  build with no database reachable is the check for this. A student's request never
+  carries the cookie, so it costs them nothing. The decision is the pure
+  `chooseWorkingTerm`. The rename touched 166 call sites in 53 files and changed
+  nothing else in them.
+- **`currentTermId()` survives with one meaning**, the pointer, and has three
+  callers: the header's banner, `selectTerm`, and the roster import action (to
+  set `updatePeople`). That is the reverse audit of §5: nothing else needs the
+  current term today. "Start a new semester", the missing-pointer alert and
+  analytics' `activated_at` are Phase 6.
+- **The rendered-term check covers more than §2.9 listed.** Beside the roster
+  import, schedule generation, the close inventory and the semester's settings,
+  it is on clearing a schedule, the W2W plan import and setting close
+  requirements. `requireAdminIn(termId)` is a separate gate from `requireAdmin`,
+  with a required argument, so an action cannot use it and forget the term. The
+  page learns its term from a context provided by a new `app/admin/layout.tsx`.
+- **Tabs follow each other through localStorage**, not a broadcast channel: each
+  tab records the term it shows, and a tab that sees another value (on the
+  storage event, or when it becomes visible again) reloads. Writing the shown
+  term on every mount is what keeps a stale stored value from causing a reload
+  loop after the cookie expires.
+- **Person facts and mirrors.** `importRoster` takes a required `updatePeople`.
+  The retired-column mirrors test the pointer in SQL (`isCurrentTermSql`), so no
+  transaction body gained a read (§7 item 4).
+- **Drive.** Keys are `base:termId` for every term, fall included; migration 0046
+  copies fall's ids across and sets `drive_root_term`, which is how fall keeps
+  its files at the root. A term's folder is found by cached id, then by name,
+  then created.
+
+**Known gaps.**
+
+- **Actions keyed by a person's email are not covered by the rendered-term
+  check** (saving an admin's copy of someone's availability, marking scheduled,
+  scheduler notes, a position change, deleting a response). The same person
+  exists in both terms, so a stale tab could write the other term's row for
+  them. The tabs-follow-each-other reload is what stands in the way today.
+  Covering them means the same gate on about fifteen more actions.
+- The Drive folder is not renamed when a term is.
+- The schedule email preview uses the working term's name, not the current
+  term's as §2.10 said: it shows what a send from where the admin is working
+  would say.
+
+**Verified.**
+
+- 1,821 unit tests, including the real resolver (admin with a selection, a
+  student or a signed-out request sending one, a selection naming no term, and
+  no request scope) and the rendered-term gate.
+- On a throwaway MariaDB with a synthetic second term made current, in the
+  browser: the control and the banner; an httpOnly cookie; a second tab
+  following the first; all 18 admin pages in each term with no error; CSV names
+  following the working term; a stale tab's close-requirement edit refused with
+  nothing written; a student signed in with the selection cookie still on the
+  current term, with no control and no banner.
+- A roster import into the earlier term: its membership changed, a new person
+  was added, an existing person's name and hire date were left alone, the admin
+  list and the current term's membership were untouched.
+- The mirrors on a real database: unchanged after a write to the earlier term,
+  updated after a write to the current one.
+- Migration 0046 on a database with fall's keys set: copied, `drive_root_term`
+  set, and a second run changed nothing.
+- **Rehearsal on production data (2026-11-24).** On a same-day read-only copy of
+  production, 0037 to 0046 applied in one run. All seven of fall's Drive keys
+  (the proofs folder, three sheet ids, three sync stamps) have a `:2026-fall`
+  copy equal to the original, and `drive_root_term` is `2026-fall`, so the first
+  sync after a deploy writes the sheets it writes today. The copy was deleted.
+- The production build with no database reachable, which is how the image is
+  built.
+
+**Not verified.** Nothing was written to a real Drive: the test database has no
+grant, so the per-term folder and sheet paths are covered by reading the code
+and by the migration check only. A student's write with the selection cookie
+was not exercised (the read was; both use the same resolver).

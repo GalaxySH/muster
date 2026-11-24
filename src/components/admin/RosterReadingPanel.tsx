@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * How the current term's roster tracker is read (docs/semester-domains-plan.md
+ * How the working term's roster tracker is read (docs/semester-domains-plan.md
  * §2.4): the sheets to look for, the titles that mean admin, and the header
  * names of columns. Stored on the term, so a new semester's tracker can be
  * renamed or reworded without a code change. A blank column name keeps the
  * built-in header matching.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { setRosterReading } from "@/lib/admin/actions";
@@ -22,6 +23,7 @@ const COLUMN_FIELDS: { key: keyof RosterColumns; label: string }[] = [
 ];
 
 export function RosterReadingPanel({ reading }: { reading: RosterReadingInput }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [draft, setDraft] = useState(reading);
   const [pending, startSave] = useTransition();
@@ -36,7 +38,7 @@ export function RosterReadingPanel({ reading }: { reading: RosterReadingInput })
   function save() {
     setMsg(null);
     startSave(async () => {
-      const res = await setRosterReading(draft);
+      const res = await setRosterReading(termId, draft);
       setMsg(
         res.ok ? { ok: true, text: "Saved." } : { ok: false, text: res.error ?? "Could not save." },
       );

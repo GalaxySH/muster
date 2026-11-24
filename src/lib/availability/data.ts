@@ -12,7 +12,7 @@ import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
 export interface PositionWithBlocks {
@@ -73,7 +73,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(
       and(
-        submissionInTerm(await currentTermId()),
+        submissionInTerm(await workingTermId()),
         eq(termMembers.positionId, positionId),
         eq(termMembers.onRoster, true),
         eq(submissions.status, "submitted"),
@@ -137,7 +137,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(submissionOf(student.email, await currentTermId()))
+    .where(submissionOf(student.email, await workingTermId()))
     .limit(1);
 
   let selection: SelectedShift[] = [];

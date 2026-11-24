@@ -25,7 +25,7 @@ import {
   type PickerStudent,
 } from "./data";
 import { parseEmailList } from "./parse-emails";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { assignMembers, listUnsweptEmails, unassignMembers } from "./membership";
 
 export interface ActionResult {
@@ -39,10 +39,10 @@ function revalidateGroups() {
 
 /**
  * WHERE for a group id sent by the client: it only matches a group of the
- * current term, so no action here can change another semester's group.
+ * working term, so no action here can change another semester's group.
  */
 async function thisTermsGroup(id: string) {
-  return and(eq(groups.id, id), eq(groups.termId, await currentTermId()));
+  return and(eq(groups.id, id), eq(groups.termId, await workingTermId()));
 }
 
 /**
@@ -74,7 +74,7 @@ export async function createGroup(name: string): Promise<ActionResult> {
   try {
     await db
       .insert(groups)
-      .values({ id: randomUUID(), termId: await currentTermId(), name: trimmed, isDefault: false });
+      .values({ id: randomUUID(), termId: await workingTermId(), name: trimmed, isDefault: false });
   } catch {
     return { ok: false, error: "A group with that name already exists." };
   }
@@ -154,7 +154,7 @@ export async function setDefaultGroup(id: string): Promise<ActionResult> {
   if (!gate.ok) return gate;
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [g] = await db
     .select({ id: groups.id, kind: groups.kind })
     .from(groups)
@@ -226,7 +226,7 @@ export async function assignStudents(emails: string[], groupId: string): Promise
     .where(inArray(students.email, normalized));
   await assignMembers(
     db,
-    await currentTermId(),
+    await workingTermId(),
     known.map((s) => s.email),
     groupId,
     false,
@@ -272,7 +272,7 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
   const matchedEmails = [...matchedSet];
   const unmatched = valid.filter((e) => !matchedSet.has(e));
 
-  await assignMembers(db, await currentTermId(), matchedEmails, groupId, false);
+  await assignMembers(db, await workingTermId(), matchedEmails, groupId, false);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true, assigned: matchedEmails.length, unmatched, invalid };
@@ -285,7 +285,7 @@ export async function unassignStudents(emails: string[]): Promise<ActionResult> 
   const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))];
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };
 
-  await unassignMembers(getDb(), await currentTermId(), normalized);
+  await unassignMembers(getDb(), await workingTermId(), normalized);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -322,7 +322,7 @@ export async function runDefaultAssignmentSweep(): Promise<SweepResult> {
   if (!target) return { ok: false, error: "No default group is set.", enabled: true, swept: 0 };
 
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const targets = await listUnsweptEmails(db, termId);
   await assignMembers(db, termId, targets, target.id, true);
   revalidateGroups();

@@ -15,7 +15,7 @@ import { EmailSettingsPanel } from "@/components/admin/EmailSettingsPanel";
 import { DigestSettingsPanel } from "@/components/admin/DigestSettingsPanel";
 import { ScheduleEmailSettingsPanel } from "@/components/admin/ScheduleEmailSettingsPanel";
 import { Page } from "@/components/ui";
-import { currentTerm } from "@/lib/terms/current";
+import { workingTerm } from "@/lib/terms/working";
 
 /**
  * Email settings: the master switch for all outbound email (honored by
@@ -31,7 +31,7 @@ export default async function EmailSettingsPage() {
 
   const [term, enabled, digestEnabled, digestRecipients, digestLastRun, scheduleEmail] =
     await Promise.all([
-      currentTerm(),
+      workingTerm(),
       getEmailSendingEnabled(),
       getChangeDigestEnabled(),
       getChangeDigestRecipients(),

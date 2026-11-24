@@ -56,7 +56,7 @@ import type {
   DashboardStudent,
   RecentSubmission,
 } from "./dashboard-view";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { memberOf, onRosterStudent, rosterOf, submissionOfStudent } from "@/lib/terms/scope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -104,7 +104,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
         isTest: sql<number>`${groups.kind} <=> 'test'`.mapWith(Boolean),
       })
       .from(groups)
-      .where(eq(groups.termId, await currentTermId()))
+      .where(eq(groups.termId, await workingTermId()))
       .orderBy(asc(groups.name)),
     loadChangeRequestCounts(now),
     loadFlagCounts(),
@@ -194,7 +194,7 @@ async function loadScheduleStatus(): Promise<DashboardSnapshot["schedule"]> {
  * keeps the hub's headline numbers and the non-response page in agreement.
  */
 async function loadStudentRoll(): Promise<DashboardStudent[]> {
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       email: students.email,
@@ -232,7 +232,7 @@ async function loadStudentRoll(): Promise<DashboardStudent[]> {
  */
 async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs"]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [posRows, blockRows, staffRows] = await Promise.all([
     db
       .select()
@@ -285,7 +285,7 @@ async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssig
     .innerJoin(positions, eq(termMembers.positionId, positions.id))
     .where(
       and(
-        rosterOf(await currentTermId()),
+        rosterOf(await workingTermId()),
         or(eq(positions.active, false), isNotNull(positions.mergedIntoId)),
       ),
     )
@@ -318,7 +318,7 @@ async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["ch
 
 /** Flags on on-roster students only; off-roster people are not the admin's work. */
 async function loadFlagCounts(): Promise<{ type: DbFlagType; count: number }[]> {
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({ type: flags.type, n: sql<number>`count(*)` })
     .from(flags)
@@ -390,7 +390,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
  */
 async function loadCoverage(): Promise<CoverageCell[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const eff = effectiveSelections();
   const [blocks, takerRows, staffedPositions] = await Promise.all([
     db
@@ -468,7 +468,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
 
 async function loadRecentSubmissions(): Promise<RecentSubmission[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       id: submissions.id,
@@ -524,7 +524,7 @@ async function loadSubmissionsPerDay(now: Date): Promise<{ date: string; count: 
   const start = new Date(now.getTime() - (SPARKLINE_DAYS - 1) * DAY_MS);
   start.setUTCHours(0, 0, 0, 0);
 
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       day: sql<string>`date(${submissions.submittedAt})`,

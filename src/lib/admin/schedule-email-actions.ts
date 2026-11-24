@@ -38,7 +38,7 @@ import {
 } from "@/lib/settings";
 import type { AdminActionResult } from "./actions";
 import { updateSubmission } from "./update-submission";
-import { currentTerm } from "@/lib/terms/current";
+import { workingTerm } from "@/lib/terms/working";
 
 export interface ScheduleEmailSendResult extends AdminActionResult {
   /** What to tell the admin on success. */
@@ -143,7 +143,7 @@ export async function sendScheduleEmailTest(): Promise<ScheduleEmailSendResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const config = await getScheduleEmailConfig();
-  const vars = { ...SAMPLE_VARS, term: (await currentTerm()).name };
+  const vars = { ...SAMPLE_VARS, term: (await workingTerm()).name };
   const res = await deliver(gate.email, config, vars, SAMPLE_SHIFTS, false);
   if ("error" in res) return { ok: false, error: res.error };
   return { ok: true, message: sentMessage(res.outcome, gate.email, res.cc) };
@@ -197,7 +197,7 @@ export async function sendScheduleEmail(
   const vars = buildScheduleEmailVars(
     { displayName: student.displayName, position },
     fields,
-    (await currentTerm()).name,
+    (await workingTerm()).name,
   );
   // The shifts the current run gives them: what the dialog previewed.
   const shifts = (await loadStudentCurrentAssignments(email))?.cells ?? [];

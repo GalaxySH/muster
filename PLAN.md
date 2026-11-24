@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.54
+- **Version:** 1.55
 - **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1270,6 +1270,10 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
     subfolder**, named `{studentEmail}__{kind}__{timestamp}.{ext}`. The app stores
     only the `fileId`; the admin view renders inline via the same grant. (The
     `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
+    **Per term since 1.55:** that layout is fall 2026's, which keeps its files at
+    the root. Every later term gets its own folder under the root, named after the
+    term, with its own `proofs/` and its own sheets, and each cached id is stored
+    under a key ending in the term id.
   - **Running responses spreadsheet (recovery + non-admin view):** a single
     **`Muster Responses` Google Sheet** in the root, rebuilt from the same export
     matrix the in-app CSV uses (one comprehensive row per submission; timestamp
@@ -1663,6 +1667,53 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.55 (2026-11-24)** — **Semester domains, Phase 5: working in a selected semester
+  (issue #40; `docs/semester-domains-plan.md` §2.6, §2.9, §15).** Until now every
+  page and action read "the current term". Two terms are now named apart. The
+  **current term** is the one students fill in (`app_settings.current_term_id`). The
+  **working term** is the one a request reads and writes: always the current term
+  for a student, and for an admin the term they selected in the header, or the
+  current one when they selected none. One resolver decides it
+  (`workingTermId()` in `lib/terms/working.ts`, which replaces `lib/terms/current.ts`);
+  every loader and action that called `currentTermId()` now calls it, and nothing
+  else changed in them. **With one term in the database nothing looks or behaves
+  differently**: the header shows the term's name as plain text, as before.
+  - **Selecting.** With two or more terms the name in the admin header becomes a
+    control. The choice is an httpOnly cookie holding a term id, written only by
+    `selectTerm` (admin-gated, the term must exist), lasting 30 days. It is only a
+    request: it is honoured for an admin and for a term that exists, and ignored
+    for everyone else, so a student who sends it still gets the current term.
+    Admin status is recomputed per request as before. Selecting the current term
+    clears the cookie. Work with no request behind it (the digest scheduler, the
+    scripts) follows the current term.
+  - **Every term is fully editable by an admin who has selected it**, the roster
+    import included. A banner runs across the top of every page while the working
+    term is not the current one, naming both, with one click back.
+  - **A tab left on another semester cannot write to the wrong one.** Tabs of one
+    browser follow each other (a tab that sees the selection change reloads). The
+    server is the authority: a row id from the client is already looked up inside
+    the working term, and the actions that act on a whole term and name no row
+    now send the term their page was rendered for and are refused when it is not
+    the working term (`requireAdminIn`): the roster import, the W2W plan import,
+    generating and clearing a schedule, generating the close inventory, setting
+    close requirements, and saving the semester's details, travel cutoff,
+    late-travel switch, excluded titles and tracker reading.
+  - **Confirmations name the semester**: generating and clearing a schedule, the
+    roster import's result and its absence-guard override.
+  - **An import into an earlier term changes only that term's roster.** Names, the
+    international flag, hire dates and the admin list follow the current term, so
+    an old tracker cannot overwrite them; a person not seen before is still added.
+    The retired `students` roster and group columns mirror the current term only.
+  - **Drive per term (§12).** Each term has its own folder under the Drive root,
+    named after the term, holding its own `proofs/` folder and its own three
+    sheets; sheet sync and proof uploads act on the working term. The cached ids
+    are stored per term (`responses_sheet_id:2026-fall`). Migration **0046** (data
+    only) copies fall's ids to its own keys and records that fall's files stay at
+    the root, so **nothing in Drive moves or is renamed**. The old keys are kept
+    for a rollback.
+  - **Not in this phase:** creating a second term (Phase 6), so on production the
+    control does not appear yet. A term's Drive folder is not renamed when the
+    term is.
 - **1.54 (2026-11-24)** — **Semester domains, Phase 4 (second part): the Closes page
   rebuilt (§18a; `docs/semester-domains-plan.md` §2.8, §14;
   `docs/wireframes/admin_closes_v2.html`).** This is where a lead's own number is

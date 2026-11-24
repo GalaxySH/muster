@@ -21,7 +21,7 @@ import {
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 export interface StudentScheduleView {
@@ -51,7 +51,7 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
   const run = await loadCurrentRunRow();
   if (!run) return { kind: "no-run" };
 
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [student] = await db
     .select({
       email: students.email,

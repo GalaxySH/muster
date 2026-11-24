@@ -23,7 +23,7 @@ import {
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { listChangeRequests, recentChangeRequestTimes, type ChangeRequestRow } from "./data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 export interface ChangeRequestActionResult {
   ok: boolean;
@@ -70,7 +70,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
   const fail = async (error: string): Promise<ChangeRequestActionResult> => ({
     ok: false,
     error,
-    requests: await listChangeRequests(email, await currentTermId()),
+    requests: await listChangeRequests(email, await workingTermId()),
   });
 
   const checked = validateChangeRequest({
@@ -130,7 +130,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
   const requestId = randomUUID();
   await db.insert(changeRequests).values({
     id: requestId,
-    termId: await currentTermId(),
+    termId: await workingTermId(),
     studentEmail: email,
     day: checked.value.day,
     shiftText: checked.value.shiftText,
@@ -145,7 +145,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
   }
   revalidatePath("/change-requests");
   if (gate.onBehalf) revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
-  return { ok: true, requests: await listChangeRequests(email, await currentTermId()) };
+  return { ok: true, requests: await listChangeRequests(email, await workingTermId()) };
 }
 
 /**
@@ -173,6 +173,6 @@ export async function withdrawChangeRequest(id: string): Promise<ChangeRequestAc
   revalidatePath("/change-requests");
   return {
     ok: true,
-    requests: await listChangeRequests(row.studentEmail, await currentTermId()),
+    requests: await listChangeRequests(row.studentEmail, await workingTermId()),
   };
 }

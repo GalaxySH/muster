@@ -15,10 +15,10 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, adminUsers, termMembers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { memberOf, onRosterStudent } from "@/lib/terms/scope";
 
-/** A person and their place in the current term. */
+/** A person and their place in the working term. */
 export interface StudentRecord {
   email: string;
   displayName: string;
@@ -32,7 +32,7 @@ export interface StudentRecord {
   rosterTitle: string | null;
 }
 
-/** The person with this email and their place in the current term, or null when unknown. */
+/** The person with this email and their place in the working term, or null when unknown. */
 export async function findStudentByEmail(email: string): Promise<StudentRecord | null> {
   const [row] = await getDb()
     .select({
@@ -46,7 +46,7 @@ export async function findStudentByEmail(email: string): Promise<StudentRecord |
       rosterTitle: termMembers.rosterTitle,
     })
     .from(students)
-    .leftJoin(termMembers, memberOf(await currentTermId()))
+    .leftJoin(termMembers, memberOf(await workingTermId()))
     .where(eq(students.email, normalizeEmail(email)))
     .limit(1);
   return row ? { ...row, onRoster: row.onRoster ?? false } : null;
@@ -70,7 +70,7 @@ export async function listRosterNames(): Promise<{ email: string; displayName: s
   return getDb()
     .select({ email: students.email, displayName: students.displayName })
     .from(students)
-    .where(onRosterStudent(await currentTermId()))
+    .where(onRosterStudent(await workingTermId()))
     .orderBy(asc(students.displayName), asc(students.email));
 }
 

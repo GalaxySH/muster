@@ -9,11 +9,11 @@ import { asc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, submissions } from "@/lib/db/schema";
 import type { AnalyticsStudent } from "./analytics-view";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, onRosterStudent } from "@/lib/terms/scope";
 
 export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       email: students.email,

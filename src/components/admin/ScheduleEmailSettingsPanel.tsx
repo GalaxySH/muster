@@ -34,7 +34,7 @@ export function ScheduleEmailSettingsPanel({
   adminEmail,
 }: {
   config: ScheduleEmailConfig;
-  /** The current term's name, which the preview shows for `{{term}}`. */
+  /** The working term's name, which the preview shows for `{{term}}`. */
   termName: string;
   /** EMAIL_FROM's domain, which the sender address always uses. */
   domain: string;

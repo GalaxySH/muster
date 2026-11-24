@@ -35,7 +35,7 @@ describe("ClearScheduleButton", () => {
     expect((box as HTMLInputElement).checked).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "Yes, clear" }));
-    expect(clearScheduleRun).toHaveBeenCalledWith(true);
+    expect(clearScheduleRun).toHaveBeenCalledWith("", true);
   });
 
   it("keeps the marks when the box is unticked", async () => {
@@ -45,7 +45,7 @@ describe("ClearScheduleButton", () => {
     await user.click(screen.getByRole("button", { name: "Clear schedule" }));
     await user.click(screen.getByRole("checkbox", { name: "Also unmark 1 student as scheduled" }));
     await user.click(screen.getByRole("button", { name: "Yes, clear" }));
-    expect(clearScheduleRun).toHaveBeenCalledWith(false);
+    expect(clearScheduleRun).toHaveBeenCalledWith("", false);
   });
 
   it("offers nothing to unmark when no one is marked", async () => {

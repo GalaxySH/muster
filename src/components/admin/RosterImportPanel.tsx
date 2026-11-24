@@ -15,6 +15,7 @@
  * re-sends the same file.
  */
 import { useRef, useState, useTransition } from "react";
+import { useRenderedTermId, useRenderedTermName } from "./RenderedTerm";
 import Link from "next/link";
 import { importRosterFromUpload, type RosterGuardBlock } from "@/lib/roster/actions";
 import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";
@@ -29,6 +30,8 @@ const SKIP_REASON_LABEL: Record<string, string> = {
 };
 
 export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
+  const termId = useRenderedTermId();
+  const termName = useRenderedTermName();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,7 @@ export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
     setError(null);
     const formData = new FormData();
     formData.set("file", file);
+    formData.set("termId", termId);
     if (sheetName.trim()) formData.set("sheetName", sheetName.trim());
     if (allowMass) formData.set("allowMassDeactivation", "1");
     if (closesAnswer !== undefined) formData.set("releaseUndatedCloses", closesAnswer ? "1" : "0");
@@ -116,7 +120,7 @@ export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
       {guard && (
         <div role="status" style={guardBox}>
           <p style={{ margin: "0 0 6px", fontWeight: 600 }}>
-            These {guard.absent.length} students would be taken off the roster:
+            These {guard.absent.length} students would be taken off the {termName} roster:
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
             {guard.absent.map((email) => (
@@ -171,7 +175,7 @@ export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
           </div>
         </div>
       )}
-      {summary && <SummaryReport summary={summary} />}
+      {summary && <SummaryReport summary={summary} termName={termName} />}
     </div>
   );
 }
@@ -194,13 +198,13 @@ function describeChangeOutcome(c: PositionChangeSummary): string {
   return parts.join(" ");
 }
 
-function SummaryReport({ summary }: { summary: ImportSummary }) {
+function SummaryReport({ summary, termName }: { summary: ImportSummary; termName: string }) {
   const unmapped = Object.entries(summary.unmappedTitles);
   const positions = Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1]);
 
   return (
     <div role="status" style={reportBox}>
-      <p style={{ margin: "0 0 8px", color: "#196127", fontWeight: 600 }}>✓ Import complete.</p>
+      <p style={{ margin: "0 0 8px", color: "#196127", fontWeight: 600 }}>✓ Imported into {termName}.</p>
       <ul style={{ margin: "0 0 8px", paddingLeft: 20, fontSize: 14 }}>
         <li>
           Read <strong>{summary.sheetRows}</strong> rows from{" "}

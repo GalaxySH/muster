@@ -7,10 +7,10 @@ import { TermDetailsForm } from "@/components/admin/TermDetailsForm";
 import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
 import { termNamesIn } from "@/lib/domain/terms";
 import { getLateTravelPolicy, getScheduleEmailConfig, getTravelCutoff } from "@/lib/settings";
-import { currentTerm, listOtherTermNames } from "@/lib/terms/current";
+import { workingTerm, listOtherTermNames } from "@/lib/terms/working";
 
 /**
- * Admin: the current semester's own details (docs/semester-domains-plan.md
+ * Admin: the working semester's own details (docs/semester-domains-plan.md
  * §2.1): its name, dates, new hire date, schedule note and travel cutoff.
  */
 export default async function AdminTermPage() {
@@ -19,7 +19,7 @@ export default async function AdminTermPage() {
   if (!session.isAdmin) redirect("/me");
 
   const [term, travelCutoff, lateTravelPolicy, scheduleEmail, otherNames] = await Promise.all([
-    currentTerm(),
+    workingTerm(),
     getTravelCutoff(),
     getLateTravelPolicy(),
     getScheduleEmailConfig(),

@@ -17,7 +17,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadPositionWithBlocks } from "@/lib/availability/data";
 import { validateChangeRequest, type ShiftTimeBlock } from "@/lib/domain/change-requests";
 import { listChangeRequests, type ChangeRequestRow } from "./data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 /**
  * One employee's requests, for the form panel when an admin picks an employee
@@ -26,7 +26,7 @@ import { currentTermId } from "@/lib/terms/current";
 export async function adminListChangeRequests(email: string): Promise<ChangeRequestRow[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
-  return listChangeRequests(normalizeEmail(email), await currentTermId());
+  return listChangeRequests(normalizeEmail(email), await workingTermId());
 }
 
 /**

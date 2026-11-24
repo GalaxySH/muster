@@ -54,7 +54,7 @@ import { effectiveRotation } from "@/lib/availability/effective";
 import { onRosterStudent } from "@/lib/terms/scope";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent } from "@/lib/terms/scope";
 import { currentRunOf } from "@/lib/terms/scope";
 
@@ -138,7 +138,7 @@ export async function applyScheduleEdits(
     const [listed] = await db
       .select({ email: students.email })
       .from(students)
-      .where(and(eq(students.email, email), onRosterStudent(await currentTermId())))
+      .where(and(eq(students.email, email), onRosterStudent(await workingTermId())))
       .limit(1);
     if (!listed) return fail(OFF_ROSTER_MESSAGE);
   }
@@ -158,7 +158,7 @@ export async function applyScheduleEdits(
       international: students.international,
     })
     .from(students)
-    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
+    .leftJoin(submissions, submissionOfStudent(await workingTermId()))
     .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);

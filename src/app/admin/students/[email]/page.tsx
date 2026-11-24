@@ -75,7 +75,7 @@ import {
   successPillStyle,
   dangerPillStyle,
 } from "@/components/admin/ui";
-import { currentTerm } from "@/lib/terms/current";
+import { workingTerm } from "@/lib/terms/working";
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -245,7 +245,7 @@ export default async function StudentDetailPage({
   // most needs one set.
   const allPositions = await positionOptions();
   const [term, scheduleEmail, emailEnabled] = await Promise.all([
-    currentTerm(),
+    workingTerm(),
     getScheduleEmailConfig(),
     getEmailSendingEnabled(),
   ]);

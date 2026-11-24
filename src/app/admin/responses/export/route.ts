@@ -6,7 +6,7 @@
 import { getAppSession } from "@/lib/auth/session";
 import { loadExportData } from "@/lib/admin/export-data";
 import { buildExportMatrix, toCsv } from "@/lib/admin/export";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 const BOM = String.fromCharCode(0xfeff); // UTF-8 BOM for Excel
 
@@ -20,7 +20,7 @@ export async function GET() {
   return new Response(BOM + csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="muster-responses-${await currentTermId()}-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="muster-responses-${await workingTermId()}-${date}.csv"`,
       "Cache-Control": "no-store",
     },
   });

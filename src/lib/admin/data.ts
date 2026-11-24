@@ -46,7 +46,7 @@ import {
 import { DEFAULT_SORT, sortResponses, type ResponseSort } from "./response-sort";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { memberOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
 import { groupOf, inTestGroup } from "@/lib/groups/membership";
 import { findStudentByEmail } from "@/lib/roster/lookup";
@@ -133,7 +133,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   const student = await findStudentByEmail(email);
   if (!student) return null;
 
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const ownGroup = await groupOf(db, email, termId);
   const group = ownGroup?.name ?? null;
 
@@ -354,7 +354,7 @@ async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
  */
 export async function listResponses(filters: ResponseFilters = {}): Promise<ResponseRow[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       email: students.email,
@@ -474,7 +474,7 @@ export interface NonResponseReport {
  */
 export async function listNonResponses(): Promise<NonResponseReport> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       email: students.email,
@@ -603,7 +603,7 @@ export async function loadUpcomingTravel(
   now: Date = new Date(),
 ): Promise<TravelWeek<UpcomingTravelEntry>[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       id: travelRequests.id,

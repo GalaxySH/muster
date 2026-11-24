@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * The Semester page's editor for the current term's name, dates, new hire date
+ * The Semester page's editor for the working term's name, dates, new hire date
  * and schedule note. The travel cutoff has its own panel below it.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "./RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/domain/terms";
 
 export function TermDetailsForm({ details }: { details: TermDetails }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [draft, setDraft] = useState(details);
   const [pending, startSave] = useTransition();
@@ -31,7 +33,7 @@ export function TermDetailsForm({ details }: { details: TermDetails }) {
   function save() {
     setMsg(null);
     startSave(async () => {
-      const res = await saveTermDetails(draft);
+      const res = await saveTermDetails(termId, draft);
       setMsg(
         res.ok ? { ok: true, text: "Saved." } : { ok: false, text: res.error ?? "Could not save." },
       );

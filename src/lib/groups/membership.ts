@@ -7,14 +7,14 @@
  * roster place on the same row (position, roster flag) is written by
  * lib/terms/members.ts, and joined through `memberOf` in lib/terms/scope.ts.
  *
- * The writer also keeps the retired `students.group_id` and
+ * A write to the current term also keeps the retired `students.group_id` and
  * `students.group_assigned_auto` columns in step. Nothing reads them any more;
  * they stay current only so the previous release still works if a deploy is
  * rolled back, and they go when the contract migration drops them.
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { termMembers, groups, students } from "@/lib/db/schema";
-import type { DbOrTx } from "@/lib/terms/term-id";
+import { isCurrentTermSql, type DbOrTx } from "@/lib/terms/term-id";
 
 /** WHERE test: the student is in the term's test-accounts group. */
 export function inTestGroup(termId: string) {
@@ -66,7 +66,7 @@ export async function assignMembers(
   await db
     .update(students)
     .set({ groupId, groupAssignedAuto: assignedAuto })
-    .where(inArray(students.email, emails));
+    .where(and(inArray(students.email, emails), isCurrentTermSql(termId)));
 }
 
 /**
@@ -79,7 +79,10 @@ export async function unassignMembers(db: DbOrTx, termId: string, emails: string
     .update(termMembers)
     .set({ groupId: null })
     .where(and(eq(termMembers.termId, termId), inArray(termMembers.studentEmail, emails)));
-  await db.update(students).set({ groupId: null }).where(inArray(students.email, emails));
+  await db
+    .update(students)
+    .set({ groupId: null })
+    .where(and(inArray(students.email, emails), isCurrentTermSql(termId)));
 }
 
 /**

@@ -25,7 +25,7 @@ import {
   type CloseLeadStatus,
   type CloseSlotKind,
 } from "@/lib/domain/close-claims";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { closeClaimInTerm, memberOf } from "@/lib/terms/scope";
 import { closeRequirementOf, requirementOfMember, type CloseRequirement } from "./requirements";
 
@@ -57,7 +57,7 @@ export async function hasCloseInventory(): Promise<boolean> {
   const [row] = await getDb()
     .select({ n: count() })
     .from(closeSlots)
-    .where(eq(closeSlots.termId, await currentTermId()));
+    .where(eq(closeSlots.termId, await workingTermId()));
   return (row?.n ?? 0) > 0;
 }
 
@@ -76,7 +76,7 @@ export async function positionPicksCloses(positionId: string | null): Promise<bo
 }
 
 /**
- * How many closes this person owes in the current term, or null when closes
+ * How many closes this person owes in the working term, or null when closes
  * have nothing to do with them: their position picks none, or no inventory has
  * been generated yet. A lead who owes 0 gets a number, not null, so the admin
  * still sees them; `closeStepApplies` decides whether the student sees the step.
@@ -87,20 +87,20 @@ export async function loadCloseRequirement(
 ): Promise<CloseRequirement | null> {
   if (!(await positionPicksCloses(positionId))) return null;
   if (!(await hasCloseInventory())) return null;
-  return closeRequirementOf(getDb(), await currentTermId(), email);
+  return closeRequirementOf(getDb(), await workingTermId(), email);
 }
 
 export async function countCloseClaims(email: string): Promise<number> {
   const [row] = await getDb()
     .select({ n: count() })
     .from(closeClaims)
-    .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(await currentTermId())));
+    .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(await workingTermId())));
   return row?.n ?? 0;
 }
 
 export async function loadCloseBoard(email: string): Promise<CloseBoard> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [slots, counts, mine, requirement] = await Promise.all([
     db
       .select()
@@ -162,7 +162,7 @@ export async function loadStudentCloseClaims(
     .from(closeClaims)
     .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
     .where(
-      and(eq(closeClaims.studentEmail, email), eq(closeSlots.termId, await currentTermId())),
+      and(eq(closeClaims.studentEmail, email), eq(closeSlots.termId, await workingTermId())),
     )
     .orderBy(asc(closeSlots.date));
   return {
@@ -212,7 +212,7 @@ export interface CloseAdminView {
 
 export async function loadCloseAdmin(): Promise<CloseAdminView> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [slots, claims, leadRows, termRows] = await Promise.all([
     db
       .select()

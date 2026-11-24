@@ -2,9 +2,10 @@
  * The shared top-of-page header. A Home element is always present (the user's
  * requirement); optional `children` render as additional breadcrumb crumbs after
  * it: the wizard step breadcrumb on the form flow, or an "Admin" crumb on admin
- * pages. For an admin, the current semester's name and the student finder sit
- * on the right, so they always know which term they are working in and can
- * look anyone up from any page. Server-rendered: the roster is read only once the
+ * pages. For an admin, the semester they are working in (and the control to
+ * select another) and the student finder sit on the right, and a banner runs
+ * across the top whenever that semester is not the one students are filling in
+ * (docs/semester-domains-plan.md §2.9). Server-rendered: the roster is read only once the
  * session is known to be an admin's, so it never reaches a student's page.
  */
 import Link from "next/link";
@@ -13,7 +14,8 @@ import { faHouse } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { getAppSession } from "@/lib/auth/session";
 import { listRosterNames } from "@/lib/roster/lookup";
 import { StudentQuickSearch } from "./StudentQuickSearch";
-import { currentTerm } from "@/lib/terms/current";
+import { SelectTermButton, TermSwitcher } from "./TermSwitcher";
+import { currentTermId, listTerms, workingTermId } from "@/lib/terms/working";
 
 export async function AppHeader({
   homeHref = "/me",
@@ -28,9 +30,11 @@ export async function AppHeader({
   children?: React.ReactNode;
 }) {
   const session = await getAppSession();
-  const [students, term] = session?.isAdmin
-    ? await Promise.all([listRosterNames(), currentTerm()])
-    : [null, null];
+  const admin = session?.isAdmin
+    ? await Promise.all([listRosterNames(), listTerms(), workingTermId(), currentTermId()])
+    : null;
+  const [students, terms, workingId, currentId] = admin ?? [null, [], "", ""];
+  const nameOf = (id: string) => terms.find((t) => t.id === id)?.name;
 
   const home = (
     <span style={{ fontWeight: 500 }}>
@@ -39,6 +43,15 @@ export async function AppHeader({
   );
   return (
     <header className="app-header">
+      {workingId !== currentId && (
+        <div role="status" className="term-banner">
+          <span>
+            You are working in <strong>{nameOf(workingId)}</strong>. Students are filling in{" "}
+            {nameOf(currentId)}.
+          </span>
+          <SelectTermButton termId={currentId} label={`Back to ${nameOf(currentId)}`} />
+        </div>
+      )}
       <nav
         aria-label="Breadcrumb"
         style={{
@@ -62,9 +75,7 @@ export async function AppHeader({
       </nav>
       {students && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", minWidth: 0 }}>
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
-            {term.name}
-          </span>
+          <TermSwitcher terms={terms} workingId={workingId} />
           <StudentQuickSearch students={students} />
         </div>
       )}

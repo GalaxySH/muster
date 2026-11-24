@@ -5,7 +5,7 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { getSheetUrl, getLastSheetSync, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildClosesSheet } from "@/lib/closes/admin-actions";
-import { currentTerm } from "@/lib/terms/current";
+import { workingTerm } from "@/lib/terms/working";
 import { CloseInventoryPanel } from "@/components/admin/CloseInventoryPanel";
 import { CloseLeadProgress } from "@/components/admin/CloseLeadProgress";
 import { CloseWeekendBoard } from "@/components/admin/CloseWeekendBoard";
@@ -24,7 +24,7 @@ export default async function AdminClosesPage() {
   if (!session.isAdmin) redirect("/me");
 
   const [term, view, sheetUrl, lastSync] = await Promise.all([
-    currentTerm(),
+    workingTerm(),
     loadCloseAdmin(),
     getSheetUrl(CLOSES_SHEET),
     getLastSheetSync(CLOSES_SHEET),

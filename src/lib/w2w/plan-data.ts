@@ -26,7 +26,7 @@ import type {
   W2wPlanRow,
   W2wPositionMapEntry,
 } from "@/lib/domain/w2w-plan/types";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { currentPlanOf } from "@/lib/terms/scope";
 
 export interface PlanMeta {
@@ -53,7 +53,7 @@ export interface PlanMatchInputs {
 
 export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [mapRows, blockRows, positionRows] = await Promise.all([
     // Ordered: resolution is first-wins by id and by name, so an unordered
     // read could resolve a duplicated name differently between requests.
@@ -107,7 +107,7 @@ export function currentPlanRowQuery(termId: string) {
 
 export async function getCurrentPlan(): Promise<CurrentPlan | null> {
   const db = getDb();
-  const [meta] = await currentPlanRowQuery(await currentTermId());
+  const [meta] = await currentPlanRowQuery(await workingTermId());
   if (!meta) return null;
 
   const rows = await db

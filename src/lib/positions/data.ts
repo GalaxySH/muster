@@ -23,7 +23,7 @@ import {
 } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
 import type { DayType, Position } from "@/lib/domain/types";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, rosterOf } from "@/lib/terms/scope";
 import { inTestGroup } from "@/lib/groups/membership";
 
@@ -46,7 +46,7 @@ export async function listPositions(opts?: {
     .from(positions)
     .where(
       and(
-        eq(positions.termId, await currentTermId()),
+        eq(positions.termId, await workingTermId()),
         opts?.includeInactive
           ? undefined
           : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
@@ -144,7 +144,7 @@ export interface AdminPositionItem {
  */
 export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
   const db = getDb();
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [
     posRows,
     blockRows,
@@ -268,7 +268,7 @@ export async function listGhostTitles(): Promise<GhostTitle[]> {
   const rows = await getDb()
     .select({ title: termMembers.rosterTitle, n: sql<number>`count(*)` })
     .from(termMembers)
-    .where(and(rosterOf(await currentTermId()), isNull(termMembers.positionId)))
+    .where(and(rosterOf(await workingTermId()), isNull(termMembers.positionId)))
     .groupBy(termMembers.rosterTitle);
   return rows
     .map((r) => ({ title: r.title, count: Number(r.n) }))

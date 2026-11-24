@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { positions, students, submissions, termMembers } from "@/lib/db/schema";
 import { isTestAccountEmail } from "./email";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 import { inTestGroup } from "@/lib/groups/membership";
 
@@ -20,7 +20,7 @@ export interface TestAccount {
 export async function listTestAccounts(): Promise<TestAccount[]> {
   // Joining positions (rather than filtering a picker list) keeps names
   // resolving even when an account holds an inactive or aliased position.
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       email: students.email,

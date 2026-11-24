@@ -17,7 +17,7 @@ import { shiftPlans, w2wEmployees } from "@/lib/db/schema";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { parseW2wEmployees } from "@/lib/domain/w2w-plan/identity";
 import { validateW2wCsvUpload } from "./upload-validation";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { currentPlanOf } from "@/lib/terms/scope";
 
 /**
@@ -45,7 +45,7 @@ export async function setPlanRotationWeek(
   const [current] = await db
     .select({ id: shiftPlans.id })
     .from(shiftPlans)
-    .where(and(eq(shiftPlans.id, planId), currentPlanOf(await currentTermId())))
+    .where(and(eq(shiftPlans.id, planId), currentPlanOf(await workingTermId())))
     .limit(1);
   if (!current) return { ok: false, error: "That plan is no longer the current one." };
 

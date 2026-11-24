@@ -28,7 +28,7 @@ import {
 import type { PlanMatchReport, W2wPlanRow, W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
 import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
 import { loadPlanMatchInputs } from "./plan-data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent } from "@/lib/terms/scope";
 
 /**
@@ -90,7 +90,7 @@ export async function analyzePlanUpload(
       : [];
   const report = matchPlan(parsed.rows, mapSeed.length > 0 ? mapSeed : inputs.map, inputs.blocks);
 
-  const termId = await currentTermId();
+  const termId = await workingTermId();
   const [mappedRows, rosterRows, positionRows, internalByEmail] = await Promise.all([
     db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
     // Current roster only: a name on the plan must not resolve to somebody who
@@ -113,7 +113,7 @@ export async function analyzePlanUpload(
     db
       .select({ id: positions.id, minHours: positions.minHours, minDays: positions.minDays })
       .from(positions)
-      .where(eq(positions.termId, await currentTermId())),
+      .where(eq(positions.termId, await workingTermId())),
     loadInternalCopiesByEmail(),
   ]);
 

@@ -164,6 +164,30 @@ body {
   gap: 8px 16px;
   margin: 0 0 16px;
 }
+/* Shown to an admin working in a semester students are not filling in. */
+.term-banner {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-warning);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-warning);
+  color: var(--color-text-warning);
+  font-size: 14px;
+}
+.term-banner button {
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-md);
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
 .student-search {
   position: relative;
   flex: 0 1 300px;

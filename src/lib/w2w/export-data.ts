@@ -27,7 +27,7 @@ import {
 import { serializeW2wUpload } from "@/lib/domain/w2w-plan/serialize";
 import { isCp1252Lossy } from "@/lib/text/cp1252";
 import { getCurrentPlan, loadPlanMatchInputs, type PlanMeta } from "./plan-data";
-import { currentTermId } from "@/lib/terms/current";
+import { workingTermId } from "@/lib/terms/working";
 
 export interface ExportWarnings {
   /** Students the run schedules onto cells with no seat left (or none at all). */
@@ -76,7 +76,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
       })
       .from(scheduleAssignments)
       .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-      .where(and(onRosterStudent(await currentTermId()), eq(scheduleAssignments.runId, run.id))),
+      .where(and(onRosterStudent(await workingTermId()), eq(scheduleAssignments.runId, run.id))),
   ]);
 
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
@@ -163,7 +163,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         db
           .select({ email: students.email, displayName: students.displayName })
           .from(students)
-          .where(onRosterStudent(await currentTermId())),
+          .where(onRosterStudent(await workingTermId())),
       ])
     : [[], []];
   const nameIndex = buildNameIndex(

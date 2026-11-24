@@ -3,8 +3,11 @@
  * app keeps only the returned fileId. The single seam the upload actions and
  * the image-proxy route call; nothing else touches Drive directly.
  *
- * Folder layout (PLAN §12): the configured root holds the running responses
- * spreadsheet; all proof files live in a single `proofs/` subfolder under it.
+ * Folder layout (PLAN §12, docs/semester-domains-plan.md §2.6): each term has
+ * its own folder under the configured root, named after the term, holding its
+ * sheets and a `proofs/` subfolder. The one term that predates this keeps its
+ * files at the root itself (`drive_root_term`). Every id is cached under a key
+ * that ends in the term id, so renaming a term breaks nothing.
  */
 import "server-only";
 import { env } from "@/lib/env";
@@ -14,7 +17,14 @@ import {
   markDriveOk,
   markDriveFailed,
   SETTING_PROOFS_FOLDER_ID,
+  SETTING_TERM_FOLDER_ID,
+  SETTING_DRIVE_ROOT_TERM,
 } from "@/lib/settings";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { terms } from "@/lib/db/schema";
+import { termSettingKey } from "@/lib/domain/terms";
+import { workingTermId } from "@/lib/terms/working";
 import { getActiveDriveGrant } from "./grants";
 import { getAccessToken } from "./oauth";
 import {
@@ -54,33 +64,65 @@ export interface RelayUploadInput {
 const driveRoot = (): string | null => env.DRIVE_FOLDER_ID || null;
 
 /**
- * Find-or-create the `proofs/` subfolder under the root, caching its id. Falls
- * back to a name lookup before creating so a manually-made folder is reused.
+ * Find-or-create a folder by name under a parent, caching its id under `key`.
+ * The name lookup comes before creating so a manually-made folder is reused.
  */
-async function ensureProofsFolder(accessToken: string): Promise<string> {
-  const cached = await getSetting(SETTING_PROOFS_FOLDER_ID);
+async function ensureFolder(
+  accessToken: string,
+  key: string,
+  name: string,
+  parentId: () => Promise<string | null>,
+): Promise<string> {
+  const cached = await getSetting(key);
   if (cached) return cached;
-
-  const root = driveRoot();
-  const existing = await findChildByName({
-    accessToken,
-    parentId: root,
-    name: PROOFS_FOLDER_NAME,
-    mimeType: FOLDER_MIME,
-  });
+  const parent = await parentId();
   const id =
-    existing ?? (await createFolder({ accessToken, name: PROOFS_FOLDER_NAME, parentId: root }));
-  await setSetting(SETTING_PROOFS_FOLDER_ID, id);
+    (await findChildByName({ accessToken, parentId: parent, name, mimeType: FOLDER_MIME })) ??
+    (await createFolder({ accessToken, name, parentId: parent }));
+  await setSetting(key, id);
   return id;
 }
 
-/** Relay one file into Drive's proofs/ folder; returns the stored fileId. */
+/** Where a term's sheets and proofs folder live: its own folder, or the root. */
+async function termFolder(accessToken: string, termId: string): Promise<string | null> {
+  if ((await getSetting(SETTING_DRIVE_ROOT_TERM)) === termId) return driveRoot();
+  return ensureFolder(
+    accessToken,
+    termSettingKey(SETTING_TERM_FOLDER_ID, termId),
+    await termName(termId),
+    async () => driveRoot(),
+  );
+}
+
+async function termName(termId: string): Promise<string> {
+  const [term] = await getDb()
+    .select({ name: terms.name })
+    .from(terms)
+    .where(eq(terms.id, termId))
+    .limit(1);
+  if (!term) throw new Error(`No term "${termId}" to make a Drive folder for.`);
+  return term.name;
+}
+
+/** The term's `proofs/` folder. */
+const ensureProofsFolder = (accessToken: string, termId: string): Promise<string> =>
+  ensureFolder(
+    accessToken,
+    termSettingKey(SETTING_PROOFS_FOLDER_ID, termId),
+    PROOFS_FOLDER_NAME,
+    () => termFolder(accessToken, termId),
+  );
+
+/**
+ * Relay one file into the working term's proofs/ folder; returns the stored
+ * fileId. For a student that is always the current term.
+ */
 export async function relayUpload(input: RelayUploadInput): Promise<string> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
   try {
     const accessToken = await getAccessToken(grant.refreshToken);
-    const folderId = await ensureProofsFolder(accessToken);
+    const folderId = await ensureProofsFolder(accessToken, await workingTermId());
     const ext = extensionForType(input.mimeType);
     const name = `${input.studentEmail}__${input.kind}__${Date.now()}.${ext}`;
     const fileId = await uploadFile({
@@ -127,8 +169,8 @@ export interface ManagedSheetResult {
 }
 
 /**
- * Write a managed spreadsheet in the Drive root from a values matrix
- * (find-or-create by cached id, then name). Each sheet duplicates app data so
+ * Write one of a term's managed spreadsheets from a values matrix
+ * (find-or-create in the term's folder by cached id, then name). Each sheet duplicates app data so
  * folder members can read it without the app, and survives app retirement
  * (PLAN §10, §12, §18a); `admin/sheet-sync.ts` defines the targets (responses,
  * SL closes). Written via the Sheets API (proper cell control, clear, RAW
@@ -136,38 +178,46 @@ export interface ManagedSheetResult {
  * cached sheet was deleted out from under us (404 → recreate + retry once).
  */
 export async function upsertManagedSheet(
-  sheet: { name: string; idSettingKey: string },
+  sheet: { name: string; idSettingKey: string; termId: string },
   values: string[][],
 ): Promise<ManagedSheetResult> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
   try {
     const accessToken = await getAccessToken(grant.refreshToken);
-    const root = driveRoot();
+    const idKey = termSettingKey(sheet.idSettingKey, sheet.termId);
+    // The folder is only needed to find or create the sheet, never to write one
+    // whose id is cached.
+    const create = async () =>
+      createSpreadsheet({
+        accessToken,
+        name: sheet.name,
+        parentId: await termFolder(accessToken, sheet.termId),
+      });
 
     let sheetId =
-      (await getSetting(sheet.idSettingKey)) ??
+      (await getSetting(idKey)) ??
       (await findChildByName({
         accessToken,
-        parentId: root,
+        parentId: await termFolder(accessToken, sheet.termId),
         name: sheet.name,
         mimeType: SPREADSHEET_MIME,
       })) ??
-      (await createSpreadsheet({ accessToken, name: sheet.name, parentId: root }));
+      (await create());
 
     try {
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     } catch (e) {
       // The cached/found sheet was deleted out from under us; recreate once.
       if (e instanceof SheetWriteError && e.status === 404) {
-        sheetId = await createSpreadsheet({ accessToken, name: sheet.name, parentId: root });
+        sheetId = await create();
         await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
       } else {
         throw e;
       }
     }
 
-    await setSetting(sheet.idSettingKey, sheetId);
+    await setSetting(idKey, sheetId);
     await markDriveOk();
     return {
       spreadsheetId: sheetId,
