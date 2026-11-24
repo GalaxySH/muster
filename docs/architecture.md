@@ -257,16 +257,21 @@ dormant until an admin generates slots). Capacity and claim counts are **admin-o
 the student board's `CloseSlotView` carries a server-computed `full` boolean instead of
 `capacity`/`claimedCount`, so SLs only ever see whether a slot is still open (v0.52); the step list is **position-aware** (`wizardSteps` /
 `loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
-`finalizeSubmission` refuses an SL with ≠ 3 claims; `/me` shows a red warning card +
-a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead
-progress, per-slot claimants with **assign/remove controls**
-(`components/admin/CloseClaimsTable.tsx`, v0.53 — the picker only offers active leads
-with open picks, the server actions re-check everything; v0.97 — `Page width="full"`
-(was the 1000px-capped `wide`) plus rendering as a `.stack-table` so the growing
-"Claimed by" column never forces a page-level horizontal scrollbar and the table
-stacks into cards under 720px; per-claimant name+remove-button spans stay
-`white-space: nowrap` but the `", "` separator between claimants sits outside that
-span so the browser has an actual line-break point between names), feasibility
+`finalizeSubmission` refuses an SL holding fewer than their number; `/me` shows a red
+warning card + a closes review link. Admin surface **`/admin/closes`** (rebuilt in
+1.54 from `docs/wireframes/admin_closes_v2.html`): `CloseLeadProgress` is a collapsible
+table of active leads with required, picked and status, a number box per lead that
+saves on blur, row checkboxes with a batch "Set closes to", and All / Short / Over
+filters, all through `setCloseRequirements`; it opens expanded when anyone is short or
+over. `CloseWeekendBoard` lays the closes out by weekend under a month heading
+(`groupCloseWeekends`, pure): one chip per assigned lead with its own remove control,
+a dashed placeholder per open spot, the first of which is the "Add a lead" picker
+(only leads who can still take a close, assigned on select), a fill pill from
+`closeSlotFill` (open, full, over), and "Remove this close" behind a row menu and the
+same confirmation as before. The grid is `auto-fit`, so Friday and Saturday stack on a
+phone without a media query. The inventory editor and the sheet controls sit behind an
+"Inventory and Google Sheet" disclosure once an inventory exists. The server actions
+re-check everything. Also a feasibility
 warning, and a second backup Drive sheet
 (`Muster SL Closes`) — `sheet-sync.ts` + `drive/relay.ts` are now **parametrized by
 sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/

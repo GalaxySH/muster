@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phases 1 to 3 are built (PLAN 1.48, 1.49 and 1.51). Phases 4 to 7 are not.** Branch
+**Status: Phases 1 to 4 are built (PLAN 1.48, 1.49, 1.51, 1.53 and 1.54). Phases 5 to 7 are not.** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -1266,3 +1266,20 @@ pure rules test-first, the default on the Semester page, the admin action
 **Not verified:** `setCloseRequirements` has no page calling it yet, so it has only
 been type-checked and reviewed. 0045 has not been rehearsed on a copy of production
 data. The sheet's lead table was unit-tested, not written to a real sheet.
+### Second part: the Closes page (PLAN 1.54)
+
+Built from the agreed mockup. `CloseLeadProgress` and `CloseWeekendBoard` replace the
+lead list and `CloseClaimsTable`; the grouping and the fill and status labels are pure
+functions in `domain/close-claims.ts`, tested there.
+
+Checked in the browser on a throwaway database, at desktop and phone width: one lead's
+number changed by leaving the box, a 99 refused, two leads set together, the Over
+filter, a lead added through the picker and then no longer offered once at their
+number, a lead removed, and a close removed from its menu. Each write was confirmed in
+the database, with `set_by` recording the admin.
+
+Where it differs from the mockup: on a phone the lead table uses the app's existing
+stacked-table layout (one labelled line per field) instead of the mockup's tighter
+block, and the picker is a native select styled as the dashed spot.
+
+This closes the "not verified" note above about `setCloseRequirements`.

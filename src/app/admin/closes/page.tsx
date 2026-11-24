@@ -7,15 +7,16 @@ import { getSheetUrl, getLastSheetSync, CLOSES_SHEET } from "@/lib/admin/sheet-s
 import { rebuildClosesSheet } from "@/lib/closes/admin-actions";
 import { currentTerm } from "@/lib/terms/current";
 import { CloseInventoryPanel } from "@/components/admin/CloseInventoryPanel";
-import { CloseClaimsTable } from "@/components/admin/CloseClaimsTable";
+import { CloseLeadProgress } from "@/components/admin/CloseLeadProgress";
+import { CloseWeekendBoard } from "@/components/admin/CloseWeekendBoard";
 import { SheetControls } from "@/components/admin/SheetControls";
 import { InfoCard, Page } from "@/components/ui";
 
 /**
- * Admin dashboard for SL weekend closes (PLAN §18a): everyone's claims per
- * slot with direct assign/remove controls, per-lead progress toward the
- * required picks, a capacity feasibility check, and the inventory editor.
- * Claims are also backed up to a second Drive sheet (the SheetControls row).
+ * Admin page for SL weekend closes (PLAN §18a): each lead's required number and
+ * progress, then the closes by weekend with direct assign and remove controls.
+ * The inventory editor and the backup sheet are used rarely, so they sit behind
+ * a disclosure once an inventory exists.
  */
 export default async function AdminClosesPage() {
   const session = await getAppSession();
@@ -37,7 +38,8 @@ export default async function AdminClosesPage() {
       ? { start: first.date, end: last.date, capacity: first.capacity }
       : { start: term.startsOn, end: term.endsOn, capacity: 3 };
 
-  const unfinished = view.leads.filter((l) => !l.complete);
+  const filled = view.slots.reduce((n, s) => n + s.claimants.length, 0);
+  const closesWord = view.slots.length === 1 ? "close" : "closes";
 
   return (
     <Page width="full">
@@ -48,78 +50,69 @@ export default async function AdminClosesPage() {
       <h1 style={{ marginTop: 0 }}>SL weekend closes</h1>
       <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
         Shift Leads pick weekend closes as part of the availability form. A new lead starts
-        at {view.defaultRequirement}.
+        at {view.defaultRequirement}. <Link href="/admin/terms">Change on the Semester page</Link>
       </p>
-
-      {hasSlots && (
-        <SheetControls
-          sheetUrl={sheetUrl}
-          lastSyncedAtMs={lastSync ? lastSync.getTime() : null}
-          rebuild={rebuildClosesSheet}
-        />
-      )}
 
       {hasSlots && view.leads.length > 0 && !view.feasibility.feasible && (
         <InfoCard tone="danger" title="Not enough spots">
           <p style={{ margin: 0 }}>
             {view.leads.length} active Shift Leads need {view.feasibility.required} spots in
-            total, but the inventory only has {view.feasibility.available}. Extend the range or
-            raise the spots per shift.
+            total, but the inventory only has {view.feasibility.available}. Extend the range,
+            raise the spots per shift, or lower a lead&apos;s number.
           </p>
         </InfoCard>
       )}
 
-      <section style={card}>
-        <h2 style={h2}>Inventory</h2>
-        {!hasSlots && (
+      {!hasSlots && (
+        <section style={card}>
+          <h2 style={h2}>Inventory</h2>
           <p style={{ marginTop: 0, color: "var(--color-text-secondary)" }}>
             No close shifts exist yet. Students see the picking step only after you generate
             them.
           </p>
-        )}
-        <CloseInventoryPanel defaults={defaults} hasSlots={hasSlots} />
-      </section>
-
-      {hasSlots && (
-        <section style={card}>
-          <h2 style={h2}>Shift Lead progress</h2>
-          {view.leads.length === 0 ? (
-            <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
-              No active Shift Leads on the roster.
-            </p>
-          ) : (
-            <>
-              <p style={{ marginTop: 0, color: "var(--color-text-secondary)" }}>
-                {unfinished.length === 0
-                  ? `All ${view.leads.length} SLs have chosen closes.`
-                  : `Missing closes from ${unfinished.length} of ${view.leads.length} SLs.`}
-              </p>
-              <ul style={leadList}>
-                {view.leads.map((l) => (
-                  <li key={l.email} style={leadRow}>
-                    <Link href={`/admin/students/${encodeURIComponent(l.email)}`}>
-                      {l.displayName}
-                    </Link>
-                    <span style={{ color: l.complete ? "var(--color-text-success)" : "var(--color-text-danger)", fontWeight: 600 }}>
-                      {l.complete ? "✓ " : ""}
-                      {l.claimCount} of {l.required}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          <CloseInventoryPanel defaults={defaults} hasSlots={false} />
         </section>
       )}
 
+      {hasSlots &&
+        (view.leads.length === 0 ? (
+          <section style={card}>
+            <h2 style={h2}>Shift Lead progress</h2>
+            <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+              No active Shift Leads on the roster.
+            </p>
+          </section>
+        ) : (
+          <CloseLeadProgress leads={view.leads} defaultRequirement={view.defaultRequirement} />
+        ))}
+
       {hasSlots && (
-        <section style={card}>
-          <h2 style={h2}>Close Shifts</h2>
-          <p style={{ marginTop: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-            Changes made here will be immediately visible to employees.
+        <>
+          <div style={closesHead}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Closes</h2>
+            <span style={{ color: "var(--color-text-secondary)" }}>
+              {view.slots.length} {closesWord}, {view.feasibility.available} spots, {filled}{" "}
+              filled. Leads need {view.feasibility.required} in total.
+            </span>
+          </div>
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Changes made here are visible to employees right away.
           </p>
-          <CloseClaimsTable slots={view.slots} leads={view.leads} />
-        </section>
+          <details style={{ marginBottom: 6 }}>
+            <summary style={{ cursor: "pointer", color: "var(--color-text-info)" }}>
+              Inventory and Google Sheet
+            </summary>
+            <div style={{ ...card, marginTop: 10 }}>
+              <SheetControls
+                sheetUrl={sheetUrl}
+                lastSyncedAtMs={lastSync ? lastSync.getTime() : null}
+                rebuild={rebuildClosesSheet}
+              />
+              <CloseInventoryPanel defaults={defaults} hasSlots />
+            </div>
+          </details>
+          <CloseWeekendBoard slots={view.slots} leads={view.leads} />
+        </>
       )}
     </Page>
   );
@@ -133,18 +126,10 @@ const card: React.CSSProperties = {
   marginBottom: 16,
 };
 const h2: React.CSSProperties = { margin: "0 0 10px", fontSize: 15, fontWeight: 700 };
-const leadList: React.CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "grid",
-  gap: 6,
-  maxWidth: 420,
-};
-const leadRow: React.CSSProperties = {
+const closesHead: React.CSSProperties = {
   display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  borderTop: "0.5px solid var(--color-border-tertiary)",
-  paddingTop: 6,
+  flexWrap: "wrap",
+  alignItems: "baseline",
+  gap: "4px 12px",
+  margin: "22px 0 4px",
 };

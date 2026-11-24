@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.53
+- **Version:** 1.54
 - **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1663,6 +1663,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.54 (2026-11-24)** — **Semester domains, Phase 4 (second part): the Closes page
+  rebuilt (§18a; `docs/semester-domains-plan.md` §2.8, §14;
+  `docs/wireframes/admin_closes_v2.html`).** This is where a lead's own number is
+  edited. **Shift Lead progress** is now a collapsible table: required, picked and a
+  status pill ("Short by 2", "Done", "Over by 1") per lead, a number box that saves
+  when you leave it, checkboxes with "Set closes to" for several leads at once, and
+  All / Short / Over filters. Its one-line summary stays visible when collapsed, and it
+  opens expanded only when someone is short or over. **Closes** are grouped by weekend
+  under a month heading that carries the year, Friday beside Saturday. Each assigned
+  lead is a chip with its own remove control, each open spot a dashed placeholder, and
+  the first open spot is the "Add a lead" picker, which assigns on select. A pill
+  shows a close as full, with room, or over. Removing a close moved into a row menu,
+  behind the same confirmation. The inventory form and the Google Sheet controls sit
+  behind "Inventory and Google Sheet" once an inventory exists. The old seven-column
+  `CloseClaimsTable` is deleted. No rule changed and there is no migration.
 - **1.53 (2026-11-24)** — **Semester domains, Phase 4 (first part): a close requirement
   per Shift Lead (§9, §18a; issue #40, `docs/semester-domains-plan.md` §2.8, §14).** Every
   lead owed exactly 3 weekend closes, a constant in a dozen places, with no way to say a

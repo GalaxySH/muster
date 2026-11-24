@@ -85,6 +85,68 @@ export function closeLeadStatus(claimCount: number, required: number): CloseLead
   return claimCount > required ? "over" : "done";
 }
 
+/** The status as an admin reads it: "Short by 2", "Done", "Over by 1". */
+export function closeLeadStatusLabel(claimCount: number, required: number): string {
+  const status = closeLeadStatus(claimCount, required);
+  if (status === "done") return "Done";
+  const by = Math.abs(required - claimCount);
+  return status === "short" ? `Short by ${by}` : `Over by ${by}`;
+}
+
+export type CloseSlotFill =
+  | { state: "open"; count: number }
+  | { state: "full" }
+  | { state: "over"; count: number };
+
+/** How full one close is: spots still open, exactly full, or more leads than spots. */
+export function closeSlotFill(capacity: number, claimedCount: number): CloseSlotFill {
+  if (claimedCount > capacity) return { state: "over", count: claimedCount - capacity };
+  if (claimedCount === capacity) return { state: "full" };
+  return { state: "open", count: capacity - claimedCount };
+}
+
+export interface CloseWeekend<T> {
+  /** The Friday's date, whether or not that Friday has a close. */
+  key: string;
+  fri: T | null;
+  sat: T | null;
+}
+
+export interface CloseMonth<T> {
+  /** "YYYY-MM" of the weekend's Friday. */
+  key: string;
+  /** "November 2026". The year is shown so one year never passes for another. */
+  label: string;
+  weekends: CloseWeekend<T>[];
+}
+
+/**
+ * Closes laid out for the admin page: Friday and Saturday of one weekend side
+ * by side, weekends in date order under their month. A weekend belongs to the
+ * month of its Friday, so a Saturday on the 1st stays with the Friday before.
+ */
+export function groupCloseWeekends<T extends CloseSlotDate>(slots: readonly T[]): CloseMonth<T>[] {
+  const weekends = new Map<string, CloseWeekend<T>>();
+  for (const slot of slots) {
+    const key = closeWeekendKey(slot.date, slot.kind);
+    const weekend = weekends.get(key) ?? { key, fri: null, sat: null };
+    weekend[slot.kind] = slot;
+    weekends.set(key, weekend);
+  }
+  const months: CloseMonth<T>[] = [];
+  for (const weekend of [...weekends.values()].sort((a, b) => (a.key < b.key ? -1 : 1))) {
+    const key = weekend.key.slice(0, 7);
+    let month = months[months.length - 1];
+    if (!month || month.key !== key) {
+      const d = toUtc(weekend.key);
+      month = { key, label: `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`, weekends: [] };
+      months.push(month);
+    }
+    month.weekends.push(weekend);
+  }
+  return months;
+}
+
 export interface CloseFeasibility {
   /** Seats needed: every active Shift Lead's own number, added up. */
   required: number;
@@ -115,6 +177,17 @@ const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ] as const;
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+/** A slot date without its year, e.g. "Fri Sep 4", for use under a heading that carries it. */
+export function formatCloseDay(iso: string): string {
+  const d = toUtc(iso);
+  return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
 
 /**
  * Short human label for a slot date, e.g. "Fri Sep 4, 2026". The year is shown

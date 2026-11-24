@@ -9,6 +9,10 @@ import {
   closeClaimsComplete,
   closeClaimsFeasibility,
   closeLeadStatus,
+  closeLeadStatusLabel,
+  closeSlotFill,
+  formatCloseDay,
+  groupCloseWeekends,
   closeStepApplies,
   isValidCloseRequirement,
   MAX_CLOSE_REQUIREMENT,
@@ -174,5 +178,63 @@ describe("formatCloseSlot", () => {
     expect(formatCloseSlot({ date: "2026-12-12", startMinutes: 17 * 60, endMinutes: 23 * 60 })).toBe(
       "Sat Dec 12, 2026, 5p–11p",
     );
+  });
+});
+
+describe("closeLeadStatusLabel", () => {
+  it("says how far short or over a lead is", () => {
+    expect(closeLeadStatusLabel(1, 3)).toBe("Short by 2");
+    expect(closeLeadStatusLabel(3, 3)).toBe("Done");
+    expect(closeLeadStatusLabel(3, 2)).toBe("Over by 1");
+  });
+});
+
+describe("closeSlotFill", () => {
+  it("reads open, full or over", () => {
+    expect(closeSlotFill(3, 1)).toEqual({ state: "open", count: 2 });
+    expect(closeSlotFill(3, 3)).toEqual({ state: "full" });
+    expect(closeSlotFill(2, 3)).toEqual({ state: "over", count: 1 });
+  });
+});
+
+describe("formatCloseDay", () => {
+  it("leaves the year to the heading above it", () => {
+    expect(formatCloseDay("2026-11-27")).toBe("Fri Nov 27");
+  });
+});
+
+describe("groupCloseWeekends", () => {
+  const slot = (date: string, kind: "fri" | "sat") => ({ date, kind });
+
+  it("pairs Friday and Saturday and groups weekends by month, in order", () => {
+    const months = groupCloseWeekends([
+      slot("2026-12-05", "sat"),
+      slot("2026-11-27", "fri"),
+      slot("2026-12-04", "fri"),
+      slot("2026-11-28", "sat"),
+    ]);
+    expect(months.map((m) => m.label)).toEqual(["November 2026", "December 2026"]);
+    expect(months[0]?.weekends).toEqual([
+      { key: "2026-11-27", fri: slot("2026-11-27", "fri"), sat: slot("2026-11-28", "sat") },
+    ]);
+    expect(months[1]?.weekends[0]?.sat?.date).toBe("2026-12-05");
+  });
+
+  it("keeps a weekend with only one close", () => {
+    const [month] = groupCloseWeekends([slot("2026-12-11", "fri")]);
+    expect(month?.weekends).toEqual([
+      { key: "2026-12-11", fri: slot("2026-12-11", "fri"), sat: null },
+    ]);
+  });
+
+  // The weekend is filed under its Friday, even when that Friday has no close.
+  it("files a Saturday on the 1st with the month of the Friday before", () => {
+    const [month] = groupCloseWeekends([slot("2026-08-01", "sat")]);
+    expect(month?.label).toBe("July 2026");
+    expect(month?.weekends[0]).toMatchObject({ key: "2026-07-31", fri: null });
+  });
+
+  it("returns nothing for no closes", () => {
+    expect(groupCloseWeekends([])).toEqual([]);
   });
 });
