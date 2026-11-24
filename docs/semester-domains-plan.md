@@ -1264,8 +1264,19 @@ pure rules test-first, the default on the Semester page, the admin action
 - Typecheck, lint, 1,796 tests.
 
 **Not verified:** `setCloseRequirements` has no page calling it yet, so it has only
-been type-checked and reviewed. 0045 has not been rehearsed on a copy of production
-data. The sheet's lead table was unit-tested, not written to a real sheet.
+been type-checked and reviewed. The sheet's lead table was unit-tested, not written
+to a real sheet.
+
+**Rehearsal on production data (2026-11-24).** A same-day read-only copy of
+production (at migration 0036) was loaded into a throwaway container and 0037 to
+0045 were applied in one run, about 2.5 seconds in all. Afterwards: fall's default
+is 3; all 48 people holding the Shift Lead position in the term (32 on the roster)
+have a row of 3 with no `set_by`, and nobody else has one; the 74 close claims are
+byte-identical (table checksum unchanged). Running 0045's statements a second time
+changed nothing. Of the 32 leads on the roster, 17 hold 3 closes, 7 hold 2, 5 hold 1
+and 3 hold none, so the page will show 15 leads short on day one, which is the true
+state today and not something the migration made. The copy was deleted.
+
 ### Second part: the Closes page (PLAN 1.54)
 
 Built from the agreed mockup. `CloseLeadProgress` and `CloseWeekendBoard` replace the
