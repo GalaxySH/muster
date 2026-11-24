@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { positions, w2wPositionMap } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { currentTermId } from "@/lib/terms/current";
 
 export interface ActionResult {
   ok: boolean;
@@ -71,7 +72,7 @@ async function check(input: MappingInput): Promise<Checked> {
   const [target] = await getDb()
     .select({ name: positions.name, mergedIntoId: positions.mergedIntoId })
     .from(positions)
-    .where(eq(positions.id, input.musterPositionId))
+    .where(and(eq(positions.id, input.musterPositionId), eq(positions.termId, await currentTermId())))
     .limit(1);
   if (!target) return { ok: false, error: "Pick a Muster position." };
   if (target.mergedIntoId !== null) {
@@ -98,6 +99,11 @@ async function check(input: MappingInput): Promise<Checked> {
  * the last, so a shared name can send matching and seat ordering to different
  * mappings. Returns the refusal, or null when the name is free.
  */
+/** One W2W position's mapping in the term. The same W2W id can be mapped in every term. */
+function thisTermsMapping(w2wPositionId: string, termId: string) {
+  return and(eq(w2wPositionMap.w2wPositionId, w2wPositionId), eq(w2wPositionMap.termId, termId));
+}
+
 async function findNameClash(
   w2wPositionName: string,
   exceptId: string,
@@ -107,6 +113,7 @@ async function findNameClash(
     .from(w2wPositionMap)
     .where(
       and(
+        eq(w2wPositionMap.termId, await currentTermId()),
         eq(w2wPositionMap.w2wPositionName, w2wPositionName),
         ne(w2wPositionMap.w2wPositionId, exceptId),
       ),
@@ -127,10 +134,11 @@ export async function createW2wMapping(input: MappingInput): Promise<ActionResul
   const value = checked.value;
 
   const db = getDb();
+  const termId = await currentTermId();
   const [existing] = await db
     .select({ name: w2wPositionMap.w2wPositionName })
     .from(w2wPositionMap)
-    .where(eq(w2wPositionMap.w2wPositionId, value.w2wPositionId))
+    .where(thisTermsMapping(value.w2wPositionId, termId))
     .limit(1);
   if (existing) {
     return { ok: false, error: `${existing.name} already uses that W2W position ID.` };
@@ -138,7 +146,7 @@ export async function createW2wMapping(input: MappingInput): Promise<ActionResul
   const nameClash = await findNameClash(value.w2wPositionName, value.w2wPositionId);
   if (nameClash) return nameClash;
 
-  await db.insert(w2wPositionMap).values(value);
+  await db.insert(w2wPositionMap).values({ ...value, termId });
   revalidateMapSurfaces();
   return { ok: true };
 }
@@ -160,13 +168,14 @@ export async function updateW2wMapping(
   const value = checked.value;
 
   const db = getDb();
+  const termId = await currentTermId();
   // Existence is checked directly. affectedRows counts CHANGED rows, so a
   // re-save of values already stored would otherwise be reported as a mapping
   // that no longer exists, and the admin would go add it back.
   const [current] = await db
     .select({ id: w2wPositionMap.w2wPositionId })
     .from(w2wPositionMap)
-    .where(eq(w2wPositionMap.w2wPositionId, value.w2wPositionId))
+    .where(thisTermsMapping(value.w2wPositionId, termId))
     .limit(1);
   if (!current) return { ok: false, error: "That mapping no longer exists." };
 
@@ -180,7 +189,7 @@ export async function updateW2wMapping(
       musterPositionId: value.musterPositionId,
       fillOrder: value.fillOrder,
     })
-    .where(eq(w2wPositionMap.w2wPositionId, value.w2wPositionId));
+    .where(thisTermsMapping(value.w2wPositionId, termId));
 
   revalidateMapSurfaces();
   return { ok: true };
@@ -194,7 +203,9 @@ export async function deleteW2wMapping(w2wPositionId: string): Promise<ActionRes
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  await getDb().delete(w2wPositionMap).where(eq(w2wPositionMap.w2wPositionId, w2wPositionId));
+  await getDb()
+    .delete(w2wPositionMap)
+    .where(thisTermsMapping(w2wPositionId, await currentTermId()));
   revalidateMapSurfaces();
   return { ok: true };
 }

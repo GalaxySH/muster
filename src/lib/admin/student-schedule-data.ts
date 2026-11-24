@@ -27,6 +27,8 @@ import {
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
 
 export interface StudentScheduleView {
   email: string;
@@ -65,7 +67,7 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
     })
     .from(students)
     .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
     .where(eq(students.email, email))
     .limit(1);
   if (!student) return { kind: "unknown-student" };

@@ -10,11 +10,10 @@
  * sweep. Marked auto (sticky) like a swept assignment.
  */
 import "server-only";
-import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { students } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { getDefaultAutoAssignEnabled, getDefaultGroup } from "./data";
+import { assignMembers } from "./membership";
 
 /**
  * Assign the default group (the `isDefault`-flagged one) to a just-self-added
@@ -26,11 +25,6 @@ export async function applyDefaultGroupOnSelfAdd(emailRaw: string): Promise<bool
   if (!(await getDefaultAutoAssignEnabled())) return false;
   const target = await getDefaultGroup();
   if (!target) return false;
-  const db = getDb();
-  const email = normalizeEmail(emailRaw);
-  await db
-    .update(students)
-    .set({ groupId: target.id, groupAssignedAuto: true })
-    .where(eq(students.email, email));
+  await assignMembers(getDb(), target.termId, [normalizeEmail(emailRaw)], target.id, true);
   return true;
 }

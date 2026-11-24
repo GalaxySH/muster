@@ -4,8 +4,8 @@ import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadWizardNav } from "@/lib/flow/data";
-import { hasCloseInventory, loadCloseBoard } from "@/lib/closes/data";
-import { REQUIRED_CLOSE_CLAIMS, SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { isCloseStepRequired, loadCloseBoard } from "@/lib/closes/data";
+import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { CloseClaimBoard } from "@/components/closes/CloseClaimBoard";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
@@ -23,8 +23,7 @@ export default async function ClosesPage() {
 
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
-  if (student.positionId !== SHIFT_LEAD_POSITION_ID || !(await hasCloseInventory()))
-    redirect("/me");
+  if (!(await isCloseStepRequired(student.positionId))) redirect("/me");
 
   const [access, nav, board] = await Promise.all([
     resolveStudentAccess(student.email),

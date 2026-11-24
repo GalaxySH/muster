@@ -64,7 +64,7 @@ export default async function TravelPage({
   const [evidence, drive, { cutoff }, policy, returnDateRow] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
-    getTravelCutoff(now),
+    getTravelCutoff(),
     getLateTravelPolicy(),
     getPositionReturnDate(student.positionId),
   ]);

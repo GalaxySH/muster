@@ -211,6 +211,7 @@ export function parseRoster(
   rows: readonly RawRosterRow[],
   titleToPosition: ReadonlyMap<string, string>,
   excludedTitles: ReadonlySet<string>,
+  adminTitles: ReadonlySet<string> = ADMIN_TITLES,
 ): RosterParseResult {
   const result: RosterParseResult = {
     students: [],
@@ -241,7 +242,7 @@ export function parseRoster(
 
     result.seenEmails.add(email);
 
-    if (ADMIN_TITLES.has(title)) {
+    if (adminTitles.has(title)) {
       result.admins.push({ email, displayName });
       continue;
     }

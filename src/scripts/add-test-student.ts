@@ -12,6 +12,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { positions, students } from "../lib/db/schema";
 import { normalizeEmail } from "../lib/auth/policy";
+import { getCurrentTermId } from "../lib/terms/term-id";
 
 function parseArgs(argv: string[]) {
   const positional: string[] = [];
@@ -47,7 +48,13 @@ async function main() {
     const validRows = await db
       .select({ id: positions.id })
       .from(positions)
-      .where(and(eq(positions.active, true), isNull(positions.mergedIntoId)));
+      .where(
+        and(
+          eq(positions.termId, await getCurrentTermId(db)),
+          eq(positions.active, true),
+          isNull(positions.mergedIntoId),
+        ),
+      );
     const validIds = validRows.map((r) => r.id);
     if (!validIds.includes(position)) {
       throw new Error(`Unknown position "${position}". Valid: ${validIds.join(", ")}`);

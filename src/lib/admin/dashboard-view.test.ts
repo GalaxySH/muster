@@ -164,7 +164,7 @@ describe("group progress", () => {
       healthy({
         groups: [
           { id: "g1", name: "Returning", opensAt: null, closesAt: null },
-          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null },
+          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null, isTest: true },
         ],
       }),
       NOW,

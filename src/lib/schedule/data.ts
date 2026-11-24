@@ -66,6 +66,8 @@ import {
   type SelectedShift,
   type ShiftBlock,
 } from "@/lib/domain/types";
+import { currentTermId } from "@/lib/terms/current";
+import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms/scope";
 
 /**
  * Who the schedule surfaces consider: on-roster students who submitted. The
@@ -80,6 +82,8 @@ export interface PositionCoverage {
   positionId: string;
   positionName: string;
   weekendExempt: boolean;
+  /** Holders pick weekend closes (the Shift Lead position). */
+  picksCloses: boolean;
   /** On-roster students holding this position. */
   rosterCount: number;
   /** Of those, how many have submitted. */
@@ -98,6 +102,7 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
   const db = getDb();
   const onRosterSubmitted = eligibleSubmittedFilter();
   const eff = effectiveSelections();
+  const termId = await currentTermId();
   const holdsPosition = positionId ? eq(students.positionId, positionId) : undefined;
   const [posRows, blockRows, rosterRows, responderRows, cellRows] = await Promise.all([
     db
@@ -106,7 +111,11 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
       .where(
         positionId
           ? eq(positions.id, positionId)
-          : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
+          : and(
+              eq(positions.termId, termId),
+              eq(positions.active, true),
+              isNull(positions.mergedIntoId),
+            ),
       )
       .orderBy(asc(positions.name)),
     db
@@ -115,7 +124,7 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
       .where(
         positionId
           ? and(liveBlocksOnly(), eq(shiftBlocks.positionId, positionId))
-          : liveBlocksOnly(),
+          : and(liveBlocksOnly(), eq(shiftBlocks.termId, termId)),
       ),
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
@@ -125,7 +134,7 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
     db
       .select({ positionId: students.positionId, n: sql<number>`count(*)` })
       .from(submissions)
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .where(and(onRosterSubmitted, holdsPosition))
       .groupBy(students.positionId),
     db
@@ -136,7 +145,7 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .where(and(onRosterSubmitted, holdsPosition))
       .groupBy(eff.shiftBlockId, eff.day),
   ]);
@@ -172,6 +181,7 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
       positionId: p.id,
       positionName: p.name,
       weekendExempt: p.weekendExempt,
+      picksCloses: p.picksCloses,
       rosterCount: rosterCount.get(p.id) ?? 0,
       responders: responders.get(p.id) ?? 0,
       rows,
@@ -251,7 +261,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .leftJoin(positions, eq(students.positionId, positions.id))
       .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
@@ -272,7 +282,7 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
           .from(scheduleAssignments)
           .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
           .leftJoin(positions, eq(students.positionId, positions.id))
-          .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+          .leftJoin(submissions, submissionOfStudent(await currentTermId()))
           .where(
             and(
               onRosterStudent(),
@@ -454,13 +464,13 @@ const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 /** A schedule_runs row as the loaders pass it around. */
 export type ScheduleRunRow = typeof scheduleRuns.$inferSelect;
 
-/** The run marked current (newest wins if a race ever leaves two), or null. */
+/** The term's run marked current (newest wins if a race ever leaves two), or null. */
 export async function loadCurrentRunRow() {
   const db = getDb();
   const [run] = await db
     .select()
     .from(scheduleRuns)
-    .where(eq(scheduleRuns.status, "current"))
+    .where(currentRunOf(await currentTermId()))
     .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
     .limit(1);
   return run ?? null;
@@ -618,7 +628,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       })
       .from(students)
       .leftJoin(positions, eq(students.positionId, positions.id))
-      .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+      .leftJoin(submissions, submissionOfStudent(await currentTermId()))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
       if (r.onRoster) onRosterEmails.add(r.email);
@@ -754,11 +764,15 @@ export interface ScheduleRunListItem {
   origin: "cleared" | "w2w-plan" | null;
 }
 
-/** Every kept run, newest generation first. */
+/** Every kept run of the term, newest generation first. */
 export async function listScheduleRuns(): Promise<ScheduleRunListItem[]> {
   const db = getDb();
   const [runs, counts] = await Promise.all([
-    db.select().from(scheduleRuns).orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
+    db
+      .select()
+      .from(scheduleRuns)
+      .where(eq(scheduleRuns.termId, await currentTermId()))
+      .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
     db
       .select({ runId: scheduleAssignments.runId, n: sql<number>`count(*)` })
       .from(scheduleAssignments)
@@ -794,7 +808,7 @@ export async function countScheduledMarks(): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)` })
     .from(submissions)
-    .where(eq(submissions.scheduled, true));
+    .where(and(eq(submissions.scheduled, true), submissionInTerm(await currentTermId())));
   return Number(row?.n ?? 0);
 }
 
@@ -837,7 +851,12 @@ export async function loadRunDiff(
   const runRows = await db
     .select()
     .from(scheduleRuns)
-    .where(inArray(scheduleRuns.id, [beforeRunId, afterRunId]));
+    .where(
+      and(
+        inArray(scheduleRuns.id, [beforeRunId, afterRunId]),
+        eq(scheduleRuns.termId, await currentTermId()),
+      ),
+    );
   const beforeRun = runRows.find((r) => r.id === beforeRunId);
   const afterRun = runRows.find((r) => r.id === afterRunId);
   if (!beforeRun || !afterRun) return null;
@@ -897,7 +916,7 @@ export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
     db
       .select({ email: submissions.studentEmail })
       .from(submissions)
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .where(frozenEligible),
     db
       .select({
@@ -907,7 +926,7 @@ export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .where(frozenEligible),
   ]);
 
@@ -986,14 +1005,19 @@ export interface PositionLedgerRow {
 export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
   const db = getDb();
   const [positionRows, runRows, responderRows] = await Promise.all([
-    db.select({ id: positions.id, name: positions.name }).from(positions),
+    db
+      .select({ id: positions.id, name: positions.name })
+      .from(positions)
+      .where(eq(positions.termId, await currentTermId())),
     db
       .select({ generatedAt: scheduleRuns.generatedAt, scopeJson: scheduleRuns.scopeJson })
       .from(scheduleRuns)
       // Generated runs only. A `Save run` snapshot is stamped now and carries
       // the current run's scope, so counting it would silently mark that slice
       // re-solved when nothing had been.
-      .where(eq(scheduleRuns.kind, "generated"))
+      .where(
+        and(eq(scheduleRuns.kind, "generated"), eq(scheduleRuns.termId, await currentTermId())),
+      )
       .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
     db
       .select({
@@ -1002,7 +1026,7 @@ export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
         updatedAt: submissions.updatedAt,
       })
       .from(submissions)
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(await currentTermId()))
       .where(eligibleSubmittedFilter()),
   ]);
 
@@ -1045,7 +1069,7 @@ export async function loadScheduleStaleness(since: Date): Promise<ScheduleStalen
       edited: sql<number>`sum(case when ${submissions.submittedAt} <= ${since} and ${submissions.updatedAt} > ${since} then 1 else 0 end)`,
     })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(students, submissionOfStudent(await currentTermId()))
     .where(eligibleSubmittedFilter());
   return { newSubmissions: Number(row?.newer ?? 0), edited: Number(row?.edited ?? 0) };
 }

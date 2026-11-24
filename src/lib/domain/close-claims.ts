@@ -17,9 +17,6 @@ export const REQUIRED_CLOSE_CLAIMS = 3;
 export const CLOSE_START_MINUTES = parseTime("6p");
 export const CLOSE_END_MINUTES = parseTime("11:30p");
 
-/** The position whose form includes the close-picking step. */
-export const SHIFT_LEAD_POSITION_ID = "shift-lead";
-
 export type CloseSlotKind = "fri" | "sat";
 
 export interface CloseSlotDate {
@@ -33,25 +30,6 @@ const SATURDAY = 6;
 
 const toUtc = (iso: string): Date => new Date(`${iso}T00:00:00Z`);
 const toIso = (d: Date): string => d.toISOString().slice(0, 10);
-
-/** The first Friday of a month, as a UTC Date. */
-function firstFriday(year: number, month: number): Date {
-  const d = new Date(Date.UTC(year, month, 1));
-  const offset = (FRIDAY - d.getUTCDay() + 7) % 7;
-  return new Date(d.getTime() + offset * DAY_MS);
-}
-
-/**
- * The default fall inventory range for the year of `now` (PLAN §18a): the
- * first September weekend (its Friday) through the second December weekend
- * (its Saturday). A default for the admin form, not a constraint.
- */
-export function defaultCloseSemesterRange(now: Date): { start: string; end: string } {
-  const year = now.getUTCFullYear();
-  const start = firstFriday(year, 8);
-  const secondDecFriday = new Date(firstFriday(year, 11).getTime() + 7 * DAY_MS);
-  return { start: toIso(start), end: toIso(new Date(secondDecFriday.getTime() + DAY_MS)) };
-}
 
 /** Every Friday and Saturday date in [start, end], in order. */
 export function generateCloseSlotDates(startIso: string, endIso: string): CloseSlotDate[] {

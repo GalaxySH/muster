@@ -19,7 +19,6 @@ import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
 import type { DbFlagType } from "@/lib/db/schema";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 /** A draft nobody has touched in this long is stalled, not in progress. */
 export const STALLED_DRAFT_DAYS = 3;
@@ -69,6 +68,8 @@ export interface DashboardGroup {
   name: string;
   opensAt: Date | null;
   closesAt: Date | null;
+  /** Set on the term's test-accounts group, which is never a cohort to track. */
+  isTest?: boolean;
 }
 
 /** One (block, day) cell and how many students picked it themselves. */
@@ -262,6 +263,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     percent: onRoster === 0 ? 0 : Math.round((submitted.length / onRoster) * 100),
   };
 
+  const testGroupIds = new Set(groups.filter((g) => g.isTest).map((g) => g.id));
   const groupProgress: GroupProgress[] = groups.map((g) => {
     const members = students.filter((s) => s.groupId === g.id);
     return {
@@ -315,7 +317,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     totals,
     // Never a real cohort to track progress on; keep it out of the response-progress
     // table (it still shows on /admin/groups, where its window is managed).
-    groups: groupProgress.filter((g) => g.id !== TEST_GROUP_ID),
+    groups: groupProgress.filter((g) => !testGroupIds.has(g.id)),
     ungrouped,
     w2wMapProblems: snapshot.w2wMapIssues.filter((i) => i.severity === "danger").length,
     alerts: buildAlerts(snapshot, now, { ungrouped, groupProgress }),

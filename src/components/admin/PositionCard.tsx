@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { minutesToHHMM } from "@/lib/domain/time";
 import {
   clearAlias,
@@ -60,7 +59,7 @@ export function PositionCard({
   const savedTitles = position.rosterTitles.join("\n");
   const [titles, setTitles] = useState(savedTitles);
 
-  const isShiftLead = position.id === SHIFT_LEAD_POSITION_ID;
+  const isShiftLead = position.picksCloses;
   const isAlias = position.mergedIntoId !== null;
   const selectionTotal = position.blocks.reduce((n, b) => n + b.selectionCount, 0);
   const deletable = !isShiftLead && position.studentCount === 0 && selectionTotal === 0;

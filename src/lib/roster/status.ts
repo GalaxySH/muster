@@ -8,6 +8,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, adminUsers, rosterImports } from "@/lib/db/schema";
 import { listGhostTitles, type GhostTitle } from "@/lib/positions/data";
+import { currentTermId } from "@/lib/terms/current";
 
 export interface RosterStatus {
   lastImport: {
@@ -38,6 +39,7 @@ export async function getRosterStatus(): Promise<RosterStatus> {
       skippedNonWisc: rosterImports.skippedNonWisc,
     })
     .from(rosterImports)
+    .where(eq(rosterImports.termId, await currentTermId()))
     .orderBy(desc(rosterImports.importedAt))
     .limit(1);
 

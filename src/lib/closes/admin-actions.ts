@@ -24,11 +24,13 @@ import {
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
   REQUIRED_CLOSE_CLAIMS,
-  SHIFT_LEAD_POSITION_ID,
   generateCloseSlotDates,
   formatCloseDate,
 } from "@/lib/domain/close-claims";
 import { insertCloseClaim } from "./claim-write";
+import { positionPicksCloses } from "./data";
+import { currentTermId } from "@/lib/terms/current";
+import { closeClaimInTerm } from "@/lib/terms/scope";
 
 export interface InventorySummary {
   created: number;
@@ -70,8 +72,9 @@ export async function generateCloseInventory(input: {
     return { ok: false, error: "That range contains no Fridays or Saturdays." };
 
   const db = getDb();
+  const termId = await currentTermId();
   const summary = await db.transaction(async (tx): Promise<InventorySummary> => {
-    const existing = await tx.select().from(closeSlots);
+    const existing = await tx.select().from(closeSlots).where(eq(closeSlots.termId, termId));
     const claimCounts = await tx
       .select({ slotId: closeClaims.closeSlotId, n: count() })
       .from(closeClaims)
@@ -84,6 +87,7 @@ export async function generateCloseInventory(input: {
       .filter((w) => !existingByDate.has(w.date))
       .map((w) => ({
         id: randomUUID(),
+        termId,
         date: w.date,
         kind: w.kind,
         startMinutes: CLOSE_START_MINUTES,
@@ -162,7 +166,7 @@ export async function assignCloseClaim(slotId: string, email: string): Promise<C
     .from(students)
     .where(eq(students.email, email))
     .limit(1);
-  if (!lead || lead.positionId !== SHIFT_LEAD_POSITION_ID || !lead.onRoster)
+  if (!lead?.onRoster || !(await positionPicksCloses(lead.positionId)))
     return { ok: false, error: "Pick an active Shift Lead." };
 
   const code = await insertCloseClaim(slotId, email);
@@ -186,7 +190,7 @@ export async function removeCloseSlot(slotId: string): Promise<CloseAssignResult
   const [slot] = await db
     .select({ id: closeSlots.id })
     .from(closeSlots)
-    .where(eq(closeSlots.id, slotId))
+    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, await currentTermId())))
     .limit(1);
   if (!slot) return { ok: false, error: "That shift no longer exists." };
 
@@ -206,7 +210,13 @@ export async function unassignCloseClaim(
 
   await getDb()
     .delete(closeClaims)
-    .where(and(eq(closeClaims.closeSlotId, slotId), eq(closeClaims.studentEmail, email)));
+    .where(
+      and(
+        eq(closeClaims.closeSlotId, slotId),
+        eq(closeClaims.studentEmail, email),
+        closeClaimInTerm(await currentTermId()),
+      ),
+    );
 
   await afterClaimChange();
   return { ok: true };

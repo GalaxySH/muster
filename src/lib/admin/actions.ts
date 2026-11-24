@@ -40,7 +40,7 @@ import {
 } from "@/lib/settings";
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
-import { normalizeTitleList, SETTING_EXCLUDED_ROSTER_TITLES } from "@/lib/roster/position-mapping";
+import { normalizeTitleList } from "@/lib/roster/position-mapping";
 import {
   syncSheet,
   trySyncSheet,
@@ -48,6 +48,11 @@ import {
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
 } from "./sheet-sync";
+import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { defaultTravelCutoff } from "@/lib/domain/travel";
+import { terms } from "@/lib/db/schema";
+import { submissionOf } from "@/lib/terms/scope";
+import { saveExcludedTitles } from "@/lib/roster/config-data";
 
 export interface AdminActionResult {
   ok: boolean;
@@ -121,7 +126,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
   const [sub] = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
   if (!sub) return { ok: false, error: "No submission exists for this student." };
 
@@ -193,7 +198,7 @@ export async function removeOrphanedSelection(
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -251,21 +256,21 @@ export async function setTravelResolved(id: string, resolved: boolean): Promise<
 }
 
 /**
- * Set (an ISO instant) or clear (null ⇒ revert to the 9/1 default) the
- * travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
+ * Set (an ISO instant) or clear (null ⇒ back to the term's default, the day
+ * before it starts) the current term's travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
  * new entries under the active late-travel policy (domain/travel.ts).
  */
 export async function setTravelCutoff(iso: string | null): Promise<AdminActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  if (iso === null) {
-    await deleteSetting(SETTING_TRAVEL_CUTOFF);
-  } else {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return { ok: false, error: "Invalid date." };
-    await setSetting(SETTING_TRAVEL_CUTOFF, d.toISOString());
-  }
+  const term = await currentTerm();
+  const cutoff = iso === null ? defaultTravelCutoff(term.startsOn) : new Date(iso);
+  if (Number.isNaN(cutoff.getTime())) return { ok: false, error: "Invalid date." };
+  await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, term.id));
+  // The retired setting, kept in step for a rollback (see lib/settings.ts).
+  if (iso === null) await deleteSetting(SETTING_TRAVEL_CUTOFF);
+  else await setSetting(SETTING_TRAVEL_CUTOFF, cutoff.toISOString());
   revalidatePath("/admin/groups");
   revalidatePath("/travel");
   revalidatePath("/intro");
@@ -281,6 +286,11 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
 export async function setLateTravelAccepted(accepted: boolean): Promise<AdminActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
+  await getDb()
+    .update(terms)
+    .set({ lateTravelAccept: accepted })
+    .where(eq(terms.id, await currentTermId()));
+  // The retired setting, kept in step for a rollback (see lib/settings.ts).
   await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
   revalidatePath("/admin/groups");
   revalidatePath("/travel");
@@ -384,7 +394,7 @@ export async function setExcludedRosterTitles(raw: string): Promise<SaveExcluded
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const titles = normalizeTitleList(raw);
-  await setSetting(SETTING_EXCLUDED_ROSTER_TITLES, titles.join("\n"));
+  await saveExcludedTitles(getDb(), await currentTermId(), titles);
   revalidatePath("/admin/roster");
   return { ok: true, saved: titles };
 }

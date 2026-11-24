@@ -9,7 +9,7 @@ import "server-only";
  * The plan is read as a per-position aggregate rather than by loading its
  * rows: a week is ~1000 of them and nothing here needs more than the counts.
  */
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { currentPlanRowQuery } from "./plan-data";
@@ -29,6 +29,7 @@ import {
 } from "@/lib/domain/w2w-plan/map-health";
 import { buildMapResolver } from "@/lib/domain/w2w-plan/match";
 import type { W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
+import { currentTermId } from "@/lib/terms/current";
 
 /** One editable mapping row. */
 export interface W2wMapRow extends W2wPositionMapEntry {
@@ -80,11 +81,16 @@ interface MapHealthInputs {
  */
 async function loadMapHealthInputs(): Promise<MapHealthInputs> {
   const db = getDb();
+  const termId = await currentTermId();
   const [mapRows, positionRows, blockCountRows, planRows] = await Promise.all([
     // Ordered: resolution is first-wins by id and by name, so an unordered
     // read could resolve a duplicated name differently between requests.
-    db.select().from(w2wPositionMap).orderBy(asc(w2wPositionMap.w2wPositionId)),
-    db.select().from(positions),
+    db
+      .select()
+      .from(w2wPositionMap)
+      .where(eq(w2wPositionMap.termId, termId))
+      .orderBy(asc(w2wPositionMap.w2wPositionId)),
+    db.select().from(positions).where(eq(positions.termId, termId)),
     // Live blocks only: a retired block cannot match a plan row, so a position
     // whose blocks are all retired is as empty as one with none.
     db
@@ -94,11 +100,11 @@ async function loadMapHealthInputs(): Promise<MapHealthInputs> {
         weekend: sql<number>`sum(case when ${shiftBlocks.dayType} = 'weekend' then 1 else 0 end)`,
       })
       .from(shiftBlocks)
-      .where(liveBlocksOnly())
+      .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId)))
       .groupBy(shiftBlocks.positionId),
     // The same query the plan page uses, so the two surfaces can never name
     // different plans.
-    currentPlanRowQuery(),
+    currentPlanRowQuery(termId),
   ]);
 
   const planRow = planRows[0];

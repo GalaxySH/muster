@@ -25,7 +25,7 @@ const withPool = (ids: string[]): SchedulingParams => ({
 
 /** Render, press Save, and hand back the pool the form actually submitted. */
 async function savedPool(initial: SchedulingParams): Promise<string[]> {
-  render(<ScheduleParamsForm initial={initial} positions={positions} />);
+  render(<ScheduleParamsForm initial={initial} positions={positions} leadPositionIds={["shift-lead"]} />);
   await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
   await waitFor(() => expect(saveScheduleParams).toHaveBeenCalled());
   const [payload] = vi.mocked(saveScheduleParams).mock.calls[0]!;
@@ -59,7 +59,7 @@ describe("the cross-coverage pool a save writes", () => {
   });
 
   it("lets the admin untick an offered position", async () => {
-    render(<ScheduleParamsForm initial={withPool(["cashier"])} positions={positions} />);
+    render(<ScheduleParamsForm initial={withPool(["cashier"])} positions={positions} leadPositionIds={["shift-lead"]} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Cashier" }));
     await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(saveScheduleParams).toHaveBeenCalled());
@@ -67,7 +67,7 @@ describe("the cross-coverage pool a save writes", () => {
   });
 
   it("does not offer a box for anything the page held back", () => {
-    render(<ScheduleParamsForm initial={withPool(["shift-lead"])} positions={positions} />);
+    render(<ScheduleParamsForm initial={withPool(["shift-lead"])} positions={positions} leadPositionIds={["shift-lead"]} />);
     expect(screen.queryByRole("checkbox", { name: "Shift Lead" })).toBeNull();
     expect(screen.getAllByRole("checkbox")).toHaveLength(positions.length);
   });

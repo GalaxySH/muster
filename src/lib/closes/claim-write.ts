@@ -12,14 +12,21 @@ import { and, count, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { closeClaims, closeSlots, students } from "@/lib/db/schema";
 import { REQUIRED_CLOSE_CLAIMS, remainingCapacity } from "@/lib/domain/close-claims";
+import { currentTermId } from "@/lib/terms/current";
+import { closeClaimInTerm } from "@/lib/terms/scope";
 
 export type CloseClaimError = "gone" | "lead-full" | "slot-full";
 
-/** Insert a claim if the slot exists, the lead has room, and a seat is open. */
+/**
+ * Insert a claim if the slot exists in the current term, the lead has room, and
+ * a seat is open. A slot from another term reads as gone, and only this term's
+ * claims count toward the lead's limit.
+ */
 export async function insertCloseClaim(
   slotId: string,
   email: string,
 ): Promise<CloseClaimError | null> {
+  const termId = await currentTermId();
   return getDb().transaction(async (tx) => {
     await tx
       .select({ email: students.email })
@@ -29,7 +36,7 @@ export async function insertCloseClaim(
     const [slot] = await tx
       .select()
       .from(closeSlots)
-      .where(eq(closeSlots.id, slotId))
+      .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, termId)))
       .for("update");
     if (!slot) return "gone";
 
@@ -43,7 +50,7 @@ export async function insertCloseClaim(
     const [mine] = await tx
       .select({ n: count() })
       .from(closeClaims)
-      .where(eq(closeClaims.studentEmail, email));
+      .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(termId)));
     if ((mine?.n ?? 0) >= REQUIRED_CLOSE_CLAIMS) return "lead-full";
 
     const [claimed] = await tx

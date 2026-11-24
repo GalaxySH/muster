@@ -45,14 +45,16 @@ export function decideTravelSubmission(
 }
 
 /**
- * The default semester-start cutoff: September 1, 00:00 US Central (06:00 UTC)
- * of the year in which the form is being filled. A v1 default; a global
- * config value can override this later (PLAN §13).
+ * A term's default travel cutoff: 00:00 US Central on the day before it starts
+ * (`startsOn` is "YYYY-MM-DD"). A semester starting September 2 gives the
+ * September 1 cutoff the form launched with. The admin can set any other
+ * instant on the term; this is what a term starts with and what Reset restores.
  */
-export function defaultTravelCutoff(now: Date): Date {
-  // Return September 1 00:00 Central Standard Time (CST = UTC-6).
-  // To represent 00:00 CST in a UTC Date, add 6 hours (i.e. 06:00 UTC).
-  return new Date(Date.UTC(now.getUTCFullYear(), 8, 1, 6, 0, 0)); // month 8 = September
+export function defaultTravelCutoff(startsOn: string): Date {
+  // 00:00 Central Standard Time (UTC-6) as a UTC instant is 06:00 UTC. The
+  // offset is fixed rather than daylight-aware, as it always has been here.
+  const start = new Date(`${startsOn}T06:00:00Z`);
+  return new Date(start.getTime() - 24 * 60 * 60 * 1000);
 }
 
 /**

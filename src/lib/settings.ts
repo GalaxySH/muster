@@ -15,10 +15,8 @@ import {
 } from "@/lib/domain/travel";
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
-import {
-  effectiveExcludedTitles,
-  SETTING_EXCLUDED_ROSTER_TITLES,
-} from "@/lib/roster/position-mapping";
+import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { loadRosterConfig } from "@/lib/roster/config-data";
 
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
@@ -29,9 +27,13 @@ export const SETTING_SCHEDULE_SHEET_ID = "schedule_sheet_id";
 export const SETTING_SCHEDULE_SHEET_SYNCED_AT = "schedule_sheet_synced_at";
 /** "1"/"0": whether ungrouped students get swept into the default group (PLAN §13). Absent ⇒ off. */
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
-/** ISO instant overriding the default 9/1 travel cutoff (PLAN §8). Absent ⇒ default. */
+/**
+ * RETIRED: the travel cutoff and the late-travel switch live on the term now
+ * (terms.travel_cutoff, terms.late_travel_accept). These two keys are still
+ * written beside it, never read, so the previous release finds them current if
+ * a deploy is rolled back. They go with the contract migration.
+ */
 export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
-/** "1"/"0": accept travel after the cutoff as late/unexcused (PLAN §8). Absent ⇒ refuse. */
 export const SETTING_LATE_TRAVEL_ACCEPT = "late_travel_accept";
 /** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
 export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
@@ -86,30 +88,25 @@ export async function deleteSetting(key: string): Promise<void> {
 }
 
 /**
- * The effective travel-excusal cutoff (PLAN §8): the admin-configured instant
- * if one is stored, else the 9/1 default for the current cycle.
+ * The current term's travel-excusal cutoff (PLAN §8). `isCustom` says whether
+ * the admin moved it off the term's default, the day before the term starts.
  */
-export async function getTravelCutoff(
-  now: Date = new Date(),
-): Promise<{ cutoff: Date; isCustom: boolean }> {
-  const raw = await getSetting(SETTING_TRAVEL_CUTOFF);
-  if (raw) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) return { cutoff: d, isCustom: true };
-  }
-  return { cutoff: defaultTravelCutoff(now), isCustom: false };
+export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boolean }> {
+  const term = await currentTerm();
+  return {
+    cutoff: term.travelCutoff,
+    isCustom: term.travelCutoff.getTime() !== defaultTravelCutoff(term.startsOn).getTime(),
+  };
 }
 
 /**
- * The effective late-travel policy (PLAN §8), admin-toggled on /admin/groups.
+ * The current term's late-travel policy (PLAN §8), admin-toggled on /admin/groups.
  * Off (the default) keeps the domain's "refuse" policy: nothing past the cutoff
  * is stored. On, entries past the cutoff are accepted but stored unexcused
  * ("accept-and-flag"), and finalize raises the travel_late flag.
  */
 export async function getLateTravelPolicy(): Promise<LateTravelPolicy> {
-  return (await getSetting(SETTING_LATE_TRAVEL_ACCEPT)) === "1"
-    ? "accept-and-flag"
-    : LATE_TRAVEL_POLICY;
+  return (await currentTerm()).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
 }
 
 /**
@@ -143,12 +140,12 @@ export async function getChangeDigestRecipients(): Promise<string[]> {
 /**
  * The excluded roster titles (PLAN §4.2, roadmap 1.7): import rows with these
  * position titles are skipped outright (neither student nor admin). Admin-edited
- * on /admin/roster; falls back to the SKIP_TITLES fixture until first saved. The
- * key and parsing live in roster/position-mapping.ts so the CLI-safe importer
- * can read the same setting without this server-only module.
+ * on /admin/roster and stored on the term; falls back to the SKIP_TITLES fixture
+ * until first saved. The reader lives in roster/config-data.ts so the CLI-safe
+ * importer can use it without this server-only module.
  */
 export async function getExcludedRosterTitles(): Promise<string[]> {
-  return [...effectiveExcludedTitles(await getSetting(SETTING_EXCLUDED_ROSTER_TITLES))];
+  return [...(await loadRosterConfig(getDb(), await currentTermId())).excludedTitles];
 }
 
 /**

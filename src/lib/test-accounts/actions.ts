@@ -39,6 +39,9 @@ import {
   TEST_GROUP_CLOSES_AT,
 } from "./constants";
 import { slugFromName, isValidTestSlug, testEmailFromSlug, isTestAccountEmail } from "./email";
+import { currentTermId } from "@/lib/terms/current";
+import { currentRunOf } from "@/lib/terms/scope";
+import { assignMembers, groupOf } from "@/lib/groups/membership";
 
 export type TestAccountError =
   | "forbidden"
@@ -79,19 +82,8 @@ export async function createTestAccount(formData: FormData): Promise<void> {
     .limit(1);
   if (existing) fail("exists");
 
-  // Ensure the test group exists (race-safe insert-if-absent). The wide-open
-  // bounds are initial values only; admins may edit the window on
-  // /admin/groups, so an existing row is left untouched (`id = id` no-op).
-  await db
-    .insert(groups)
-    .values({
-      id: TEST_GROUP_ID,
-      name: TEST_GROUP_NAME,
-      opensAt: TEST_GROUP_OPENS_AT,
-      closesAt: TEST_GROUP_CLOSES_AT,
-      isDefault: false,
-    })
-    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
+  const termId = await currentTermId();
+  const testGroupId = await ensureTestGroup(termId);
 
   try {
     await db.insert(students).values({
@@ -101,14 +93,53 @@ export async function createTestAccount(formData: FormData): Promise<void> {
       international,
       hiredOn,
       onRoster: false,
-      groupId: TEST_GROUP_ID,
-      groupAssignedAuto: false,
     });
   } catch {
     fail("exists"); // racing duplicate insert hit the PK
   }
+  await assignMembers(db, termId, [email], testGroupId, false);
 
   revalidatePath("/admin/test-users");
+}
+
+/**
+ * The term's test-accounts group, created on first use. It is found by its
+ * kind, never by its id, because each term has its own. The wide-open bounds
+ * are initial values only; admins may edit the window on /admin/groups, so an
+ * existing group is left untouched.
+ */
+async function ensureTestGroup(termId: string): Promise<string> {
+  const db = getDb();
+  const find = () =>
+    db
+      .select({ id: groups.id })
+      .from(groups)
+      .where(and(eq(groups.termId, termId), eq(groups.kind, "test")))
+      .limit(1);
+  const [existing] = await find();
+  if (existing) return existing.id;
+  // Race-safe insert-if-absent on the fixed id; a second caller's insert is a no-op.
+  await db
+    .insert(groups)
+    .values({
+      id: TEST_GROUP_ID,
+      termId,
+      name: TEST_GROUP_NAME,
+      kind: "test",
+      opensAt: TEST_GROUP_OPENS_AT,
+      closesAt: TEST_GROUP_CLOSES_AT,
+      isDefault: false,
+    })
+    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
+  const [created] = await find();
+  if (!created) throw new Error("The test-accounts group could not be created.");
+  return created.id;
+}
+
+/** Whether this account is in the current term's test-accounts group. */
+async function isInTestGroup(email: string): Promise<boolean> {
+  const group = await groupOf(getDb(), email, await currentTermId());
+  return group?.kind === "test";
 }
 
 export async function deleteTestAccount(formData: FormData): Promise<void> {
@@ -117,16 +148,11 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
 
   const db = getDb();
-  const [stu] = await db
-    .select({ groupId: students.groupId })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
 
   // Safety rail: only ever delete accounts the manager owns (in the test group),
   // never a real roster student. Group-only (not domain) so legacy dev-created
   // @wisc.edu accounts stay deletable.
-  if (!stu || stu.groupId !== TEST_GROUP_ID) fail("not-found");
+  if (!(await isInTestGroup(email))) fail("not-found");
 
   // schedule_assignments cascades off students, so deleting the account would
   // strip its shifts out of the schedule with no warning. Refused rather than
@@ -150,18 +176,22 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
       .from(scheduleAssignments)
       .innerJoin(scheduleRuns, eq(scheduleAssignments.runId, scheduleRuns.id))
       .where(
-        and(eq(scheduleAssignments.studentEmail, email), eq(scheduleRuns.status, "current")),
+        and(
+          eq(scheduleAssignments.studentEmail, email),
+          currentRunOf(await currentTermId()),
+        ),
       )
       .limit(1);
     if (assigned) fail("in-schedule");
   }
 
-  const [sub] = await db
+  // Every term's submission, not just the current one: the student row below
+  // cannot be deleted while any submission still points at it.
+  const subs = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
-    .limit(1);
-  if (sub) {
+    .where(eq(submissions.studentEmail, email));
+  for (const sub of subs) {
     // Gather Drive proof fileIds before the cascade removes their rows, then
     // best-effort delete each from Drive (relayDelete never throws; it no-ops
     // without a grant, so local dev keeps working).
@@ -191,13 +221,7 @@ async function requireImpersonableTestAccount(formData: FormData): Promise<strin
   if (!gate.ok) fail("forbidden");
   const email = normalizeEmail(String(formData.get("email") ?? ""));
 
-  const db = getDb();
-  const [stu] = await db
-    .select({ groupId: students.groupId })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
-  if (!stu || stu.groupId !== TEST_GROUP_ID || !isTestAccountEmail(email)) fail("not-found");
+  if (!(await isInTestGroup(email)) || !isTestAccountEmail(email)) fail("not-found");
   return email;
 }
 

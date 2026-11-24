@@ -240,7 +240,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   // says otherwise with `excused=0` (the Google Form import does that for a
   // range that came with no proof, docs/form-paste.md).
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(), getLateTravelPolicy()]);
   const decision = decideTravelSubmission(now, cutoff, policy);
   if (!decision.allowed && !who.onBehalf) {
     return {
@@ -358,7 +358,7 @@ export async function updateTravelRequest(formData: FormData): Promise<ActionRes
 async function travelUnlocked(who: { onBehalf: boolean }): Promise<boolean> {
   if (who.onBehalf) return true;
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(), getLateTravelPolicy()]);
   return decideTravelSubmission(now, cutoff, policy).allowed;
 }
 

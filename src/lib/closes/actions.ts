@@ -13,9 +13,11 @@ import { closeClaims } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { requireEditableStudent } from "@/lib/groups/gate";
 import { trySyncSheet, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
-import { REQUIRED_CLOSE_CLAIMS, SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { insertCloseClaim } from "./claim-write";
-import { loadCloseBoard, type CloseBoard } from "./data";
+import { loadCloseBoard, positionPicksCloses, type CloseBoard } from "./data";
+import { currentTermId } from "@/lib/terms/current";
+import { closeClaimInTerm } from "@/lib/terms/scope";
 
 export interface CloseActionResult {
   ok: boolean;
@@ -29,7 +31,7 @@ async function gateShiftLead(): Promise<
 > {
   const gate = await requireEditableStudent();
   if (!gate.ok) return gate;
-  if (gate.positionId !== SHIFT_LEAD_POSITION_ID)
+  if (!(await positionPicksCloses(gate.positionId)))
     return { ok: false, error: "Only Shift Leads pick weekend closes." };
   return { ok: true, email: gate.email };
 }
@@ -62,7 +64,13 @@ export async function releaseCloseClaim(slotId: string): Promise<CloseActionResu
 
   await getDb()
     .delete(closeClaims)
-    .where(and(eq(closeClaims.closeSlotId, slotId), eq(closeClaims.studentEmail, gate.email)));
+    .where(
+      and(
+        eq(closeClaims.closeSlotId, slotId),
+        eq(closeClaims.studentEmail, gate.email),
+        closeClaimInTerm(await currentTermId()),
+      ),
+    );
   revalidatePath("/closes");
   await trySyncSheet(CLOSES_SHEET);
   return { ok: true, board: await loadCloseBoard(gate.email) };

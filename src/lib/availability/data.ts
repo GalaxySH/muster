@@ -12,6 +12,8 @@ import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf, submissionOfStudent } from "@/lib/terms/scope";
 
 export interface PositionWithBlocks {
   position: Position;
@@ -64,7 +66,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     })
     .from(shiftSelections)
     .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(students, submissionOfStudent(await currentTermId()))
     // Join the block so picks on a removed shift can't be counted. They render
     // nowhere, but an uncounted target would let them into the contention
     // ranking and push a genuinely busy cell out of it.
@@ -134,7 +136,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.studentEmail, student.email))
+    .where(submissionOf(student.email, await currentTermId()))
     .limit(1);
 
   let selection: SelectedShift[] = [];

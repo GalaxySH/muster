@@ -182,6 +182,18 @@ const eslintConfig = [
     rules: rule(g(IO, MSG.io), g(UPWARD, MSG.upward)),
   },
 
+  // --- the term seam: a shared root every module reads, which reads none of them ---
+  {
+    files: ["src/lib/terms/**/*.ts"],
+    rules: rule(
+      g(
+        [...GENERATOR, ...W2W],
+        "src/lib/terms is a shared root. It must not import the generator or W2W.",
+      ),
+      g(UPWARD, MSG.upward),
+    ),
+  },
+
   // --- the form core does not know the generator, W2W, or the console exist ---
   {
     files: FORM_CORE,

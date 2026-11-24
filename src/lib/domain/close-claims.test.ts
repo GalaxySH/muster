@@ -3,7 +3,6 @@ import {
   REQUIRED_CLOSE_CLAIMS,
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
-  defaultCloseSemesterRange,
   generateCloseSlotDates,
   closeWeekendKey,
   remainingCapacity,
@@ -18,21 +17,6 @@ describe("close-shift constants", () => {
     expect(REQUIRED_CLOSE_CLAIMS).toBe(3);
     expect(CLOSE_START_MINUTES).toBe(18 * 60);
     expect(CLOSE_END_MINUTES).toBe(23 * 60 + 30);
-  });
-});
-
-describe("defaultCloseSemesterRange", () => {
-  it("spans the first September weekend through the second December weekend (2026)", () => {
-    // Sep 2026: first Friday is Sep 4. Dec 2026 Fridays: 4, 11 → second weekend
-    // ends Sat Dec 12.
-    const r = defaultCloseSemesterRange(new Date("2026-07-10T12:00:00Z"));
-    expect(r).toEqual({ start: "2026-09-04", end: "2026-12-12" });
-  });
-
-  it("uses the calendar year of `now` (2027)", () => {
-    // Sep 2027: first Friday is Sep 3. Dec 2027 Fridays: 3, 10 → ends Sat Dec 11.
-    const r = defaultCloseSemesterRange(new Date("2027-01-15T00:00:00Z"));
-    expect(r).toEqual({ start: "2027-09-03", end: "2027-12-11" });
   });
 });
 

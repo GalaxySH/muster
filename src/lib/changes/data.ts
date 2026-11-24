@@ -22,8 +22,16 @@ export interface ChangeRequestRow {
   createdAt: Date;
 }
 
-/** One student's requests, newest first (drives both the student and admin lists). */
-export async function listChangeRequests(email: string): Promise<ChangeRequestRow[]> {
+/**
+ * One student's requests, newest first. The request form lists the term it is
+ * given, which is the current one. The admin's per-student page passes null to
+ * list every term, so a request still open from an earlier semester is there
+ * when the queue links to it.
+ */
+export async function listChangeRequests(
+  email: string,
+  termId: string | null,
+): Promise<ChangeRequestRow[]> {
   const rows = await getDb()
     .select({
       id: changeRequests.id,
@@ -35,7 +43,12 @@ export async function listChangeRequests(email: string): Promise<ChangeRequestRo
       createdAt: changeRequests.createdAt,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.studentEmail, email))
+    .where(
+      and(
+        eq(changeRequests.studentEmail, email),
+        termId === null ? undefined : eq(changeRequests.termId, termId),
+      ),
+    )
     .orderBy(desc(changeRequests.createdAt));
   return rows;
 }

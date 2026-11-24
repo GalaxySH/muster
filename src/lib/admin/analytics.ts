@@ -9,6 +9,8 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, submissions } from "@/lib/db/schema";
 import type { AnalyticsStudent } from "./analytics-view";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
 
 export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
   const rows = await getDb()
@@ -19,7 +21,7 @@ export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
       status: submissions.status,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
     .where(eq(students.onRoster, true))
     .orderBy(asc(students.displayName), asc(students.email));
 

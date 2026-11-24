@@ -13,6 +13,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { validateRosterUpload } from "./upload-validation";
 import { RosterClosesPrompt, RosterFormatError, RosterGuardError } from "./parse";
 import { importRoster, type ImportSummary } from "./import";
+import { currentTermId } from "@/lib/terms/current";
 
 /** The refused-import detail the panel needs to offer the override. */
 export interface RosterGuardBlock {
@@ -53,6 +54,7 @@ export async function importRosterFromUpload(formData: FormData): Promise<Roster
   try {
     const summary = await importRoster({
       db: getDb(),
+      termId: await currentTermId(),
       workbook,
       importedBy: session.email,
       sheetName: sheetName || undefined,

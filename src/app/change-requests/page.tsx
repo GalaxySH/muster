@@ -10,6 +10,7 @@ import {
 } from "@/components/changes/ChangeRequestsPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
+import { currentTermId } from "@/lib/terms/current";
 
 /**
  * The always-available schedule change-request mini-flow (roadmap 3.1).
@@ -50,7 +51,9 @@ export default async function ChangeRequestsPage({
 
   // The form starts out acting for the pre-seeded employee, else the signer.
   const formFor = target ?? student;
-  const requests = formFor ? await listChangeRequests(formFor.email) : [];
+  const requests = formFor
+    ? await listChangeRequests(formFor.email, await currentTermId())
+    : [];
   // Its position's shift times become the quick inserts under the shift time box.
   const loaded = formFor?.positionId ? await loadPositionWithBlocks(formFor.positionId) : null;
   const blocks = (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));

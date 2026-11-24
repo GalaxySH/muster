@@ -20,6 +20,8 @@ import { ensureSubmissionId } from "@/lib/evidence/data";
 import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { trySyncSheet, RESPONSES_SHEET } from "./sheet-sync";
 import type { AdminActionResult } from "./actions";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf } from "@/lib/terms/scope";
 
 interface Target {
   email: string;
@@ -40,7 +42,7 @@ async function target(student: string): Promise<Target | { error: string }> {
       submittedVia: submissions.submittedVia,
     })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
   return { email, existing };
 }

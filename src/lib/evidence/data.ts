@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf } from "@/lib/terms/scope";
 
 export interface ExtracurricularFile {
   id: string;
@@ -41,10 +43,11 @@ const toIsoDate = (d: Date | string): string =>
 
 export async function loadEvidence(studentEmail: string): Promise<EvidenceView> {
   const db = getDb();
+  const termId = await currentTermId();
   const [sub] = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.studentEmail, studentEmail))
+    .where(submissionOf(studentEmail, termId))
     .limit(1);
 
   if (!sub) {
@@ -86,18 +89,19 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
   };
 }
 
-/** Load or create the student's (draft) submission and return its id. */
+/** Load or create the student's (draft) submission for the current term and return its id. */
 export async function ensureSubmissionId(studentEmail: string): Promise<string> {
   const db = getDb();
+  const termId = await currentTermId();
   const [existing] = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(eq(submissions.studentEmail, studentEmail))
+    .where(submissionOf(studentEmail, termId))
     .limit(1);
   if (existing) return existing.id;
 
   const id = randomUUID();
-  await db.insert(submissions).values({ id, studentEmail, status: "draft" });
+  await db.insert(submissions).values({ id, studentEmail, termId, status: "draft" });
   return id;
 }
 
@@ -129,17 +133,18 @@ export async function collectSubmissionDriveFileIds(submissionId: string): Promi
 }
 
 /**
- * Whether a fileId belongs to this student's submission: the proxy's access
+ * Whether a fileId belongs to this student's current-term submission: the proxy's access
  * gate for non-admins. Checks course schedule, extracurricular, and travel proof.
  */
 export async function studentOwnsFile(studentEmail: string, fileId: string): Promise<boolean> {
   // A travel entry can carry no proof, so an empty id must never match one.
   if (!fileId) return false;
   const db = getDb();
+  const termId = await currentTermId();
   const [sub] = await db
     .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })
     .from(submissions)
-    .where(eq(submissions.studentEmail, studentEmail))
+    .where(submissionOf(studentEmail, termId))
     .limit(1);
   if (!sub) return false;
   if (sub.courseScheduleFileId === fileId) return true;

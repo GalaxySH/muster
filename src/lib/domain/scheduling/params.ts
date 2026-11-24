@@ -64,6 +64,10 @@ export interface SchedulingParams {
    * for the other. Read only by the run statistics (./stats.ts), which measure
    * them as a single floor; the engine never looks at this. Ids that no longer
    * exist simply match nothing.
+   *
+   * Empty by default. Position ids belong to a term and are generated when a
+   * term's positions are copied from the last one, so no id can be a default;
+   * the pool is whatever the admin ticked for the term.
    */
   coveragePoolPositionIds: string[];
 }
@@ -88,7 +92,7 @@ export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = Object.freeze({
   preferredDaysPerWeek: 5,
   annealIterations: 0,
   annealSeed: 3,
-  coveragePoolPositionIds: Object.freeze(["culinary-assistant", "cashier"]) as string[],
+  coveragePoolPositionIds: Object.freeze([]) as unknown as string[],
 });
 
 export const DAY_CAP_HOURS_MIN = 1;

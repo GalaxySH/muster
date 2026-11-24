@@ -192,7 +192,8 @@ export default async function StudentDetailPage({
   }
 
   const nav = await getResponseNeighbors(email, filters, sort);
-  const changeRequests = await listChangeRequests(detail.email);
+  // Every term's, not just this one: the queue links here for any open request.
+  const changeRequests = await listChangeRequests(detail.email, null);
   const changeFiles = await changeRequestFilesByRequest(detail.email);
   // Thumbnails fetch bytes through the Drive proxy, so only the newest few
   // file-bearing requests get previews; older ones fall back to plain links.

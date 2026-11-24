@@ -95,6 +95,7 @@ const POSITION_ROWS = [
 
 const CHANGE = {
   email: "jane@wisc.edu",
+  termId: "t1",
   fromPositionId: "dishwasher",
   toPositionId: "culinary-assistant",
   source: "roster_import" as const,

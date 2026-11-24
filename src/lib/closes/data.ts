@@ -7,15 +7,16 @@
 import "server-only";
 import { and, asc, count, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots, students } from "@/lib/db/schema";
+import { closeClaims, closeSlots, positions, students } from "@/lib/db/schema";
 import {
-  SHIFT_LEAD_POSITION_ID,
   closeClaimsComplete,
   closeClaimsFeasibility,
   remainingCapacity,
   type CloseFeasibility,
   type CloseSlotKind,
 } from "@/lib/domain/close-claims";
+import { currentTermId } from "@/lib/terms/current";
+import { closeClaimInTerm } from "@/lib/terms/scope";
 
 export interface CloseSlotView {
   id: string;
@@ -38,15 +39,32 @@ export interface CloseBoard {
   myClaimCount: number;
 }
 
-/** Whether any close slots exist; everything SL-closes stays hidden until they do. */
+/** Whether the term has any close slots; everything SL-closes stays hidden until it does. */
 export async function hasCloseInventory(): Promise<boolean> {
-  const [row] = await getDb().select({ n: count() }).from(closeSlots);
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(closeSlots)
+    .where(eq(closeSlots.termId, await currentTermId()));
   return (row?.n ?? 0) > 0;
 }
 
-/** The closes step applies to this student: Shift Lead + a generated inventory. */
+/**
+ * Whether holders of this position pick weekend closes. This flag, not a fixed
+ * id or a name, is what makes a position "Shift Lead" to the closes feature.
+ */
+export async function positionPicksCloses(positionId: string | null): Promise<boolean> {
+  if (!positionId) return false;
+  const [row] = await getDb()
+    .select({ picksCloses: positions.picksCloses })
+    .from(positions)
+    .where(eq(positions.id, positionId))
+    .limit(1);
+  return row?.picksCloses ?? false;
+}
+
+/** The closes step applies to this student: a closes position + a generated inventory. */
 export async function isCloseStepRequired(positionId: string | null): Promise<boolean> {
-  if (positionId !== SHIFT_LEAD_POSITION_ID) return false;
+  if (!(await positionPicksCloses(positionId))) return false;
   return hasCloseInventory();
 }
 
@@ -54,14 +72,19 @@ export async function countCloseClaims(email: string): Promise<number> {
   const [row] = await getDb()
     .select({ n: count() })
     .from(closeClaims)
-    .where(eq(closeClaims.studentEmail, email));
+    .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(await currentTermId())));
   return row?.n ?? 0;
 }
 
 export async function loadCloseBoard(email: string): Promise<CloseBoard> {
   const db = getDb();
+  const termId = await currentTermId();
   const [slots, counts, mine] = await Promise.all([
-    db.select().from(closeSlots).orderBy(asc(closeSlots.date)),
+    db
+      .select()
+      .from(closeSlots)
+      .where(eq(closeSlots.termId, termId))
+      .orderBy(asc(closeSlots.date)),
     db
       .select({ slotId: closeClaims.closeSlotId, n: count() })
       .from(closeClaims)
@@ -69,7 +92,7 @@ export async function loadCloseBoard(email: string): Promise<CloseBoard> {
     db
       .select({ slotId: closeClaims.closeSlotId })
       .from(closeClaims)
-      .where(eq(closeClaims.studentEmail, email)),
+      .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(termId))),
   ]);
   const countBySlot = new Map(counts.map((c) => [c.slotId, c.n]));
   const mineSet = new Set(mine.map((m) => m.slotId));
@@ -111,7 +134,9 @@ export async function loadStudentCloseClaims(
     })
     .from(closeClaims)
     .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
-    .where(eq(closeClaims.studentEmail, email))
+    .where(
+      and(eq(closeClaims.studentEmail, email), eq(closeSlots.termId, await currentTermId())),
+    )
     .orderBy(asc(closeSlots.date));
   return { claims, complete: closeClaimsComplete(claims.length) };
 }
@@ -148,8 +173,13 @@ export interface CloseAdminView {
 
 export async function loadCloseAdmin(): Promise<CloseAdminView> {
   const db = getDb();
+  const termId = await currentTermId();
   const [slots, claims, leadRows] = await Promise.all([
-    db.select().from(closeSlots).orderBy(asc(closeSlots.date)),
+    db
+      .select()
+      .from(closeSlots)
+      .where(eq(closeSlots.termId, termId))
+      .orderBy(asc(closeSlots.date)),
     db
       .select({
         slotId: closeClaims.closeSlotId,
@@ -159,11 +189,14 @@ export async function loadCloseAdmin(): Promise<CloseAdminView> {
       })
       .from(closeClaims)
       .innerJoin(students, eq(closeClaims.studentEmail, students.email))
-      .orderBy(asc(closeClaims.claimedAt)),
+      .where(closeClaimInTerm(termId))
+      // The email breaks ties, so two claims in the same second list the same way every time.
+      .orderBy(asc(closeClaims.claimedAt), asc(closeClaims.studentEmail)),
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(and(eq(students.positionId, SHIFT_LEAD_POSITION_ID), eq(students.onRoster, true)))
+      .innerJoin(positions, eq(students.positionId, positions.id))
+      .where(and(eq(positions.picksCloses, true), eq(students.onRoster, true)))
       .orderBy(asc(students.displayName), asc(students.email)),
   ]);
 

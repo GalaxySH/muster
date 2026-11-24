@@ -59,6 +59,8 @@ import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
 import { trySyncSheet, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf } from "@/lib/terms/scope";
 
 /** Drizzle transaction handle (extracted so the selection writer can share a tx). */
 type DbTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
@@ -301,7 +303,7 @@ async function persistAvailability(args: {
     const [existing] = await tx
       .select({ id: submissions.id, status: submissions.status })
       .from(submissions)
-      .where(eq(submissions.studentEmail, email))
+      .where(submissionOf(email, await currentTermId()))
       .limit(1);
 
     // Never promote here; preserve whatever status the submission already has.
@@ -316,6 +318,7 @@ async function persistAvailability(args: {
       await tx.insert(submissions).values({
         id: submissionId,
         studentEmail: email,
+        termId: await currentTermId(),
         status: "draft",
         ...patch,
       });
@@ -432,7 +435,7 @@ export async function saveAvailabilityFor(
   const [sub] = await db
     .select({ desiredHours: submissions.desiredHours, status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, gate.email))
+    .where(submissionOf(gate.email, await currentTermId()))
     .limit(1);
 
   // Same checks the grid previews, so the warn list and the refusal agree.
@@ -519,7 +522,7 @@ export async function revertInternalAvailability(student: string): Promise<Rever
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, gate.email))
+    .where(submissionOf(gate.email, await currentTermId()))
     .limit(1);
   if (!sub) return { ok: true };
 
@@ -567,7 +570,7 @@ async function writeAnswerFor(
   const [existing] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
   const submissionId = existing?.id ?? (await ensureSubmissionId(email));
 
@@ -657,7 +660,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
       submittedAt: submissions.submittedAt,
     })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
 
   if (!sub) {

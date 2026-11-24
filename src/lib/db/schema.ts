@@ -11,6 +11,7 @@ import {
   date,
   datetime,
   foreignKey,
+  index,
   int,
   mediumtext,
   mysqlEnum,
@@ -18,6 +19,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -60,13 +62,67 @@ export type DbFlagType = (typeof flagTypeEnum)[number];
 /** What moved a position, as stored. */
 export type PositionChangeSource = (typeof positionChangeSourceEnum)[number];
 
-/** Selectable availability position (PLAN.md §6.1). Editable config. */
+/**
+ * A semester: the domain the app runs in (docs/semester-domains-plan.md).
+ * Exactly one term is current at a time, named by the `current_term_id` row in
+ * app_settings. Students only ever see the current term; every earlier term's
+ * rows stay in place and stay readable by admins.
+ *
+ * `id` is a slug fixed at creation, so renaming a term never moves its rows.
+ */
+export const terms = mysqlTable("terms", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  name: varchar("name", { length: 64 }).notNull().unique(),
+  // Plain YYYY-MM-DD strings, for the same reason as positions.return_date.
+  startsOn: date("starts_on", { mode: "string" }).notNull(),
+  endsOn: date("ends_on", { mode: "string" }).notNull(),
+  // Travel entered on or after this instant is late (PLAN §8).
+  travelCutoff: datetime("travel_cutoff", { mode: "date" }).notNull(),
+  // What happens to late travel: refused (false), or accepted and stored unexcused.
+  lateTravelAccept: boolean("late_travel_accept").notNull().default(false),
+  // Hired on or after this date counts as new this term (PLAN §13).
+  newHireCutoff: date("new_hire_cutoff", { mode: "string" }).notNull(),
+  // The exit page's sentence about when to expect a schedule.
+  scheduleNote: text("schedule_note").notNull(),
+  // How this term's roster tracker is read, as JSON (lib/roster/config.ts):
+  // which sheets, which titles mean admin, which titles are skipped. Null
+  // means the built-in defaults.
+  rosterConfig: text("roster_config"),
+  /** When it became the current term. */
+  activatedAt: datetime("activated_at", { mode: "date" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: varchar("created_by", { length: 255 }),
+});
+
+/**
+ * The `term_id` column every term-scoped table carries. Declared with no
+ * default on purpose, so an insert that forgets the term does not compile. (The
+ * database column keeps a default until the contract migration, which is what
+ * lets the previous release keep writing during a deploy.)
+ */
+const termIdColumn = () =>
+  varchar("term_id", { length: 32 })
+    .notNull()
+    .references(() => terms.id);
+
+/**
+ * Selectable availability position (PLAN.md §6.1). Editable config.
+ *
+ * Positions belong to a term: names and hours change from one semester to the
+ * next, and an earlier term's rows stay as they were so its picks and runs
+ * keep meaning what they meant. A new term starts from a copy with new ids, so
+ * nothing may depend on a particular id.
+ */
 export const positions = mysqlTable("positions", {
   id: varchar("id", { length: 64 }).primaryKey(),
+  termId: termIdColumn(),
   name: varchar("name", { length: 128 }).notNull(),
   minHours: int("min_hours").notNull(),
   minDays: int("min_days").notNull(),
   weekendExempt: boolean("weekend_exempt").notNull().default(false),
+  // Holders pick weekend closes (PLAN §18a). This flag is what "Shift Lead"
+  // means to the code, so the position can be renamed and copied freely.
+  picksCloses: boolean("picks_closes").notNull().default(false),
   active: boolean("active").notNull().default(true),
   // Self-reference for future consolidation; kept loose (no FK) to avoid
   // ordering/self-reference constraints on this config table.
@@ -82,6 +138,9 @@ export const positions = mysqlTable("positions", {
 /** Named time range per position per day-type (PLAN.md §6.2). Open/close derived. */
 export const shiftBlocks = mysqlTable("shift_blocks", {
   id: varchar("id", { length: 96 }).primaryKey(),
+  // Always its position's term. Carried here too so "every live block" can be
+  // read for one term without joining positions.
+  termId: termIdColumn(),
   positionId: varchar("position_id", { length: 64 })
     .notNull()
     .references(() => positions.id),
@@ -109,19 +168,33 @@ export const shiftBlocks = mysqlTable("shift_blocks", {
  * `isDefault` (seeded as "New Student", re-pointable by the admin); it catches
  * auto-assigned students and can't be deleted while it holds the flag.
  * A null window (either bound) is "unconfigured" → the form stays locked.
+ *
+ * A group belongs to one term: its window, its default flag and its members
+ * are that semester's, and nothing carries over to the next.
  */
-export const groups = mysqlTable("groups", {
-  id: varchar("id", { length: 64 }).primaryKey(),
-  name: varchar("name", { length: 128 }).notNull().unique(),
-  opensAt: datetime("opens_at", { mode: "date" }),
-  closesAt: datetime("closes_at", { mode: "date" }),
-  // When true, the form accepts new submissions while the window is open but
-  // locks (read-only) once a student finalizes; they can't edit after submit
-  // (PLAN.md §13). Default false preserves edit-until-close behavior.
-  lockAfterSubmit: boolean("lock_after_submit").notNull().default(false),
-  isDefault: boolean("is_default").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const groupKindEnum = ["default", "test"] as const;
+
+export const groups = mysqlTable(
+  "groups",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    termId: termIdColumn(),
+    name: varchar("name", { length: 128 }).notNull(),
+    // Marks the two groups every term is given: the one new people are swept
+    // into, and the test-accounts group. Null for a group an admin made. The
+    // test group is found by this, never by its id, since each term has its own.
+    kind: mysqlEnum("kind", groupKindEnum),
+    opensAt: datetime("opens_at", { mode: "date" }),
+    closesAt: datetime("closes_at", { mode: "date" }),
+    // When true, the form accepts new submissions while the window is open but
+    // locks (read-only) once a student finalizes; they can't edit after submit
+    // (PLAN.md §13). Default false preserves edit-until-close behavior.
+    lockAfterSubmit: boolean("lock_after_submit").notNull().default(false),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("groups_term_name_unique").on(t.termId, t.name)],
+);
 
 /** A roster/sign-in person (PLAN.md §9). Email = Google sign-in identity (PK). */
 export const students = mysqlTable("students", {
@@ -133,8 +206,10 @@ export const students = mysqlTable("students", {
   // Hire date from the People Coming sheet (PLAN §9); null when the workbook
   // omits it or the date is unparseable.
   hiredOn: date("hired_on", { mode: "date" }),
-  // Form-window group membership (PLAN.md §13). No group → no form access.
-  // Written on admin assignment / self-add, never at roster ingest.
+  // RETIRED, kept in step until the contract migration drops them: membership
+  // lives in group_members now (one row per student per term), and nothing
+  // reads these two columns. lib/groups/membership.ts writes both, so the
+  // previous release still finds them current if a deploy is rolled back.
   groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
     onDelete: "set null",
   }),
@@ -152,58 +227,91 @@ export const students = mysqlTable("students", {
   lastSeenAt: datetime("last_seen_at", { mode: "date" }),
 });
 
+/**
+ * A student's form-window group for one term (PLAN.md §13). No row, or a row
+ * with no group, means no form access.
+ *
+ * `assigned_auto` is the sticky marker: true when the default-assignment sweep
+ * or the self-add hook placed them, false for a manual admin assignment. The
+ * sweep skips anyone already marked, so an admin taking a swept student back
+ * out is not undone. That is why removing someone keeps their row with a null
+ * group, and why deleting a group nulls the column and leaves the rows.
+ */
+export const groupMembers = mysqlTable(
+  "group_members",
+  {
+    termId: termIdColumn(),
+    studentEmail: varchar("student_email", { length: 255 })
+      .notNull()
+      .references(() => students.email, { onDelete: "cascade" }),
+    groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
+      onDelete: "set null",
+    }),
+    assignedAuto: boolean("assigned_auto").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.termId, t.studentEmail] })],
+);
+
 /** One student's availability submission (PLAN.md §9). No image bytes, Drive fileIds only. */
-export const submissions = mysqlTable("submissions", {
-  id: varchar("id", { length: 36 }).primaryKey(),
-  // One submission per student per cycle.
-  studentEmail: varchar("student_email", { length: 255 })
-    .notNull()
-    .unique()
-    .references(() => students.email),
-  status: mysqlEnum("status", submissionStatusEnum).notNull().default("draft"),
-  everyWeekendOptIn: boolean("every_weekend_opt_in").notNull().default(false),
-  desiredHours: int("desired_hours"),
-  // Free-text the student adds on the availability form about their requested
-  // schedule (PLAN §7). Distinct from extracurricular_notes and scheduler_notes.
-  studentNotes: text("student_notes"),
-  courseScheduleFileId: varchar("course_schedule_file_id", { length: 255 }),
-  extracurricularNotes: text("extracurricular_notes"),
-  // Admin-side progress tracking (PLAN §10a): the "mark scheduled ✓" toggle that
-  // mirrors the roster's "W2W schedule created" column, and free-text scheduler
-  // notes per student. Set by admins in the per-student view, never by students.
-  scheduled: boolean("scheduled").notNull().default(false),
-  schedulerNotes: text("scheduler_notes"),
-  // When an admin last sent this student the "your schedule is posted" email from
-  // their page (docs/scheduler-automation.md). Null = never sent. The column dates
-  // from the removed batch email (roadmap 2.4/6.1) and was reused rather than dropped.
-  scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
-  // When the student clicked "Yes, that's me" on /me. Null = they still owe the
-  // confirmation, so /me shows the confirm card. The row itself is not proof: an
-  // admin can start a submission on a student's behalf before the student ever
-  // signs in.
-  confirmedAt: datetime("confirmed_at", { mode: "date" }),
-  /**
-   * When the student FIRST submitted. Write-once: `finalizeSubmission` sets it only
-   * when it is still null, so re-submitting after an edit never moves it. Null until
-   * they submit (a draft has no submit time).
-   */
-  submittedAt: datetime("submitted_at", { mode: "date" }),
-  /**
-   * Where the response came from: Muster's own form, or a Google Form response
-   * an admin pasted in (docs/form-paste.md). A pasted one is submitted with the
-   * form's timestamp as `submitted_at`. Only meaningful once status is submitted.
-   */
-  submittedVia: mysqlEnum("submitted_via", submittedViaEnum).notNull().default("muster"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  /**
-   * When the STUDENT last changed their own answers. Deliberately NOT
-   * `onUpdateNow()`: admins write to this row too (scheduler notes, the scheduled
-   * mark, and on-behalf-of edits), and an admin touching a response must not look
-   * like the student coming back to it. Every student-side write therefore sets
-   * this column explicitly; admin-side writes leave it alone.
-   */
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const submissions = mysqlTable(
+  "submissions",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    // One submission per student per term (the unique index below).
+    studentEmail: varchar("student_email", { length: 255 })
+      .notNull()
+      .references(() => students.email),
+    termId: termIdColumn(),
+    status: mysqlEnum("status", submissionStatusEnum).notNull().default("draft"),
+    everyWeekendOptIn: boolean("every_weekend_opt_in").notNull().default(false),
+    desiredHours: int("desired_hours"),
+    // Free-text the student adds on the availability form about their requested
+    // schedule (PLAN §7). Distinct from extracurricular_notes and scheduler_notes.
+    studentNotes: text("student_notes"),
+    courseScheduleFileId: varchar("course_schedule_file_id", { length: 255 }),
+    extracurricularNotes: text("extracurricular_notes"),
+    // Admin-side progress tracking (PLAN §10a): the "mark scheduled ✓" toggle that
+    // mirrors the roster's "W2W schedule created" column, and free-text scheduler
+    // notes per student. Set by admins in the per-student view, never by students.
+    scheduled: boolean("scheduled").notNull().default(false),
+    schedulerNotes: text("scheduler_notes"),
+    // When an admin last sent this student the "your schedule is posted" email from
+    // their page (docs/scheduler-automation.md). Null = never sent. The column dates
+    // from the removed batch email (roadmap 2.4/6.1) and was reused rather than dropped.
+    scheduleEmailSentAt: datetime("schedule_email_sent_at", { mode: "date" }),
+    // When the student clicked "Yes, that's me" on /me. Null = they still owe the
+    // confirmation, so /me shows the confirm card. The row itself is not proof: an
+    // admin can start a submission on a student's behalf before the student ever
+    // signs in.
+    confirmedAt: datetime("confirmed_at", { mode: "date" }),
+    /**
+     * When the student FIRST submitted. Write-once: `finalizeSubmission` sets it only
+     * when it is still null, so re-submitting after an edit never moves it. Null until
+     * they submit (a draft has no submit time).
+     */
+    submittedAt: datetime("submitted_at", { mode: "date" }),
+    /**
+     * Where the response came from: Muster's own form, or a Google Form response
+     * an admin pasted in (docs/form-paste.md). A pasted one is submitted with the
+     * form's timestamp as `submitted_at`. Only meaningful once status is submitted.
+     */
+    submittedVia: mysqlEnum("submitted_via", submittedViaEnum).notNull().default("muster"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    /**
+     * When the STUDENT last changed their own answers. Deliberately NOT
+     * `onUpdateNow()`: admins write to this row too (scheduler notes, the scheduled
+     * mark, and on-behalf-of edits), and an admin touching a response must not look
+     * like the student coming back to it. Every student-side write therefore sets
+     * this column explicitly; admin-side writes leave it alone.
+     */
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Led by student_email, so it also serves the foreign key to students.
+    uniqueIndex("submissions_student_term_unique").on(t.studentEmail, t.termId),
+    index("submissions_term_idx").on(t.termId),
+  ],
+);
 
 /** One availability-grid cell: this block on this day is selected (PLAN.md §9). */
 export const shiftSelections = mysqlTable(
@@ -367,16 +475,25 @@ export const adminGoogleGrants = mysqlTable("admin_google_grants", {
  * from the code fixture when empty; ghost resolution on /admin/positions
  * inserts rows.
  */
-export const rosterTitleMappings = mysqlTable("roster_title_mappings", {
-  title: varchar("title", { length: 128 }).primaryKey(),
-  positionId: varchar("position_id", { length: 64 })
-    .notNull()
-    .references(() => positions.id),
-});
+export const rosterTitleMappings = mysqlTable(
+  "roster_title_mappings",
+  {
+    // How a tracker title maps to a position is the term's own: the tracker's
+    // wording changes from semester to semester, and so do the positions.
+    termId: termIdColumn(),
+    title: varchar("title", { length: 128 }).notNull(),
+    positionId: varchar("position_id", { length: 64 })
+      .notNull()
+      .references(() => positions.id),
+  },
+  (t) => [primaryKey({ columns: [t.termId, t.title] })],
+);
 
 /** Audit of roster imports (PLAN.md §9). */
 export const rosterImports = mysqlTable("roster_imports", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  /** The term the import was for. */
+  termId: termIdColumn(),
   importedAt: timestamp("imported_at").notNull().defaultNow(),
   rowCount: int("row_count").notNull(),
   importedBy: varchar("imported_by", { length: 255 }).notNull(),
@@ -420,6 +537,10 @@ export const changeRequestDayEnum = [...dayEnum, "multiple"] as const;
  */
 export const changeRequests = mysqlTable("change_requests", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  // The term it was filed in. The student's own list and the rate cap read the
+  // current term; the admin queue reads every term, so an open request is never
+  // lost when the semester changes.
+  termId: termIdColumn(),
   studentEmail: varchar("student_email", { length: 255 })
     .notNull()
     .references(() => students.email, { onDelete: "cascade" }),
@@ -451,6 +572,9 @@ export const closeSlotKindEnum = ["fri", "sat"] as const;
  */
 export const closeSlots = mysqlTable("close_slots", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  // Claims carry no term of their own: they are scoped through their slot.
+  // `date` stays globally unique, since a calendar date belongs to one term.
+  termId: termIdColumn(),
   date: date("date", { mode: "string" }).notNull().unique(),
   kind: mysqlEnum("kind", closeSlotKindEnum).notNull(),
   startMinutes: int("start_minutes").notNull(),
@@ -497,6 +621,8 @@ export const assignmentSourceEnum = ["engine", "manual"] as const;
  */
 export const scheduleRuns = mysqlTable("schedule_runs", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  // "The current run" and the retention count are both per term.
+  termId: termIdColumn(),
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   generatedBy: varchar("generated_by", { length: 255 }).notNull(),
   status: mysqlEnum("status", scheduleRunStatusEnum).notNull().default("current"),
@@ -577,6 +703,8 @@ export const rotationWeekEnum = ["a", "b"] as const;
 
 export const shiftPlans = mysqlTable("shift_plans", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  // "The current plan" is per term.
+  termId: termIdColumn(),
   importedAt: timestamp("imported_at").notNull().defaultNow(),
   importedBy: varchar("imported_by", { length: 255 }).notNull(),
   sourceFilename: varchar("source_filename", { length: 255 }).notNull(),
@@ -642,14 +770,20 @@ export const w2wEmployees = mysqlTable("w2w_employees", {
  * `fillOrder` breaks ties inside a shared block cell so filling stays
  * deterministic (lower first; dock last).
  */
-export const w2wPositionMap = mysqlTable("w2w_position_map", {
-  w2wPositionId: varchar("w2w_position_id", { length: 32 }).primaryKey(),
-  w2wPositionName: varchar("w2w_position_name", { length: 128 }).notNull(),
-  musterPositionId: varchar("muster_position_id", { length: 64 })
-    .notNull()
-    .references(() => positions.id),
-  fillOrder: int("fill_order").notNull().default(0),
-});
+export const w2wPositionMap = mysqlTable(
+  "w2w_position_map",
+  {
+    // It points at positions, so it belongs to their term.
+    termId: termIdColumn(),
+    w2wPositionId: varchar("w2w_position_id", { length: 32 }).notNull(),
+    w2wPositionName: varchar("w2w_position_name", { length: 128 }).notNull(),
+    musterPositionId: varchar("muster_position_id", { length: 64 })
+      .notNull()
+      .references(() => positions.id),
+    fillOrder: int("fill_order").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.termId, t.w2wPositionId] })],
+);
 
 // --- Relations (for typed relational queries) ---
 

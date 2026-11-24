@@ -31,7 +31,6 @@ import {
   type PositionChangeSource,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
 import { canAliasTo } from "@/lib/domain/position-alias";
 import type { DayType } from "@/lib/domain/types";
@@ -44,6 +43,7 @@ import {
 } from "./apply-change";
 import { syncOrphanFlagsForBlocks } from "./orphans";
 import { POSITION_NAME_MAX, slugifyPositionId } from "./slug";
+import { currentTermId } from "@/lib/terms/current";
 
 export interface ActionResult {
   ok: boolean;
@@ -52,6 +52,19 @@ export interface ActionResult {
 
 /** New positions start at the standard 10h / 2-day floor (PLAN §6.1). */
 const NEW_POSITION_DEFAULTS = { minHours: 10, minDays: 2, weekendExempt: false, active: true };
+
+/**
+ * WHERE for a position id sent by the client: it only matches a position of
+ * the given (current) term, so no action here can change another semester's.
+ */
+function thisTermsPosition(id: string, termId: string) {
+  return and(eq(positions.id, id), eq(positions.termId, termId));
+}
+
+/** Names only have to be unique inside a term. */
+function thisTermsPositionNamed(name: string, termId: string) {
+  return and(eq(positions.name, name), eq(positions.termId, termId));
+}
 
 function revalidatePositions() {
   revalidatePath("/admin/positions");
@@ -117,11 +130,13 @@ export async function createPosition(name: string): Promise<ActionResult> {
   const clash = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(or(eq(positions.id, id), eq(positions.name, checked.name)))
+    .where(or(eq(positions.id, id), thisTermsPositionNamed(checked.name, await currentTermId())))
     .limit(1);
   if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
 
-  await db.insert(positions).values({ id, name: checked.name, ...NEW_POSITION_DEFAULTS });
+  await db
+    .insert(positions)
+    .values({ id, termId: await currentTermId(), name: checked.name, ...NEW_POSITION_DEFAULTS });
   revalidatePositions();
   return { ok: true };
 }
@@ -211,14 +226,14 @@ export async function savePosition(
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(eq(positions.id, id))
+    .where(thisTermsPosition(id, await currentTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
   if (details) {
     const clash = await db
       .select({ id: positions.id })
       .from(positions)
-      .where(and(eq(positions.name, details.name), ne(positions.id, id)))
+      .where(and(thisTermsPositionNamed(details.name, await currentTermId()), ne(positions.id, id)))
       .limit(1);
     if (clash.length > 0) return { ok: false, error: "A position with that name already exists." };
   }
@@ -291,7 +306,7 @@ export async function setPositionActive(id: string, active: boolean): Promise<Ac
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(eq(positions.id, id))
+    .where(thisTermsPosition(id, await currentTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
@@ -307,9 +322,6 @@ export async function deletePosition(id: string): Promise<ActionResult> {
   const fail = (error: string): ActionResult => ({ ok: false, error });
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
-  if (id === SHIFT_LEAD_POSITION_ID) {
-    return fail("Shift Lead is built in and can't be deleted.");
-  }
 
   const db = getDb();
   try {
@@ -324,12 +336,15 @@ export async function deletePosition(id: string): Promise<ActionResult> {
       // this commits. Plain counts, even in here, would read a snapshot and
       // leave the same window open.
       const [row] = await tx
-        .select({ id: positions.id })
+        .select({ id: positions.id, name: positions.name, picksCloses: positions.picksCloses })
         .from(positions)
-        .where(eq(positions.id, id))
+        .where(thisTermsPosition(id, await currentTermId()))
         .limit(1)
         .for("update");
       if (!row) throw new DeleteRefused("Position not found.");
+      if (row.picksCloses) {
+        throw new DeleteRefused(`${row.name} is built in and can't be deleted.`);
+      }
       await tx
         .select({ id: shiftBlocks.id })
         .from(shiftBlocks)
@@ -476,18 +491,21 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   if (sourceId === targetId) return fail("A position can't be an alias of itself.");
-  if (sourceId === SHIFT_LEAD_POSITION_ID) {
-    return fail("Shift Lead is built in and can't be made an alias.");
-  }
 
   const db = getDb();
   const rows = await db
-    .select({ id: positions.id, name: positions.name, mergedIntoId: positions.mergedIntoId })
+    .select({
+      id: positions.id,
+      name: positions.name,
+      mergedIntoId: positions.mergedIntoId,
+      picksCloses: positions.picksCloses,
+    })
     .from(positions)
-    .where(inArray(positions.id, [sourceId, targetId]));
+    .where(and(inArray(positions.id, [sourceId, targetId]), eq(positions.termId, await currentTermId())));
   const source = rows.find((r) => r.id === sourceId);
   const target = rows.find((r) => r.id === targetId);
   if (!source || !target) return fail("Position not found.");
+  if (source.picksCloses) return fail(`${source.name} is built in and can't be made an alias.`);
   if (source.mergedIntoId !== null) {
     return fail("This position is already an alias. Remove that alias first.");
   }
@@ -521,6 +539,7 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
     for (const { email } of affected) {
       const change = await applyPositionChange(tx, {
         email,
+        termId: await currentTermId(),
         fromPositionId: sourceId,
         toPositionId: targetId,
         source: "alias",
@@ -557,7 +576,7 @@ export async function clearAlias(id: string): Promise<ActionResult> {
   const [row] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(eq(positions.id, id))
+    .where(thisTermsPosition(id, await currentTermId()))
     .limit(1);
   if (!row) return { ok: false, error: "Position not found." };
 
@@ -587,7 +606,7 @@ export async function createBlock(
   const [pos] = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(eq(positions.id, positionId))
+    .where(thisTermsPosition(positionId, await currentTermId()))
     .limit(1);
   if (!pos) return { ok: false, error: "Position not found." };
 
@@ -603,11 +622,12 @@ export async function createBlock(
   // Block ids are opaque handles: the prefix keeps them readable, the random
   // suffix keeps them unique without encoding times that would go stale.
   const id = `${positionId}-${dayType}-${randomUUID().slice(0, 8)}`;
+  const termId = await currentTermId();
   await db.transaction(async (tx) => {
     await tx
       .insert(shiftBlocks)
-      .values({ id, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
-    if (wasBlockless) await resolveDeferredCarryOver(tx, positionId);
+      .values({ id, termId, positionId, dayType, startMinutes, endMinutes, desiredCapacity });
+    if (wasBlockless) await resolveDeferredCarryOver(tx, positionId, termId);
   });
 
   revalidateBlockSurfaces();
@@ -652,7 +672,7 @@ export async function deleteBlock(blockId: string): Promise<DeleteBlockResult> {
       const [row] = await tx
         .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
         .from(shiftBlocks)
-        .where(eq(shiftBlocks.id, blockId))
+        .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await currentTermId())))
         .limit(1)
         .for("update");
       if (!row) throw new DeleteRefused("Block not found.");
@@ -714,7 +734,7 @@ export async function restoreBlock(blockId: string): Promise<ActionResult> {
   const [row] = await db
     .select({ id: shiftBlocks.id, retiredAt: shiftBlocks.retiredAt })
     .from(shiftBlocks)
-    .where(eq(shiftBlocks.id, blockId))
+    .where(and(eq(shiftBlocks.id, blockId), eq(shiftBlocks.termId, await currentTermId())))
     .limit(1);
   if (!row) return { ok: false, error: "Block not found." };
   if (row.retiredAt === null) return { ok: false, error: "This shift is not removed." };
@@ -788,6 +808,7 @@ async function moveStudentsWithTitle(
   for (const r of matched) {
     const change = await applyPositionChange(tx, {
       email: r.email,
+      termId: await currentTermId(),
       fromPositionId: r.positionId,
       toPositionId: positionId,
       source,
@@ -825,7 +846,7 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
   const clash = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(or(eq(positions.id, id), eq(positions.name, name)))
+    .where(or(eq(positions.id, id), thisTermsPositionNamed(name, await currentTermId())))
     .limit(1);
   if (clash.length > 0) {
     return {
@@ -836,12 +857,13 @@ export async function createPositionForTitle(rawTitle: string): Promise<GhostRes
   }
 
   let assigned = 0;
+  const termId = await currentTermId();
   await db.transaction(async (tx) => {
-    await tx.insert(positions).values({ id, name, ...NEW_POSITION_DEFAULTS });
+    await tx.insert(positions).values({ id, termId, name, ...NEW_POSITION_DEFAULTS });
     // onDuplicateKeyUpdate covers a stale mapping row pointing at a deleted position.
     await tx
       .insert(rosterTitleMappings)
-      .values({ title: normalizeTitle(trimmed), positionId: id })
+      .values({ termId, title: normalizeTitle(trimmed), positionId: id })
       .onDuplicateKeyUpdate({ set: { positionId: id } });
     assigned = (await moveStudentsWithTitle(tx, trimmed, id, "ghost_resolution", gate.email)).moved;
   });
@@ -872,7 +894,7 @@ export async function mapTitleToPosition(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(eq(positions.id, positionId))
+    .where(thisTermsPosition(positionId, await currentTermId()))
     .limit(1);
   if (!target) return { ok: false, error: "Position not found.", assigned: 0 };
   if (target.mergedIntoId !== null) {
@@ -890,7 +912,7 @@ export async function mapTitleToPosition(
   await db.transaction(async (tx) => {
     await tx
       .insert(rosterTitleMappings)
-      .values({ title: normalizeTitle(trimmed), positionId })
+      .values({ termId: await currentTermId(), title: normalizeTitle(trimmed), positionId })
       .onDuplicateKeyUpdate({ set: { positionId } });
     assigned = (
       await moveStudentsWithTitle(tx, trimmed, positionId, "ghost_resolution", gate.email)
@@ -955,7 +977,7 @@ export async function changeStudentPosition(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(eq(positions.id, toPositionId))
+    .where(thisTermsPosition(toPositionId, await currentTermId()))
     .limit(1);
   if (!target) return fail("Position not found.");
   // Both refusals mirror the alias guards: parking a student on a position
@@ -975,6 +997,7 @@ export async function changeStudentPosition(
       .where(eq(students.email, normalized));
     const result = await applyPositionChange(tx, {
       email: normalized,
+      termId: await currentTermId(),
       fromPositionId: student.positionId,
       toPositionId,
       source: "admin",
@@ -1042,7 +1065,7 @@ export async function setRosterTitles(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(eq(positions.id, positionId))
+    .where(thisTermsPosition(positionId, await currentTermId()))
     .limit(1);
   if (!target) return fail("Position not found.");
   // Same two guards the ghost resolution and the per-student move use: a title
@@ -1087,7 +1110,7 @@ export async function setRosterTitles(
       // is an update of the row it already has, not a second row.
       await tx
         .insert(rosterTitleMappings)
-        .values({ title, positionId })
+        .values({ termId: await currentTermId(), title, positionId })
         .onDuplicateKeyUpdate({ set: { positionId } });
       const move = await moveStudentsWithTitle(
         tx,

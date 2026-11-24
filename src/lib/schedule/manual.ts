@@ -54,6 +54,9 @@ import { effectiveRotation } from "@/lib/availability/effective";
 import { onRosterStudent } from "@/lib/roster/lookup";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
+import { currentRunOf } from "@/lib/terms/scope";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
 const OFF_ROSTER_MESSAGE =
@@ -155,7 +158,7 @@ export async function applyScheduleEdits(
       international: students.international,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
     .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);
@@ -172,7 +175,7 @@ export async function applyScheduleEdits(
       const [live] = await tx
         .select({ id: scheduleRuns.id })
         .from(scheduleRuns)
-        .where(eq(scheduleRuns.status, "current"))
+        .where(currentRunOf(run.termId))
         .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
         .limit(1);
       if (!live || live.id !== run.id) throw new EditRefused(RUN_MOVED_MESSAGE);

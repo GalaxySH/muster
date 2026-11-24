@@ -34,11 +34,10 @@ import {
   type SheetSyncResult,
 } from "@/lib/admin/sheet-sync";
 import { deriveOpenClose } from "@/lib/domain/blocks";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
-import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
+import { isReturningStudent } from "@/lib/flow/returner";
 import { onRosterStudent } from "@/lib/roster/lookup";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import {
@@ -66,13 +65,8 @@ import {
 } from "./data";
 import { pruneStaleRuns, writeRunAsCurrent } from "./run-write";
 import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
-
-/**
- * The fall 2026 semester start, and the late-start threshold for a position
- * with no return date of its own. Cycle-specific, so it lives here next to the
- * clock rather than in the engine, which has no dates at all.
- */
-const DEFAULT_SEMESTER_START = "2026-09-02";
+import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms/scope";
 
 /**
  * The Shift Lead weekend closing block, which the engine fills only as a last
@@ -91,10 +85,11 @@ function readFillIns(summaryJson: string | undefined): string[] {
   }
 }
 
-function shiftLeadWeekendCloseIds(blocks: readonly ShiftBlock[]): string[] {
-  const weekend = blocks.filter(
-    (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
-  );
+function shiftLeadWeekendCloseIds(
+  blocks: readonly ShiftBlock[],
+  leadPositionId: string,
+): string[] {
+  const weekend = blocks.filter((b) => b.positionId === leadPositionId && b.dayType === "weekend");
   const { closeId } = deriveOpenClose(weekend);
   return closeId ? [closeId] : [];
 }
@@ -144,12 +139,16 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await currentTermId();
   const [positionRows, blockRows, studentRows, selectionRows, internalByEmail, currentRun, params] =
     await Promise.all([
-      db.select().from(positions),
+      db.select().from(positions).where(eq(positions.termId, termId)),
       // Retired blocks never enter a run: a pick left on one is orphaned, and
       // the engine skips any cell whose block is not in this map.
-      db.select().from(shiftBlocks).where(liveBlocksOnly()),
+      db
+        .select()
+        .from(shiftBlocks)
+        .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId))),
       db
         .select({
           email: students.email,
@@ -162,7 +161,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(submissions)
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .innerJoin(students, submissionOfStudent(await currentTermId()))
         .where(eligibleSubmittedFilter()),
       db
         .select({
@@ -172,7 +171,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .innerJoin(students, submissionOfStudent(await currentTermId()))
         .where(eligibleSubmittedFilter()),
       loadInternalCopiesByEmail(),
       loadCurrentRunRow(),
@@ -201,11 +200,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   );
 
   // Returner status is resolved here, not in the engine: the check needs a
-  // clock and the engine deliberately has none. The cutoff is captured once so
-  // every student in this run is judged against the same boundary, and it is
-  // stored on the run so a re-run either side of June 1 stays reproducible.
-  const now = new Date();
-  const cutoff = returnerCutoff(now);
+  // term and the engine deliberately has none. The cutoff is the term's
+  // new-hire date, read once so every student in this run is judged against the
+  // same boundary, and it is stored on the run so the run stays reproducible.
+  const term = await currentTerm();
+  const cutoff = term.newHireCutoff;
 
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
   // saved an internal copy, its cells and rotation replace the student's here.
@@ -218,7 +217,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       desiredHours: r.desiredHours,
       submittedAt: r.submittedAt,
       scheduled: r.scheduled,
-      returner: isReturningStudent(r.hiredOn, now),
+      returner: isReturningStudent(r.hiredOn, cutoff),
       selection: selectionByEmail.get(r.email) ?? [],
     })),
     liveInternalByEmail,
@@ -260,7 +259,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(students)
-        .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+        .leftJoin(submissions, submissionOfStudent(await currentTermId()))
         .where(onRosterStudent()),
       db
         .select({
@@ -270,7 +269,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .innerJoin(students, submissionOfStudent(await currentTermId()))
         .where(notSubmitted),
     ]);
 
@@ -295,7 +294,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         desiredHours: r.desiredHours,
         submittedAt: null,
         scheduled: r.scheduled ?? false,
-        returner: isReturningStudent(r.hiredOn, now),
+        returner: isReturningStudent(r.hiredOn, cutoff),
         fillIn: true,
         selection: fillInSelection(r.positionId!, domainBlocks, draftByEmail.get(r.email)),
       }));
@@ -389,17 +388,20 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // recovers from a bad run, so it must never be what blocks them.
   const previousFillIns = readFillIns(currentRun?.summaryJson);
 
+  // The position whose holders pick weekend closes. Empty when the term has
+  // none, which matches no block and no seat.
+  const leadPositionId = positionRows.find((p) => p.picksCloses)?.id ?? "";
   const result = generateAssignments({
     students: engineStudentsFinal,
     positions: positionRows.map(toDomainPosition),
     blocks: domainBlocks,
     previous: previousFinal,
     params,
-    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
+    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks, leadPositionId),
     previousFillIns,
   });
   result.report.returners = {
-    cutoff: cutoff.toISOString().slice(0, 10),
+    cutoff,
     count: engineStudentsFinal.filter((s) => s.returner === true).length,
     unknownHireDate,
   };
@@ -411,7 +413,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     hiredOn: hiredOnByEmail,
     positionOf: new Map(engineStudentsFinal.map((s) => [s.email, s.positionId])),
     returnDateOf: new Map(positionRows.map((p) => [p.id, p.returnDate])),
-    defaultStart: DEFAULT_SEMESTER_START,
+    defaultStart: term.startsOn,
   });
   // A health snapshot of the run as generated (fairness, stretch, coverage
   // fragility). The read-time validator stays the live truth about the rows;
@@ -435,7 +437,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         frozen: frozenEmails.has(s.email),
       })),
       poolPositionIds: params.coveragePoolPositionIds,
-      leadPositionId: SHIFT_LEAD_POSITION_ID,
+      leadPositionId,
       // The run's own limit, so the health section and the read-time validator
       // judge a long stretch against the same number.
       maxConsecutiveDays: params.maxConsecutiveDays,
@@ -447,6 +449,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
 
   await db.transaction((tx) =>
     writeRunAsCurrent(tx, {
+      termId,
       assignments: result.assignments,
       report: storedReport,
       generatedBy: gate.email,
@@ -480,20 +483,23 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await currentTermId();
   let error: string | null;
   try {
     error = await db.transaction(async (tx) => {
+      // Only a run of the current term can be restored: another term's run
+      // reads as gone, so it can never become this term's schedule.
       const [run] = await tx
         .select({ id: scheduleRuns.id, status: scheduleRuns.status })
         .from(scheduleRuns)
-        .where(eq(scheduleRuns.id, runId))
+        .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, termId)))
         .limit(1);
       if (!run) return "That run no longer exists.";
       if (run.status === "current") return "That run is already the current schedule.";
       await tx
         .update(scheduleRuns)
         .set({ status: "superseded" })
-        .where(eq(scheduleRuns.status, "current"));
+        .where(currentRunOf(termId));
       // The guard SELECT is a snapshot read, so a concurrent generate can prune
       // the target run between it and this write. Zero rows changed means the
       // run is gone; the flip above must roll back or no run stays current.
@@ -531,7 +537,10 @@ export async function setRunPinned(runId: string, pinned: boolean): Promise<SetP
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const [result] = await db.update(scheduleRuns).set({ pinned }).where(eq(scheduleRuns.id, runId));
+  const [result] = await db
+    .update(scheduleRuns)
+    .set({ pinned })
+    .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, await currentTermId())));
   if (result.affectedRows === 0) return { ok: false, error: "That run no longer exists." };
 
   revalidatePath("/admin/schedule");
@@ -564,6 +573,7 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
   await db.transaction(async (tx) => {
     await tx.insert(scheduleRuns).values({
       id: runId,
+      termId: current.termId,
       generatedBy: gate.email,
       status: "superseded",
       // Nothing was solved here, only copied. The scope ledger reads this so a
@@ -589,7 +599,7 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
         .insert(scheduleAssignments)
         .values(rows.slice(i, i + 500).map((r) => ({ ...r, runId })));
     }
-    await pruneStaleRuns(tx);
+    await pruneStaleRuns(tx, current.termId);
   });
 
   revalidatePath("/admin/schedule");
@@ -638,9 +648,11 @@ export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<Cl
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await currentTermId();
   let unmarked = 0;
   await db.transaction(async (tx) => {
     await writeRunAsCurrent(tx, {
+      termId,
       assignments: [],
       report: CLEARED_RUN_REPORT,
       generatedBy: gate.email,
@@ -652,7 +664,7 @@ export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<Cl
       const [res] = await tx
         .update(submissions)
         .set({ scheduled: false })
-        .where(eq(submissions.scheduled, true));
+        .where(and(eq(submissions.scheduled, true), submissionInTerm(termId)));
       unmarked = res.affectedRows;
     }
   });

@@ -18,7 +18,6 @@ vi.mock("./apply-change", () => ({
 import { getTableName, type Table } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { getDb } from "@/lib/db";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { syncOrphanFlagsForBlocks } from "./orphans";
 import { deleteBlock, deletePosition } from "./actions";
 
@@ -160,12 +159,21 @@ describe("deletePosition", () => {
     expect(log.writes).toEqual([]);
   });
 
-  it("never touches the DB for Shift Lead or for a non-admin", async () => {
-    useDb(clear);
-    expect(await deletePosition(SHIFT_LEAD_POSITION_ID)).toEqual({
+  // Built in by its flag, not its id or name, so a renamed or copied Shift Lead
+  // position is still protected.
+  it("refuses the position whose holders pick closes", async () => {
+    const log = useDb({
+      positions: [{ id: "lead-copy", name: "Shift Lead", picksCloses: true }],
+    });
+    expect(await deletePosition("lead-copy")).toEqual({
       ok: false,
       error: "Shift Lead is built in and can't be deleted.",
     });
+    expect(log.writes).toEqual([]);
+  });
+
+  it("never touches the DB for a non-admin", async () => {
+    useDb(clear);
     vi.mocked(requireAdmin).mockResolvedValue({ ok: false, error: "Admins only." });
     expect(await deletePosition("barista")).toEqual({ ok: false, error: "Admins only." });
     expect(getDb).not.toHaveBeenCalled();

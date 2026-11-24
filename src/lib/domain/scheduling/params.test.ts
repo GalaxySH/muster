@@ -55,7 +55,8 @@ describe("validateSchedulingParams", () => {
       // Best of a close field on the 2026-08-20 snapshot; every seed swept
       // landed within three seats of it.
       annealSeed: 3,
-      coveragePoolPositionIds: ["culinary-assistant", "cashier"],
+      // No position id is a default: ids belong to a term.
+      coveragePoolPositionIds: [],
     });
   });
 
@@ -290,10 +291,7 @@ describe("the shipped defaults as a value", () => {
     const filled = storedSchedulingParams({ dayCapHours: 6 });
     expect(filled.coveragePoolPositionIds).toBe(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds);
     expect(() => filled.coveragePoolPositionIds.push("barista")).toThrow();
-    expect(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds).toEqual([
-      "culinary-assistant",
-      "cashier",
-    ]);
+    expect(DEFAULT_SCHEDULING_PARAMS.coveragePoolPositionIds).toEqual([]);
   });
 
   it("hands the default object itself back for a setting it cannot read", () => {

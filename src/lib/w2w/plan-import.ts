@@ -28,6 +28,8 @@ import {
 import type { PlanMatchReport, W2wPlanRow, W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
 import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
 import { loadPlanMatchInputs } from "./plan-data";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
 
 /**
  * What a student's hours and day span have to be measured against. Read here
@@ -104,11 +106,12 @@ export async function analyzePlanUpload(
         desiredHours: submissions.desiredHours,
       })
       .from(students)
-      .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+      .leftJoin(submissions, submissionOfStudent(await currentTermId()))
       .where(onRosterStudent()),
     db
       .select({ id: positions.id, minHours: positions.minHours, minDays: positions.minDays })
-      .from(positions),
+      .from(positions)
+      .where(eq(positions.termId, await currentTermId())),
     loadInternalCopiesByEmail(),
   ]);
 

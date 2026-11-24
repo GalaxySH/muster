@@ -56,12 +56,15 @@ import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { syncOrphanedSelectionFlag } from "./orphans";
+import { currentRunOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
 
 /** A drizzle transaction handle; both seams run inside the caller's transaction. */
 export type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface PositionChangeInput {
   email: string;
+  /** The current term: the one whose submission and run this change touches. */
+  termId: string;
   fromPositionId: string | null;
   toPositionId: string | null;
   /** What moved it, stored on the history row. */
@@ -121,12 +124,12 @@ export async function applyPositionChange(
     source: input.source,
   });
 
-  const removedShifts = await removeCurrentRunShifts(tx, input.email);
+  const removedShifts = await removeCurrentRunShifts(tx, input.email, input.termId);
 
   const [sub] = await tx
     .select({ id: submissions.id })
     .from(submissions)
-    .where(eq(submissions.studentEmail, input.email))
+    .where(submissionOf(input.email, input.termId))
     .limit(1);
   if (!sub) {
     return {
@@ -197,11 +200,11 @@ export async function applyPositionChange(
  * what was generated while the student really did hold that position, and
  * rewriting history to match the present would be a lie about both.
  */
-async function removeCurrentRunShifts(tx: DbTx, email: string): Promise<number> {
+async function removeCurrentRunShifts(tx: DbTx, email: string, termId: string): Promise<number> {
   const [run] = await tx
     .select({ id: scheduleRuns.id })
     .from(scheduleRuns)
-    .where(eq(scheduleRuns.status, "current"))
+    .where(currentRunOf(termId))
     .limit(1);
   if (!run) return 0;
 
@@ -306,7 +309,11 @@ async function carryOverSubmission(
  *
  * Returns how many submissions it moved.
  */
-export async function resolveDeferredCarryOver(tx: DbTx, positionId: string): Promise<number> {
+export async function resolveDeferredCarryOver(
+  tx: DbTx,
+  positionId: string,
+  termId: string,
+): Promise<number> {
   const targetBlocks = (
     await tx
       .select()
@@ -318,7 +325,7 @@ export async function resolveDeferredCarryOver(tx: DbTx, positionId: string): Pr
   const rows = await tx
     .select({ id: submissions.id })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(students, submissionOfStudent(termId))
     .where(eq(students.positionId, positionId));
 
   for (const { id } of rows) {

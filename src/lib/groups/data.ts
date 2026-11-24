@@ -10,7 +10,7 @@
 import "server-only";
 import { and, asc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { groups, students, positions, submissions } from "@/lib/db/schema";
+import { groups, students, positions, submissions, groupMembers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { getSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -20,6 +20,9 @@ import {
   type WindowState,
 } from "@/lib/domain/window";
 import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf } from "@/lib/terms/scope";
+import { groupOf, inGroup, inNoGroup, membershipOf } from "@/lib/groups/membership";
 
 export interface GroupRow {
   id: string;
@@ -28,20 +31,27 @@ export interface GroupRow {
   closesAt: Date | null;
   lockAfterSubmit: boolean;
   isDefault: boolean;
+  /** The term's test-accounts group, which is managed on /admin/test-users. */
+  isTest: boolean;
   memberCount: number;
   /** Member emails (sorted); feeds the per-group "copy emails" control. */
   memberEmails: string[];
 }
 
-/** All groups (default first, then by name) with their members. */
+/** The term's groups (default first, then by name) with their members. */
 export async function listGroups(): Promise<GroupRow[]> {
   const db = getDb();
-  const rows = await db.select().from(groups).orderBy(asc(groups.name));
+  const termId = await currentTermId();
+  const rows = await db
+    .select()
+    .from(groups)
+    .where(eq(groups.termId, termId))
+    .orderBy(asc(groups.name));
   const memberRows = await db
-    .select({ groupId: students.groupId, email: students.email })
-    .from(students)
-    .where(isNotNull(students.groupId))
-    .orderBy(asc(students.email));
+    .select({ groupId: groupMembers.groupId, email: groupMembers.studentEmail })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.termId, termId), isNotNull(groupMembers.groupId)))
+    .orderBy(asc(groupMembers.studentEmail));
   const emailsByGroup = new Map<string, string[]>();
   for (const m of memberRows) {
     if (!m.groupId) continue;
@@ -60,6 +70,7 @@ export async function listGroups(): Promise<GroupRow[]> {
         closesAt: g.closesAt,
         lockAfterSubmit: g.lockAfterSubmit,
         isDefault: g.isDefault,
+        isTest: g.kind === "test",
         memberCount: memberEmails.length,
         memberEmails,
       };
@@ -68,13 +79,17 @@ export async function listGroups(): Promise<GroupRow[]> {
 }
 
 /**
- * The current default group: the one that catches swept/self-added students
- * (`isDefault` flag; exactly one by construction, re-pointable via
- * setDefaultGroup). Null only if the seed never ran.
+ * The term's default group: the one that catches swept/self-added students
+ * (`isDefault` flag; exactly one per term by construction, re-pointable via
+ * setDefaultGroup). Null only if the term was never given one.
  */
 export async function getDefaultGroup(): Promise<typeof groups.$inferSelect | null> {
   const db = getDb();
-  const [g] = await db.select().from(groups).where(eq(groups.isDefault, true)).limit(1);
+  const [g] = await db
+    .select()
+    .from(groups)
+    .where(and(eq(groups.isDefault, true), eq(groups.termId, await currentTermId())))
+    .limit(1);
   return g ?? null;
 }
 
@@ -113,20 +128,14 @@ export async function resolveStudentAccess(
 ): Promise<StudentAccess> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
-  const [stu] = await db
-    .select({ groupId: students.groupId })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
-  if (!stu || !stu.groupId) return { access: "no-group" };
-
-  const [grp] = await db.select().from(groups).where(eq(groups.id, stu.groupId)).limit(1);
+  const termId = await currentTermId();
+  const grp = await groupOf(db, email, termId);
   if (!grp) return { access: "no-group" };
 
   const [sub] = await db
     .select({ status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
   const submitted = sub?.status === "submitted";
 
@@ -175,8 +184,9 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
   if (filters.onRoster !== undefined) conds.push(eq(students.onRoster, filters.onRoster));
   if (filters.positionId === "none") conds.push(isNull(students.positionId));
   else if (filters.positionId) conds.push(eq(students.positionId, filters.positionId));
-  if (filters.groupId === "none") conds.push(isNull(students.groupId));
-  else if (filters.groupId) conds.push(eq(students.groupId, filters.groupId));
+  const termId = await currentTermId();
+  if (filters.groupId === "none") conds.push(inNoGroup(termId));
+  else if (filters.groupId) conds.push(inGroup(filters.groupId));
   if (filters.search?.trim()) {
     const q = `%${filters.search.trim()}%`;
     conds.push(or(like(students.displayName, q), like(students.email, q)));
@@ -189,14 +199,15 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
       positionId: students.positionId,
       positionName: positions.name,
       onRoster: students.onRoster,
-      groupId: students.groupId,
+      groupId: groupMembers.groupId,
       groupName: groups.name,
-      groupAssignedAuto: students.groupAssignedAuto,
+      groupAssignedAuto: groupMembers.assignedAuto,
       hiredOn: students.hiredOn,
     })
     .from(students)
     .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groups, eq(students.groupId, groups.id))
+    .leftJoin(groupMembers, membershipOf(termId))
+    .leftJoin(groups, eq(groupMembers.groupId, groups.id))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(asc(students.displayName), asc(students.email));
 
@@ -213,8 +224,8 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     positionId: r.positionId,
     positionName: r.positionName ?? null,
     onRoster: r.onRoster,
-    groupId: r.groupId,
+    groupId: r.groupId ?? null,
     groupName: r.groupName ?? null,
-    groupAssignedAuto: r.groupAssignedAuto,
+    groupAssignedAuto: r.groupAssignedAuto ?? false,
   }));
 }

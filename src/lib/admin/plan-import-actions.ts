@@ -16,7 +16,6 @@
  */
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { shiftPlans, shiftPlanRows, w2wPositionMap } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -31,6 +30,8 @@ import { writeRunAsCurrent } from "@/lib/schedule/run-write";
 import { analyzePlanUpload, type PlanAnalysis, type PlanStudentFacts } from "@/lib/w2w/plan-import";
 import { validateW2wCsvUpload } from "@/lib/w2w/upload-validation";
 import { SCHEDULE_SHEET, trySyncSheet } from "./sheet-sync";
+import { currentTermId } from "@/lib/terms/current";
+import { currentPlanOf } from "@/lib/terms/scope";
 
 /** A list the screen shows the head of, with the count it was cut from. */
 export interface CappedList {
@@ -107,18 +108,20 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   if (formData.get("confirm") !== "1") return { ok: true, preview };
 
   const planId = randomUUID();
+  const termId = await currentTermId();
   let capacityUpdated = 0;
   try {
     await getDb().transaction(async (tx) => {
       if (analysis.mapSeed.length > 0) {
-        await tx.insert(w2wPositionMap).values(analysis.mapSeed);
+        await tx.insert(w2wPositionMap).values(analysis.mapSeed.map((m) => ({ ...m, termId })));
       }
       await tx
         .update(shiftPlans)
         .set({ status: "superseded" })
-        .where(eq(shiftPlans.status, "current"));
+        .where(currentPlanOf(termId));
       await tx.insert(shiftPlans).values({
         id: planId,
+        termId,
         importedBy: gate.email,
         sourceFilename: file.name,
         rowCount: analysis.rows.length,
@@ -157,6 +160,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
       }
       if (createRun) {
         await writeRunAsCurrent(tx, {
+          termId,
           assignments: analysis.run.assignments,
           report: planRunReport(analysis.run, analysis.studentFacts, analysis.blockSpans),
           generatedBy: gate.email,

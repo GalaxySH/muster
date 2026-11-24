@@ -14,6 +14,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
+  groupMembers,
   groups,
   positionChanges,
   positions,
@@ -37,7 +38,6 @@ import { partitionSelection } from "@/lib/domain/orphans";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { weekMinutesForRows, type ExistingAssignment } from "@/lib/domain/scheduling/manual";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import {
   applyResponseFilters,
   neighborFallbackFilters,
@@ -46,6 +46,9 @@ import {
 import { DEFAULT_SORT, sortResponses, type ResponseSort } from "./response-sort";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOf, submissionOfStudent } from "@/lib/terms/scope";
+import { groupOf, inTestGroup, membershipOf } from "@/lib/groups/membership";
 
 export interface StudentDetail {
   email: string;
@@ -129,15 +132,9 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   const [student] = await db.select().from(students).where(eq(students.email, email)).limit(1);
   if (!student) return null;
 
-  let group: string | null = null;
-  if (student.groupId) {
-    const [g] = await db
-      .select({ name: groups.name })
-      .from(groups)
-      .where(eq(groups.id, student.groupId))
-      .limit(1);
-    group = g?.name ?? null;
-  }
+  const termId = await currentTermId();
+  const memberOf = await groupOf(db, email, termId);
+  const group = memberOf?.name ?? null;
 
   let position: Position | null = null;
   let blocks: ShiftBlock[] = [];
@@ -172,7 +169,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
 
   let selection: SelectedShift[] = [];
@@ -239,7 +236,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     hiredOn: student.hiredOn,
     position,
     group,
-    groupId: student.groupId,
+    groupId: memberOf?.id ?? null,
     blocks,
     submission,
     selection,
@@ -356,6 +353,7 @@ async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
  */
 export async function listResponses(filters: ResponseFilters = {}): Promise<ResponseRow[]> {
   const db = getDb();
+  const termId = await currentTermId();
   const rows = await db
     .select({
       email: students.email,
@@ -363,7 +361,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       positionId: students.positionId,
       positionName: positions.name,
       onRoster: students.onRoster,
-      groupId: students.groupId,
+      groupId: groupMembers.groupId,
       groupName: groups.name,
       hiredOn: students.hiredOn,
       submissionId: submissions.id,
@@ -376,9 +374,10 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       updatedAt: submissions.updatedAt,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groups, eq(students.groupId, groups.id))
+    .leftJoin(groupMembers, membershipOf(termId))
+    .leftJoin(groups, eq(groupMembers.groupId, groups.id))
     // Roster + submission-state visibility are filter concerns:
     // applyResponseFilters hides off-roster students (PLAN §4.2), and students
     // with no submission unless the state filter asks for them.
@@ -425,7 +424,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       scheduled: r.scheduled ?? false,
       desiredHours: r.desiredHours,
       onRoster: r.onRoster,
-      groupId: r.groupId,
+      groupId: r.groupId ?? null,
       groupName: r.groupName,
       hiredOn: r.hiredOn,
       scheduledMinutes: scheduledMinutes.get(r.email) ?? null,
@@ -473,12 +472,13 @@ export interface NonResponseReport {
  */
 export async function listNonResponses(): Promise<NonResponseReport> {
   const db = getDb();
+  const termId = await currentTermId();
   const rows = await db
     .select({
       email: students.email,
       displayName: students.displayName,
       onRoster: students.onRoster,
-      groupId: students.groupId,
+      testAccount: sql<number>`${inTestGroup(termId)}`,
       positionId: students.positionId,
       positionName: positions.name,
       rosterTitle: students.rosterTitle,
@@ -487,7 +487,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       confirmedAt: submissions.confirmedAt,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .leftJoin(positions, eq(students.positionId, positions.id))
     .orderBy(
       sql`${students.hiredOn} is null`,
@@ -517,7 +517,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       if (status === "submitted") respondedCount += 1;
       else if (status === "draft") draftOnly.push(person);
       else noResponse.push(person);
-    } else if (status !== "missing" && r.groupId !== TEST_GROUP_ID) {
+    } else if (status !== "missing" && !Number(r.testAccount)) {
       // Admin-created test accounts are off-roster by design, not a roster gap.
       offRoster.push(person);
     }
@@ -615,7 +615,7 @@ export async function loadUpcomingTravel(
     })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(students, submissionOfStudent(await currentTermId()))
     .leftJoin(positions, eq(students.positionId, positions.id))
     .where(eq(students.onRoster, true))
     // Name order so same-day entries within a week bucket read alphabetically.

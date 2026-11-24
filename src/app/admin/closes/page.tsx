@@ -5,7 +5,8 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { getSheetUrl, getLastSheetSync, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildClosesSheet } from "@/lib/closes/admin-actions";
-import { REQUIRED_CLOSE_CLAIMS, defaultCloseSemesterRange } from "@/lib/domain/close-claims";
+import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { currentTerm } from "@/lib/terms/current";
 import { CloseInventoryPanel } from "@/components/admin/CloseInventoryPanel";
 import { CloseClaimsTable } from "@/components/admin/CloseClaimsTable";
 import { SheetControls } from "@/components/admin/SheetControls";
@@ -22,7 +23,8 @@ export default async function AdminClosesPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/closes");
   if (!session.isAdmin) redirect("/me");
 
-  const [view, sheetUrl, lastSync] = await Promise.all([
+  const [term, view, sheetUrl, lastSync] = await Promise.all([
+    currentTerm(),
     loadCloseAdmin(),
     getSheetUrl(CLOSES_SHEET),
     getLastSheetSync(CLOSES_SHEET),
@@ -34,7 +36,7 @@ export default async function AdminClosesPage() {
   const defaults =
     first && last
       ? { start: first.date, end: last.date, capacity: first.capacity }
-      : { ...defaultCloseSemesterRange(new Date()), capacity: 3 };
+      : { start: term.startsOn, end: term.endsOn, capacity: 3 };
 
   const unfinished = view.leads.filter((l) => !l.complete);
 

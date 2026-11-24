@@ -7,7 +7,7 @@ import "server-only";
  * edits on /admin/positions or a remapped position show up immediately
  * instead of leaving stale resolutions in the DB.
  */
-import { asc, count, desc, eq, max } from "drizzle-orm";
+import { and, asc, count, desc, eq, max } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
@@ -26,6 +26,8 @@ import type {
   W2wPlanRow,
   W2wPositionMapEntry,
 } from "@/lib/domain/w2w-plan/types";
+import { currentTermId } from "@/lib/terms/current";
+import { currentPlanOf } from "@/lib/terms/scope";
 
 export interface PlanMeta {
   id: string;
@@ -51,16 +53,27 @@ export interface PlanMatchInputs {
 
 export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
   const db = getDb();
+  const termId = await currentTermId();
   const [mapRows, blockRows, positionRows] = await Promise.all([
     // Ordered: resolution is first-wins by id and by name, so an unordered
     // read could resolve a duplicated name differently between requests.
-    db.select().from(w2wPositionMap).orderBy(asc(w2wPositionMap.w2wPositionId)),
+    db
+      .select()
+      .from(w2wPositionMap)
+      .where(eq(w2wPositionMap.termId, termId))
+      .orderBy(asc(w2wPositionMap.w2wPositionId)),
     // Retired shifts are not candidates (PLAN §6.2a). Matching is by shape, not
     // id, so a retired block would otherwise still answer for its own hours —
     // and after the usual "remove a shift, add a corrected one" edit the dead
     // original would win over its live replacement, since it was inserted first.
-    db.select().from(shiftBlocks).where(liveBlocksOnly()),
-    db.select({ id: positions.id, name: positions.name }).from(positions),
+    db
+      .select()
+      .from(shiftBlocks)
+      .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId))),
+    db
+      .select({ id: positions.id, name: positions.name })
+      .from(positions)
+      .where(eq(positions.termId, termId)),
   ]);
   return {
     map: mapRows.map((m) => ({
@@ -81,20 +94,20 @@ export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
  * Shared because both W2W surfaces need it and an unordered or differently
  * ordered pick would let them name different plans. Returns the query rather
  * than the row so callers can put it in a Promise.all; drizzle builders are
- * thenable, so `await currentPlanRowQuery()` works too.
+ * thenable, so `await currentPlanRowQuery(termId)` works too.
  */
-export function currentPlanRowQuery() {
+export function currentPlanRowQuery(termId: string) {
   return getDb()
     .select()
     .from(shiftPlans)
-    .where(eq(shiftPlans.status, "current"))
+    .where(currentPlanOf(termId))
     .orderBy(desc(shiftPlans.importedAt))
     .limit(1);
 }
 
 export async function getCurrentPlan(): Promise<CurrentPlan | null> {
   const db = getDb();
-  const [meta] = await currentPlanRowQuery();
+  const [meta] = await currentPlanRowQuery(await currentTermId());
   if (!meta) return null;
 
   const rows = await db

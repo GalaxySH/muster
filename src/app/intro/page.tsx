@@ -21,7 +21,7 @@ export default async function IntroPage() {
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email);
   const [{ cutoff }, changeRequestsEnabled] = await Promise.all([
-    getTravelCutoff(new Date()),
+    getTravelCutoff(),
     getChangeRequestsEnabled(),
   ]);
 

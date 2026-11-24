@@ -14,11 +14,12 @@
  * generated (they would point at Drive files that don't exist).
  */
 import { randomUUID } from "node:crypto";
-import { inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { positions, shiftBlocks, shiftSelections, students, submissions } from "../lib/db/schema";
 import { liveBlocksOnly } from "../lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
+import { getCurrentTermId } from "../lib/terms/term-id";
 import { deriveOpenClose } from "../lib/domain/blocks";
 import { EVENING_END_MINUTES } from "../lib/domain/scheduling/coverage";
 import { checkDesiredHours, validateAvailability } from "../lib/domain/validation";
@@ -216,8 +217,12 @@ async function main() {
       );
     }
 
-    const posRows = await db.select().from(positions);
-    const blockRows = await db.select().from(shiftBlocks).where(liveBlocksOnly());
+    const termId = await getCurrentTermId(db);
+    const posRows = await db.select().from(positions).where(eq(positions.termId, termId));
+    const blockRows = await db
+      .select()
+      .from(shiftBlocks)
+      .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId)));
     const allBlocks = blockRows.map(toDomainBlock);
     const usable = posRows
       .filter((p) => p.active && p.mergedIntoId === null)
@@ -246,6 +251,7 @@ async function main() {
       await db.insert(submissions).values({
         id: submissionId,
         studentEmail: g.email,
+        termId,
         status: "submitted",
         everyWeekendOptIn: g.everyWeekendOptIn,
         desiredHours: g.desiredHours,

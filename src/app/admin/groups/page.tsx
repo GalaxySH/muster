@@ -36,6 +36,7 @@ export default async function AdminGroupsPage() {
     id: g.id,
     name: g.name,
     isDefault: g.isDefault,
+    isTest: g.isTest,
     memberCount: g.memberCount,
     memberEmails: g.memberEmails,
     opensAtMs: g.opensAt ? g.opensAt.getTime() : null,

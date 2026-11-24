@@ -13,12 +13,12 @@ import {
   deleteGroup,
 } from "@/lib/groups/actions";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 export interface GroupView {
   id: string;
   name: string;
   isDefault: boolean;
+  isTest: boolean;
   memberCount: number;
   memberEmails: string[];
   opensAtMs: number | null;
@@ -63,7 +63,7 @@ export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
 
 function GroupRow({ group }: { group: GroupView }) {
   const router = useRouter();
-  const isTestGroup = group.id === TEST_GROUP_ID;
+  const isTestGroup = group.isTest;
   const [opens, setOpens] = useState(toLocalInput(group.opensAtMs));
   const [closes, setCloses] = useState(toLocalInput(group.closesAtMs));
   const [name, setName] = useState(group.name);

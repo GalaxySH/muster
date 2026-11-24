@@ -33,7 +33,6 @@ import {
   rosterImports,
   rosterTitleMappings,
   positions,
-  appSettings,
   closeClaims,
   closeSlots,
   submissions,
@@ -45,8 +44,6 @@ import { chicagoToday } from "@/lib/domain/time";
 import { readRosterGrid, type WorkbookSource } from "./read-workbook";
 import {
   buildEffectiveTitleMap,
-  effectiveExcludedTitles,
-  SETTING_EXCLUDED_ROSTER_TITLES,
 } from "./position-mapping";
 import {
   extractRosterRows,
@@ -59,6 +56,8 @@ import {
   RosterClosesPrompt,
   type DatedCloseClaim,
 } from "./parse";
+import { currentRunOf, submissionInTerm } from "@/lib/terms/scope";
+import { loadRosterConfig } from "./config-data";
 
 /** One student whose stored position differed from the sheet's (names, not ids). */
 export interface PositionChangeSummary {
@@ -120,9 +119,11 @@ export interface ImportSummary {
 
 export interface ImportOptions {
   db: Database;
+  /** The current term. The caller resolves it; this function never reads another. */
+  termId: string;
   workbook: WorkbookSource;
   importedBy: string;
-  /** Worksheet to read; defaults to the first of ROSTER_SHEET_CANDIDATES present. */
+  /** Worksheet to read; defaults to the first of the term's sheet candidates present. */
   sheetName?: string;
   /** Run even when the guard would refuse the import for taking too many people off. */
   allowMassDeactivation?: boolean;
@@ -136,13 +137,17 @@ export interface ImportOptions {
 
 export async function importRoster({
   db,
+  termId,
   workbook,
   importedBy,
   sheetName: requestedSheet,
   allowMassDeactivation = false,
   releaseUndatedCloses,
 }: ImportOptions): Promise<ImportSummary> {
-  const { sheetName, grid, leavingGrid } = await readRosterGrid(workbook, requestedSheet);
+  // How the file is read is the term's own: sheet names, the titles that mean
+  // admin and the titles to skip (edited on /admin/roster).
+  const config = await loadRosterConfig(db, termId);
+  const { sheetName, grid, leavingGrid } = await readRosterGrid(workbook, requestedSheet, config);
   const rows = extractRosterRows(grid);
   const resignations = leavingGrid
     ? extractResignationDates(leavingGrid)
@@ -150,22 +155,18 @@ export async function importRoster({
 
   // The title map is DB-owned (seeded once from the code fixture, extended by
   // ghost resolution on /admin/positions); aliases canonicalize before writes.
-  // The excluded-title list is admin config in app_settings (edited on
-  // /admin/roster), falling back to the SKIP_TITLES fixture until first saved.
-  const [mappingRows, positionRows, [excludedSetting]] = await Promise.all([
-    db.select().from(rosterTitleMappings),
+  const [mappingRows, positionRows] = await Promise.all([
+    db.select().from(rosterTitleMappings).where(eq(rosterTitleMappings.termId, termId)),
     db
       .select({ id: positions.id, name: positions.name, mergedIntoId: positions.mergedIntoId })
-      .from(positions),
-    db
-      .select({ value: appSettings.value })
-      .from(appSettings)
-      .where(eq(appSettings.key, SETTING_EXCLUDED_ROSTER_TITLES)),
+      .from(positions)
+      .where(eq(positions.termId, termId)),
   ]);
   const parsed = parseRoster(
     rows,
     buildEffectiveTitleMap(mappingRows, positionRows),
-    effectiveExcludedTitles(excludedSetting?.value ?? null),
+    config.excludedTitles,
+    config.adminTitles,
   );
   const importId = randomUUID();
 
@@ -213,7 +214,9 @@ export async function importRoster({
           })
           .from(closeClaims)
           .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
-          .where(inArray(closeClaims.studentEmail, deactivate));
+          .where(
+            and(inArray(closeClaims.studentEmail, deactivate), eq(closeSlots.termId, termId)),
+          );
   const plan = planCloseReleases(held, new Set(deactivate), resignations, chicagoToday(new Date()));
   const toClaimList = (claims: DatedCloseClaim[]) =>
     claims.map((c) => ({ email: c.studentEmail, date: c.date }));
@@ -262,6 +265,7 @@ export async function importRoster({
       if (!hadRow || before === s.positionId) continue;
       const change = await applyPositionChange(tx, {
         email: s.email,
+        termId,
         fromPositionId: before,
         toPositionId: s.positionId,
         source: "roster_import",
@@ -290,7 +294,7 @@ export async function importRoster({
     // submission are kept, so someone re-listed later comes straight back.
     if (deactivate.length > 0) {
       await tx.update(students).set({ onRoster: false }).where(inArray(students.email, deactivate));
-      await releaseDepartedSchedules(tx, deactivate);
+      await releaseDepartedSchedules(tx, deactivate, termId);
     }
 
     // The same delete as an admin unassign. Leads hold at most a few claims each.
@@ -306,6 +310,7 @@ export async function importRoster({
     }
 
     await tx.insert(rosterImports).values({
+      termId,
       id: importId,
       rowCount: parsed.students.length + parsed.admins.length,
       importedBy,
@@ -349,18 +354,22 @@ export async function importRoster({
  * is one-at-a-time, built for a single position change): the absence guard
  * alone can pass up to 20% of the roster through here in one import.
  */
-export async function releaseDepartedSchedules(tx: DbTx, emails: string[]): Promise<void> {
+export async function releaseDepartedSchedules(
+  tx: DbTx,
+  emails: string[],
+  termId: string,
+): Promise<void> {
   if (emails.length === 0) return;
 
   await tx
     .update(submissions)
     .set({ scheduled: false })
-    .where(inArray(submissions.studentEmail, emails));
+    .where(and(inArray(submissions.studentEmail, emails), submissionInTerm(termId)));
 
   const [run] = await tx
     .select({ id: scheduleRuns.id })
     .from(scheduleRuns)
-    .where(eq(scheduleRuns.status, "current"))
+    .where(currentRunOf(termId))
     .limit(1);
   if (!run) return;
 

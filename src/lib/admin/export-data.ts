@@ -24,6 +24,8 @@ import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
 
 const toIsoDate = (d: Date | string): string =>
   typeof d === "string" ? d : d.toISOString().slice(0, 10);
@@ -55,7 +57,7 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       weekendExempt: positions.weekendExempt,
     })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(students, submissionOfStudent(await currentTermId()))
     .leftJoin(positions, eq(students.positionId, positions.id))
     // Exclude people moved to "People Leaving" from the export/running sheet
     // (PLAN §4.2); their submission stays in the DB but isn't a live response.

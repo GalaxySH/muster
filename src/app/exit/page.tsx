@@ -6,6 +6,7 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
+import { currentTerm } from "@/lib/terms/current";
 
 /**
  * Final wizard step (PLAN §13). Sets expectations (these are preferences, not a
@@ -17,6 +18,7 @@ export default async function ExitPage() {
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email);
+  const { scheduleNote } = await currentTerm();
 
   return (
     <Page>
@@ -41,7 +43,7 @@ export default async function ExitPage() {
           You haven&apos;t been scheduled yet. We will create your schedule once we have everyone&apos;s preferences.
         </p>
         <p style={{ margin: "8px 0 0" }}>
-          Expect to see your schedule a week from semester start, or by the end of August. We will update you if there are any delays. We will send out emails notifying you when your schedule is ready.
+          {scheduleNote} We will update you if there are any delays. We will send out emails notifying you when your schedule is ready.
         </p>
       </div>
 

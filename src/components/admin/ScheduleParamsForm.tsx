@@ -20,7 +20,6 @@ import {
   REPEAT_START_PENALTY_MIN,
   type SchedulingParams,
 } from "@/lib/domain/scheduling/params";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { saveScheduleParams } from "@/lib/schedule/actions";
 
 /**
@@ -30,9 +29,12 @@ import { saveScheduleParams } from "@/lib/schedule/actions";
 export function ScheduleParamsForm({
   initial,
   positions,
+  leadPositionIds,
 }: {
   initial: SchedulingParams;
   positions: { id: string; name: string }[];
+  /** Never pooled: the statistics measure leads on their own. */
+  leadPositionIds: string[];
 }) {
   const [dayCap, setDayCap] = useState(String(initial.dayCapHours));
   const [night, setNight] = useState(String(initial.nightPriority));
@@ -76,7 +78,7 @@ export function ScheduleParamsForm({
         coveragePoolPositionIds: [
           ...positions.map((p) => p.id).filter((id) => pool.includes(id)),
           ...initial.coveragePoolPositionIds.filter(
-            (id) => id !== SHIFT_LEAD_POSITION_ID && !positions.some((p) => p.id === id),
+            (id) => !leadPositionIds.includes(id) && !positions.some((p) => p.id === id),
           ),
         ],
       });

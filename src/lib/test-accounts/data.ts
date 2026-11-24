@@ -2,8 +2,10 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { positions, students, submissions } from "@/lib/db/schema";
-import { TEST_GROUP_ID } from "./constants";
 import { isTestAccountEmail } from "./email";
+import { currentTermId } from "@/lib/terms/current";
+import { submissionOfStudent } from "@/lib/terms/scope";
+import { inTestGroup } from "@/lib/groups/membership";
 
 export interface TestAccount {
   email: string;
@@ -18,6 +20,7 @@ export interface TestAccount {
 export async function listTestAccounts(): Promise<TestAccount[]> {
   // Joining positions (rather than filtering a picker list) keeps names
   // resolving even when an account holds an inactive or aliased position.
+  const termId = await currentTermId();
   const rows = await getDb()
     .select({
       email: students.email,
@@ -26,9 +29,9 @@ export async function listTestAccounts(): Promise<TestAccount[]> {
       status: submissions.status,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .leftJoin(positions, eq(students.positionId, positions.id))
-    .where(eq(students.groupId, TEST_GROUP_ID))
+    .where(inTestGroup(termId))
     .orderBy(students.email);
 
   return rows.map((r) => ({

@@ -4,7 +4,6 @@
  * student is in the flow from persisted data; there is no progress column.
  */
 import "server-only";
-import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { loadStudentForm } from "@/lib/availability/data";
@@ -22,6 +21,8 @@ import {
   type WizardStepKey,
 } from "./steps";
 import { isReturningStudent } from "./returner";
+import { currentTerm, currentTermId } from "@/lib/terms/current";
+import { submissionOf } from "@/lib/terms/scope";
 
 export type FlowAccess =
   | { kind: "no-group" }
@@ -92,7 +93,7 @@ async function loadSubmissionProgress(email: string): Promise<SubmissionProgress
       confirmedAt: submissions.confirmedAt,
     })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, await currentTermId()))
     .limit(1);
   return {
     courseScheduleFileId: sub?.courseScheduleFileId ?? null,
@@ -135,7 +136,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     positionId: form.student.positionId,
     positionName: form.position?.name ?? null,
     international: form.student.international,
-    returning: isReturningStudent(form.student.hiredOn, new Date()),
+    returning: isReturningStudent(form.student.hiredOn, (await currentTerm()).newHireCutoff),
     access,
     status: flowStatus(inputs),
     closes,

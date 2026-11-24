@@ -260,6 +260,55 @@
       "when": 1795311577805,
       "tag": "0036_submission_submitted_via",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1795478656446,
+      "tag": "0037_term_scope_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1795479299996,
+      "tag": "0038_term_scope_closes_runs_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1795479649431,
+      "tag": "0039_term_scope_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1795480115116,
+      "tag": "0040_term_scope_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1795480458643,
+      "tag": "0041_term_roster_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1795480613998,
+      "tag": "0042_coverage_pool_explicit",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "5",
+      "when": 1795482117927,
+      "tag": "0043_term_dates_and_cutoffs",
+      "breakpoints": true
     }
   ]
 }
