@@ -627,7 +627,7 @@ Wants: move the grant fetch inside the try in both functions; list all grants on
 
 ### 7.5 Smaller config-safety items — **S each**
 
-- **`RESEND_API_KEY` unset in production is not caught.** `env-guard.ts` checks
+- ✅ *shipped (PLAN 1.47)* **`RESEND_API_KEY` unset in production is not caught.** `env-guard.ts` checks
   AUTH_SECRET, ENCRYPTION_KEY, DEV_LOGIN_ENABLED, the Google credentials, and
   NEXTAUTH_URL, but not Resend. Unset means every send is logged as "would send"
   while the digest still stamps its last-run and reads healthy. `EMAIL_FROM` has

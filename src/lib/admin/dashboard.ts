@@ -150,9 +150,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     },
     scheduler: { enabled: digestSchedulerEnabled, uptimeMs: process.uptime() * 1000 },
     config: {
-      resendConfigured: Boolean(env.RESEND_API_KEY),
       driveFolderConfigured: Boolean(env.DRIVE_FOLDER_ID),
-      isProduction: process.env.NODE_ENV === "production",
       travelCutoff,
       lateTravelAccepted: lateTravelPolicy === "accept-and-flag",
     },

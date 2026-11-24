@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.46
-- **Last updated:** 2026-11-21
+- **Version:** 1.47
+- **Last updated:** 2026-11-22
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -265,8 +265,9 @@ but `/change-requests` itself and the admin queue stay reachable.
   a variables key and preview, along with the **cc
   email** (default `gdec_h-o@g-groups.wisc.edu`; default-on per send; always the
   reply-to), the sender name and local part (the domain stays EMAIL_FROM's verified
-  one), and **Mark the student scheduled when you send it** (default on). A send stamps
-  `scheduleEmailSentAt`, shown in Student details once set. Outside production,
+  one), and **Mark the student scheduled when you send it** (default on). A send that
+  actually goes out stamps `scheduleEmailSentAt`, shown in Student details once set (one
+  only logged, with no email service, records nothing; test accounts are refused). Outside production,
   `sendEmail` only delivers to `EMAIL_TEST_RECIPIENTS`. See
   `docs/scheduler-automation.md`.
 - **Non-response tracking** — roster − responders (with gaps noted for off-roster
@@ -1597,6 +1598,29 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.47 (2026-11-22)** — **Missing email config stops a production boot, and the grid
+  won't place a departed student (§14, §10a; issues #10, #18).** (1) `env-guard.ts` now
+  refuses to start production when `RESEND_API_KEY` is empty or `EMAIL_FROM` is not a
+  sender address (`addr@domain` or `Name <addr@domain>`). `EMAIL_FROM` loses its
+  baked-in `re.hauge.rocks` default, so the sender is always deploy configuration. The
+  hub's `email-no-key` danger could only fire in production, which can no longer boot
+  that way, so it and the snapshot's `resendConfigured` / `isProduction` fields are
+  removed. (2) `runChangeDigest` counts a recipient as reached only on a `sent` outcome:
+  when every message was only logged (no key) or blocked by the test-recipient guard,
+  the requests stay unstamped and the run returns `not-delivered`. The last-run stamp
+  still lands, since it proves the scheduler fired. (3) `applyScheduleEdits` refuses a
+  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`),
+  closing the hole 1.26 named. Removals and the clear-schedule button stay allowed.
+  **Test accounts** (the synthetic domain, `isTestAccountEmail`) are exempt and can be
+  placed on purpose: the same on-roster filter keeps their rows off the schedule page,
+  coverage, the sheet and the W2W export, so they show only on the account's own page.
+  Generation leaves them out of the previous run's rows, so a regenerate clears them
+  rather than reporting the account as having left the roster, and deleting a
+  synthetic-domain account no longer refuses over its shifts (they cascade; other
+  test-group members keep the guard). (4) The per-student schedule email stamps
+  `scheduleEmailSentAt` (and the scheduled mark) only on a `sent` outcome: a send that
+  was only logged says so and records nothing. It also refuses a test account, whose
+  address can't be delivered to.
 - **1.46 (2026-11-21)** — **Google Form paste import (`docs/form-paste.md`).** Students who
   answer the Google Form instead of Muster can be brought in by copy and paste, with no
   link between the sheet and the app. A bound Apps Script on the response sheet

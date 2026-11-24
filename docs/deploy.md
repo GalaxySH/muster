@@ -52,7 +52,8 @@ version tag deploys to the production box over SSH — automating the same
 2. Production `.env` beside `compose.yaml` (see `.env.example`). compose
    hard-requires `DATABASE_URL`, `NEXTAUTH_URL`, `AUTH_SECRET`,
    `ENCRYPTION_KEY`, `DRIVE_FOLDER_ID`, and `FONTAWESOME_PACKAGE_TOKEN`
-   (build-time); the app refuses to boot on dev defaults (env-guard).
+   (build-time); the app refuses to boot on dev defaults (env-guard), and
+   without `RESEND_API_KEY` or a sender address in `EMAIL_FROM` (1.47).
 3. **Separate prod OAuth client** (PLAN §15): register
    `https://muster.hauge.rocks/api/auth/callback/google` and
    `https://muster.hauge.rocks/api/drive/callback` on the production client;

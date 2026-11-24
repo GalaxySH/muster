@@ -19,7 +19,9 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
-  EMAIL_FROM: z.string().default("GDEC Scheduling <no-reply@re.hauge.rocks>"),
+  // The sender, on the Resend key's verified domain. No default: production
+  // refuses to boot without it (env-guard.ts); see .env.example for the form.
+  EMAIL_FROM: z.string().default(""),
   // Outside production, email is only ever delivered to these addresses (comma
   // separated). Unset means nothing is delivered from dev or test at all.
   EMAIL_TEST_RECIPIENTS: z.string().default(""),

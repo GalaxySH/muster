@@ -42,9 +42,7 @@ function healthy(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot 
     },
     scheduler: { enabled: true, uptimeMs: HOURS(1) },
     config: {
-      resendConfigured: true,
       driveFolderConfigured: true,
-      isProduction: false,
       travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
       lateTravelAccepted: false,
     },
@@ -542,24 +540,10 @@ describe("environment and settings alerts", () => {
   const config = (
     over: Partial<DashboardSnapshot["config"]> = {},
   ): DashboardSnapshot["config"] => ({
-    resendConfigured: true,
     driveFolderConfigured: true,
-    isProduction: false,
     travelCutoff: new Date(NOW.getTime() + 30 * DAY_MS),
     lateTravelAccepted: false,
     ...over,
-  });
-
-  it("flags email that is on in production with no Resend key", () => {
-    const snap = healthy({ config: config({ isProduction: true, resendConfigured: false }) });
-    const a = buildDashboardView(snap, NOW).alerts.find((x) => x.id === "email-no-key");
-    expect(a?.severity).toBe("danger");
-    expect(a?.href).toBe("/admin/email-settings");
-  });
-
-  it("does not flag a missing Resend key outside production", () => {
-    const snap = healthy({ config: config({ isProduction: false, resendConfigured: false }) });
-    expect(ids(snap)).not.toContain("email-no-key");
   });
 
   it("flags a connected Drive with no destination folder", () => {

@@ -29,6 +29,7 @@ import type { ShiftSpan } from "@/lib/email/schedule-table";
 import { positionOptions } from "@/lib/positions/data";
 import { loadStudentCurrentAssignments } from "@/lib/schedule/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import {
   getEmailSendingEnabled,
   getScheduleEmailConfig,
@@ -177,6 +178,14 @@ export async function sendScheduleEmail(
   }
 
   const email = normalizeEmail(studentEmail);
+  // A test account's address is on a domain nothing can deliver to, so a send
+  // could be accepted and then bounce, and would be stamped as sent.
+  if (isTestAccountEmail(email)) {
+    return {
+      ok: false,
+      error: "Test accounts can't get email. Use Send a test to me in Email settings instead.",
+    };
+  }
   const student = await findStudentByEmail(email);
   if (!student) return { ok: false, error: "That employee is not a known student." };
   const position =
@@ -195,6 +204,15 @@ export async function sendScheduleEmail(
     `schedule-email-${input.requestId}`,
   );
   if ("error" in res) return { ok: false, error: res.error };
+  // Only a message that actually went out is recorded. A logged one (no email
+  // service here) reached nobody, so the sent date and the scheduled mark stay
+  // as they were.
+  if (res.outcome !== "sent") {
+    return {
+      ok: true,
+      message: "No email service is set up here, so the email went to the server log. It wasn't marked as sent.",
+    };
+  }
 
   const stamped = await updateSubmission(email, {
     scheduleEmailSentAt: new Date(),

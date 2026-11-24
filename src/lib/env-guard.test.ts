@@ -12,6 +12,8 @@ const secure = {
   GOOGLE_CLIENT_ID: "123.apps.googleusercontent.com",
   GOOGLE_CLIENT_SECRET: "GOCSPX-real-secret",
   NEXTAUTH_URL: "https://muster.hauge.rocks",
+  RESEND_API_KEY: "re_test_not_a_real_key",
+  EMAIL_FROM: "Scheduling <no-reply@example.edu>",
 };
 
 describe("findProductionEnvIssues", () => {
@@ -27,6 +29,8 @@ describe("findProductionEnvIssues", () => {
       GOOGLE_CLIENT_ID: "",
       GOOGLE_CLIENT_SECRET: "",
       NEXTAUTH_URL: "http://localhost:3000",
+      RESEND_API_KEY: "",
+      EMAIL_FROM: "",
     };
     expect(findProductionEnvIssues(dev, "development")).toEqual([]);
     expect(findProductionEnvIssues(dev, "test")).toEqual([]);
@@ -88,9 +92,33 @@ describe("findProductionEnvIssues", () => {
         GOOGLE_CLIENT_ID: "",
         GOOGLE_CLIENT_SECRET: "",
         NEXTAUTH_URL: "http://localhost:3000",
+        RESEND_API_KEY: "",
+        EMAIL_FROM: "",
       },
       "production",
     );
-    expect(issues).toHaveLength(6);
+    expect(issues).toHaveLength(8);
+  });
+
+  it("flags a missing Resend key in production", () => {
+    for (const RESEND_API_KEY of ["", "  "]) {
+      const issues = findProductionEnvIssues({ ...secure, RESEND_API_KEY }, "production");
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("RESEND_API_KEY");
+    }
+  });
+
+  it("accepts a bare or named EMAIL_FROM address", () => {
+    for (const EMAIL_FROM of ["no-reply@example.edu", "Scheduling <no-reply@example.edu>"]) {
+      expect(findProductionEnvIssues({ ...secure, EMAIL_FROM }, "production")).toEqual([]);
+    }
+  });
+
+  it("flags a missing or address-less EMAIL_FROM in production", () => {
+    for (const EMAIL_FROM of ["", "  ", "Scheduling", "no-reply@", "<@example.edu>"]) {
+      const issues = findProductionEnvIssues({ ...secure, EMAIL_FROM }, "production");
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("EMAIL_FROM");
+    }
   });
 });
