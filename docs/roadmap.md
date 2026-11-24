@@ -658,7 +658,8 @@ Wants: move the grant fetch inside the try in both functions; list all grants on
   with no targets anywhere still reports success while packing students onto the
   same cells. `positionCapacityCheck` returns `no_targets` and the hub
   deliberately stays silent. One stat tile is the only signal.
-- **`SHIFT_LEAD_POSITION_ID` is a hardcoded string** gating a whole subsystem. If
+- **Done in 1.48** (`positions.picks_closes` replaces the id).
+  ~~`SHIFT_LEAD_POSITION_ID` is a hardcoded string~~ gating a whole subsystem. If
   the Shift Lead position ever carries a different id, the closes step vanishes,
   feasibility computes against zero leads, and `shiftLeadWeekendCloseIds()`
   returns empty so the generator **double-books** the weekend close block the

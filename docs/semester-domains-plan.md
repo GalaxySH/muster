@@ -1,6 +1,8 @@
 # Semester domains (terms): implementation plan
 
-**Status: plan only. Nothing here is built.** Branch `sh/semester-domains`.
+**Status: Phase 1 is built (PLAN 1.48). Phases 2 to 6 are not.** Branch
+`sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
+§10; where the two disagree, §10 and the code are right.
 
 Muster was built for one cycle (fall 2026) and assumes it everywhere: one
 submission per student ever, one close inventory, one "current" schedule run,
@@ -526,6 +528,8 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 
 ### Phase 4: starting a new term
 
+This release drops the `term_id` column defaults if an earlier one has not (§10).
+
 - **Start a new semester**, one admin action on the Semester tab. It asks for a
   name and the start and end dates, shows what will happen (§2.10), and requires
   typing the new name:
@@ -709,3 +713,140 @@ A new term copies the previous term's positions, blocks, title mappings and
 roster settings as its starting point (§2.4).
 
 Nothing is open.
+
+## 10. Phase 1 as built
+
+Built on 2026-11-23 as PLAN 1.48, migrations 0037 to 0043. With one term in the
+database the app behaves as before; §8's one-term check passed (below).
+
+**What it covers.** Everything in the Phase 1 list in §5: the `terms` table and the
+pointer, `lib/terms`, term-scoped submissions, closes, runs, plans, change requests,
+groups and membership, positions, blocks, title mappings, the W2W map and roster
+imports, `picks_closes` in place of the fixed Shift Lead id, the roster import
+reading its sheets and titles from the term, and the write rule (every client-sent
+row id is also tested against the current term).
+
+**Where it differs from the plan above.**
+
+1. **The seams are predicates, not resolver functions.** §3 names
+   `currentSubmission(db, email, termId)` and `studentsWithSubmission(termId)`. The
+   seventy-odd sites select different columns, so a function returning a row would
+   have needed as many shapes. They became three WHERE and ON predicates in
+   `lib/terms/scope.ts` (`submissionOf`, `submissionOfStudent`, `submissionInTerm`),
+   in the style of `liveBlocksOnly()`. Same guarantee, and each query keeps its own
+   column list. `liveBlocksOnly()` itself is unchanged; list reads add the term
+   beside it.
+2. **Request-side loaders resolve the term themselves.** §2.7 says the edge resolves
+   it and passes it down. Doing that would have changed the signature of every
+   loader and every page that calls one. Instead a loader calls the per-request
+   `currentTermId()`, and only code that takes a database handle or a transaction
+   takes `termId` as an argument. Phase 5 will give the handful of loaders it reuses
+   for old terms an explicit term parameter.
+3. **The term's dates and rules moved in this release, ahead of the Semester
+   tab.** Migration 0043 adds `travel_cutoff`, `late_travel_accept`,
+   `new_hire_cutoff` and `schedule_note` and fills them from the stored settings and
+   the old constants, and the same release moves every reader: `getTravelCutoff`,
+   `getLateTravelPolicy`, `isReturningStudent` (it takes the term's cutoff now),
+   the generator's late-start threshold, the close inventory's default range and
+   the exit page. So §3 item 6 is done: `defaultCloseSemesterRange`,
+   `returnerCutoff` and `DEFAULT_SEMESTER_START` are deleted, and
+   `defaultTravelCutoff` takes the term's start date. The travel cutoff and the
+   late-travel switch are still edited on `/admin/groups`; the name, dates,
+   new-hire cutoff and note have no editor until Phase 2. `close_requirement`
+   comes with Phase 3 as planned. What is left of Phase 2: the Semester tab, the
+   hub split, the roster settings screen, `{{term}}` in the schedule email, the
+   form-paste year rule, year on close dates and term slugs in CSV names.
+4. **`roster_config` starts empty.** The migration does not write today's constants
+   into it. Each field falls back to its built-in default on its own, and excluded
+   titles fall back to the existing `excluded_roster_titles` setting until the term
+   saves a list. Saving on `/admin/roster` writes both the term and the old setting.
+   Column header names are not in the config yet; they arrive with the Phase 2
+   roster settings.
+5. **Engine settings are not per term yet.** `schedule_params` keeps its one key.
+   The coverage pool's code default is empty and the stored value names the two fall
+   ids (migration 0042), which is the part that had to happen before positions get
+   new ids. The term-suffixed key comes in Phase 4 with the per-term Drive keys, so
+   there is one mechanism for both.
+6. **`group_members.group_id` is nullable.** A swept student who is later removed
+   keeps a row with no group and the auto marker set, which is what stops the sweep
+   putting them back. The plan's table did not show that state.
+7. **`groups.kind = 'default'` is recorded but not enforced.** The plan says system
+   groups cannot be renamed or deleted. Today the default group can be renamed, so
+   enforcing that now would be a behavior change. Only the test group's existing
+   protections moved from the id to the kind. The rest lands in Phase 4, when system
+   groups start being created.
+8. **Change requests.** The request form lists the current term. The rolling
+   24-hour cap is not term-scoped (a day is a day). The admin queue and the
+   per-student page list every term.
+9. **`domain/terms.ts` was not written.** Nothing in Phase 1 needs term math (slugs,
+   default dates). It comes with the first code that does, in Phase 2.
+
+**There is no default term in the code.** `getCurrentTermId` reads the pointer
+through the `terms` table and throws when it is missing, blank or names a term that
+does not exist. Nothing catches that and falls back. No function takes an optional
+term; the one nullable term argument (`listChangeRequests`) means "every term" and
+is passed explicitly by the one admin caller. The Drizzle schema declares no default
+on any `term_id`, and `terms/term-id.test.ts` fails if one is ever added or a
+term-scoped table lacks the column.
+
+**The one default that does exist is in the database**, on purpose: every
+`term_id` column has `DEFAULT '2026-fall'` so the previous release can keep
+inserting during this deploy and after a rollback. While fall is the only term it
+cannot be wrong. It becomes a silent mis-file the moment another term is current,
+because a write that omits the term (the old release, or hand-written SQL) would
+land in fall. So this changes §5: **the defaults are dropped as soon as dropping
+them cannot break anything, and no later than the release that adds "Start a new
+semester" (Phase 4), not in Phase 6.** Dropping is safe from the first release
+after 1.48 is live: from then on the release being rolled back to is one that
+always names the term on insert, so it no longer needs the default. The drop is a
+migration in that release. "Start a new semester" must also refuse to run while
+`information_schema.columns` shows any `term_id` column with a default, so a
+second term can never exist beside one.
+
+A second, smaller one to close in Phase 4: a term that has never saved excluded
+roster titles reads the pre-term `excluded_roster_titles` setting, which is fall's.
+Starting a term must write the new term's full roster config so that fallback is
+never reached, and the contract release removes it.
+
+**Still to do before the contract release.** `students.group_id`,
+`students.group_assigned_auto` and the `excluded_roster_titles`, `travel_cutoff`
+and `late_travel_accept` settings are written and never read. Every `term_id` column has a database default of `2026-fall`.
+
+**For Phase 4.** New positions get their id from the name slug, which must be
+unique across every term, so copying positions forward needs generated ids (and
+`createPosition` needs a suffix when the slug is taken by an older term). The
+first term's test group keeps the id `dev-test`; later terms' groups get their own.
+`students.group_id` will hold the old term's group after a flip unless the contract
+release has already dropped it.
+
+**How it was verified.** A throwaway MariaDB was built from `main` (migrations to
+0036, the seed, 80 synthetic students, plus drafts, leavers, flags, travel,
+internal copies, close claims, two runs and change requests). A harness called every
+request-side loader, 256 results, with `main`'s code and saved the output.
+
+- **One term:** after migrating a copy to 0042, the same 256 results from this
+  branch were identical apart from four added fields (`termId`, `kind`, `isTest`,
+  `picksCloses`).
+- **Rollback:** `main`'s code run against the migrated schema returned exactly its
+  original output.
+- **Two terms:** with a second term holding its own submissions, closes, a run, a
+  plan, groups and requests, each term showed only its own rows, no roster row was
+  duplicated, and the first term's output did not change. The differences that did
+  appear were the intended ones (the admin request queue, and a count that is
+  deliberately across terms).
+- **In the browser:** all 27 student and admin pages rendered; a group was created
+  and a student assigned (both the new table and the old column were written); and
+  after pointing the app at a second term, a student who had submitted in the first
+  saw no form access until given a group, then a fresh "confirm your info" card and
+  an empty availability form. Pointing back showed the first term untouched.
+- **Rehearsal on production data (2026-11-23):** a same-day dump of production
+  (37 migrations, MariaDB 12.3) was restored into a throwaway container of the
+  same version. `main`'s loaders gave 726 results for 43 accounts chosen across
+  every state. Migrations 0037 to 0043 then applied in about two seconds. This
+  branch's 726 results were identical apart from the same four added fields;
+  `main`'s code on the migrated schema returned exactly its original output; and
+  the travel cutoff, late-travel policy, excluded titles and engine settings read
+  the same from both versions. The backfill kept the production values: late
+  travel accepted, the default cutoff, the stored coverage pool, 321 group
+  memberships, and `shift-lead` as the only position that picks closes.
+- The CI check from §7 item 1 is `src/lib/terms/scope-usage.test.ts`.

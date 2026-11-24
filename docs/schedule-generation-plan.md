@@ -386,8 +386,9 @@ operating minutes covered only by new people with no returner overlapping.
 "New" is `!isReturningStudent(hiredOn)`, the roster Start Date column, not a
 guess from seniority. Positions that cover for each other are measured as **one
 floor**, because a returner on either is real backup for the other; the pool is
-the `coveragePoolPositionIds` param (default `["culinary-assistant",
-"cashier"]`), it is read only by the statistics, and ids that no longer exist
+the `coveragePoolPositionIds` param (empty by default since 1.48, when position
+ids became per term; the stored fall settings name `culinary-assistant` and
+`cashier`), it is read only by the statistics, and ids that no longer exist
 simply match nothing. Four views are reported: `perPosition` with the pooled
 positions merged into a single entry (since version 4 a floor with blocks and
 nobody on it still appears, carrying its open time against zero staffed time,

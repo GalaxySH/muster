@@ -5,6 +5,68 @@ of every session. Read the relevant section before editing a subsystem, and **up
 it alongside code changes** (same rule as PLAN.md). PLAN.md remains the authoritative
 spec; these notes describe how the implementation is layered.
 
+## Terms: the semester the app runs in (PLAN 1.48, `docs/semester-domains-plan.md`)
+
+Every per-semester table carries a `term_id`, and exactly one term is current: the
+`current_term_id` row in `app_settings`. Students only ever see the current term, and
+only the current term can be changed.
+
+- **`src/lib/terms/` is a shared root**, like `lib/db`: the form core, the generator,
+  W2W and the console all import it, and it imports none of them (`eslint.config.mjs`
+  says so).
+  - `term-id.ts`: `getCurrentTermId(db)`, plain and CLI-safe. It **throws** when the
+    pointer is missing. Nothing may ever fall back to reading every term.
+  - `current.ts`: `currentTermId()`, the same read memoized per request with React
+    `cache`, so a page calling several loaders reads the pointer once. `currentTerm()`
+    is the row itself, for the code that needs the term's dates and rules: the travel
+    cutoff and late-travel switch (through `getTravelCutoff` / `getLateTravelPolicy`
+    in `lib/settings.ts`), the new-hire cutoff (`isReturningStudent`), the start date
+    (the generator's late-start threshold and, with the end date, the close inventory
+    default) and the exit page's schedule note. None of these is derived from the
+    clock any more.
+  - `scope.ts`: the predicates. `submissionOf(email, termId)`,
+    `submissionOfStudent(termId)` and `submissionInTerm(termId)` are the whole of how a
+    submissions query stays inside a term; `currentRunOf`, `currentPlanOf` and
+    `closeClaimInTerm` do the same for runs, plans and close claims (a claim has no
+    term column, it is scoped through its slot).
+- **Who resolves the term.** Request-side loaders and actions call `currentTermId()`
+  themselves: they are defined as "the current term's" data. Anything that takes a
+  database handle or a transaction (`importRoster`, `applyPositionChange`,
+  `resolveDeferredCarryOver`, `releaseDepartedSchedules`, `writeRunAsCurrent`,
+  `pruneStaleRuns`, `lib/groups/membership.ts`) takes `termId` as an argument, so its
+  transaction body gains no read. **No server action accepts a term id from the
+  client.** Where a client sends a row id (a group, a position, a block, a close slot,
+  a run, a W2W mapping), the lookup also tests the term, so another term's row reads
+  as not found. That is what makes past terms read-only.
+- **`students LEFT JOIN submissions` puts the term in the ON clause**
+  (`submissionOfStudent`), never the WHERE: a WHERE on the right side of a left join
+  drops everyone who has not responded, and without the term the join returns one row
+  per term a student ever submitted in. This is the roster-read path of the v0.96
+  outage, so treat it with the same care.
+- **The guard.** A missing filter is silent and no mocked-database test can see it.
+  `terms/scope-usage.test.ts` reads the source instead: every statement that selects
+  from, joins, updates or deletes `submissions` must use a scope predicate or address
+  the row by id, with a short allowlist of statements that are right to read every
+  term (each entry says why, and the list may only shrink).
+- **Tests.** `vitest.setup.ts` mocks `@/lib/terms/current` for every test file, so the
+  per-file database fakes never have to queue the pointer read. `term-id.test.ts`
+  tests the real seam.
+- **What is deliberately not term-scoped:** `students` (always the current term's
+  roster), `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
+  links, and the admin change-request queue.
+- **Expand, then contract.** The 1.48 migrations give every `term_id` a database
+  default (`2026-fall`) that the Drizzle schema does not declare. The default is what
+  lets the previous release keep writing during a deploy or after a rollback; the
+  missing declaration is what makes TypeScript require the term on every insert. The
+  contract migration drops the defaults along with `students.group_id`,
+  `students.group_assigned_auto` and the pre-term `excluded_roster_titles`,
+  `travel_cutoff` and `late_travel_accept` settings, all of which are still written
+  until then.
+- **Verifying a change here.** Unit tests cannot see a term leak. Run the loaders
+  against a real MariaDB holding two terms (a throwaway container, never the shared
+  dev database) and compare what each term shows; `docs/semester-domains-plan.md` §8
+  describes the method.
+
 ## Module boundaries (PLAN 1.21)
 
 Muster is **three peer modules with an admin console composing them**. This is the
@@ -107,6 +169,12 @@ scheduler context there. The toggle is `PopularShiftsPanel` on `/admin/groups`, 
 `setHighDemandMarksEnabled` in `admin/actions.ts`.
 
 ## SL weekend-close picking (roadmap 3.2, PLAN §18a, v0.46)
+
+**Per term since 1.48.** A close slot belongs to a term and claims are scoped through
+their slot (`closeClaimInTerm`), so only this term's closes count toward a lead's
+limit and a slot id from another term reads as gone. "Shift Lead" is whichever
+position has `picks_closes` set (`positionPicksCloses` in `closes/data.ts`); there is
+no fixed position id.
 
 A claim/inventory subsystem for Shift Leads, who must each claim **exactly 3** Fri/Sat
 close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory,
@@ -695,7 +763,7 @@ pure seam rather than re-deriving:
 - **Nudge lists are scoped to open windows**: reminding a student whose window has not
   opened (cannot start) or has closed (locked out) points the admin at people they cannot
   help.
-- **The test-accounts group (`TEST_GROUP_ID`, "Test accounts") never appears in the
+- **The test-accounts group (the term's group of `kind` `test`, "Test accounts") never appears in the
   Response progress table.** It is not a real cohort to track, so `buildDashboardView`
   filters it out of `groups` before returning (`dashboard-view.ts`); it still appears
   and is manageable on `/admin/groups`.
@@ -1070,6 +1138,16 @@ optional; its target comes from the position-aware `nextHref`).
 
 ## Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`)
 
+**Groups and membership are per term (1.48).** A group row belongs to one term, and a
+student's group lives in `group_members` (one row per student per term), not on the
+student. `groups/membership.ts` is the only reader and writer of that table:
+`groupOf(db, email, termId)`, the join and WHERE predicates (`membershipOf`,
+`inGroup`, `inNoGroup`, `inTestGroup`), and `assignMembers` / `unassignMembers` /
+`listUnsweptEmails`. The writers also keep the retired `students.group_id` and
+`group_assigned_auto` columns in step until the contract migration drops them. The
+test-accounts group is recognized by `groups.kind = 'test'`; `TEST_GROUP_ID` survives
+only as the id the first term's group is created with.
+
 The pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both
 TDD-tested). `groups/data.ts` (server-only) has `resolveStudentAccess(email)` (the two-gate
@@ -1263,6 +1341,14 @@ be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-l
 
 ## Roster import (`src/lib/roster/`)
 
+**How the file is read is the term's own (1.48).** `roster/config.ts` is the pure
+shape and parser of `terms.roster_config` (sheets tried, the leavers sheet, admin
+titles, excluded titles; each field falls back to its built-in default on its own) and
+`roster/config-data.ts` reads and writes it through a database handle, so the CLI
+shares it. `importRoster` takes `termId` from its caller, loads that config, and reads
+this term's title mappings and positions only. Excluded titles fall back to the
+pre-term `excluded_roster_titles` setting until the term saves its own list.
+
 Parses one sheet of the **PC & Training Tracker** (v0.86; one sheet per dining unit,
 default **Gordon**) → upserts `students` (minimized fields only — name, position,
 international, and a **Start Date** → `students.hiredOn`, located by header, tolerated
@@ -1275,9 +1361,9 @@ makes the format differences cheap:
   the grid is a plain `string[][]`. It sniffs xlsx (a zip, so `PK`) vs CSV rather than
   trusting the extension, decodes CSV as **CP1252** when the bytes aren't valid UTF-8
   (Excel's export; without this "Retail and Café Team Member" became an unmapped ghost),
-  renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by
-  `ROSTER_SHEET_CANDIDATES` (`Gordon`, then `People Coming`, so old PCPL workbooks
-  still import). It knows nothing about which columns matter. The grid build must
+  renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by the
+  term's sheet candidates (`roster/config.ts`; by default `Gordon`, then `People
+  Coming`, so old PCPL workbooks still import). It knows nothing about which columns matter. The grid build must
   stay **linear in populated rows** (`eachRow` + per-row `cellCount`): ExcelJS's
   `ws.rowCount`/`ws.columnCount` are O(rows) getters and `getRow` materializes every
   index it touches, so looping to them made the read quadratic on a sheet whose used
@@ -1427,8 +1513,8 @@ position history the same card now lists. Mutations are `positions/actions.ts` (
 `ActionResult`): position create/deactivate/delete with reference guards (see
 **Position delete and its foreign keys** below),
 `setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
-`mergedIntoId` set; Shift Lead is delete- and alias-protected via
-`SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
+`mergedIntoId` set; the position whose holders pick closes is delete- and
+alias-protected by its `picksCloses` flag), **`savePosition`** (0.99 — one batched save per position:
 the details fields plus every dirty block edit, validated up front, written in a
 single transaction with a single revalidate; it replaced the per-row
 `updateBlock`/`updatePosition`, and time edits that touch picked shifts confirm once,

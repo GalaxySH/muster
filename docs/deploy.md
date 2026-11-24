@@ -170,6 +170,18 @@ git tag v1.0.0 && git push origin v1.0.0   # → Deploy workflow runs
 Watch the Actions run; it ends by verifying `/api/health` on the box's loopback
 bind over SSH (not the public URL; see the deploy.yml note above).
 
+**1.48 (semester domains, Phase 1).** Migrations 0037 to 0043 only add: new tables
+and columns, each new `term_id` with a database default of `2026-fall`, and new
+unique keys added before the old ones are dropped. They are written to be
+re-runnable, so if `migrate` stops partway (it exits 1 silently, §5), fix the cause
+and run it again. Afterwards `SELECT * FROM terms` should show one row and
+``SELECT value FROM app_settings WHERE `key` = 'current_term_id'`` should read
+`2026-fall`. The previous release runs unchanged against the migrated schema, so a
+rollback is safe. One thing to redo after a rollback that lasted long enough for an
+admin to change group membership on the old release: re-run the `INSERT INTO
+group_members ... ON DUPLICATE KEY UPDATE` statement at the end of
+`drizzle/0039_term_scope_groups.sql` before deploying forward again.
+
 Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
 Don't push a new tag at an older commit: a tag push runs that commit's workflow,
 and one from before the forced command is refused. Migrations aren't reversed, so

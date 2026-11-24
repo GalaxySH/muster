@@ -259,6 +259,10 @@ These are non-obvious and pervade the data model — internalize them before edi
 - `src/lib/config/positions.ts` — the **initial seed fixture** for positions/blocks
   (insert-only-when-empty; once seeded the DB is authoritative and admins edit on
   `/admin/positions`). A test asserts the fixture's derived open/close match PLAN §6.3.
+- `src/lib/terms/` — the semester the app runs in (PLAN 1.48). Every per-semester
+  table carries a `term_id`, and a query stays inside the term through the predicates
+  in `scope.ts`. A shared root like `lib/db`. Read "Terms" in `docs/architecture.md`
+  before writing any query on `submissions`, runs, plans, closes, groups or positions.
 - `src/lib/db/` — Drizzle schema + client. `index.ts` is `server-only` (lazy pool);
   `client.ts` is the plain `createDb()` factory CLI scripts (seed/migrate) reuse.
 - `src/lib/env.ts` — zod-validated env; import only from server modules.
