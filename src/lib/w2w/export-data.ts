@@ -10,7 +10,7 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { scheduleAssignments, students, w2wEmployees } from "@/lib/db/schema";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
@@ -27,6 +27,7 @@ import {
 import { serializeW2wUpload } from "@/lib/domain/w2w-plan/serialize";
 import { isCp1252Lossy } from "@/lib/text/cp1252";
 import { getCurrentPlan, loadPlanMatchInputs, type PlanMeta } from "./plan-data";
+import { currentTermId } from "@/lib/terms/current";
 
 export interface ExportWarnings {
   /** Students the run schedules onto cells with no seat left (or none at all). */
@@ -75,7 +76,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
       })
       .from(scheduleAssignments)
       .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-      .where(and(onRosterStudent(), eq(scheduleAssignments.runId, run.id))),
+      .where(and(onRosterStudent(await currentTermId()), eq(scheduleAssignments.runId, run.id))),
   ]);
 
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
@@ -162,7 +163,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         db
           .select({ email: students.email, displayName: students.displayName })
           .from(students)
-          .where(onRosterStudent()),
+          .where(onRosterStudent(await currentTermId())),
       ])
     : [[], []];
   const nameIndex = buildNameIndex(

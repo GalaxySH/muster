@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./orphans", () => ({ syncOrphanedSelectionFlag: vi.fn().mockResolvedValue(0) }));
 
 import { getTableName, type Table } from "drizzle-orm";
-import { applyPositionChange } from "./apply-change";
+import { applyPositionChange, type PositionChangeInput } from "./apply-change";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
@@ -46,6 +46,7 @@ function fakeTx(queues: Record<string, unknown[][]>) {
         return chain;
       },
       innerJoin: () => chain,
+      leftJoin: () => chain,
       where: () => chain,
       limit: () => chain,
       then: (fulfil?: (rows: unknown[]) => unknown, reject?: (r: unknown) => unknown) =>
@@ -102,7 +103,7 @@ const CHANGE = {
   changedBy: "admin@wisc.edu",
 };
 
-const run = (queues: Record<string, unknown[][]>, input = CHANGE) => {
+const run = (queues: Record<string, unknown[][]>, input: PositionChangeInput = CHANGE) => {
   const { tx, log } = fakeTx(queues);
   return applyPositionChange(tx as never, input).then((result) => ({ result, log }));
 };

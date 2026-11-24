@@ -21,7 +21,7 @@ import { digestSchedulerEnabled, env } from "@/lib/env";
 import {
   changeRequests,
   flags,
-  groupMembers,
+  termMembers,
   groups,
   positions,
   shiftBlocks,
@@ -57,8 +57,7 @@ import type {
   RecentSubmission,
 } from "./dashboard-view";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
-import { membershipOf } from "@/lib/groups/membership";
+import { memberOf, onRosterStudent, rosterOf, submissionOfStudent } from "@/lib/terms/scope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much history the submissions sparkline shows. */
@@ -200,17 +199,17 @@ async function loadStudentRoll(): Promise<DashboardStudent[]> {
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
-      groupId: groupMembers.groupId,
+      positionId: termMembers.positionId,
+      groupId: termMembers.groupId,
       status: submissions.status,
       scheduled: submissions.scheduled,
       courseScheduleFileId: submissions.courseScheduleFileId,
       updatedAt: submissions.updatedAt,
     })
     .from(students)
+    .innerJoin(termMembers, memberOf(termId))
     .leftJoin(submissions, submissionOfStudent(termId))
-    .leftJoin(groupMembers, membershipOf(termId))
-    .where(eq(students.onRoster, true))
+    .where(eq(termMembers.onRoster, true))
     .orderBy(asc(students.displayName), asc(students.email));
 
   return rows.map((r) => ({
@@ -250,10 +249,10 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
       .from(shiftBlocks)
       .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId))),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
   ]);
 
   const staff = new Map(staffRows.map((r) => [r.positionId, Number(r.n)]));
@@ -282,11 +281,11 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
 async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssignablePositions"]> {
   const rows = await getDb()
     .select({ name: positions.name, n: sql<number>`count(*)` })
-    .from(students)
-    .innerJoin(positions, eq(students.positionId, positions.id))
+    .from(termMembers)
+    .innerJoin(positions, eq(termMembers.positionId, positions.id))
     .where(
       and(
-        eq(students.onRoster, true),
+        rosterOf(await currentTermId()),
         or(eq(positions.active, false), isNotNull(positions.mergedIntoId)),
       ),
     )
@@ -319,12 +318,13 @@ async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["ch
 
 /** Flags on on-roster students only; off-roster people are not the admin's work. */
 async function loadFlagCounts(): Promise<{ type: DbFlagType; count: number }[]> {
+  const termId = await currentTermId();
   const rows = await getDb()
     .select({ type: flags.type, n: sql<number>`count(*)` })
     .from(flags)
     .innerJoin(submissions, eq(flags.submissionId, submissions.id))
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .where(eq(students.onRoster, true))
+    .innerJoin(students, submissionOfStudent(termId))
+    .where(onRosterStudent(termId))
     .groupBy(flags.type);
   return rows.map((r) => ({ type: r.type, count: Number(r.n) }));
 }
@@ -390,6 +390,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
  */
 async function loadCoverage(): Promise<CoverageCell[]> {
   const db = getDb();
+  const termId = await currentTermId();
   const eff = effectiveSelections();
   const [blocks, takerRows, staffedPositions] = await Promise.all([
     db
@@ -404,7 +405,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       .from(shiftBlocks)
       .innerJoin(positions, eq(shiftBlocks.positionId, positions.id))
       .where(
-        and(eq(positions.active, true), liveBlocksOnly(), eq(shiftBlocks.termId, await currentTermId())),
+        and(eq(positions.active, true), liveBlocksOnly(), eq(shiftBlocks.termId, termId)),
       ),
     db
       .select({
@@ -414,20 +415,20 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, submissionOfStudent(await currentTermId()))
+      .innerJoin(students, submissionOfStudent(termId))
       .where(
         and(
           eq(submissions.status, "submitted"),
-          eq(students.onRoster, true),
+          onRosterStudent(termId),
           eq(eff.autoAssigned, false),
         ),
       )
       .groupBy(eff.shiftBlockId, eff.day),
     db
-      .select({ positionId: students.positionId })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
   ]);
 
   const staffed = new Set(staffedPositions.map((p) => p.positionId));
@@ -467,6 +468,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
 
 async function loadRecentSubmissions(): Promise<RecentSubmission[]> {
   const db = getDb();
+  const termId = await currentTermId();
   const rows = await db
     .select({
       id: submissions.id,
@@ -476,12 +478,13 @@ async function loadRecentSubmissions(): Promise<RecentSubmission[]> {
       submittedAt: submissions.submittedAt,
     })
     .from(submissions)
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .innerJoin(students, submissionOfStudent(termId))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     .where(
       and(
         eq(submissions.status, "submitted"),
-        eq(students.onRoster, true),
+        eq(termMembers.onRoster, true),
         isNotNull(submissions.submittedAt),
       ),
     )
@@ -521,14 +524,15 @@ async function loadSubmissionsPerDay(now: Date): Promise<{ date: string; count: 
   const start = new Date(now.getTime() - (SPARKLINE_DAYS - 1) * DAY_MS);
   start.setUTCHours(0, 0, 0, 0);
 
+  const termId = await currentTermId();
   const rows = await getDb()
     .select({
       day: sql<string>`date(${submissions.submittedAt})`,
       n: sql<number>`count(*)`,
     })
     .from(submissions)
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .where(and(eq(students.onRoster, true), gte(submissions.submittedAt, start)))
+    .innerJoin(students, submissionOfStudent(termId))
+    .where(and(onRosterStudent(termId), gte(submissions.submittedAt, start)))
     .groupBy(sql`date(${submissions.submittedAt})`);
 
   const counts = new Map(

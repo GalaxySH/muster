@@ -45,9 +45,9 @@ import {
   scheduleRuns,
   shiftBlocks,
   shiftSelections,
-  students,
   submissions,
   type PositionChangeSource,
+  termMembers,
 } from "@/lib/db/schema";
 import { isLiveBlock, liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
@@ -56,7 +56,7 @@ import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { syncOrphanedSelectionFlag } from "./orphans";
-import { currentRunOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
+import { currentRunOf, submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
 /** A drizzle transaction handle; both seams run inside the caller's transaction. */
 export type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -325,8 +325,8 @@ export async function resolveDeferredCarryOver(
   const rows = await tx
     .select({ id: submissions.id })
     .from(submissions)
-    .innerJoin(students, submissionOfStudent(termId))
-    .where(eq(students.positionId, positionId));
+    .innerJoin(termMembers, memberOfSubmission())
+    .where(and(submissionInTerm(termId), eq(termMembers.positionId, positionId)));
 
   for (const { id } of rows) {
     await carryOverSubmission(tx, id, targetBlocks);
@@ -431,10 +431,10 @@ export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Prom
     .select({
       everyWeekendOptIn: submissions.everyWeekendOptIn,
       desiredHours: submissions.desiredHours,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
     })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .leftJoin(termMembers, memberOfSubmission())
     .where(eq(submissions.id, submissionId))
     .limit(1);
   if (!row?.positionId) return clear();

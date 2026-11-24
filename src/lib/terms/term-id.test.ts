@@ -48,7 +48,7 @@ describe("the schema has no default term", () => {
     "shift_plans",
     "change_requests",
     "groups",
-    "group_members",
+    "term_members",
     "positions",
     "shift_blocks",
     "roster_title_mappings",

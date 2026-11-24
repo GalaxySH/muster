@@ -21,7 +21,7 @@ vi.mock("@/lib/schedule/data", () => ({
 import { getTableName, type SQL, type Table } from "drizzle-orm";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import type { W2wPlanRow } from "@/lib/domain/w2w-plan/types";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
 import { buildExportModel } from "./export-data";
@@ -29,7 +29,7 @@ import { loadRepairSeeds } from "./repair";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 const render = (clause: unknown) => new MySqlDialect().sqlToQuery(clause as SQL).sql;
-const ROSTER_FILTER = render(onRosterStudent());
+const ROSTER_FILTER = render(onRosterStudent("t1"));
 
 interface Read {
   table: string;

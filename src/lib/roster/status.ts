@@ -4,9 +4,9 @@
  * an upload against what the database now holds.
  */
 import "server-only";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { students, adminUsers, rosterImports } from "@/lib/db/schema";
+import { adminUsers, rosterImports, termMembers } from "@/lib/db/schema";
 import { listGhostTitles, type GhostTitle } from "@/lib/positions/data";
 import { currentTermId } from "@/lib/terms/current";
 
@@ -31,6 +31,7 @@ export interface RosterStatus {
 
 export async function getRosterStatus(): Promise<RosterStatus> {
   const db = getDb();
+  const termId = await currentTermId();
   const [last] = await db
     .select({
       importedAt: rosterImports.importedAt,
@@ -39,17 +40,19 @@ export async function getRosterStatus(): Promise<RosterStatus> {
       skippedNonWisc: rosterImports.skippedNonWisc,
     })
     .from(rosterImports)
-    .where(eq(rosterImports.termId, await currentTermId()))
+    .where(eq(rosterImports.termId, termId))
     .orderBy(desc(rosterImports.importedAt))
     .limit(1);
 
-  const count = async (where?: ReturnType<typeof eq>) => {
-    const q = db.select({ n: sql<number>`count(*)` }).from(students);
-    const rows = where ? await q.where(where) : await q;
+  const count = async (onRoster: boolean) => {
+    const rows = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(eq(termMembers.termId, termId), eq(termMembers.onRoster, onRoster)));
     return Number(rows[0]?.n ?? 0);
   };
-  const onRoster = await count(eq(students.onRoster, true));
-  const offRoster = await count(eq(students.onRoster, false));
+  const onRoster = await count(true);
+  const offRoster = await count(false);
   const adminRows = await db.select({ n: sql<number>`count(*)` }).from(adminUsers);
   const ghostTitles = await listGhostTitles();
 

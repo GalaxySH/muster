@@ -136,7 +136,7 @@ describe("deletePosition", () => {
   });
 
   it("refuses while students still hold the position", async () => {
-    const log = useDb({ ...clear, students: [{ n: 3 }] });
+    const log = useDb({ ...clear, term_members: [{ n: 3 }] });
     expect(await deletePosition("barista")).toEqual({
       ok: false,
       error: "3 students still hold this position. Deactivate it instead.",
@@ -189,7 +189,7 @@ describe("deletePosition", () => {
     expect(log.txReads).toEqual([
       "positions",
       "shift_blocks",
-      "students",
+      "term_members",
       "shift_selections",
       "internal_selections",
       "schedule_assignments",

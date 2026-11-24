@@ -5,34 +5,64 @@
  * `@wisc.edu` address equals the Google sign-in identity, confirmed §16.1),
  * and checks the imported admin allowlist.
  *
- * It also holds the one definition of "on the roster", because every module
- * needs it. Being listed on the imported tracker is what puts someone on the
- * roster, and dropping off it is what takes them off (PLAN §4.2). Someone who
- * left is not schedulable, so the generator, W2W and the console all filter on
- * this, and a missed copy readmits a departed student into a coverage count, a
- * schedule view, or a W2W upload.
+ * A person is one `students` row; their position and roster flag belong to a
+ * term and live in `term_members` (docs/semester-domains-plan.md §2.3). The
+ * record this hands back is the person together with their place in the
+ * current term, which is what every form and admin action works with.
  */
 import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { students, adminUsers } from "@/lib/db/schema";
+import { students, adminUsers, termMembers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
+import { currentTermId } from "@/lib/terms/current";
+import { memberOf, onRosterStudent } from "@/lib/terms/scope";
 
-export type StudentRecord = typeof students.$inferSelect;
+/** A person and their place in the current term. */
+export interface StudentRecord {
+  email: string;
+  displayName: string;
+  international: boolean;
+  hiredOn: Date | null;
+  lastSeenAt: Date | null;
+  /** Their position this term; null when they have none or are not part of it. */
+  positionId: string | null;
+  /** False for someone who left, and for someone who was never part of this term. */
+  onRoster: boolean;
+  rosterTitle: string | null;
+}
 
-/** The roster row for this email, or null (off-roster / not yet onboarded). */
+/** The person with this email and their place in the current term, or null when unknown. */
 export async function findStudentByEmail(email: string): Promise<StudentRecord | null> {
-  const rows = await getDb()
-    .select()
+  const [row] = await getDb()
+    .select({
+      email: students.email,
+      displayName: students.displayName,
+      international: students.international,
+      hiredOn: students.hiredOn,
+      lastSeenAt: students.lastSeenAt,
+      positionId: termMembers.positionId,
+      onRoster: termMembers.onRoster,
+      rosterTitle: termMembers.rosterTitle,
+    })
+    .from(students)
+    .leftJoin(termMembers, memberOf(await currentTermId()))
+    .where(eq(students.email, normalizeEmail(email)))
+    .limit(1);
+  return row ? { ...row, onRoster: row.onRoster ?? false } : null;
+}
+
+/**
+ * The name of a known person, or null. Reads the person only, never the term:
+ * the sign-in path uses it, and a term problem must not break signing in.
+ */
+export async function findPersonName(email: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ displayName: students.displayName })
     .from(students)
     .where(eq(students.email, normalizeEmail(email)))
     .limit(1);
-  return rows[0] ?? null;
-}
-
-/** Query filter for roster members: `.where(onRosterStudent())`. */
-export function onRosterStudent() {
-  return eq(students.onRoster, true);
+  return row?.displayName ?? null;
 }
 
 /** Every on-roster name and email, by name: the header's student finder lists these. */
@@ -40,7 +70,7 @@ export async function listRosterNames(): Promise<{ email: string; displayName: s
   return getDb()
     .select({ email: students.email, displayName: students.displayName })
     .from(students)
-    .where(onRosterStudent())
+    .where(onRosterStudent(await currentTermId()))
     .orderBy(asc(students.displayName), asc(students.email));
 }
 

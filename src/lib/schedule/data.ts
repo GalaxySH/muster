@@ -21,9 +21,10 @@ import {
   shiftBlocks,
   students,
   submissions,
+  termMembers,
 } from "@/lib/db/schema";
 import { effectiveSelections } from "@/lib/availability/internal";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent, memberOf, rosterOf } from "@/lib/terms/scope";
 import { toDomainBlock } from "@/lib/db/mappers";
 import {
   buildCoverageRows,
@@ -75,8 +76,8 @@ import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms
  * need roster membership alone (an assignment row has no submission behind it)
  * and the sites that need both can never drift apart.
  */
-export const eligibleSubmittedFilter = () =>
-  and(onRosterStudent(), eq(submissions.status, "submitted"));
+export const eligibleSubmittedFilter = (termId: string) =>
+  and(onRosterStudent(termId), eq(submissions.status, "submitted"));
 
 export interface PositionCoverage {
   positionId: string;
@@ -100,10 +101,10 @@ export interface PositionCoverage {
  */
 export async function loadCoverage(positionId?: string): Promise<PositionCoverage[]> {
   const db = getDb();
-  const onRosterSubmitted = eligibleSubmittedFilter();
   const eff = effectiveSelections();
   const termId = await currentTermId();
-  const holdsPosition = positionId ? eq(students.positionId, positionId) : undefined;
+  const onRosterSubmitted = eligibleSubmittedFilter(termId);
+  const holdsPosition = positionId ? eq(termMembers.positionId, positionId) : undefined;
   const [posRows, blockRows, rosterRows, responderRows, cellRows] = await Promise.all([
     db
       .select()
@@ -127,16 +128,17 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
           : and(liveBlocksOnly(), eq(shiftBlocks.termId, termId)),
       ),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(onRosterStudent(), holdsPosition))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(rosterOf(termId), holdsPosition))
+      .groupBy(termMembers.positionId),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
       .from(submissions)
-      .innerJoin(students, submissionOfStudent(await currentTermId()))
+      .innerJoin(students, submissionOfStudent(termId))
+      .innerJoin(termMembers, memberOf(termId))
       .where(and(onRosterSubmitted, holdsPosition))
-      .groupBy(students.positionId),
+      .groupBy(termMembers.positionId),
     db
       .select({
         blockId: eff.shiftBlockId,
@@ -145,7 +147,8 @@ export async function loadCoverage(positionId?: string): Promise<PositionCoverag
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, submissionOfStudent(await currentTermId()))
+      .innerJoin(students, submissionOfStudent(termId))
+      .innerJoin(termMembers, memberOf(termId))
       .where(and(onRosterSubmitted, holdsPosition))
       .groupBy(eff.shiftBlockId, eff.day),
   ]);
@@ -262,8 +265,9 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
       .innerJoin(students, submissionOfStudent(await currentTermId()))
-      .leftJoin(positions, eq(students.positionId, positions.id))
-      .where(and(eligibleSubmittedFilter(), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
+      .leftJoin(termMembers, memberOf(await currentTermId()))
+      .leftJoin(positions, eq(termMembers.positionId, positions.id))
+      .where(and(eligibleSubmittedFilter(await currentTermId()), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
       ? // Students, not submissions: a fill-in can be assigned here without ever
         // having responded, so the submission join has to be optional. The
@@ -281,11 +285,12 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
           })
           .from(scheduleAssignments)
           .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-          .leftJoin(positions, eq(students.positionId, positions.id))
+          .leftJoin(termMembers, memberOf(await currentTermId()))
+          .leftJoin(positions, eq(termMembers.positionId, positions.id))
           .leftJoin(submissions, submissionOfStudent(await currentTermId()))
           .where(
             and(
-              onRosterStudent(),
+              onRosterStudent(await currentTermId()),
               eq(scheduleAssignments.runId, currentRun.id),
               eq(scheduleAssignments.shiftBlockId, blockId),
               eq(scheduleAssignments.day, day),
@@ -393,7 +398,7 @@ export async function loadPositionAssignedCells(
     .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
     .where(
       and(
-        onRosterStudent(),
+        onRosterStudent(await currentTermId()),
         eq(scheduleAssignments.runId, runId),
         eq(shiftBlocks.positionId, positionId),
       ),
@@ -553,7 +558,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     .from(scheduleAssignments)
     .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
     .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-    .where(and(onRosterStudent(), eq(scheduleAssignments.runId, run.id)));
+    .where(and(onRosterStudent(await currentTermId()), eq(scheduleAssignments.runId, run.id)));
 
   const assignedCells = tallyAssignedCells(rows);
   const cellsByStudent = new Map<string, AssignedCell[]>();
@@ -618,16 +623,17 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
       .select({
         email: students.email,
         displayName: students.displayName,
-        positionId: students.positionId,
+        positionId: termMembers.positionId,
         positionName: positions.name,
         minDays: positions.minDays,
         minHours: positions.minHours,
         international: students.international,
-        onRoster: students.onRoster,
+        onRoster: termMembers.onRoster,
         scheduled: submissions.scheduled,
       })
       .from(students)
-      .leftJoin(positions, eq(students.positionId, positions.id))
+      .leftJoin(termMembers, memberOf(await currentTermId()))
+      .leftJoin(positions, eq(termMembers.positionId, positions.id))
       .leftJoin(submissions, submissionOfStudent(await currentTermId()))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
@@ -909,7 +915,7 @@ export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
   const run = await loadCurrentRunRow();
   if (!run) return [];
 
-  const frozenEligible = and(eligibleSubmittedFilter(), eq(submissions.scheduled, true));
+  const frozenEligible = and(eligibleSubmittedFilter(await currentTermId()), eq(submissions.scheduled, true));
   const eff = effectiveSelections();
   const [assignments, frozenRows, selectionRows] = await Promise.all([
     loadRunAssignments(run.id),
@@ -1021,13 +1027,14 @@ export async function loadScopeLedger(): Promise<PositionLedgerRow[]> {
       .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id)),
     db
       .select({
-        positionId: students.positionId,
+        positionId: termMembers.positionId,
         submittedAt: submissions.submittedAt,
         updatedAt: submissions.updatedAt,
       })
       .from(submissions)
       .innerJoin(students, submissionOfStudent(await currentTermId()))
-      .where(eligibleSubmittedFilter()),
+      .innerJoin(termMembers, memberOf(await currentTermId()))
+      .where(eligibleSubmittedFilter(await currentTermId())),
   ]);
 
   const runs = runRows.map((r) => ({ at: r.generatedAt, scope: parseScope(r.scopeJson) }));
@@ -1070,6 +1077,6 @@ export async function loadScheduleStaleness(since: Date): Promise<ScheduleStalen
     })
     .from(submissions)
     .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .where(eligibleSubmittedFilter());
+    .where(eligibleSubmittedFilter(await currentTermId()));
   return { newSubmissions: Number(row?.newer ?? 0), edited: Number(row?.edited ?? 0) };
 }

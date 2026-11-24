@@ -13,6 +13,7 @@ import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { positions, students } from "../lib/db/schema";
 import { normalizeEmail } from "../lib/auth/policy";
 import { getCurrentTermId } from "../lib/terms/term-id";
+import { enrollMember } from "../lib/terms/members";
 
 function parseArgs(argv: string[]) {
   const positional: string[] = [];
@@ -45,12 +46,13 @@ async function main() {
   try {
     // Assignable positions come from the DB (admins edit them there); the
     // static fixture only seeds an empty table.
+    const termId = await getCurrentTermId(db);
     const validRows = await db
       .select({ id: positions.id })
       .from(positions)
       .where(
         and(
-          eq(positions.termId, await getCurrentTermId(db)),
+          eq(positions.termId, termId),
           eq(positions.active, true),
           isNull(positions.mergedIntoId),
         ),
@@ -62,16 +64,13 @@ async function main() {
 
     await db
       .insert(students)
-      .values({
-        email: normalized,
-        displayName,
-        positionId: position,
-        international,
-        onRoster: true,
-      })
-      .onDuplicateKeyUpdate({
-        set: { displayName, positionId: position, international, onRoster: true },
-      });
+      .values({ email: normalized, displayName, international })
+      .onDuplicateKeyUpdate({ set: { displayName, international } });
+    await enrollMember(db, termId, normalized, {
+      positionId: position,
+      onRoster: true,
+      rosterTitle: null,
+    });
     console.log(
       `✓ Test student ready: ${normalized} · ${displayName}, ${position}${
         international ? " (international)" : ""

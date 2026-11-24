@@ -6,14 +6,14 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
-import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
+import { positions, shiftBlocks, submissions, shiftSelections, termMembers } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOf, submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
 export interface PositionWithBlocks {
   position: Position;
@@ -66,15 +66,16 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     })
     .from(shiftSelections)
     .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
+    .innerJoin(termMembers, memberOfSubmission())
     // Join the block so picks on a removed shift can't be counted. They render
     // nowhere, but an uncounted target would let them into the contention
     // ranking and push a genuinely busy cell out of it.
     .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(
       and(
-        eq(students.positionId, positionId),
-        eq(students.onRoster, true),
+        submissionInTerm(await currentTermId()),
+        eq(termMembers.positionId, positionId),
+        eq(termMembers.onRoster, true),
         eq(submissions.status, "submitted"),
         // Machine-assigned weekend cells aren't preferences; don't count them.
         eq(shiftSelections.autoAssigned, false),

@@ -8,8 +8,22 @@ spec; these notes describe how the implementation is layered.
 ## Terms: the semester the app runs in (PLAN 1.48, `docs/semester-domains-plan.md`)
 
 Every per-semester table carries a `term_id`, and exactly one term is current: the
-`current_term_id` row in `app_settings`. Students only ever see the current term, and
-only the current term can be changed.
+`current_term_id` row in `app_settings`. Students only ever see the current term.
+(Admins selecting and editing an earlier term is planned, not built: plan §2.9.)
+
+**The roster is per term (1.51).** `students` is the person: email, name,
+international, hire date, last seen. `term_members` is their place in one term: the
+position they hold, whether they are on the roster, the tracker title they came in
+under, and their group. **A query on `students` alone can no longer say who is on the
+roster or what job anyone has.** It joins `term_members` through `memberOf(termId)`,
+or filters with `onRosterStudent(termId)` when it has no other reason to join.
+`students.position_id`, `on_roster` and `roster_title` still exist for a rollback and
+are written in step, but they are named `legacyPositionId`, `legacyOnRoster` and
+`legacyRosterTitle` in the schema so a read of them stands out and the old names do
+not compile. Two things the type checker cannot see, so check them by hand: a query
+that selects `termMembers.*` must actually join it (a predicate held in a variable is
+the easy one to miss), and a list of a term's people wants an **inner** join, because
+someone with no row was never part of that term.
 
 - **`src/lib/terms/` is a shared root**, like `lib/db`: the form core, the generator,
   W2W and the console all import it, and it imports none of them (`eslint.config.mjs`
@@ -28,7 +42,15 @@ only the current term can be changed.
     `submissionOfStudent(termId)` and `submissionInTerm(termId)` are the whole of how a
     submissions query stays inside a term; `currentRunOf`, `currentPlanOf` and
     `closeClaimInTerm` do the same for runs, plans and close claims (a claim has no
-    term column, it is scoped through its slot).
+    term column, it is scoped through its slot). The roster predicates sit beside
+    them: `memberOf(termId)` (ON clause for `students JOIN term_members`),
+    `memberOfSubmission()` (the same from a submission, following the submission's
+    own term), `rosterOf(termId)` (WHERE for a query that starts from `term_members`)
+    and `onRosterStudent(termId)` (an EXISTS test for a `students` query).
+  - `members.ts`: the one writer of a person's roster place (`enrollMember`,
+    `setMemberPosition`, `takeOffRoster`). Each also mirrors the retired `students`
+    columns. Plain and CLI-safe, because the importer and the dev scripts use it. The
+    group on the same row is written by `groups/membership.ts`.
 - **The Semester page (`/admin/terms`, 1.49).** `TermDetailsForm` edits the current
   term's name, dates, new-hire date and schedule note through `saveTermDetails`
   (`lib/admin/term-actions.ts`); the rules are pure, in `domain/terms.ts`
@@ -1152,10 +1174,11 @@ optional; its target comes from the position-aware `nextHref`).
 ## Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`)
 
 **Groups and membership are per term (1.48).** A group row belongs to one term, and a
-student's group lives in `group_members` (one row per student per term), not on the
-student. `groups/membership.ts` is the only reader and writer of that table:
-`groupOf(db, email, termId)`, the join and WHERE predicates (`membershipOf`,
-`inGroup`, `inNoGroup`, `inTestGroup`), and `assignMembers` / `unassignMembers` /
+student's group lives on their `term_members` row (one row per person per term), not
+on the student. `groups/membership.ts` is the only reader and writer of the group on
+that row: `groupOf(db, email, termId)`, the WHERE predicates (`inGroup`, `inNoGroup`,
+`inTestGroup`; the join itself is `memberOf` in `lib/terms/scope.ts`), and
+`assignMembers` / `unassignMembers` /
 `listUnsweptEmails`. The writers also keep the retired `students.group_id` and
 `group_assigned_auto` columns in step until the contract migration drops them. The
 test-accounts group is recognized by `groups.kind = 'test'`; `TEST_GROUP_ID` survives
@@ -1586,7 +1609,7 @@ Seeding is insert-only-when-empty
 Four tables point at a position or its blocks, and each needs a different answer,
 because the FK behavior differs and so does what the row means:
 
-- `students.position_id` and the two selection tables (through `shift_blocks`) —
+- `term_members.position_id` and the two selection tables (through `shift_blocks`) —
   **refuse**. These are real student data; the admin is told to deactivate instead.
 - `schedule_assignments.shift_block_id` — **refuse**. This one is easy to miss: it
   cascades off `shift_blocks`, so deleting the position's blocks would strip shifts out
@@ -1760,7 +1783,7 @@ coverage view, no generator yet. Standard layering:
   since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,
   `RestoreRunButton`, `PinRunButton`, `SaveRunButton`, `ScheduleHealth`) — see the
   Phase C and 1.19 sections below.
-- **Roster membership (1.26).** `onRosterStudent()` in `lib/roster/lookup.ts` is the one
+- **Roster membership (1.26).** `onRosterStudent(termId)` in `lib/terms/scope.ts` (1.51; it was in `lib/roster/lookup.ts`) is the one
   definition of "still on the roster", and `eligibleSubmittedFilter()` composes from it
   rather than repeating the clause (first slice of module item A1). The supply side was
   always filtered; 1.26 filtered the assignment side too, which is where a departed

@@ -34,11 +34,12 @@ import {
   internalSelections,
   shiftBlocks,
   shiftSelections,
-  students,
   submissions,
+  termMembers,
 } from "@/lib/db/schema";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type Day, type DayType } from "@/lib/domain/types";
+import { memberOfSubmission } from "@/lib/terms/scope";
 
 /** A drizzle transaction handle, matching the one applyPositionChange runs in. */
 type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -80,9 +81,9 @@ export async function loadOrphanedCells(
   submissionId: string,
 ): Promise<OrphanedCell[]> {
   const [row] = await db
-    .select({ positionId: students.positionId })
+    .select({ positionId: termMembers.positionId })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .leftJoin(termMembers, memberOfSubmission())
     .where(eq(submissions.id, submissionId))
     .limit(1);
   if (!row?.positionId) return [];

@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { magicLinks } from "@/lib/db/schema";
-import { findStudentByEmail, isAdminInDb } from "@/lib/roster/lookup";
+import { findPersonName, isAdminInDb } from "@/lib/roster/lookup";
 import { normalizeEmail } from "./policy";
 import {
   generateToken,
@@ -26,7 +26,7 @@ import {
  */
 export async function isEligibleForMagicLink(emailRaw: string): Promise<boolean> {
   const email = normalizeEmail(emailRaw);
-  if (await findStudentByEmail(email)) return true;
+  if ((await findPersonName(email)) !== null) return true;
   return isAdminInDb(email);
 }
 
@@ -35,8 +35,7 @@ export async function isEligibleForMagicLink(emailRaw: string): Promise<boolean>
  * resolving a name and deciding who may sign in are different concerns.
  */
 export async function inferRosterName(emailRaw: string): Promise<string | null> {
-  const student = await findStudentByEmail(normalizeEmail(emailRaw));
-  return student?.displayName ?? null;
+  return findPersonName(normalizeEmail(emailRaw));
 }
 
 /** Issue a token for an (already eligibility-checked) email; returns the raw token. */

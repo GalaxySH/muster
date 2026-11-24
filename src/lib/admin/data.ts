@@ -14,7 +14,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
-  groupMembers,
+  termMembers,
   groups,
   positionChanges,
   positions,
@@ -47,8 +47,9 @@ import { DEFAULT_SORT, sortResponses, type ResponseSort } from "./response-sort"
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOf, submissionOfStudent } from "@/lib/terms/scope";
-import { groupOf, inTestGroup, membershipOf } from "@/lib/groups/membership";
+import { memberOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
+import { groupOf, inTestGroup } from "@/lib/groups/membership";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 
 export interface StudentDetail {
   email: string;
@@ -129,12 +130,12 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   const db = getDb();
   const email = normalizeEmail(emailRaw);
 
-  const [student] = await db.select().from(students).where(eq(students.email, email)).limit(1);
+  const student = await findStudentByEmail(email);
   if (!student) return null;
 
   const termId = await currentTermId();
-  const memberOf = await groupOf(db, email, termId);
-  const group = memberOf?.name ?? null;
+  const ownGroup = await groupOf(db, email, termId);
+  const group = ownGroup?.name ?? null;
 
   let position: Position | null = null;
   let blocks: ShiftBlock[] = [];
@@ -236,7 +237,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     hiredOn: student.hiredOn,
     position,
     group,
-    groupId: memberOf?.id ?? null,
+    groupId: ownGroup?.id ?? null,
     blocks,
     submission,
     selection,
@@ -358,10 +359,10 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      onRoster: students.onRoster,
-      groupId: groupMembers.groupId,
+      onRoster: termMembers.onRoster,
+      groupId: termMembers.groupId,
       groupName: groups.name,
       hiredOn: students.hiredOn,
       submissionId: submissions.id,
@@ -374,10 +375,11 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       updatedAt: submissions.updatedAt,
     })
     .from(students)
+    // Inner: someone with no place in this term is not one of its students.
+    .innerJoin(termMembers, memberOf(termId))
     .leftJoin(submissions, submissionOfStudent(termId))
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groupMembers, membershipOf(termId))
-    .leftJoin(groups, eq(groupMembers.groupId, groups.id))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(groups, eq(termMembers.groupId, groups.id))
     // Roster + submission-state visibility are filter concerns:
     // applyResponseFilters hides off-roster students (PLAN §4.2), and students
     // with no submission unless the state filter asks for them.
@@ -477,18 +479,19 @@ export async function listNonResponses(): Promise<NonResponseReport> {
     .select({
       email: students.email,
       displayName: students.displayName,
-      onRoster: students.onRoster,
+      onRoster: termMembers.onRoster,
       testAccount: sql<number>`${inTestGroup(termId)}`,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      rosterTitle: students.rosterTitle,
+      rosterTitle: termMembers.rosterTitle,
       hiredOn: students.hiredOn,
       status: submissions.status,
       confirmedAt: submissions.confirmedAt,
     })
     .from(students)
+    .innerJoin(termMembers, memberOf(termId))
     .leftJoin(submissions, submissionOfStudent(termId))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     .orderBy(
       sql`${students.hiredOn} is null`,
       asc(students.hiredOn),
@@ -600,6 +603,7 @@ export async function loadUpcomingTravel(
   now: Date = new Date(),
 ): Promise<TravelWeek<UpcomingTravelEntry>[]> {
   const db = getDb();
+  const termId = await currentTermId();
   const rows = await db
     .select({
       id: travelRequests.id,
@@ -615,9 +619,10 @@ export async function loadUpcomingTravel(
     })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .where(eq(students.onRoster, true))
+    .innerJoin(students, submissionOfStudent(termId))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .where(eq(termMembers.onRoster, true))
     // Name order so same-day entries within a week bucket read alphabetically.
     .orderBy(asc(students.displayName), asc(students.email));
 

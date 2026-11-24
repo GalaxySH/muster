@@ -1,10 +1,10 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, students, submissions } from "@/lib/db/schema";
+import { positions, students, submissions, termMembers } from "@/lib/db/schema";
 import { isTestAccountEmail } from "./email";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 import { inTestGroup } from "@/lib/groups/membership";
 
 export interface TestAccount {
@@ -29,8 +29,9 @@ export async function listTestAccounts(): Promise<TestAccount[]> {
       status: submissions.status,
     })
     .from(students)
+    .innerJoin(termMembers, memberOf(termId))
     .leftJoin(submissions, submissionOfStudent(termId))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     .where(inTestGroup(termId))
     .orderBy(students.email);
 

@@ -26,9 +26,9 @@ import {
   scheduleAssignments,
   shiftBlocks,
   shiftSelections,
-  students,
   w2wPositionMap,
   type PositionChangeSource,
+  termMembers,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
@@ -44,6 +44,8 @@ import {
 import { syncOrphanFlagsForBlocks } from "./orphans";
 import { POSITION_NAME_MAX, slugifyPositionId } from "./slug";
 import { currentTermId } from "@/lib/terms/current";
+import { enrollMember, setMemberPosition } from "@/lib/terms/members";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 
 export interface ActionResult {
   ok: boolean;
@@ -351,10 +353,11 @@ export async function deletePosition(id: string): Promise<ActionResult> {
         .where(eq(shiftBlocks.positionId, id))
         .for("update");
 
+      // A position belongs to one term, so its id is all the scope this needs.
       const [studentRef] = await tx
         .select({ n: sql<number>`count(*)` })
-        .from(students)
-        .where(eq(students.positionId, id));
+        .from(termMembers)
+        .where(eq(termMembers.positionId, id));
       const studentCount = Number(studentRef?.n ?? 0);
       if (studentCount > 0) {
         throw new DeleteRefused(
@@ -526,20 +529,23 @@ export async function setAlias(sourceId: string, targetId: string): Promise<Alia
   let failing = 0;
   let remapped = 0;
   await db.transaction(async (tx) => {
+    const termId = await currentTermId();
     const affected = await tx
-      .select({ email: students.email })
-      .from(students)
-      .where(eq(students.positionId, sourceId));
-    // Re-point positionId before the per-student routine so revalidation reads
-    // the new position (same order the roster importer uses).
-    await tx
-      .update(students)
-      .set({ positionId: targetId })
-      .where(eq(students.positionId, sourceId));
+      .select({ email: termMembers.studentEmail })
+      .from(termMembers)
+      .where(eq(termMembers.positionId, sourceId));
+    // Re-point the position before the per-student routine so revalidation
+    // reads the new one (same order the roster importer uses).
+    await setMemberPosition(
+      tx,
+      termId,
+      affected.map((a) => a.email),
+      targetId,
+    );
     for (const { email } of affected) {
       const change = await applyPositionChange(tx, {
         email,
-        termId: await currentTermId(),
+        termId,
         fromPositionId: sourceId,
         toPositionId: targetId,
         source: "alias",
@@ -781,29 +787,27 @@ async function moveStudentsWithTitle(
   changedBy: string,
 ): Promise<TitleMoveSummary> {
   const normalized = normalizeTitle(rawTitle);
+  const termId = await currentTermId();
   const rows = await tx
     .select({
-      email: students.email,
-      positionId: students.positionId,
-      rosterTitle: students.rosterTitle,
+      email: termMembers.studentEmail,
+      positionId: termMembers.positionId,
+      rosterTitle: termMembers.rosterTitle,
     })
-    .from(students)
-    .where(isNotNull(students.rosterTitle));
+    .from(termMembers)
+    .where(and(eq(termMembers.termId, termId), isNotNull(termMembers.rosterTitle)));
   const matched = rows.filter(
     (r) => normalizeTitle(r.rosterTitle ?? "") === normalized && r.positionId !== positionId,
   );
   if (matched.length === 0) return NO_MOVES;
 
-  // Set positionId first so the per-student revalidation reads the new position.
-  await tx
-    .update(students)
-    .set({ positionId })
-    .where(
-      inArray(
-        students.email,
-        matched.map((r) => r.email),
-      ),
-    );
+  // Set the position first so the per-student revalidation reads the new one.
+  await setMemberPosition(
+    tx,
+    termId,
+    matched.map((r) => r.email),
+    positionId,
+  );
   const summary = { ...NO_MOVES, moved: matched.length };
   for (const r of matched) {
     const change = await applyPositionChange(tx, {
@@ -961,11 +965,8 @@ export async function changeStudentPosition(
   if (!normalized) return fail("No student was named.");
 
   const db = getDb();
-  const [student] = await db
-    .select({ email: students.email, positionId: students.positionId })
-    .from(students)
-    .where(eq(students.email, normalized))
-    .limit(1);
+  const termId = await currentTermId();
+  const student = await findStudentByEmail(normalized);
   if (!student) return fail("That employee is not a known student.");
   if (student.positionId === toPositionId) return fail("They already hold that position.");
 
@@ -977,7 +978,7 @@ export async function changeStudentPosition(
       mergedIntoId: positions.mergedIntoId,
     })
     .from(positions)
-    .where(thisTermsPosition(toPositionId, await currentTermId()))
+    .where(thisTermsPosition(toPositionId, termId))
     .limit(1);
   if (!target) return fail("Position not found.");
   // Both refusals mirror the alias guards: parking a student on a position
@@ -989,15 +990,17 @@ export async function changeStudentPosition(
 
   let change = { carriedOver: 0, preserved: 0, removedShifts: 0 };
   await db.transaction(async (tx) => {
-    // positionId first, so the revalidation inside the routine reads the new
-    // position (the same order the importer and the alias switch use).
-    await tx
-      .update(students)
-      .set({ positionId: toPositionId })
-      .where(eq(students.email, normalized));
+    // The position first, so the revalidation inside the routine reads the new
+    // one (the same order the importer and the alias switch use). An upsert:
+    // someone with no place in this term yet gets one by being given a job.
+    await enrollMember(tx, termId, student.email, {
+      positionId: toPositionId,
+      onRoster: student.onRoster,
+      rosterTitle: student.rosterTitle,
+    });
     const result = await applyPositionChange(tx, {
       email: normalized,
-      termId: await currentTermId(),
+      termId,
       fromPositionId: student.positionId,
       toPositionId,
       source: "admin",

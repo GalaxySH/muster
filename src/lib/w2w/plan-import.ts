@@ -12,10 +12,10 @@ import "server-only";
  */
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, students, submissions, w2wEmployees } from "@/lib/db/schema";
+import { positions, students, submissions, w2wEmployees, termMembers } from "@/lib/db/schema";
 import { effectiveRotation } from "@/lib/availability/effective";
 import { loadInternalCopiesByEmail } from "@/lib/availability/internal";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { memberOf } from "@/lib/terms/scope";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
@@ -90,6 +90,7 @@ export async function analyzePlanUpload(
       : [];
   const report = matchPlan(parsed.rows, mapSeed.length > 0 ? mapSeed : inputs.map, inputs.blocks);
 
+  const termId = await currentTermId();
   const [mappedRows, rosterRows, positionRows, internalByEmail] = await Promise.all([
     db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
     // Current roster only: a name on the plan must not resolve to somebody who
@@ -100,14 +101,15 @@ export async function analyzePlanUpload(
       .select({
         email: students.email,
         displayName: students.displayName,
-        positionId: students.positionId,
+        positionId: termMembers.positionId,
         international: students.international,
         everyWeekendOptIn: submissions.everyWeekendOptIn,
         desiredHours: submissions.desiredHours,
       })
       .from(students)
-      .leftJoin(submissions, submissionOfStudent(await currentTermId()))
-      .where(onRosterStudent()),
+      .innerJoin(termMembers, memberOf(termId))
+      .leftJoin(submissions, submissionOfStudent(termId))
+      .where(eq(termMembers.onRoster, true)),
     db
       .select({ id: positions.id, minHours: positions.minHours, minDays: positions.minDays })
       .from(positions)

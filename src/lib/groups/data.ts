@@ -10,7 +10,7 @@
 import "server-only";
 import { and, asc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { groups, students, positions, submissions, groupMembers } from "@/lib/db/schema";
+import { groups, students, positions, submissions, termMembers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { getSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -21,8 +21,8 @@ import {
 } from "@/lib/domain/window";
 import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOf } from "@/lib/terms/scope";
-import { groupOf, inGroup, inNoGroup, membershipOf } from "@/lib/groups/membership";
+import { submissionOf, memberOf } from "@/lib/terms/scope";
+import { groupOf, inGroup, inNoGroup } from "@/lib/groups/membership";
 
 export interface GroupRow {
   id: string;
@@ -48,10 +48,10 @@ export async function listGroups(): Promise<GroupRow[]> {
     .where(eq(groups.termId, termId))
     .orderBy(asc(groups.name));
   const memberRows = await db
-    .select({ groupId: groupMembers.groupId, email: groupMembers.studentEmail })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.termId, termId), isNotNull(groupMembers.groupId)))
-    .orderBy(asc(groupMembers.studentEmail));
+    .select({ groupId: termMembers.groupId, email: termMembers.studentEmail })
+    .from(termMembers)
+    .where(and(eq(termMembers.termId, termId), isNotNull(termMembers.groupId)))
+    .orderBy(asc(termMembers.studentEmail));
   const emailsByGroup = new Map<string, string[]>();
   for (const m of memberRows) {
     if (!m.groupId) continue;
@@ -181,9 +181,9 @@ export interface PickerStudent {
 export async function listStudentsForPicker(filters: PickerFilters = {}): Promise<PickerStudent[]> {
   const db = getDb();
   const conds = [];
-  if (filters.onRoster !== undefined) conds.push(eq(students.onRoster, filters.onRoster));
-  if (filters.positionId === "none") conds.push(isNull(students.positionId));
-  else if (filters.positionId) conds.push(eq(students.positionId, filters.positionId));
+  if (filters.onRoster !== undefined) conds.push(eq(termMembers.onRoster, filters.onRoster));
+  if (filters.positionId === "none") conds.push(isNull(termMembers.positionId));
+  else if (filters.positionId) conds.push(eq(termMembers.positionId, filters.positionId));
   const termId = await currentTermId();
   if (filters.groupId === "none") conds.push(inNoGroup(termId));
   else if (filters.groupId) conds.push(inGroup(filters.groupId));
@@ -196,18 +196,19 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      onRoster: students.onRoster,
-      groupId: groupMembers.groupId,
+      onRoster: termMembers.onRoster,
+      groupId: termMembers.groupId,
       groupName: groups.name,
-      groupAssignedAuto: groupMembers.assignedAuto,
+      groupAssignedAuto: termMembers.assignedAuto,
       hiredOn: students.hiredOn,
     })
     .from(students)
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groupMembers, membershipOf(termId))
-    .leftJoin(groups, eq(groupMembers.groupId, groups.id))
+    // Inner: only people who belong to this term can be put in its groups.
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(groups, eq(termMembers.groupId, groups.id))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(asc(students.displayName), asc(students.email));
 

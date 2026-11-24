@@ -31,6 +31,7 @@ import {
   type SelectedShift,
   type ShiftBlock,
 } from "../lib/domain/types";
+import { enrollMember } from "../lib/terms/members";
 
 const EMAIL_PREFIX = "synthetic-";
 const EMAIL_PATTERN = `${EMAIL_PREFIX}%@wisc.edu`;
@@ -243,9 +244,12 @@ async function main() {
       await db.insert(students).values({
         email: g.email,
         displayName: g.displayName,
-        positionId: g.position.id,
         international: g.international,
+      });
+      await enrollMember(db, termId, g.email, {
+        positionId: g.position.id,
         onRoster: true,
+        rosterTitle: null,
       });
       const submissionId = randomUUID();
       await db.insert(submissions).values({

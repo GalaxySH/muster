@@ -5,14 +5,15 @@
  * `analytics-view.ts`.
  */
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, submissions } from "@/lib/db/schema";
 import type { AnalyticsStudent } from "./analytics-view";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOfStudent, onRosterStudent } from "@/lib/terms/scope";
 
 export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
+  const termId = await currentTermId();
   const rows = await getDb()
     .select({
       email: students.email,
@@ -21,8 +22,8 @@ export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
       status: submissions.status,
     })
     .from(students)
-    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
-    .where(eq(students.onRoster, true))
+    .leftJoin(submissions, submissionOfStudent(termId))
+    .where(onRosterStudent(termId))
     .orderBy(asc(students.displayName), asc(students.email));
 
   return rows.map((r) => ({

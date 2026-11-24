@@ -51,7 +51,7 @@ import { toDomainBlock } from "@/lib/db/mappers";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { effectiveRotation } from "@/lib/availability/effective";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
 import { currentTermId } from "@/lib/terms/current";
@@ -138,7 +138,7 @@ export async function applyScheduleEdits(
     const [listed] = await db
       .select({ email: students.email })
       .from(students)
-      .where(and(eq(students.email, email), onRosterStudent()))
+      .where(and(eq(students.email, email), onRosterStudent(await currentTermId())))
       .limit(1);
     if (!listed) return fail(OFF_ROSTER_MESSAGE);
   }

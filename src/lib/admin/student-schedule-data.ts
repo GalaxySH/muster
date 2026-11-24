@@ -11,13 +11,7 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
-import {
-  positions,
-  scheduleAssignments,
-  shiftBlocks,
-  students,
-  submissions,
-} from "@/lib/db/schema";
+import { positions, scheduleAssignments, shiftBlocks, students, submissions, termMembers } from "@/lib/db/schema";
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import {
   buildStudentScheduleGrid,
@@ -28,7 +22,7 @@ import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 export interface StudentScheduleView {
   email: string;
@@ -57,17 +51,19 @@ export async function loadStudentScheduleView(email: string): Promise<StudentSch
   const run = await loadCurrentRunRow();
   if (!run) return { kind: "no-run" };
 
+  const termId = await currentTermId();
   const [student] = await db
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
       scheduled: submissions.scheduled,
     })
     .from(students)
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(submissions, submissionOfStudent(await currentTermId()))
+    .leftJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .where(eq(students.email, email))
     .limit(1);
   if (!student) return { kind: "unknown-student" };

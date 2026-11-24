@@ -42,6 +42,7 @@ import { slugFromName, isValidTestSlug, testEmailFromSlug, isTestAccountEmail } 
 import { currentTermId } from "@/lib/terms/current";
 import { currentRunOf } from "@/lib/terms/scope";
 import { assignMembers, groupOf } from "@/lib/groups/membership";
+import { enrollMember } from "@/lib/terms/members";
 
 export type TestAccountError =
   | "forbidden"
@@ -86,17 +87,12 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const testGroupId = await ensureTestGroup(termId);
 
   try {
-    await db.insert(students).values({
-      email,
-      displayName: name,
-      positionId,
-      international,
-      hiredOn,
-      onRoster: false,
-    });
+    await db.insert(students).values({ email, displayName: name, international, hiredOn });
   } catch {
     fail("exists"); // racing duplicate insert hit the PK
   }
+  // Never on the roster: that is what keeps test accounts out of every count.
+  await enrollMember(db, termId, email, { positionId, onRoster: false, rosterTitle: null });
   await assignMembers(db, termId, [email], testGroupId, false);
 
   revalidatePath("/admin/test-users");

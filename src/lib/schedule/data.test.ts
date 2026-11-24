@@ -11,7 +11,7 @@ import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
 import type { StoredRunReport, StudentScheduleReport } from "@/lib/domain/scheduling/types";
 import { eligibleSubmittedFilter, loadScheduleForRun, type ScheduleRunRow } from "./data";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 const render = (clause: unknown) => new MySqlDialect().sqlToQuery(clause as SQL).sql;
@@ -127,8 +127,8 @@ const infoRow = (email: string, displayName: string, onRoster: boolean) => ({
 
 describe("eligibleSubmittedFilter", () => {
   it("composes the shared roster predicate with the submitted check", () => {
-    expect(render(eligibleSubmittedFilter())).toBe(
-      `(${render(onRosterStudent())} and \`submissions\`.\`status\` = ?)`,
+    expect(render(eligibleSubmittedFilter("t1"))).toBe(
+      `(${render(onRosterStudent("t1"))} and \`submissions\`.\`status\` = ?)`,
     );
   });
 });
@@ -149,7 +149,7 @@ describe("loadScheduleForRun", () => {
     const assignments = reads.find((r) => r.table === "schedule_assignments");
     expect(assignments).toBeDefined();
     expect(assignments!.joins).toContain("students");
-    expect(assignments!.where).toContain(render(onRosterStudent()));
+    expect(assignments!.where).toContain(render(onRosterStudent("t1")));
   });
 
   it("drops students who have left the roster and reports how many", async () => {
@@ -220,7 +220,7 @@ describe("loadScheduleForRun", () => {
     // exists to report exactly these people, and filtering it would reduce the
     // line to a list of email addresses.
     const info = reads.find((r) => r.table === "students");
-    expect(info!.where).not.toContain(render(onRosterStudent()));
+    expect(info!.where).not.toContain(render(onRosterStudent("t1")));
     const dropped = schedule.problems.find((g) => g.kind === "dropped");
     expect(dropped!.students).toEqual([{ email: "left@wisc.edu", name: "Left Us" }]);
   });

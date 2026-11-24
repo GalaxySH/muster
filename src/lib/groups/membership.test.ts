@@ -6,7 +6,6 @@ import {
   inGroup,
   inNoGroup,
   inTestGroup,
-  membershipOf,
   unassignMembers,
 } from "./membership";
 
@@ -36,18 +35,10 @@ function fakeDb() {
 }
 
 describe("membership predicates", () => {
-  it("joins a student to their row in one term", () => {
-    const q = render(membershipOf("2026-fall"));
-    expect(q.sql).toBe(
-      "(`group_members`.`student_email` = `students`.`email` and `group_members`.`term_id` = ?)",
-    );
-    expect(q.params).toEqual(["2026-fall"]);
-  });
-
   // Found by the group's kind, never its id: each term has its own test group.
   it("finds test accounts by the group's kind, inside the term", () => {
     const q = render(inTestGroup("2026-fall"));
-    expect(q.sql).toContain("`group_members`.`term_id` = ?");
+    expect(q.sql).toContain("`term_members`.`term_id` = ?");
     expect(q.sql).toContain("`groups`.`kind` = 'test'");
     expect(q.params).toEqual(["2026-fall"]);
   });
@@ -55,7 +46,7 @@ describe("membership predicates", () => {
   it("treats a row with no group the same as no row", () => {
     const q = render(inNoGroup("2026-fall"));
     expect(q.sql).toMatch(/^not exists/);
-    expect(q.sql).toContain("`group_members`.`group_id` is not null");
+    expect(q.sql).toContain("`term_members`.`group_id` is not null");
   });
 
   it("matches members of one group", () => {
@@ -70,7 +61,7 @@ describe("assignMembers", () => {
     expect(writes).toEqual([
       {
         op: "upsert",
-        table: "group_members",
+        table: "term_members",
         values: [
           { termId: "2026-fall", studentEmail: "a@wisc.edu", groupId: "g1", assignedAuto: false },
           { termId: "2026-fall", studentEmail: "b@wisc.edu", groupId: "g1", assignedAuto: false },
@@ -101,7 +92,7 @@ describe("unassignMembers", () => {
     const { db, writes } = fakeDb();
     await unassignMembers(db, "2026-fall", ["a@wisc.edu"]);
     expect(writes).toEqual([
-      { op: "update", table: "group_members", set: { groupId: null } },
+      { op: "update", table: "term_members", set: { groupId: null } },
       { op: "update", table: "students", set: { groupId: null } },
     ]);
   });

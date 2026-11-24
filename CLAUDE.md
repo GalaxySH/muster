@@ -263,6 +263,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   table carries a `term_id`, and a query stays inside the term through the predicates
   in `scope.ts`. A shared root like `lib/db`. Read "Terms" in `docs/architecture.md`
   before writing any query on `submissions`, runs, plans, closes, groups or positions.
+  **`students` is only the person (1.51).** Their position, roster flag and group are
+  per term, in `term_members`: join it with `memberOf(termId)` or filter with
+  `onRosterStudent(termId)`, and write it through `lib/terms/members.ts`.
 - `src/lib/db/` — Drizzle schema + client. `index.ts` is `server-only` (lazy pool);
   `client.ts` is the plain `createDb()` factory CLI scripts (seed/migrate) reuse.
 - `src/lib/env.ts` — zod-validated env; import only from server modules.

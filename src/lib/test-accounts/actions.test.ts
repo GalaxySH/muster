@@ -100,9 +100,9 @@ const form = (email: string) => {
 const EMAIL = "training-barista@test.muster.invalid";
 /** A dev-created test-group member from before the synthetic domain. */
 const LEGACY_EMAIL = "old-test@wisc.edu";
-// Membership is read through group_members joined to its group; the group's
+// Membership is read through term_members joined to its group; the group's
 // kind is what marks the test-accounts group.
-const testAccount = { group_members: [{ group: { id: TEST_GROUP_ID, kind: "test" } }] };
+const testAccount = { term_members: [{ group: { id: TEST_GROUP_ID, kind: "test" } }] };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -161,7 +161,7 @@ describe("deleteTestAccount", () => {
   });
 
   it("still refuses anyone outside the test group", async () => {
-    const { deletes } = useDb({ group_members: [{ group: { id: "gordon", kind: null } }] });
+    const { deletes } = useDb({ term_members: [{ group: { id: "gordon", kind: null } }] });
     await expect(deleteTestAccount(form("real.student@wisc.edu"))).rejects.toThrow(
       "REDIRECT /admin/test-users?error=not-found",
     );

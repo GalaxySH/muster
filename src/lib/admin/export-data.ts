@@ -9,29 +9,20 @@ import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { getDb } from "@/lib/db";
-import {
-  positions,
-  shiftBlocks,
-  students,
-  submissions,
-  shiftSelections,
-  internalAvailability,
-  flags,
-  travelRequests,
-  extracurricularFiles,
-} from "@/lib/db/schema";
+import { positions, shiftBlocks, students, submissions, shiftSelections, internalAvailability, flags, travelRequests, extracurricularFiles, termMembers } from "@/lib/db/schema";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 const toIsoDate = (d: Date | string): string =>
   typeof d === "string" ? d : d.toISOString().slice(0, 10);
 
 export async function loadExportData(): Promise<ExportAggregate[]> {
   const db = getDb();
+  const termId = await currentTermId();
 
   const base = await db
     .select({
@@ -49,19 +40,20 @@ export async function loadExportData(): Promise<ExportAggregate[]> {
       email: students.email,
       displayName: students.displayName,
       international: students.international,
-      onRoster: students.onRoster,
-      positionId: students.positionId,
+      onRoster: termMembers.onRoster,
+      positionId: termMembers.positionId,
       positionName: positions.name,
       minHours: positions.minHours,
       minDays: positions.minDays,
       weekendExempt: positions.weekendExempt,
     })
     .from(submissions)
-    .innerJoin(students, submissionOfStudent(await currentTermId()))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .innerJoin(students, submissionOfStudent(termId))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     // Exclude people moved to "People Leaving" from the export/running sheet
     // (PLAN §4.2); their submission stays in the DB but isn't a live response.
-    .where(eq(students.onRoster, true))
+    .where(eq(termMembers.onRoster, true))
     .orderBy(asc(students.displayName), asc(submissions.studentEmail));
 
   if (base.length === 0) return [];

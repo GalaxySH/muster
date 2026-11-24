@@ -196,30 +196,30 @@ export const groups = mysqlTable(
   (t) => [uniqueIndex("groups_term_name_unique").on(t.termId, t.name)],
 );
 
-/** A roster/sign-in person (PLAN.md §9). Email = Google sign-in identity (PK). */
+/**
+ * A person (PLAN.md §9). Email = Google sign-in identity (PK). Their position,
+ * roster flag and group are per term and live in `term_members`.
+ */
 export const students = mysqlTable("students", {
   email: varchar("email", { length: 255 }).primaryKey(),
   displayName: varchar("display_name", { length: 255 }).notNull(),
-  positionId: varchar("position_id", { length: 64 }).references(() => positions.id),
   international: boolean("international").notNull().default(false),
-  onRoster: boolean("on_roster").notNull().default(false),
   // Hire date from the People Coming sheet (PLAN §9); null when the workbook
   // omits it or the date is unparseable.
   hiredOn: date("hired_on", { mode: "date" }),
-  // RETIRED, kept in step until the contract migration drops them: membership
-  // lives in group_members now (one row per student per term), and nothing
-  // reads these two columns. lib/groups/membership.ts writes both, so the
-  // previous release still finds them current if a deploy is rolled back.
+  // RETIRED, kept in step until the contract migration drops them. The five
+  // columns below moved to term_members (one row per person per term) and
+  // nothing reads them. lib/terms/members.ts and lib/groups/membership.ts write
+  // both, so the previous release still finds them current if a deploy is
+  // rolled back. The `legacy` names are there so a new read does not compile
+  // by accident.
+  legacyPositionId: varchar("position_id", { length: 64 }).references(() => positions.id),
+  legacyOnRoster: boolean("on_roster").notNull().default(false),
+  legacyRosterTitle: varchar("roster_title", { length: 128 }),
   groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
     onDelete: "set null",
   }),
-  // Sticky marker: true when the group was set by the default-assignment sweep /
-  // self-add hook (vs. a manual admin assignment). The sweep skips rows already
-  // flagged, so an admin's later manual change isn't undone.
   groupAssignedAuto: boolean("group_assigned_auto").notNull().default(false),
-  // Raw PCPL position title stored at import; used to surface ghost positions
-  // (titles with no mapping) on /admin/positions and /admin/roster.
-  rosterTitle: varchar("roster_title", { length: 128 }),
   // Most recent authenticated activity for this person (any signed-in page load,
   // throttled write via lib/auth/last-seen.ts). Null = never signed in, which is
   // what the analytics surface reads to tell who has yet to log in. Set from the
@@ -228,8 +228,13 @@ export const students = mysqlTable("students", {
 });
 
 /**
- * A student's form-window group for one term (PLAN.md §13). No row, or a row
- * with no group, means no form access.
+ * A person's place in one term (docs/semester-domains-plan.md §2.3, §2.5): the
+ * position they hold in it, whether they are on its roster, the tracker title
+ * they were imported under, and their form-window group. `students` is the
+ * person; this is the term's roster. No row means the person is not part of
+ * that term at all, which reads as off the roster with no position.
+ *
+ * No group, or no row, means no form access (PLAN.md §13).
  *
  * `assigned_auto` is the sticky marker: true when the default-assignment sweep
  * or the self-add hook placed them, false for a manual admin assignment. The
@@ -237,13 +242,19 @@ export const students = mysqlTable("students", {
  * out is not undone. That is why removing someone keeps their row with a null
  * group, and why deleting a group nulls the column and leaves the rows.
  */
-export const groupMembers = mysqlTable(
-  "group_members",
+export const termMembers = mysqlTable(
+  "term_members",
   {
     termId: termIdColumn(),
     studentEmail: varchar("student_email", { length: 255 })
       .notNull()
       .references(() => students.email, { onDelete: "cascade" }),
+    // A position of the same term. Null until a tracker title maps to one.
+    positionId: varchar("position_id", { length: 64 }).references(() => positions.id),
+    onRoster: boolean("on_roster").notNull().default(false),
+    // Raw tracker title stored at import; surfaces titles with no mapping on
+    // /admin/positions and /admin/roster.
+    rosterTitle: varchar("roster_title", { length: 128 }),
     groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
       onDelete: "set null",
     }),

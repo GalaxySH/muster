@@ -38,6 +38,7 @@ import {
   submissions,
   scheduleRuns,
   scheduleAssignments,
+  termMembers,
 } from "@/lib/db/schema";
 import { applyPositionChange, type DbTx } from "@/lib/positions/apply-change";
 import { chicagoToday } from "@/lib/domain/time";
@@ -58,6 +59,7 @@ import {
 } from "./parse";
 import { currentRunOf, submissionInTerm } from "@/lib/terms/scope";
 import { loadRosterConfig } from "./config-data";
+import { enrollMember, takeOffRoster } from "@/lib/terms/members";
 
 /** One student whose stored position differed from the sheet's (names, not ids). */
 export interface PositionChangeSummary {
@@ -170,11 +172,18 @@ export async function importRoster({
   );
   const importId = randomUUID();
 
-  // Pre-read the whole roster once: onRoster status feeds the deactivation
-  // sets below, stored positions feed the change detection in the transaction.
+  // Pre-read the term's whole roster once: onRoster status feeds the
+  // deactivation sets below, stored positions feed the change detection in the
+  // transaction. Only this term: another term's roster is not this import's
+  // business (docs/semester-domains-plan.md §2.3).
   const existing = await db
-    .select({ email: students.email, positionId: students.positionId, onRoster: students.onRoster })
-    .from(students);
+    .select({
+      email: termMembers.studentEmail,
+      positionId: termMembers.positionId,
+      onRoster: termMembers.onRoster,
+    })
+    .from(termMembers)
+    .where(eq(termMembers.termId, termId));
   const priorPosition = new Map(existing.map((r) => [r.email, r.positionId]));
   const onRosterEmails = new Set(existing.filter((r) => r.onRoster).map((r) => r.email));
 
@@ -236,22 +245,22 @@ export async function importRoster({
         .values({
           email: s.email,
           displayName: s.displayName,
-          positionId: s.positionId,
           international: s.international,
           hiredOn: s.hiredOn,
-          onRoster: true,
-          rosterTitle: s.rosterTitle,
         })
         .onDuplicateKeyUpdate({
           set: {
             displayName: s.displayName,
-            positionId: s.positionId,
             international: s.international,
             hiredOn: s.hiredOn,
-            onRoster: true,
-            rosterTitle: s.rosterTitle,
           },
         });
+      // The person above, their place in this term here.
+      await enrollMember(tx, termId, s.email, {
+        positionId: s.positionId,
+        onRoster: true,
+        rosterTitle: s.rosterTitle,
+      });
 
       // Position change (only ever from active rows; deactivations just flip
       // onRoster): run the shared routine, which records the change, drops the
@@ -293,7 +302,7 @@ export async function importRoster({
     // Only ever an onRoster flip, never a delete: the name, position and any
     // submission are kept, so someone re-listed later comes straight back.
     if (deactivate.length > 0) {
-      await tx.update(students).set({ onRoster: false }).where(inArray(students.email, deactivate));
+      await takeOffRoster(tx, termId, deactivate);
       await releaseDepartedSchedules(tx, deactivate, termId);
     }
 

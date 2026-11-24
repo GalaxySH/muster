@@ -19,11 +19,12 @@ import {
   students,
   submissions,
   w2wPositionMap,
+  termMembers,
 } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
 import type { DayType, Position } from "@/lib/domain/types";
 import { currentTermId } from "@/lib/terms/current";
-import { submissionOfStudent } from "@/lib/terms/scope";
+import { submissionOfStudent, rosterOf } from "@/lib/terms/scope";
 import { inTestGroup } from "@/lib/groups/membership";
 
 export interface PositionListItem {
@@ -117,7 +118,7 @@ export interface AdminPositionItem {
   returnDate: string | null;
   /** Holders pick weekend closes. Built in: it can't be deleted or aliased. */
   picksCloses: boolean;
-  /** students.positionId references, on- and off-roster (delete guard). */
+  /** People holding the position, on- and off-roster (delete guard). */
   studentCount: number;
   /** On-roster students holding this position (the capacity check's demand side). */
   onRosterCount: number;
@@ -162,14 +163,15 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       .where(eq(shiftBlocks.termId, termId))
       .orderBy(asc(shiftBlocks.startMinutes), asc(shiftBlocks.endMinutes)),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(eq(termMembers.termId, termId))
+      .groupBy(termMembers.positionId),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
     // All selections, for the FK delete/edit guards (a test account's pick still
     // pins the block in the DB, so the guard must count it). The admin's
     // internal copies count the same way, so the removal warning matches what
@@ -264,10 +266,10 @@ export interface GhostTitle {
  */
 export async function listGhostTitles(): Promise<GhostTitle[]> {
   const rows = await getDb()
-    .select({ title: students.rosterTitle, n: sql<number>`count(*)` })
-    .from(students)
-    .where(and(eq(students.onRoster, true), isNull(students.positionId)))
-    .groupBy(students.rosterTitle);
+    .select({ title: termMembers.rosterTitle, n: sql<number>`count(*)` })
+    .from(termMembers)
+    .where(and(rosterOf(await currentTermId()), isNull(termMembers.positionId)))
+    .groupBy(termMembers.rosterTitle);
   return rows
     .map((r) => ({ title: r.title, count: Number(r.n) }))
     .sort((a, b) => b.count - a.count);

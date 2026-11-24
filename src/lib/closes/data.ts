@@ -7,7 +7,7 @@
 import "server-only";
 import { and, asc, count, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots, positions, students } from "@/lib/db/schema";
+import { closeClaims, closeSlots, positions, students, termMembers } from "@/lib/db/schema";
 import {
   closeClaimsComplete,
   closeClaimsFeasibility,
@@ -16,7 +16,7 @@ import {
   type CloseSlotKind,
 } from "@/lib/domain/close-claims";
 import { currentTermId } from "@/lib/terms/current";
-import { closeClaimInTerm } from "@/lib/terms/scope";
+import { closeClaimInTerm, memberOf } from "@/lib/terms/scope";
 
 export interface CloseSlotView {
   id: string;
@@ -195,8 +195,9 @@ export async function loadCloseAdmin(): Promise<CloseAdminView> {
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .innerJoin(positions, eq(students.positionId, positions.id))
-      .where(and(eq(positions.picksCloses, true), eq(students.onRoster, true)))
+      .innerJoin(termMembers, memberOf(termId))
+      .innerJoin(positions, eq(termMembers.positionId, positions.id))
+      .where(and(eq(positions.picksCloses, true), eq(termMembers.onRoster, true)))
       .orderBy(asc(students.displayName), asc(students.email)),
   ]);
 

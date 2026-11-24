@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots, students } from "@/lib/db/schema";
+import { closeClaims, closeSlots } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import {
   syncSheet,
@@ -31,6 +31,7 @@ import { insertCloseClaim } from "./claim-write";
 import { positionPicksCloses } from "./data";
 import { currentTermId } from "@/lib/terms/current";
 import { closeClaimInTerm } from "@/lib/terms/scope";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 
 export interface InventorySummary {
   created: number;
@@ -161,11 +162,7 @@ export async function assignCloseClaim(slotId: string, email: string): Promise<C
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const [lead] = await getDb()
-    .select({ positionId: students.positionId, onRoster: students.onRoster })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
+  const lead = await findStudentByEmail(email);
   if (!lead?.onRoster || !(await positionPicksCloses(lead.positionId)))
     return { ok: false, error: "Pick an active Shift Lead." };
 

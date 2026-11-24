@@ -20,6 +20,7 @@ import {
   shiftSelections,
   students,
   submissions,
+  termMembers,
 } from "@/lib/db/schema";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
@@ -38,7 +39,7 @@ import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
 import { isReturningStudent } from "@/lib/flow/returner";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent, memberOf } from "@/lib/terms/scope";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import {
   applyScopeFreeze,
@@ -152,7 +153,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       db
         .select({
           email: students.email,
-          positionId: students.positionId,
+          positionId: termMembers.positionId,
           international: students.international,
           everyWeekendOptIn: submissions.everyWeekendOptIn,
           desiredHours: submissions.desiredHours,
@@ -161,8 +162,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(submissions)
-        .innerJoin(students, submissionOfStudent(await currentTermId()))
-        .where(eligibleSubmittedFilter()),
+        .innerJoin(students, submissionOfStudent(termId))
+        .innerJoin(termMembers, memberOf(termId))
+        .where(eligibleSubmittedFilter(termId)),
       db
         .select({
           email: submissions.studentEmail,
@@ -172,7 +174,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
         .innerJoin(students, submissionOfStudent(await currentTermId()))
-        .where(eligibleSubmittedFilter()),
+        .where(eligibleSubmittedFilter(termId)),
       loadInternalCopiesByEmail(),
       loadCurrentRunRow(),
       getSchedulingParams(),
@@ -246,12 +248,12 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // never overwrite what somebody actually said.
   if (options.includeNonResponders) {
     const responded = new Set(engineStudents.map((s) => s.email));
-    const notSubmitted = and(onRosterStudent(), ne(submissions.status, "submitted"));
+    const notSubmitted = and(onRosterStudent(termId), ne(submissions.status, "submitted"));
     const [rosterRows, draftCells] = await Promise.all([
       db
         .select({
           email: students.email,
-          positionId: students.positionId,
+          positionId: termMembers.positionId,
           international: students.international,
           everyWeekendOptIn: submissions.everyWeekendOptIn,
           desiredHours: submissions.desiredHours,
@@ -259,8 +261,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(students)
-        .leftJoin(submissions, submissionOfStudent(await currentTermId()))
-        .where(onRosterStudent()),
+        .innerJoin(termMembers, memberOf(termId))
+        .leftJoin(submissions, submissionOfStudent(termId))
+        .where(eq(termMembers.onRoster, true)),
       db
         .select({
           email: submissions.studentEmail,

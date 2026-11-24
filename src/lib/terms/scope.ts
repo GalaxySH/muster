@@ -18,6 +18,7 @@ import {
   shiftPlans,
   students,
   submissions,
+  termMembers,
 } from "@/lib/db/schema";
 
 /** `.where(...)`: one student's submission in the term. */
@@ -38,6 +39,48 @@ export function submissionOfStudent(termId: string) {
 /** For a query that reaches submissions another way (from a child row, or a full scan). */
 export function submissionInTerm(termId: string) {
   return eq(submissions.termId, termId);
+}
+
+/**
+ * The ON clause for `students JOIN term_members`: the person's place in the
+ * term (position, roster flag, tracker title, group). `students` alone is only
+ * the person, so any query that asks who is on the roster or what job someone
+ * holds joins through this.
+ *
+ * Use an inner join for a list of the term's people: someone with no row was
+ * never part of that term and does not belong in it. Use a left join only
+ * where the person must come back regardless (a lookup by email).
+ */
+export function memberOf(termId: string) {
+  return and(eq(termMembers.studentEmail, students.email), eq(termMembers.termId, termId));
+}
+
+/**
+ * The same join from a submission: the place its student holds in the
+ * submission's own term. For code that starts from a submission id.
+ */
+export function memberOfSubmission() {
+  return and(
+    eq(termMembers.studentEmail, submissions.studentEmail),
+    eq(termMembers.termId, submissions.termId),
+  );
+}
+
+/** `.where(...)` on a query that starts from `term_members`: the term's roster. */
+export function rosterOf(termId: string) {
+  return and(eq(termMembers.termId, termId), eq(termMembers.onRoster, true));
+}
+
+/**
+ * WHERE test on a `students` query that has no reason to join: the person is
+ * on the term's roster. Being listed on the imported tracker is what puts
+ * someone on it, and dropping off it is what takes them off (PLAN §4.2).
+ * Someone who left is not schedulable, so the generator, W2W and the console
+ * all filter on this, and a missed copy readmits a departed student into a
+ * coverage count, a schedule view or a W2W upload.
+ */
+export function onRosterStudent(termId: string) {
+  return sql`exists (select 1 from ${termMembers} where ${termMembers.studentEmail} = ${students.email} and ${termMembers.termId} = ${termId} and ${termMembers.onRoster} = true)`;
 }
 
 /** The term's current schedule run. Each term has its own; there is no global one. */

@@ -30,6 +30,7 @@ import {
 import { buildMapResolver } from "@/lib/domain/w2w-plan/match";
 import type { W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
 import { currentTermId } from "@/lib/terms/current";
+import { onRosterStudent } from "@/lib/terms/scope";
 
 /** One editable mapping row. */
 export interface W2wMapRow extends W2wPositionMapEntry {
@@ -249,7 +250,7 @@ export async function getW2wNameCoverage(): Promise<W2wNameCoverage> {
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(eq(students.onRoster, true)),
+      .where(onRosterStudent(await currentTermId())),
     db.select({ email: w2wEmployees.email }).from(w2wEmployees),
   ]);
   const known = new Set(employeeRows.map((e) => e.email));

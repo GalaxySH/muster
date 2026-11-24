@@ -9,7 +9,7 @@ import "server-only";
  */
 import { getDb } from "@/lib/db";
 import { students, w2wEmployees } from "@/lib/db/schema";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
 import {
@@ -19,6 +19,7 @@ import {
   type RepairStudent,
 } from "@/lib/domain/w2w-plan/repair-seeds";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
+import { currentTermId } from "@/lib/terms/current";
 
 export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-plan/repair-seeds";
 
@@ -40,7 +41,7 @@ export async function loadRepairSeeds(
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(onRosterStudent()),
+      .where(onRosterStudent(await currentTermId())),
   ]);
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
 

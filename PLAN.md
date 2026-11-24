@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.50
-- **Last updated:** 2026-11-23
+- **Version:** 1.51
+- **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -657,12 +657,16 @@ columns from the roster.
 
 **Terms (1.48).** The app runs in one **term** (a semester) at a time, and the data
 below is split by it. `submissions`, `close_slots`, `schedule_runs`, `shift_plans`,
-`change_requests`, `groups`, `group_members`, `positions`, `shift_blocks`,
+`change_requests`, `groups`, `term_members`, `positions`, `shift_blocks`,
 `roster_title_mappings`, `w2w_position_map` and `roster_imports` each carry a `termId`.
 Everything hanging off a submission (picks, the internal copy, proofs, travel, flags)
 is scoped through it, close claims through their slot, and run and plan rows through
-their run and plan. `students` is not split: it always describes the current term.
-Students only ever see the current term, and only the current term can be changed.
+their run and plan. **`students` is the person** (email, name, international, hire
+date, last seen); **`term_members` is their place in one term** (1.51): the position
+they hold in it, whether they are on its roster, the tracker title they were imported
+under, and their form-window group. Someone with no row in a term is not part of it.
+Students only ever see the current term. Admins will be able to select and edit an
+earlier one (`docs/semester-domains-plan.md` §2.9, not built yet).
 Design and phases: `docs/semester-domains-plan.md`.
 
 - **Term**: `id` (a slug fixed at creation, so a rename never moves rows; the first is
@@ -1641,6 +1645,29 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.51 (2026-11-24)** — **Semester domains, Phase 3: the roster per term (§4.2, §9,
+  §13; issue #40, `docs/semester-domains-plan.md` §2.3, §13).** Still one term, and with
+  one term nothing changes for anyone. A person's **position, roster flag and tracker
+  title move off `students`** onto their row in `term_members`, the table that already
+  held their group (it was `group_members`; migration `0044` renames it, adds the three
+  columns and gives every person a row). This is what lets an earlier semester keep its
+  own roster while a new one is collected, and take a roster import of its own.
+  (1) **Readers.** Every query that asked who is on the roster or what job someone
+  holds now goes through `lib/terms/scope.ts`: `memberOf(termId)` (the join),
+  `memberOfSubmission()`, `rosterOf(termId)` and `onRosterStudent(termId)` (moved from
+  `roster/lookup.ts`, now term-aware). `findStudentByEmail` returns the person with
+  their place in the current term. Lists of a term's people use an inner join, so
+  someone who was never part of a term does not appear in it. (2) **Writers.**
+  `lib/terms/members.ts` is the one writer (`enrollMember`, `setMemberPosition`,
+  `takeOffRoster`), used by the roster import, the three position-change paths, test
+  accounts and the dev scripts. The roster import reads and changes only the roster of
+  the term it runs in. (3) **Rollback.** `students.position_id`, `on_roster` and
+  `roster_title` stay and are written in step, so the release before the terms work
+  still runs against the migrated schema. In code they are named `legacy*`, so a new
+  read of them does not compile. The contract migration drops them. (4) **Sign-in**
+  reads the person only (`findPersonName`), never the term. Verified by running every
+  loader on a real MariaDB before and after (identical), exercising each writer, and a
+  two-term check; the record is §13 of the plan.
 - **1.50 (2026-11-23)** — **Hire dates are calendar days in every timezone (§9, §13).**
   A fix, no migration and no data change. `students.hired_on` is a `date` column the
   driver writes and reads as LOCAL midnight, but three places treated it as a UTC
@@ -1750,7 +1777,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   when every message was only logged (no key) or blocked by the test-recipient guard,
   the requests stay unstamped and the run returns `not-delivered`. The last-run stamp
   still lands, since it proves the scheduler fired. (3) `applyScheduleEdits` refuses a
-  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`),
+  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`, in `lib/terms/scope.ts` since 1.51),
   closing the hole 1.26 named. Removals and the clear-schedule button stay allowed.
   **Test accounts** (the synthetic domain, `isTestAccountEmail`) are exempt and can be
   placed on purpose: the same on-roster filter keeps their rows off the schedule page,
