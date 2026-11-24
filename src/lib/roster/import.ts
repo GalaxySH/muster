@@ -62,6 +62,7 @@ import {
 import { currentRunOf, submissionInTerm } from "@/lib/terms/scope";
 import { loadRosterConfig } from "./config-data";
 import { enrollMember, takeOffRoster } from "@/lib/terms/members";
+import { ensureCloseRequirements } from "@/lib/closes/requirements";
 
 /** One student whose stored position differed from the sheet's (names, not ids). */
 export interface PositionChangeSummary {
@@ -321,6 +322,9 @@ export async function importRoster({
           ),
         );
     }
+
+    // Anyone the sheet made a lead (a new hire, a promotion) gets their number.
+    await ensureCloseRequirements(tx, termId);
 
     await tx.insert(rosterImports).values({
       termId,

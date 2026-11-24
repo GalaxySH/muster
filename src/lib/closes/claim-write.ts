@@ -11,16 +11,17 @@ import "server-only";
 import { and, count, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { closeClaims, closeSlots, students } from "@/lib/db/schema";
-import { REQUIRED_CLOSE_CLAIMS, remainingCapacity } from "@/lib/domain/close-claims";
+import { canClaimAnotherClose, remainingCapacity } from "@/lib/domain/close-claims";
 import { currentTermId } from "@/lib/terms/current";
 import { closeClaimInTerm } from "@/lib/terms/scope";
+import { closeRequirementOf } from "./requirements";
 
 export type CloseClaimError = "gone" | "lead-full" | "slot-full";
 
 /**
  * Insert a claim if the slot exists in the current term, the lead has room, and
  * a seat is open. A slot from another term reads as gone, and only this term's
- * claims count toward the lead's limit.
+ * claims count toward the lead's limit, which is their own number for the term.
  */
 export async function insertCloseClaim(
   slotId: string,
@@ -51,7 +52,8 @@ export async function insertCloseClaim(
       .select({ n: count() })
       .from(closeClaims)
       .where(and(eq(closeClaims.studentEmail, email), closeClaimInTerm(termId)));
-    if ((mine?.n ?? 0) >= REQUIRED_CLOSE_CLAIMS) return "lead-full";
+    const { required } = await closeRequirementOf(tx, termId, email);
+    if (!canClaimAnotherClose(mine?.n ?? 0, required)) return "lead-full";
 
     const [claimed] = await tx
       .select({ n: count() })

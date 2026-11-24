@@ -4,8 +4,8 @@ import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadWizardNav } from "@/lib/flow/data";
-import { isCloseStepRequired, loadCloseBoard } from "@/lib/closes/data";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
+import { loadCloseBoard, loadCloseRequirement } from "@/lib/closes/data";
+import { closeStepApplies } from "@/lib/domain/close-claims";
 import { CloseClaimBoard } from "@/components/closes/CloseClaimBoard";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
@@ -23,7 +23,8 @@ export default async function ClosesPage() {
 
   const student = await findStudentByEmail(session.email);
   if (!student) redirect("/me");
-  if (!(await isCloseStepRequired(student.positionId))) redirect("/me");
+  const requirement = await loadCloseRequirement(student.email, student.positionId);
+  if (!requirement || !closeStepApplies(requirement.required)) redirect("/me");
 
   const [access, nav, board] = await Promise.all([
     resolveStudentAccess(student.email),
@@ -54,8 +55,8 @@ export default async function ClosesPage() {
       )}
       <h1>Weekend closes</h1>
       <p style={{ color: "#555" }}>
-        Every Shift Lead is required to work {REQUIRED_CLOSE_CLAIMS} weekend close shifts this semester.
-        Pick your shifts below. Each shift has a limited number of spots, and they are first come first served.
+        You are required to work {requirement.required} weekend close{" "}
+        {requirement.required === 1 ? "shift" : "shifts"} this semester. Pick your shifts below. Each shift has a limited number of spots, and they are first come first served.
       </p>
       <CloseClaimBoard initial={board} editable={access.canEdit} submitted={access.submitted} />
     </Page>

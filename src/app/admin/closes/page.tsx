@@ -5,7 +5,6 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { getSheetUrl, getLastSheetSync, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildClosesSheet } from "@/lib/closes/admin-actions";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { currentTerm } from "@/lib/terms/current";
 import { CloseInventoryPanel } from "@/components/admin/CloseInventoryPanel";
 import { CloseClaimsTable } from "@/components/admin/CloseClaimsTable";
@@ -48,7 +47,8 @@ export default async function AdminClosesPage() {
       </AppHeader>
       <h1 style={{ marginTop: 0 }}>SL weekend closes</h1>
       <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-        Manage the weekend close picking feature. As a part of the availability form, all SLs must pick {REQUIRED_CLOSE_CLAIMS} weekend closes.
+        Shift Leads pick weekend closes as part of the availability form. A new lead starts
+        at {view.defaultRequirement}.
       </p>
 
       {hasSlots && (
@@ -102,7 +102,7 @@ export default async function AdminClosesPage() {
                     </Link>
                     <span style={{ color: l.complete ? "var(--color-text-success)" : "var(--color-text-danger)", fontWeight: 600 }}>
                       {l.complete ? "✓ " : ""}
-                      {l.claimCount} of {REQUIRED_CLOSE_CLAIMS}
+                      {l.claimCount} of {l.required}
                     </span>
                   </li>
                 ))}

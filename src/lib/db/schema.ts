@@ -88,6 +88,10 @@ export const terms = mysqlTable("terms", {
   // which sheets, which titles mean admin, which titles are skipped. Null
   // means the built-in defaults.
   rosterConfig: text("roster_config"),
+  // How many weekend closes a Shift Lead owes this term unless an admin sets
+  // their own number (close_requirements). Copied onto a lead's row when it is
+  // created, and never followed afterwards.
+  closeRequirement: int("close_requirement").notNull().default(3),
   /** When it became the current term. */
   activatedAt: datetime("activated_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -592,6 +596,28 @@ export const closeSlots = mysqlTable("close_slots", {
   endMinutes: int("end_minutes").notNull(),
   capacity: int("capacity").notNull(),
 });
+
+/**
+ * How many weekend closes one Shift Lead owes in one term (PLAN.md §18a). A
+ * row is made with the term's default as it stands at that moment
+ * (`ensureCloseRequirements`) and keeps its number from then on, so changing
+ * the default only reaches leads who arrive later. It stays when a lead moves
+ * to another position, so coming back in the same term restores their number.
+ */
+export const closeRequirements = mysqlTable(
+  "close_requirements",
+  {
+    termId: termIdColumn(),
+    studentEmail: varchar("student_email", { length: 255 })
+      .notNull()
+      .references(() => students.email, { onDelete: "cascade" }),
+    required: int("required").notNull(),
+    /** The admin who set it by hand; null for a row made automatically. */
+    setBy: varchar("set_by", { length: 255 }),
+    setAt: timestamp("set_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.termId, t.studentEmail] })],
+);
 
 /**
  * A Shift Lead's claim on one close slot (PLAN.md §18a). The composite PK is

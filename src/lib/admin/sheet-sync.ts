@@ -56,7 +56,10 @@ export const CLOSES_SHEET: SheetTarget = {
   name: "Muster SL Closes",
   idSettingKey: SETTING_CLOSES_SHEET_ID,
   syncedAtSettingKey: SETTING_CLOSES_SHEET_SYNCED_AT,
-  buildValues: async () => buildCloseClaimsMatrix((await loadCloseAdmin()).slots),
+  buildValues: async () => {
+    const view = await loadCloseAdmin();
+    return buildCloseClaimsMatrix(view.slots, view.leads);
+  },
 };
 
 export const SCHEDULE_SHEET: SheetTarget = {

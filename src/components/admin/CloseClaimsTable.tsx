@@ -20,7 +20,7 @@ import {
 } from "@/lib/closes/admin-actions";
 import type { AdminCloseSlot, ShiftLeadProgress } from "@/lib/closes/data";
 import {
-  REQUIRED_CLOSE_CLAIMS,
+  canClaimAnotherClose,
   formatCloseDate,
   remainingCapacity,
 } from "@/lib/domain/close-claims";
@@ -78,7 +78,7 @@ export function CloseClaimsTable({
               const open = remainingCapacity(s.capacity, s.claimants.length);
               const eligible = leads.filter(
                 (l) =>
-                  l.claimCount < REQUIRED_CLOSE_CLAIMS &&
+                  canClaimAnotherClose(l.claimCount, l.required) &&
                   !s.claimants.some((c) => c.email === l.email),
               );
               return (

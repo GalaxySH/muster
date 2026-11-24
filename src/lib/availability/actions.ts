@@ -54,8 +54,8 @@ import { syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
 import { loadPositionWithBlocks } from "./data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { chooseWeekendAutoAssign, needsWeekendAutoAssign } from "@/lib/domain/auto-assign";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
-import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
+import { closeClaimsComplete, closeStepApplies } from "@/lib/domain/close-claims";
+import { countCloseClaims, loadCloseRequirement } from "@/lib/closes/data";
 import { trySyncSheet, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
@@ -695,15 +695,17 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
     };
   }
 
-  // SL close-picking gate (PLAN §18a): a Shift Lead must hold exactly the
-  // required number of weekend closes before finalizing. Dormant until an
-  // admin generates the close inventory.
-  if (await isCloseStepRequired(gate.positionId)) {
+  // SL close-picking gate (PLAN §18a): a Shift Lead must hold at least their
+  // own number of weekend closes before finalizing. "At least", so a lead whose
+  // number was lowered after they picked is not stuck. Dormant until an admin
+  // generates the close inventory, and for a lead who owes none.
+  const closes = await loadCloseRequirement(email, gate.positionId);
+  if (closes && closeStepApplies(closes.required)) {
     const claimCount = await countCloseClaims(email);
-    if (claimCount !== REQUIRED_CLOSE_CLAIMS) {
+    if (!closeClaimsComplete(claimCount, closes.required)) {
       return {
         ok: false,
-        error: `Pick your ${REQUIRED_CLOSE_CLAIMS} weekend closes before submitting.`,
+        error: `Pick your ${closes.required} weekend ${closes.required === 1 ? "close" : "closes"} before submitting.`,
         fixHref: "/closes",
       };
     }

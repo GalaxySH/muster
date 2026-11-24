@@ -210,12 +210,31 @@ limit and a slot id from another term reads as gone. "Shift Lead" is whichever
 position has `picks_closes` set (`positionPicksCloses` in `closes/data.ts`); there is
 no fixed position id.
 
-A claim/inventory subsystem for Shift Leads, who must each claim **exactly 3** Fri/Sat
+**A number per lead since 1.53.** The fixed 3 is gone. `terms.close_requirement` is the
+term's default and `close_requirements` holds one row per lead per term.
+`closes/requirements.ts` (plain, CLI-safe) owns both seams: `ensureCloseRequirements(db,
+termId)` gives a row at the current default to everyone in the term who holds a closes
+position and has none, and `closeRequirementOf(db, termId, email)` reads one person's
+number, falling back to the term default (`assigned: false`) when they have no row.
+`ensureCloseRequirements` fills every gap instead of adding one person, so a missed
+call site is healed by the next; it runs at the end of a roster import, in
+`applyPositionChange` on a move into a closes position, on test account creation and
+when the inventory is generated. Request-side code asks `loadCloseRequirement(email,
+positionId)` in `closes/data.ts`, which is null when closes have nothing to do with
+the person (not a closes position, or no inventory) and otherwise their number, 0
+included; the pure `closeStepApplies` decides whether a student sees the step. The
+pure rules (`closeClaimsComplete` is "at least", `canClaimAnotherClose`,
+`closeLeadStatus` short/done/over, feasibility over the sum of numbers) are in
+`domain/close-claims.ts`. The admin write is `setCloseRequirements(emails, n)` in
+`closes/admin-actions.ts`; it only accepts people holding a closes position in the
+current term and releases nothing.
+
+A claim/inventory subsystem for Shift Leads, who must each claim their number of Fri/Sat
 close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory,
 unique date, per-slot capacity) + `close_claims` (composite PK `(closeSlotId,
 studentEmail)`, cascading deletes); pure rules in `domain/close-claims.ts` (default
 range = first September weekend → second December weekend, slot generation, remaining
-capacity, feasibility, `REQUIRED_CLOSE_CLAIMS`); server layer in `src/lib/closes/`
+capacity, feasibility, and the per-lead rules above); server layer in `src/lib/closes/`
 (`data.ts` loaders; `claim-write.ts` the **shared atomic claim insert** — student-row →
 slot-row lock order inside one transaction, PK backstop, returns a code the caller maps
 to its own message; `actions.ts` student claims, losers get "just filled" + the

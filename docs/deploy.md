@@ -187,6 +187,11 @@ someone's position or change a group: re-run the `INSERT INTO term_members ... O
 DUPLICATE KEY UPDATE` statement at the end of `drizzle/0044_term_members.sql` before
 deploying forward again. It copies all five columns back from `students`.
 
+**1.53 (semester domains, Phase 4, first part).** Adds 0045: a `close_requirement`
+column on `terms` (default 3) and the `close_requirements` table, with a row of 3 for
+everyone holding a closes position. The previous release reads neither, so rolling the
+image back needs nothing. Each statement can be re-run.
+
 Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
 Don't push a new tag at an older commit: a tag push runs that commit's workflow,
 and one from before the forced command is refused. Migrations aren't reversed, so

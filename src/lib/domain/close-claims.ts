@@ -3,15 +3,20 @@
  *
  * Unlike the templated availability blocks (§6), closes are a real dated
  * inventory: one slot per Friday/Saturday of the semester, each with finite
- * capacity, claimed first-come-first-served. Every Shift Lead must hold
- * exactly REQUIRED_CLOSE_CLAIMS for the semester. This module is pure (dates
- * are YYYY-MM-DD strings, all math in UTC); the atomic claim write lives in
- * the server layer.
+ * capacity, claimed first-come-first-served. Each Shift Lead owes their own
+ * number of closes for the term: the term's default when they became a lead,
+ * unless an admin set another. This module is pure (dates are YYYY-MM-DD
+ * strings, all math in UTC); the atomic claim write lives in the server layer.
  */
 import { formatTime, parseTime } from "./time";
 
-/** Every Shift Lead must claim exactly this many closes (PLAN §18a). */
-export const REQUIRED_CLOSE_CLAIMS = 3;
+/** The most closes one lead can be asked for. Zero means none are asked. */
+export const MAX_CLOSE_REQUIREMENT = 20;
+
+/** A whole number from 0 to the maximum. */
+export function isValidCloseRequirement(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_CLOSE_REQUIREMENT;
+}
 
 /** The close shift runs 6p to 11:30p (stored per slot; these seed new slots). */
 export const CLOSE_START_MINUTES = parseTime("6p");
@@ -53,13 +58,35 @@ export function remainingCapacity(capacity: number, claimedCount: number): numbe
   return Math.max(0, capacity - claimedCount);
 }
 
-/** Whether a Shift Lead has finished picking (holds all required claims). */
-export function closeClaimsComplete(claimCount: number): boolean {
-  return claimCount >= REQUIRED_CLOSE_CLAIMS;
+/**
+ * Whether a Shift Lead has finished picking: they hold at least their number.
+ * "At least" and not "exactly", so lowering a lead's number never leaves them
+ * stuck holding too many.
+ */
+export function closeClaimsComplete(claimCount: number, required: number): boolean {
+  return claimCount >= required;
+}
+
+/** Whether a lead may take one more close. They can hold their number, and no more. */
+export function canClaimAnotherClose(claimCount: number, required: number): boolean {
+  return claimCount < required;
+}
+
+/** Whether the closes step is shown to a lead at all. A number of 0 hides it. */
+export function closeStepApplies(required: number): boolean {
+  return required > 0;
+}
+
+export type CloseLeadStatus = "short" | "done" | "over";
+
+/** Where a lead stands against their number. */
+export function closeLeadStatus(claimCount: number, required: number): CloseLeadStatus {
+  if (claimCount < required) return "short";
+  return claimCount > required ? "over" : "done";
 }
 
 export interface CloseFeasibility {
-  /** Seats needed: REQUIRED_CLOSE_CLAIMS per active Shift Lead. */
+  /** Seats needed: every active Shift Lead's own number, added up. */
   required: number;
   /** Seats in the inventory: the sum of every slot's capacity. */
   available: number;
@@ -72,9 +99,10 @@ export interface CloseFeasibility {
  */
 export function closeClaimsFeasibility(input: {
   totalCapacity: number;
-  shiftLeadCount: number;
+  /** Each active lead's required number. */
+  requirements: readonly number[];
 }): CloseFeasibility {
-  const required = input.shiftLeadCount * REQUIRED_CLOSE_CLAIMS;
+  const required = input.requirements.reduce((sum, n) => sum + n, 0);
   return {
     required,
     available: input.totalCapacity,

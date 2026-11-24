@@ -13,6 +13,7 @@ const fall: TermDetails = {
   endsOn: "2026-12-12",
   newHireCutoff: "2026-06-01",
   scheduleNote: "Expect your schedule a week before the semester starts.",
+  closeRequirement: 3,
 };
 
 describe("cleanTermDetails", () => {
@@ -58,6 +59,13 @@ describe("validateTermDetails", () => {
   it("needs a schedule note that fits", () => {
     expect(validateTermDetails({ ...fall, scheduleNote: "" })).toMatch(/schedule note/);
     expect(validateTermDetails({ ...fall, scheduleNote: "x".repeat(501) })).toMatch(/under 500/);
+  });
+
+  it("takes a whole number of closes per Shift Lead, zero included", () => {
+    expect(validateTermDetails({ ...fall, closeRequirement: 0 })).toBeNull();
+    expect(validateTermDetails({ ...fall, closeRequirement: 2.5 })).toMatch(/whole number/);
+    expect(validateTermDetails({ ...fall, closeRequirement: -1 })).toMatch(/whole number/);
+    expect(validateTermDetails({ ...fall, closeRequirement: 21 })).toMatch(/whole number/);
   });
 });
 

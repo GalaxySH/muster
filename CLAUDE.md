@@ -231,9 +231,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   the admin's "Accept late travel" toggle on `/admin/terms` switches to
   accept-and-flag (entries stored `excused: false`, red "not excused (late)" cues,
   `travel_late` flag) — `getLateTravelPolicy` in `lib/settings.ts` over the seam in
-  `domain/travel.ts`. Shift Leads must additionally hold **exactly 3 weekend-close
-  claims** before they can finalize (§18a; dormant until an admin generates the
-  close inventory).
+  `domain/travel.ts`. Shift Leads must additionally hold **their own number of weekend-close
+  claims** before they can finalize (§18a; the term's default, 3 for fall, unless an
+  admin set the lead another; dormant until an admin generates the close inventory).
 - **Admins never overwrite student availability (1.07).** The admin grid's save
   writes an **internal copy** (`internal_availability` + `internal_selections`);
   `shift_selections` stays the student's own record. Scheduling surfaces read the

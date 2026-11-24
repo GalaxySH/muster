@@ -25,7 +25,7 @@ import {
 } from "@/lib/availability/effective";
 import { hourCap } from "@/lib/domain/caps";
 import { validateAvailability } from "@/lib/domain/validation";
-import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
+import { formatCloseSlot } from "@/lib/domain/close-claims";
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import { weekendCohortOf } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
@@ -1046,7 +1046,7 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
         <SectionLabel>Weekend closes</SectionLabel>
         <span style={closes.complete ? successPillStyle : dangerPillStyle}>
           {closes.complete ? "✓ " : ""}
-          {closes.claims.length} of {REQUIRED_CLOSE_CLAIMS}
+          {closes.claims.length} of {closes.required}
         </span>
       </div>
       {closes.claims.length > 0 ? (

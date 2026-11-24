@@ -11,7 +11,13 @@ import { randomUUID } from "node:crypto";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots } from "@/lib/db/schema";
+import {
+  closeClaims,
+  closeRequirements,
+  closeSlots,
+  positions,
+  termMembers,
+} from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import {
   syncSheet,
@@ -23,10 +29,12 @@ import {
 import {
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
-  REQUIRED_CLOSE_CLAIMS,
+  MAX_CLOSE_REQUIREMENT,
   generateCloseSlotDates,
   formatCloseDate,
+  isValidCloseRequirement,
 } from "@/lib/domain/close-claims";
+import { ensureCloseRequirements } from "./requirements";
 import { insertCloseClaim } from "./claim-write";
 import { positionPicksCloses } from "./data";
 import { currentTermId } from "@/lib/terms/current";
@@ -75,6 +83,8 @@ export async function generateCloseInventory(input: {
   const db = getDb();
   const termId = await currentTermId();
   const summary = await db.transaction(async (tx): Promise<InventorySummary> => {
+    // The inventory is what switches closes on, so every lead has a number by then.
+    await ensureCloseRequirements(tx, termId);
     const existing = await tx.select().from(closeSlots).where(eq(closeSlots.termId, termId));
     const claimCounts = await tx
       .select({ slotId: closeClaims.closeSlotId, n: count() })
@@ -142,7 +152,7 @@ export interface CloseAssignResult {
 
 const ASSIGN_ERROR_MESSAGES = {
   gone: "That shift no longer exists.",
-  "lead-full": `That lead already has ${REQUIRED_CLOSE_CLAIMS} closes. Remove one of theirs first.`,
+  "lead-full": "That lead already has all their closes. Remove one of theirs first.",
   "slot-full": "That shift is already full.",
 } as const;
 
@@ -217,6 +227,68 @@ export async function unassignCloseClaim(
 
   await afterClaimChange();
   return { ok: true };
+}
+
+export interface SetCloseRequirementsResult {
+  ok: boolean;
+  error?: string;
+  /** How many leads now carry the number. */
+  updated?: number;
+}
+
+/**
+ * Admin: set how many closes one lead, or several together, owe this term.
+ *
+ * It releases nothing. A lead left holding more than their new number shows as
+ * over and can unpick; one left short shows as short. Only people who hold a
+ * closes position in the current term can be given a number, so an email from
+ * a stale tab or another term is refused rather than written.
+ */
+export async function setCloseRequirements(
+  emails: string[],
+  required: number,
+): Promise<SetCloseRequirementsResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!isValidCloseRequirement(required))
+    return { ok: false, error: `Enter a whole number from 0 to ${MAX_CLOSE_REQUIREMENT}.` };
+
+  const wanted = [
+    ...new Set(
+      (Array.isArray(emails) ? emails : [])
+        .map((e) => String(e).trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (wanted.length === 0) return { ok: false, error: "Pick at least one lead." };
+
+  const db = getDb();
+  const termId = await currentTermId();
+  const leads = await db
+    .select({ email: termMembers.studentEmail })
+    .from(termMembers)
+    .innerJoin(positions, eq(positions.id, termMembers.positionId))
+    .where(
+      and(
+        eq(termMembers.termId, termId),
+        eq(positions.picksCloses, true),
+        inArray(termMembers.studentEmail, wanted),
+      ),
+    );
+  if (leads.length !== wanted.length)
+    return { ok: false, error: "Someone on that list is no longer a Shift Lead. Reload the page." };
+
+  const stamp = { required, setBy: gate.email, setAt: new Date() };
+  await db
+    .insert(closeRequirements)
+    .values(leads.map((l) => ({ termId, studentEmail: l.email, ...stamp })))
+    .onDuplicateKeyUpdate({ set: stamp });
+
+  revalidatePath("/me");
+  revalidatePath("/admin");
+  revalidatePath("/admin/students/[email]", "page");
+  await afterClaimChange();
+  return { ok: true, updated: leads.length };
 }
 
 export interface RebuildClosesSheetResult {

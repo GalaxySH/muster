@@ -10,7 +10,6 @@ import { InfoCard, Page, PrimaryLink } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { contactLabel } from "@/lib/env";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { getChangeRequestsEnabled } from "@/lib/settings";
 
 export default async function MePage() {
@@ -55,10 +54,11 @@ export default async function MePage() {
             closesAt={flow.access.closesAt}
           />
 
-          {(flow.status.kind === "done" || flow.status.kind === "continue") && flow.closes.required && flow.closes.count < REQUIRED_CLOSE_CLAIMS && (
+          {(flow.status.kind === "done" || flow.status.kind === "continue") && flow.closes.required && flow.closes.count < flow.closes.needed && (
             <InfoCard tone="danger" title="Weekend closes still needed">
               <p style={{ marginTop: 0 }}>
-                Shift Leads are required to work {REQUIRED_CLOSE_CLAIMS} weekend closes this semester.
+                You are required to work {flow.closes.needed} weekend{" "}
+                {flow.closes.needed === 1 ? "close" : "closes"} this semester.
                 You have picked {flow.closes.count}. Spots are first come first served.
               </p>
               {flow.access.canEdit &&

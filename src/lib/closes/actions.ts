@@ -13,7 +13,6 @@ import { closeClaims } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
 import { requireEditableStudent } from "@/lib/groups/gate";
 import { trySyncSheet, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { insertCloseClaim } from "./claim-write";
 import { loadCloseBoard, positionPicksCloses, type CloseBoard } from "./data";
 import { currentTermId } from "@/lib/terms/current";
@@ -38,7 +37,7 @@ async function gateShiftLead(): Promise<
 
 const CLAIM_ERROR_MESSAGES = {
   gone: "That shift is no longer available.",
-  "lead-full": `You already have ${REQUIRED_CLOSE_CLAIMS} closes. Release one first to switch.`,
+  "lead-full": "You already have all your closes. Release one first to switch.",
   "slot-full": "That shift just filled up. Pick another one.",
 } as const;
 

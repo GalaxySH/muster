@@ -54,6 +54,7 @@ export default async function AdminTermPage() {
           endsOn: term.endsOn,
           newHireCutoff: term.newHireCutoff,
           scheduleNote: term.scheduleNote,
+          closeRequirement: term.closeRequirement,
         }}
       />
       <TravelCutoffPanel

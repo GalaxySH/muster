@@ -11,7 +11,6 @@
  * wrong. An empty list is the good day, not a broken page.
  */
 import { windowState, type WindowState } from "@/lib/domain/window";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { blockSetWarnings, positionCapacityCheck } from "@/lib/domain/config-validation";
 import { stalenessMessage } from "@/lib/domain/scheduling/diff";
 import type { MapIssue } from "@/lib/domain/w2w-plan/map-health";
@@ -566,7 +565,7 @@ function buildAlerts(
     warning.push({
       id: "closes-short",
       severity: "warning",
-      title: `${s.closes.leadsShort} shift ${plural(s.closes.leadsShort, "lead is", "leads are")} short of ${REQUIRED_CLOSE_CLAIMS} weekend closes.`,
+      title: `${s.closes.leadsShort} shift ${plural(s.closes.leadsShort, "lead is", "leads are")} short on weekend closes.`,
       href: "/admin/closes",
       linkLabel: "Closes",
     });

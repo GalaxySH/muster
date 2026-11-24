@@ -44,6 +44,7 @@ describe("the schema has no default term", () => {
   const TERM_SCOPED = [
     "submissions",
     "close_slots",
+    "close_requirements",
     "schedule_runs",
     "shift_plans",
     "change_requests",

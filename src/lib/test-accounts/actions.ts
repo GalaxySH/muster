@@ -43,6 +43,7 @@ import { currentTermId } from "@/lib/terms/current";
 import { currentRunOf } from "@/lib/terms/scope";
 import { assignMembers, groupOf } from "@/lib/groups/membership";
 import { enrollMember } from "@/lib/terms/members";
+import { ensureCloseRequirements } from "@/lib/closes/requirements";
 
 export type TestAccountError =
   | "forbidden"
@@ -93,6 +94,7 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   }
   // Never on the roster: that is what keeps test accounts out of every count.
   await enrollMember(db, termId, email, { positionId, onRoster: false, rosterTitle: null });
+  await ensureCloseRequirements(db, termId);
   await assignMembers(db, termId, [email], testGroupId, false);
 
   revalidatePath("/admin/test-users");

@@ -17,7 +17,6 @@ import {
 } from "@/lib/closes/actions";
 import type { CloseBoard, CloseSlotView } from "@/lib/closes/data";
 import {
-  REQUIRED_CLOSE_CLAIMS,
   closeClaimsComplete,
   closeWeekendKey,
   formatCloseDate,
@@ -67,7 +66,8 @@ export function CloseClaimBoard({
     });
   }
 
-  const complete = closeClaimsComplete(board.myClaimCount);
+  const complete = closeClaimsComplete(board.myClaimCount, board.required);
+  const closesWord = board.required === 1 ? "close" : "closes";
 
   const weekends = new Map<string, { fri?: CloseSlotView; sat?: CloseSlotView }>();
   for (const s of board.slots) {
@@ -134,8 +134,8 @@ export function CloseClaimBoard({
     <div>
       <p style={{ fontWeight: 600, color: complete ? "#196127" : "#1a2233" }}>
         {complete
-          ? `✓ You have your ${REQUIRED_CLOSE_CLAIMS} closes.`
-          : `You have picked ${board.myClaimCount} of ${REQUIRED_CLOSE_CLAIMS}.`}
+          ? `✓ You have your ${board.required} ${closesWord}.`
+          : `You have picked ${board.myClaimCount} of ${board.required}.`}
       </p>
       {complete && editable && (
         <p style={{ fontSize: 14, color: "#555" }}>
@@ -176,7 +176,7 @@ export function CloseClaimBoard({
           )}
           {!complete && (
             <p style={{ fontSize: 14, color: "#777", marginTop: 8 }}>
-              Pick {REQUIRED_CLOSE_CLAIMS} closes to continue.
+              Pick {board.required} {closesWord} to continue.
             </p>
           )}
         </div>

@@ -21,7 +21,8 @@
  *    owns the single `revalidation_failed` flag, and re-syncs the orphan flag.
  * 5. Opens up the weekend closes of someone who leaves a position that picks
  *    them (PLAN §18a) for one that does not. Only closes from today on: the
- *    ones already worked stay as the record.
+ *    ones already worked stay as the record. Someone moving INTO such a
+ *    position gets their number of closes for the term, if they have none.
  *
  * Steps 1, 2 and 5 run for every student; only 3 and 4 need a submission.
  * Position, schedule and close rows hang off the email, not off a submission.
@@ -61,6 +62,7 @@ import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { chicagoToday } from "@/lib/domain/time";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
+import { ensureCloseRequirements } from "@/lib/closes/requirements";
 import { syncOrphanedSelectionFlag } from "./orphans";
 import { currentRunOf, submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
@@ -139,6 +141,7 @@ export async function applyPositionChange(
   const releasedCloses = names.leavesCloses
     ? await releaseUpcomingCloses(tx, input.email, input.termId)
     : [];
+  if (names.entersCloses) await ensureCloseRequirements(tx, input.termId);
 
   const [sub] = await tx
     .select({ id: submissions.id })
@@ -403,6 +406,8 @@ interface ChangeNames {
   to: string | null;
   /** The old position picks weekend closes and the new one does not. */
   leavesCloses: boolean;
+  /** The new position picks weekend closes. */
+  entersCloses: boolean;
 }
 
 async function positionNames(tx: DbTx, input: PositionChangeInput): Promise<ChangeNames> {
@@ -424,6 +429,7 @@ async function positionNames(tx: DbTx, input: PositionChangeInput): Promise<Chan
     from: nameOf(input.fromPositionId),
     to: nameOf(input.toPositionId),
     leavesCloses: picksCloses(input.fromPositionId) && !picksCloses(input.toPositionId),
+    entersCloses: picksCloses(input.toPositionId),
   };
 }
 

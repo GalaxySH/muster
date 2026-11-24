@@ -14,7 +14,7 @@ vi.mock("@/lib/positions/apply-change", () => ({ syncRevalidationFlag: vi.fn() }
 vi.mock("@/lib/positions/orphans", () => ({ syncOrphanedSelectionFlag: vi.fn() }));
 vi.mock("@/lib/closes/data", () => ({
   countCloseClaims: vi.fn(),
-  isCloseStepRequired: vi.fn(),
+  loadCloseRequirement: vi.fn(),
 }));
 // Held here rather than imported: the sheet sync is console code, and this
 // folder may not import it (only actions.ts has that edge, on the allowlist).

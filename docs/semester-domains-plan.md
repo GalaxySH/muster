@@ -1219,3 +1219,50 @@ run (it needs a W2W export file).
 closes gives their closes back from today on (`applyPositionChange`). The production
 copy holds no upcoming close claimed by someone who is not an on-roster lead, so there
 is nothing to clean up.
+
+## 14. Phase 4 as built (first part)
+
+Built on 2026-11-24 as PLAN 1.53, migration 0045. Not yet committed when this was
+written. The rebuilt Closes page is the second part and waits on its mockup.
+
+**What it covers.** `terms.close_requirement` and `close_requirements`, the backfill,
+`ensureCloseRequirements` at four of its five call sites (starting a new term is Phase
+6), `REQUIRED_CLOSE_CLAIMS` removed with every reader on the lead's own number, the
+pure rules test-first, the default on the Semester page, the admin action
+`setCloseRequirements`, and the lead table on the "Muster SL Closes" sheet.
+
+**Where it differs from §2.8.**
+
+1. **A row for everyone who holds a closes position, on the roster or off it.** §2.8
+   says "every current Shift Lead". Test accounts are never on the roster and are one
+   of the listed call sites, so the roster flag can't be the test. A row for a lead
+   who left is harmless: the admin list only shows active leads, and the row is what
+   gives them their number back if they return.
+2. **`applyPositionChange` runs it only on a move into a closes position.** Any other
+   move cannot create a lead, and the import runs it once at the end regardless.
+3. **The sheet's required column is a second table.** The sheet is one row per close,
+   so a lead's number has no column to go in. The leads follow the closes after a
+   blank row: name, email, required, picked, status.
+4. **Error copy no longer names the number.** "You already have all your closes"
+   instead of "You already have 3 closes", since the number differs by lead.
+
+**Verification.**
+
+- Loader diff on a real MariaDB, the committed code at 0044 against this at 0045, all
+  316 results: the only differences are added fields (`required`, `assigned`,
+  `status`, `defaultRequirement`, `needed`), every one of them 3 or derived from 3.
+- The rules on a real database: a lead on 1 claims one close and is refused a second;
+  a lead on 0 is refused any and has no closes step; a lead on 3 holding 3 is refused a
+  fourth; a lead with no row reads as the default; `ensureCloseRequirements` fills
+  that gap at the current default and does nothing the second time; changing the
+  default leaves existing leads alone; a cashier promoted through
+  `applyPositionChange` gets the default.
+- In the browser, on a throwaway database: `/closes` and `/me` for leads on 3, 1 and
+  0 (the last is sent back to `/me`), `/admin/closes`, the per-student card, and the
+  Semester page field, including a refused 25 and a saved 3 that left every existing
+  lead's number alone.
+- Typecheck, lint, 1,796 tests.
+
+**Not verified:** `setCloseRequirements` has no page calling it yet, so it has only
+been type-checked and reviewed. 0045 has not been rehearsed on a copy of production
+data. The sheet's lead table was unit-tested, not written to a real sheet.

@@ -15,7 +15,11 @@ import { cleanTermDetails, validateTermDetails, type TermDetails } from "@/lib/d
 import { currentTerm } from "@/lib/terms/current";
 import type { AdminActionResult } from "./actions";
 
-/** Save the current term's name, dates, new hire date and schedule note. */
+/**
+ * Save the current term's name, dates, new hire date, schedule note and the
+ * number of closes a new Shift Lead starts on. That number is only a default:
+ * leads who already have one keep it (lib/closes/requirements.ts).
+ */
 export async function saveTermDetails(input: TermDetails): Promise<AdminActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -26,6 +30,7 @@ export async function saveTermDetails(input: TermDetails): Promise<AdminActionRe
     endsOn: String(input?.endsOn ?? ""),
     newHireCutoff: String(input?.newHireCutoff ?? ""),
     scheduleNote: String(input?.scheduleNote ?? ""),
+    closeRequirement: Number(input?.closeRequirement),
   });
   const error = validateTermDetails(details);
   if (error) return { ok: false, error };
@@ -48,5 +53,6 @@ export async function saveTermDetails(input: TermDetails): Promise<AdminActionRe
   revalidatePath("/travel");
   revalidatePath("/intro");
   revalidatePath("/exit");
+  revalidatePath("/admin/closes");
   return { ok: true };
 }

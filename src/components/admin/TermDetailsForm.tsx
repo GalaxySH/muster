@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
+import { MAX_CLOSE_REQUIREMENT } from "@/lib/domain/close-claims";
 import {
   SCHEDULE_NOTE_MAX,
   TERM_NAME_MAX,
@@ -83,6 +84,22 @@ export function TermDetailsForm({ details }: { details: TermDetails }) {
             style={input}
           />
           <span style={hint}>Anyone hired on or after this date counts as a new hire.</span>
+        </label>
+        <label style={field}>
+          <span style={labelText}>Closes per Shift Lead</span>
+          <input
+            type="number"
+            min={0}
+            max={MAX_CLOSE_REQUIREMENT}
+            step={1}
+            value={Number.isNaN(draft.closeRequirement) ? "" : draft.closeRequirement}
+            onChange={(e) => set("closeRequirement", e.target.valueAsNumber)}
+            style={input}
+          />
+          <span style={hint}>
+            New Shift Leads start with this many weekend closes. Change a lead&apos;s own number
+            on the Closes page.
+          </span>
         </label>
       </div>
       <label style={{ ...field, marginTop: 14 }}>

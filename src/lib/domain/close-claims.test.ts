@@ -1,20 +1,23 @@
 import { describe, it, expect } from "vitest";
 import {
-  REQUIRED_CLOSE_CLAIMS,
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
   generateCloseSlotDates,
   closeWeekendKey,
   remainingCapacity,
+  canClaimAnotherClose,
   closeClaimsComplete,
   closeClaimsFeasibility,
+  closeLeadStatus,
+  closeStepApplies,
+  isValidCloseRequirement,
+  MAX_CLOSE_REQUIREMENT,
   formatCloseDate,
   formatCloseSlot,
 } from "./close-claims";
 
 describe("close-shift constants", () => {
-  it("requires exactly 3 claims and runs 6p to 11:30p", () => {
-    expect(REQUIRED_CLOSE_CLAIMS).toBe(3);
+  it("runs 6p to 11:30p", () => {
     expect(CLOSE_START_MINUTES).toBe(18 * 60);
     expect(CLOSE_END_MINUTES).toBe(23 * 60 + 30);
   });
@@ -71,30 +74,81 @@ describe("remainingCapacity", () => {
   });
 });
 
+describe("isValidCloseRequirement", () => {
+  it("takes whole numbers from 0 to the maximum", () => {
+    expect(isValidCloseRequirement(0)).toBe(true);
+    expect(isValidCloseRequirement(3)).toBe(true);
+    expect(isValidCloseRequirement(MAX_CLOSE_REQUIREMENT)).toBe(true);
+  });
+
+  it("refuses negatives, fractions, anything past the maximum and non-numbers", () => {
+    expect(isValidCloseRequirement(-1)).toBe(false);
+    expect(isValidCloseRequirement(2.5)).toBe(false);
+    expect(isValidCloseRequirement(MAX_CLOSE_REQUIREMENT + 1)).toBe(false);
+    expect(isValidCloseRequirement(Number.NaN)).toBe(false);
+  });
+});
+
 describe("closeClaimsComplete", () => {
-  it("is complete only at 3 or more claims", () => {
-    expect(closeClaimsComplete(0)).toBe(false);
-    expect(closeClaimsComplete(2)).toBe(false);
-    expect(closeClaimsComplete(3)).toBe(true);
+  it("is complete once the lead holds their own number", () => {
+    expect(closeClaimsComplete(0, 3)).toBe(false);
+    expect(closeClaimsComplete(2, 3)).toBe(false);
+    expect(closeClaimsComplete(3, 3)).toBe(true);
+    expect(closeClaimsComplete(1, 1)).toBe(true);
+  });
+
+  // Lowering a number must not strand a lead who already picked more.
+  it("stays complete when the lead holds more than their number", () => {
+    expect(closeClaimsComplete(3, 2)).toBe(true);
+  });
+
+  it("is complete with nothing picked when nothing is asked", () => {
+    expect(closeClaimsComplete(0, 0)).toBe(true);
+  });
+});
+
+describe("canClaimAnotherClose", () => {
+  it("allows picks up to the lead's number and no further", () => {
+    expect(canClaimAnotherClose(0, 2)).toBe(true);
+    expect(canClaimAnotherClose(1, 2)).toBe(true);
+    expect(canClaimAnotherClose(2, 2)).toBe(false);
+    expect(canClaimAnotherClose(3, 2)).toBe(false);
+    expect(canClaimAnotherClose(0, 0)).toBe(false);
+  });
+});
+
+describe("closeStepApplies", () => {
+  it("hides the step from a lead who owes none", () => {
+    expect(closeStepApplies(0)).toBe(false);
+    expect(closeStepApplies(1)).toBe(true);
+  });
+});
+
+describe("closeLeadStatus", () => {
+  it("reads short, done or over against the lead's number", () => {
+    expect(closeLeadStatus(1, 3)).toBe("short");
+    expect(closeLeadStatus(3, 3)).toBe("done");
+    expect(closeLeadStatus(3, 2)).toBe("over");
+    expect(closeLeadStatus(0, 0)).toBe("done");
   });
 });
 
 describe("closeClaimsFeasibility", () => {
-  it("compares total capacity against 3 seats per shift lead", () => {
-    expect(closeClaimsFeasibility({ totalCapacity: 90, shiftLeadCount: 30 })).toEqual({
-      required: 90,
-      available: 90,
+  it("compares total capacity against every lead's own number", () => {
+    expect(closeClaimsFeasibility({ totalCapacity: 8, requirements: [3, 3, 2] })).toEqual({
+      required: 8,
+      available: 8,
       feasible: true,
     });
-    expect(closeClaimsFeasibility({ totalCapacity: 89, shiftLeadCount: 30 })).toEqual({
-      required: 90,
-      available: 89,
+    expect(closeClaimsFeasibility({ totalCapacity: 7, requirements: [3, 3, 2] })).toEqual({
+      required: 8,
+      available: 7,
       feasible: false,
     });
   });
 
   it("is trivially feasible with no shift leads", () => {
-    expect(closeClaimsFeasibility({ totalCapacity: 0, shiftLeadCount: 0 }).feasible).toBe(true);
+    expect(closeClaimsFeasibility({ totalCapacity: 0, requirements: [] }).feasible).toBe(true);
   });
 });
 

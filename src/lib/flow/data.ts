@@ -10,7 +10,8 @@ import { loadStudentForm } from "@/lib/availability/data";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { type WindowState } from "@/lib/domain/window";
-import { countCloseClaims, isCloseStepRequired } from "@/lib/closes/data";
+import { countCloseClaims, loadCloseRequirement } from "@/lib/closes/data";
+import { closeStepApplies } from "@/lib/domain/close-claims";
 import {
   flowStatus,
   reachableStepKeys,
@@ -49,7 +50,7 @@ export type FlowState =
       access: FlowAccess;
       status: FlowStatus;
       /** SL close picking (§18a): whether it applies and how many claims are held. */
-      closes: { required: boolean; count: number };
+      closes: CloseStepState;
     };
 
 type LoadedForm = NonNullable<Awaited<ReturnType<typeof loadStudentForm>>>;
@@ -60,11 +61,21 @@ interface SubmissionProgress {
   confirmedAt: Date | null;
 }
 
+/** SL close-step state (§18a). */
+export interface CloseStepState {
+  /** The step applies to this student. */
+  required: boolean;
+  /** Claims held. */
+  count: number;
+  /** How many they owe; 0 when the step does not apply. */
+  needed: number;
+}
+
 /** Derive the wizard inputs from a loaded form, the submission progress, and closes state. */
 function computeFlowInputs(
   form: LoadedForm,
   progress: SubmissionProgress,
-  closes: { required: boolean; count: number },
+  closes: CloseStepState,
 ): FlowInputs {
   let availabilityComplete = false;
   if (
@@ -83,6 +94,7 @@ function computeFlowInputs(
     availabilityComplete,
     closesRequired: closes.required,
     closeClaimCount: closes.count,
+    closeClaimsNeeded: closes.needed,
   };
 }
 
@@ -101,13 +113,13 @@ async function loadSubmissionProgress(email: string): Promise<SubmissionProgress
   };
 }
 
-/** SL close-step state (§18a): does it apply, and how many claims are held. */
-async function loadCloses(
-  positionId: string | null,
-  email: string,
-): Promise<{ required: boolean; count: number }> {
-  if (!(await isCloseStepRequired(positionId))) return { required: false, count: 0 };
-  return { required: true, count: await countCloseClaims(email) };
+/** Does the closes step apply, how many claims are held, and how many are owed. */
+async function loadCloses(positionId: string | null, email: string): Promise<CloseStepState> {
+  const requirement = await loadCloseRequirement(email, positionId);
+  if (!requirement || !closeStepApplies(requirement.required)) {
+    return { required: false, count: 0, needed: 0 };
+  }
+  return { required: true, count: await countCloseClaims(email), needed: requirement.required };
 }
 
 export async function loadFlowState(email: string): Promise<FlowState> {

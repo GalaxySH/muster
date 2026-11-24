@@ -60,6 +60,8 @@ export interface FlowInputs {
   closesRequired: boolean;
   /** Close claims held; only meaningful when closesRequired. */
   closeClaimCount: number;
+  /** Close claims this student owes; only meaningful when closesRequired. */
+  closeClaimsNeeded: number;
 }
 
 export type FlowStatus =
@@ -89,7 +91,7 @@ export function flowStatus(i: FlowInputs): FlowStatus {
   // A shift lead who started picking closes but hasn't finished clearly passed
   // travel already; send them back to the board. With no picks yet, travel is
   // still the next unvisited step (travel completion itself is un-inferable).
-  if (i.closesRequired && i.closeClaimCount > 0 && !closeClaimsComplete(i.closeClaimCount))
+  if (i.closesRequired && i.closeClaimCount > 0 && !closeClaimsComplete(i.closeClaimCount, i.closeClaimsNeeded))
     return { kind: "continue", href: CLOSES_STEP.href, stepLabel: "your weekend closes" };
   return { kind: "continue", href: "/travel", stepLabel: "travel & finishing up" };
 }

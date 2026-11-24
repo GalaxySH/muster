@@ -4,6 +4,8 @@
  * and day belongs to. No I/O.
  */
 
+import { isValidCloseRequirement, MAX_CLOSE_REQUIREMENT } from "./close-claims";
+
 /** The fields an admin edits on the Semester page. Dates are "YYYY-MM-DD". */
 export interface TermDetails {
   name: string;
@@ -11,6 +13,8 @@ export interface TermDetails {
   endsOn: string;
   newHireCutoff: string;
   scheduleNote: string;
+  /** How many weekend closes a new Shift Lead starts on (PLAN §18a). */
+  closeRequirement: number;
 }
 
 export const TERM_NAME_MAX = 64;
@@ -28,6 +32,7 @@ export function cleanTermDetails(input: TermDetails): TermDetails {
     endsOn: input.endsOn,
     newHireCutoff: input.newHireCutoff,
     scheduleNote: input.scheduleNote.trim(),
+    closeRequirement: input.closeRequirement,
   };
 }
 
@@ -47,6 +52,9 @@ export function validateTermDetails(details: TermDetails): string | null {
   if (!details.scheduleNote) return "Write the schedule note students see when they finish.";
   if (details.scheduleNote.length > SCHEDULE_NOTE_MAX) {
     return `Keep the schedule note under ${SCHEDULE_NOTE_MAX} characters.`;
+  }
+  if (!isValidCloseRequirement(details.closeRequirement)) {
+    return `Closes per Shift Lead must be a whole number from 0 to ${MAX_CLOSE_REQUIREMENT}.`;
   }
   return null;
 }
