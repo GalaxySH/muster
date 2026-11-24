@@ -1197,5 +1197,25 @@ before. Where this differs from §2.3 and §5, this section and the code are rig
   someone with no spring row read as off the roster.
 - Unit tests for the four predicates and the three writers, and the full suite.
 
+**Rehearsal on production data (2026-11-24).** A same-day read-only copy of
+production (schema at 0036, 458 people, 365 submissions) was loaded into a throwaway
+database and migrated.
+
+- 0037 to 0043 applied in about two seconds, 0044 in under two.
+- `term_members` holds one row for each of the 458 people, and its position, roster
+  flag, title, group and auto marker equal the `students` columns as they were before
+  the migration, row for row.
+- 346 loader results for a sample of 19 people (every position, on and off the roster,
+  with and without a submission, leads holding closes) are the same on the code
+  before this phase at 0043 and on this phase at 0044, apart from the two retired group
+  fields no longer on the student record.
+- The released code (`main`) returns exactly its original output when run against the
+  fully migrated copy, so a rollback of the image is safe.
+
 **Not verified:** the W2W plan import's roster read was changed and reviewed but not
-run (it needs a W2W export file); the rehearsal of 0044 on a copy of production data.
+run (it needs a W2W export file).
+
+**Added after Phase 3 (PLAN 1.52):** a lead who moves to a position that picks no
+closes gives their closes back from today on (`applyPositionChange`). The production
+copy holds no upcoming close claimed by someone who is not an on-roster lead, so there
+is nothing to clean up.
