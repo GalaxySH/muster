@@ -308,7 +308,7 @@ describe("parseRoster", () => {
 
   it("carries a parsed start date onto the student", () => {
     const { students } = parseRoster([row({ hireDate: "2023/09/07" })], TITLE_MAP, EXCLUDED);
-    expect(students[0]?.hiredOn?.toISOString()).toBe("2023-09-07T00:00:00.000Z");
+    expect(students[0]?.hiredOn).toEqual(new Date(2023, 8, 7));
   });
 
   it("puts everyone the sheet lists on the roster, whatever the sheet says elsewhere", () => {
@@ -325,18 +325,18 @@ describe("parseRoster", () => {
 });
 
 describe("parseHireDate", () => {
-  it("parses a yyyy-mm-dd string to UTC midnight", () => {
-    expect(parseHireDate("2025-08-20")?.toISOString()).toBe("2025-08-20T00:00:00.000Z");
+  // Local midnight is the frame a `date` column is written in, so the stored
+  // day is the sheet's day whatever timezone the import runs in.
+  it("parses a yyyy-mm-dd string to local midnight on that day", () => {
+    expect(parseHireDate("2025-08-20")).toEqual(new Date(2025, 7, 20));
   });
 
   it("parses the tracker's yyyy/mm/dd start dates", () => {
-    expect(parseHireDate("2023/09/07")?.toISOString()).toBe("2023-09-07T00:00:00.000Z");
+    expect(parseHireDate("2023/09/07")).toEqual(new Date(2023, 8, 7));
   });
 
   it("accepts an ISO datetime prefix", () => {
-    expect(parseHireDate("2025-08-20T00:00:00.000Z")?.toISOString()).toBe(
-      "2025-08-20T00:00:00.000Z",
-    );
+    expect(parseHireDate("2025-08-20T00:00:00.000Z")).toEqual(new Date(2025, 7, 20));
   });
 
   it("returns null for blank or unrecognized values", () => {

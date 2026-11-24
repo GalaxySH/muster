@@ -22,6 +22,7 @@
  * rows. Reading bytes into a grid lives in ./read-workbook.
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";
+import { localDay } from "@/lib/domain/calendar-day";
 import { ADMIN_TITLES, normalizeTitle } from "./position-mapping";
 import { AUTOMATIC_COLUMNS, type RosterColumns } from "./config";
 
@@ -222,12 +223,17 @@ function parseInternational(value: string): boolean {
   return value.trim().toLowerCase().startsWith("y");
 }
 
-/** Parse a `yyyy-mm-dd` or `yyyy/mm/dd` start date to a UTC-midnight Date, else null. */
+/**
+ * Parse a `yyyy-mm-dd` or `yyyy/mm/dd` start date, else null. The Date is
+ * midnight LOCAL time, the frame the driver writes and reads a `date` column
+ * in (domain/calendar-day.ts). UTC midnight here would store the day before
+ * whenever the importing process runs west of UTC.
+ */
 export function parseHireDate(value: string): Date | null {
   const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(value.trim());
   if (!match) return null;
   const [, y, m, d] = match;
-  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -335,9 +341,8 @@ export function extractResignationDates(grid: readonly (readonly string[])[]): M
   for (let r = headerRow + 1; r < grid.length; r++) {
     const row = grid[r]!;
     const email = normalizeEmail(row[emailCol] ?? "");
-    const date = parseHireDate(row[dateCol] ?? "")
-      ?.toISOString()
-      .slice(0, 10);
+    const parsed = parseHireDate(row[dateCol] ?? "");
+    const date = parsed && localDay(parsed);
     if (!email || !date) continue;
     const prior = dates.get(email);
     if (!prior || date > prior) dates.set(email, date);

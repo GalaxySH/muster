@@ -112,18 +112,27 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
-/** Date only (no time), US Central, e.g. "26 Jul 2026", for the hire date. */
-const fmtDay = (d: Date | null): string | null => {
-  if (!d) return null;
+/** Date only (no time), e.g. "26 Jul 2026". No zone reads the local frame. */
+const formatDay = (d: Date, timeZone?: string): string => {
   const parts = new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    timeZone: "America/Chicago",
+    timeZone,
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("day")} ${get("month")} ${get("year")}`;
 };
+
+/** The day a moment fell on in US Central. */
+const fmtDay = (d: Date): string => formatDay(d, "America/Chicago");
+
+/**
+ * The hire date. It is a calendar day, not a moment: the driver hands a `date`
+ * column back as local midnight, so it is read in the local frame. Converting
+ * it to Central showed the day before on a server running in UTC.
+ */
+const fmtHireDay = (d: Date | null): string | null => (d ? formatDay(d) : null);
 
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
@@ -812,7 +821,7 @@ export default async function StudentDetailPage({
                     : "var(--color-text-secondary)",
                 }}
               >
-                {fmtDay(detail.hiredOn) ?? "Unknown"}
+                {fmtHireDay(detail.hiredOn) ?? "Unknown"}
               </div>
             </div>
             {submission?.scheduleEmailSentAt && (

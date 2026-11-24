@@ -136,7 +136,11 @@ backlog behind the allowlist entries above.
 
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
 Coming into `students.hiredOn`, driving a **welcome-back** greeting on `/me` for
-returners (hired before June of the current cycle; pure `flow/returner.ts`); (2)
+returners (hired before the term's new-hire date; pure `flow/returner.ts`). The
+hire date is a calendar day end to end: `parseHireDate` builds local midnight (the
+frame the driver writes a `date` column in), and every reader takes the day off
+`localDay` (`domain/calendar-day.ts`), never off a UTC instant or a timezone
+conversion (PLAN 1.50); (2)
 **URL-driven group + position + flag filters** on `/admin/responses` that follow you
 into the per-student view (pure `admin/response-filters.ts`; `listResponses(filters)`
 is the single source for the list AND the prev/next walk; the per-student name is a

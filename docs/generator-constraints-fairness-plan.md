@@ -370,7 +370,9 @@ counting a bound that is real rather than one the engine quietly ignored.
 Three things this branch knowingly did not do. All are recorded here rather than
 left for a later reader to rediscover.
 
-1. **`src/lib/flow/returner.ts` carries the same latent timezone hazard class
+1. **Done in PLAN 1.50:** `isReturningStudent` now compares calendar days, and
+   the importer builds the hire date in the local frame. The original note:
+   **`src/lib/flow/returner.ts` carries the same latent timezone hazard class
    that was fixed elsewhere on this branch.** `isReturningStudent` compares a
    `hiredOn` Date against a cutoff built with `Date.UTC(year, 5, 1)`. The mysql2
    driver hands back a `date` column as **local** midnight, so the two sides are

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.49
+- **Version:** 1.50
 - **Last updated:** 2026-11-23
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1641,6 +1641,21 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.50 (2026-11-23)** — **Hire dates are calendar days in every timezone (§9, §13).**
+  A fix, no migration and no data change. `students.hired_on` is a `date` column the
+  driver writes and reads as LOCAL midnight, but three places treated it as a UTC
+  instant. (1) **The per-student page showed every hire date one day early** in
+  production: the server runs in UTC and the page converted the value to Central.
+  It now shows the stored calendar day. (2) **`isReturningStudent`** compared instants
+  against a UTC-midnight cutoff; it now compares the hire date's `localDay` to the
+  term's `new_hire_cutoff` string, so someone hired exactly on the cutoff reads as a
+  new hire under any server clock (the deferred item in
+  `docs/generator-constraints-fairness-plan.md` §9.2). (3) **`parseHireDate`** built
+  UTC midnight, so an import run in a process west of UTC (the CLI on a Central
+  machine) stored the day before the sheet's date; it now builds local midnight. The
+  leavers' Resignation Effective Date is read the same way. In a UTC process (the
+  production container) only (1) changes anything. A roster imported from a Central
+  machine before this holds dates a day early, and the next import corrects them.
 - **1.49 (2026-11-23)** — **Semester domains, Phase 2: the Semester page, and fall
   leaves the copy (§8, §9, §10a; issue #40, `docs/semester-domains-plan.md`).** Still
   one term. No migration. (1) **`/admin/terms` ("Semester").** Edits the current
