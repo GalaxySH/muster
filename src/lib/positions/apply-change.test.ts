@@ -271,3 +271,58 @@ describe("applyPositionChange, into a position with no blocks yet", () => {
     );
   });
 });
+
+describe("applyPositionChange, weekend closes", () => {
+  const LEAD_ROWS = [
+    { id: "shift-lead", name: "Shift Lead", picksCloses: true },
+    { id: "culinary-assistant", name: "Culinary Assistant", picksCloses: false },
+  ];
+  const held = [
+    [
+      { slotId: "s2", date: "2026-12-05" },
+      { slotId: "s1", date: "2026-11-28" },
+    ],
+  ];
+  const base = { schedule_runs: [[]], submissions: [[]] };
+
+  it("opens up the closes of a lead who moves to a position that picks none", async () => {
+    const { result, log } = await run(
+      { ...base, positions: [LEAD_ROWS], close_claims: held },
+      { ...CHANGE, fromPositionId: "shift-lead" },
+    );
+    expect(result.releasedCloses).toEqual(["2026-11-28", "2026-12-05"]);
+    expect(log.writes).toContain("delete:close_claims");
+  });
+
+  it("deletes nothing when the lead holds no upcoming close", async () => {
+    const { result, log } = await run(
+      { ...base, positions: [LEAD_ROWS], close_claims: [[]] },
+      { ...CHANGE, fromPositionId: "shift-lead" },
+    );
+    expect(result.releasedCloses).toEqual([]);
+    expect(log.writes).not.toContain("delete:close_claims");
+  });
+
+  it("leaves closes alone when someone becomes a lead", async () => {
+    const { result, log } = await run(
+      { ...base, positions: [LEAD_ROWS], close_claims: held },
+      { ...CHANGE, fromPositionId: "culinary-assistant", toPositionId: "shift-lead" },
+    );
+    expect(result.releasedCloses).toEqual([]);
+    expect(log.reads).not.toContain("close_claims");
+  });
+
+  it("never looks at closes for a move between other positions", async () => {
+    const { result, log } = await run({ ...base, positions: [POSITION_ROWS], close_claims: held });
+    expect(result.releasedCloses).toEqual([]);
+    expect(log.reads).not.toContain("close_claims");
+  });
+
+  it("opens them up when the lead's new title has no position yet", async () => {
+    const { result } = await run(
+      { ...base, positions: [LEAD_ROWS], close_claims: held },
+      { ...CHANGE, fromPositionId: "shift-lead", toPositionId: null },
+    );
+    expect(result.releasedCloses).toHaveLength(2);
+  });
+});

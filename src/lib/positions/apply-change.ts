@@ -19,9 +19,12 @@
  *    is never silently thrown away because their position moved under them.
  * 4. Re-runs the checks through the generic `syncRevalidationFlag` seam, which
  *    owns the single `revalidation_failed` flag, and re-syncs the orphan flag.
+ * 5. Opens up the weekend closes of someone who leaves a position that picks
+ *    them (PLAN §18a) for one that does not. Only closes from today on: the
+ *    ones already worked stay as the record.
  *
- * Steps 1 and 2 run for every student; only 3 and 4 need a submission. Position
- * and schedule rows hang off the email, not off a submission.
+ * Steps 1, 2 and 5 run for every student; only 3 and 4 need a submission.
+ * Position, schedule and close rows hang off the email, not off a submission.
  *
  * A move into a ghost title (no target position) or into a position with no
  * blocks DEFERS the carry-over: selection rows stay untouched and the routine
@@ -33,9 +36,11 @@
  * calls it from the CLI as well as from the admin upload action.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, gte, inArray, or } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
+  closeClaims,
+  closeSlots,
   flags,
   internalAvailability,
   internalSelections,
@@ -54,6 +59,7 @@ import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
 import { effectiveRotation } from "@/lib/availability/effective";
 import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
+import { chicagoToday } from "@/lib/domain/time";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { syncOrphanedSelectionFlag } from "./orphans";
 import { currentRunOf, submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
@@ -86,6 +92,11 @@ export interface PositionChangeResult {
   preserved: number;
   /** Current-run shifts removed, because they were on the old position. */
   removedShifts: number;
+  /**
+   * Dates of the weekend closes opened up, because the old position picks
+   * closes and the new one does not. Empty for every other move.
+   */
+  releasedCloses: string[];
   /** True when the carry-over was deferred: no target position, or no blocks yet. */
   deferred: boolean;
   /** True when the post-change revalidation failed (skipped while deferred). */
@@ -125,6 +136,9 @@ export async function applyPositionChange(
   });
 
   const removedShifts = await removeCurrentRunShifts(tx, input.email, input.termId);
+  const releasedCloses = names.leavesCloses
+    ? await releaseUpcomingCloses(tx, input.email, input.termId)
+    : [];
 
   const [sub] = await tx
     .select({ id: submissions.id })
@@ -137,6 +151,7 @@ export async function applyPositionChange(
       carriedOver: 0,
       preserved: 0,
       removedShifts,
+      releasedCloses,
       deferred: false,
       revalidationFailed: false,
     };
@@ -167,7 +182,13 @@ export async function applyPositionChange(
   // (`frozen: "marked"`) on the strength of shifts that no longer exist.
   await tx.update(submissions).set({ scheduled: false }).where(eq(submissions.id, sub.id));
 
-  const detail = changeDetail(names, { deferred, carriedOver, preserved, removedShifts });
+  const detail = changeDetail(names, {
+    deferred,
+    carriedOver,
+    preserved,
+    removedShifts,
+    releasedCloses: releasedCloses.length,
+  });
   // Replace any earlier position_change flag instead of stacking a second one.
   await tx
     .delete(flags)
@@ -186,7 +207,47 @@ export async function applyPositionChange(
   const revalidationFailed = deferred ? false : await syncRevalidationFlag(tx, sub.id);
   if (!deferred) await syncOrphanedSelectionFlag(tx, sub.id);
 
-  return { hadSubmission: true, carriedOver, preserved, removedShifts, deferred, revalidationFailed };
+  return {
+    hadSubmission: true,
+    carriedOver,
+    preserved,
+    removedShifts,
+    releasedCloses,
+    deferred,
+    revalidationFailed,
+  };
+}
+
+/**
+ * Open up this person's weekend closes in the term, from today on. Closes
+ * belong to the position that picks them, so they go back to the pool with the
+ * job. The ones already worked are left as the record, the same line a
+ * departure with no leaving date draws. Returns the dates released.
+ */
+async function releaseUpcomingCloses(tx: DbTx, email: string, termId: string): Promise<string[]> {
+  const held = await tx
+    .select({ slotId: closeSlots.id, date: closeSlots.date })
+    .from(closeClaims)
+    .innerJoin(closeSlots, eq(closeClaims.closeSlotId, closeSlots.id))
+    .where(
+      and(
+        eq(closeClaims.studentEmail, email),
+        eq(closeSlots.termId, termId),
+        gte(closeSlots.date, chicagoToday(new Date())),
+      ),
+    );
+  if (held.length === 0) return [];
+
+  await tx.delete(closeClaims).where(
+    and(
+      eq(closeClaims.studentEmail, email),
+      inArray(
+        closeClaims.closeSlotId,
+        held.map((h) => h.slotId),
+      ),
+    ),
+  );
+  return held.map((h) => h.date).sort();
 }
 
 /**
@@ -340,6 +401,8 @@ export async function resolveDeferredCarryOver(
 interface ChangeNames {
   from: string | null;
   to: string | null;
+  /** The old position picks weekend closes and the new one does not. */
+  leavesCloses: boolean;
 }
 
 async function positionNames(tx: DbTx, input: PositionChangeInput): Promise<ChangeNames> {
@@ -347,15 +410,21 @@ async function positionNames(tx: DbTx, input: PositionChangeInput): Promise<Chan
   const nameRows =
     ids.length > 0
       ? await tx
-          .select({ id: positions.id, name: positions.name })
+          .select({ id: positions.id, name: positions.name, picksCloses: positions.picksCloses })
           .from(positions)
           .where(inArray(positions.id, ids))
       : [];
+  const picksCloses = (id: string | null) =>
+    nameRows.find((r) => r.id === id)?.picksCloses ?? false;
   // Falling back to the id keeps the history readable rather than blank when a
   // position row is missing, which is the whole reason the name is stored.
   const nameOf = (id: string | null) =>
     id === null ? null : (nameRows.find((r) => r.id === id)?.name ?? id);
-  return { from: nameOf(input.fromPositionId), to: nameOf(input.toPositionId) };
+  return {
+    from: nameOf(input.fromPositionId),
+    to: nameOf(input.toPositionId),
+    leavesCloses: picksCloses(input.fromPositionId) && !picksCloses(input.toPositionId),
+  };
 }
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -363,7 +432,13 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 /** Human copy for the position_change flag detail. */
 function changeDetail(
   names: ChangeNames,
-  outcome: { deferred: boolean; carriedOver: number; preserved: number; removedShifts: number },
+  outcome: {
+    deferred: boolean;
+    carriedOver: number;
+    preserved: number;
+    removedShifts: number;
+    releasedCloses: number;
+  },
 ): string {
   const parts = [
     names.from && names.to
@@ -390,6 +465,11 @@ function changeDetail(
   if (outcome.removedShifts > 0) {
     parts.push(
       `${count(outcome.removedShifts, "scheduled shift was", "scheduled shifts were")} removed.`,
+    );
+  }
+  if (outcome.releasedCloses > 0) {
+    parts.push(
+      `${count(outcome.releasedCloses, "weekend close was", "weekend closes were")} opened up.`,
     );
   }
   return parts.join(" ");

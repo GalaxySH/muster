@@ -55,6 +55,11 @@ export function StudentPositionChanger({
           `${res.removedShifts} scheduled shift${res.removedShifts === 1 ? "" : "s"} removed.`,
         );
       }
+      if (res.releasedCloses > 0) {
+        parts.push(
+          `${res.releasedCloses} weekend close${res.releasedCloses === 1 ? "" : "s"} opened up.`,
+        );
+      }
       setMsg({ ok: true, text: parts.join(" ") });
       setTarget("");
       router.refresh();

@@ -280,7 +280,7 @@ function SummaryReport({ summary }: { summary: ImportSummary }) {
       {summary.closesReleased.length > 0 && (
         <div style={quietBox}>
           <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            Closes opened up because the lead left ({summary.closesReleased.length}):
+            Closes opened up ({summary.closesReleased.length}):
           </p>
           <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
             {summary.closesReleased.map((c) => (

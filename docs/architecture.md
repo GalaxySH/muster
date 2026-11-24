@@ -225,7 +225,10 @@ place or pull leads directly, through the same locking insert, and `removeCloseS
 (v0.57) which deletes one shift outright — claims cascade after a client confirm).
 The **roster import** also releases claims (v1.36): someone it takes off the roster loses
 their closes after their People Leaving resignation date, or, with no date, from today
-on if the admin says so (see the roster import section). It deletes `close_claims` rows
+on if the admin says so (see the roster import section). A **position change** releases
+them too (v1.52): `applyPositionChange` deletes the claims from today on when someone
+moves from a position that picks closes to one that does not, whatever caused the move.
+The import deletes `close_claims` rows
 directly inside its own transaction rather than calling `admin-actions.ts`, which is
 console code the form core can't import; so the closes backup sheet only catches up on
 the next claim change or a manual Rebuild.
@@ -1486,7 +1489,10 @@ non-empty and `releaseUndatedCloses` is unset, it throws `RosterClosesPrompt` **
 the transaction**, exactly like the guard: nothing is written, `actions.ts` returns
 `closesPrompt`, and the panel asks "Take them off" / "Keep them on", re-sending the
 same file with the answer (CLI: `--release-closes` / `--keep-closes`). Released
-claims are deleted in the import transaction (summary `closesReleased`).
+claims are deleted in the import transaction (summary `closesReleased`). A lead the
+sheet moves to a position that picks no closes is not part of this plan or its
+question: the position-change routine releases their closes from today on, and the
+import adds them to the same summary list.
 
 Because a departure is *inferred* from an absence rather than stated anywhere, the
 **absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
@@ -1514,7 +1520,11 @@ unreachable min hours via `capacity.ts`), `position-alias.ts` (`resolveAlias`,
 counts), `listGhostTitles` (shared with `roster/status.ts`). The write-side heart is
 `positions/apply-change.ts` (plain server module, CLI-safe): `applyPositionChange(tx,
 {email, from, to, source, changedBy})` runs inside the caller's transaction and does
-four things, of which **the first two do not need a submission** (v1.29):
+four things, of which **the first two do not need a submission** (v1.29). It also
+opens up weekend closes (v1.52, no submission needed): when the old position has
+`picks_closes` and the new one does not (or there is none yet), the person's claims on
+this term's closes dated today or later are deleted (`releaseUpcomingCloses`) and the
+dates come back as `releasedCloses`. Earlier closes stay as the record.
 
 1. Inserts a `position_changes` row. Keyed by email and accumulating, it is the
    permanent record; the `position_change` flag beside it is the transient marker,

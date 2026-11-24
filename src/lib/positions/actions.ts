@@ -934,6 +934,8 @@ export interface ChangeStudentPositionResult extends ActionResult {
   preserved: number;
   /** Current-run shifts removed, because they were on the old position. */
   removedShifts: number;
+  /** Weekend closes opened up, because the new position does not pick them. */
+  releasedCloses: number;
 }
 
 /**
@@ -957,6 +959,7 @@ export async function changeStudentPosition(
     carriedOver: 0,
     preserved: 0,
     removedShifts: 0,
+    releasedCloses: 0,
   });
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
@@ -988,7 +991,7 @@ export async function changeStudentPosition(
   }
   if (!target.active) return fail(`${target.name} is inactive. Reactivate it first.`);
 
-  let change = { carriedOver: 0, preserved: 0, removedShifts: 0 };
+  let change = { carriedOver: 0, preserved: 0, removedShifts: 0, releasedCloses: 0 };
   await db.transaction(async (tx) => {
     // The position first, so the revalidation inside the routine reads the new
     // one (the same order the importer and the alias switch use). An upsert:
@@ -1010,6 +1013,7 @@ export async function changeStudentPosition(
       carriedOver: result.carriedOver,
       preserved: result.preserved,
       removedShifts: result.removedShifts,
+      releasedCloses: result.releasedCloses.length,
     };
   });
 
@@ -1017,6 +1021,10 @@ export async function changeStudentPosition(
   revalidatePath("/admin/responses");
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
+  if (change.releasedCloses > 0) {
+    revalidatePath("/admin/closes");
+    revalidatePath("/closes");
+  }
   return { ok: true, ...change };
 }
 

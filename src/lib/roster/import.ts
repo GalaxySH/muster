@@ -14,7 +14,9 @@
  * after their Resignation Effective Date when the workbook has a People
  * Leaving sheet that dates them; otherwise their closes from today on are
  * released only if the admin says so (`releaseUndatedCloses`), and the import
- * stops to ask (RosterClosesPrompt) before writing anything.
+ * stops to ask (RosterClosesPrompt) before writing anything. A lead the sheet
+ * moves to a position that picks no closes loses theirs from today on without
+ * a question (the position-change routine does it).
  *
  * Titles map to positions through the DB-owned roster_title_mappings table
  * (alias chains resolved), and a student whose stored position differs from
@@ -237,6 +239,7 @@ export async function importRoster({
   const positionName = new Map(positionRows.map((p) => [p.id, p.name]));
   const nameOf = (id: string | null) => (id === null ? null : (positionName.get(id) ?? id));
   const positionChanges: PositionChangeSummary[] = [];
+  const closesFromMoves: { email: string; date: string }[] = [];
 
   await db.transaction(async (tx) => {
     for (const s of parsed.students) {
@@ -280,6 +283,7 @@ export async function importRoster({
         source: "roster_import",
         changedBy: importedBy,
       });
+      for (const date of change.releasedCloses) closesFromMoves.push({ email: s.email, date });
       positionChanges.push({
         email: s.email,
         from: nameOf(before),
@@ -341,7 +345,7 @@ export async function importRoster({
     adminsUpserted: parsed.admins.length,
     deactivatedByAbsence,
     movedToAdmin,
-    closesReleased: toClaimList(release),
+    closesReleased: [...toClaimList(release), ...closesFromMoves],
     skipped: parsed.skipped,
     unmappedTitles: Object.fromEntries(parsed.unmappedTitles),
     byPosition,

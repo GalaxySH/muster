@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.51
+- **Version:** 1.52
 - **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -188,7 +188,8 @@ but `/change-requests` itself and the admin queue stay reachable.
   leave the stale student row active), reported in the summary as moved to admin. People
   taken off the roster drop out of listed/required responses; their submission, name and
   position are retained in the DB. The import never deletes, except leavers' SL close
-  claims (below).
+  claims (below) and the closes of a lead it moves to a position that picks none
+  (1.52: from today on, without asking).
 - **Leavers' weekend closes (§18a, 1.36)** — a Shift Lead the import takes off the roster
   gives their closes back to the pool. When the workbook has a **People Leaving** sheet
   (the PCPL workbook; the Gordon tracker never has one), its **Resignation Effective
@@ -1645,6 +1646,20 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.52 (2026-11-24)** — **A lead who changes position gives their closes back (§4.2,
+  §18a).** Until now only leaving the roster released weekend closes: a Shift Lead moved
+  to another position kept claims on closes they would never work, and those seats read
+  as taken. Now a move from a position that picks closes to one that does not **opens up
+  that person's closes from today on**, in the same transaction as the move. Closes
+  already worked stay as the record, the same line a departure with no leaving date
+  draws. It lives in the shared position-change routine (`applyPositionChange`), so it
+  holds for every way a position changes: the roster import, a move by hand on the
+  per-student page, a title mapping and a ghost resolution. Unlike a departure with no
+  date it does not stop to ask, since the sheet (or the admin) has said outright that
+  the person is no longer a lead. The import summary lists the closes under "Closes
+  opened up", the per-student move reports the count, and the `position_change` flag
+  says how many were opened up. A move into a lead position, or between two positions
+  that both pick closes, touches nothing.
 - **1.51 (2026-11-24)** — **Semester domains, Phase 3: the roster per term (§4.2, §9,
   §13; issue #40, `docs/semester-domains-plan.md` §2.3, §13).** Still one term, and with
   one term nothing changes for anyone. A person's **position, roster flag and tracker

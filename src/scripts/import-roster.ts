@@ -82,7 +82,7 @@ async function main() {
       for (const email of summary.movedToAdmin) console.log(`    ${email}`);
     }
     if (summary.closesReleased.length > 0) {
-      console.log("\n  closes opened up because the lead left:");
+      console.log("\n  closes opened up (the lead left or changed position):");
       for (const c of summary.closesReleased) console.log(`    ${c.email}  ${c.date}`);
     }
     if (summary.positionChanges.length > 0) {
