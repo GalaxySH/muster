@@ -88,13 +88,16 @@ const MONTH_LABELS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ] as const;
 
-/** Short human label for a slot date, e.g. "Fri Sep 4". */
+/**
+ * Short human label for a slot date, e.g. "Fri Sep 4, 2026". The year is shown
+ * so a slot from another year can never pass for this one.
+ */
 export function formatCloseDate(iso: string): string {
   const d = toUtc(iso);
-  return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
-/** One-line label for a whole slot, e.g. "Fri Sep 4, 6p–11:30p". */
+/** One-line label for a whole slot, e.g. "Fri Sep 4, 2026, 6p–11:30p". */
 export function formatCloseSlot(slot: {
   date: string;
   startMinutes: number;

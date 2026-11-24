@@ -12,7 +12,8 @@ import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTa
  * date. Off (default), the travel step refuses new entries and locks the
  * existing ones ("refuse" in domain/travel.ts); on, entries stay accepted but
  * are stored late/unexcused ("accept-and-flag"). Reset puts the date back to
- * the term's default, the day before the semester starts.
+ * the term's default, the day before the semester starts. Nothing else moves
+ * the cutoff: changing the semester's first day leaves it where it was set.
  */
 export function TravelCutoffPanel({
   cutoffMs,

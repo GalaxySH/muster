@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ROSTER_CONFIG, parseRosterConfig } from "./config";
+import {
+  AUTOMATIC_COLUMNS,
+  DEFAULT_ROSTER_CONFIG,
+  cleanRosterReading,
+  parseRosterConfig,
+  validateRosterReading,
+} from "./config";
 
 describe("parseRosterConfig", () => {
   it("is the built-in defaults when nothing is stored", () => {
@@ -20,6 +26,7 @@ describe("parseRosterConfig", () => {
         leavingSheet: "Leavers",
         adminTitles: ["Unit Supervisor"],
         excludedTitles: ["Dining Advisory Board Member (DAB)"],
+        columns: { name: " Employee ", email: "UW Email", bogus: "x", startDate: 7 },
       }),
     );
     expect(config).toEqual({
@@ -27,6 +34,7 @@ describe("parseRosterConfig", () => {
       leavingSheet: "Leavers",
       adminTitles: ["unit supervisor"],
       excludedTitles: ["dining advisory board member (dab)"],
+      columns: { ...AUTOMATIC_COLUMNS, name: "Employee", email: "UW Email" },
     });
   });
 
@@ -58,5 +66,66 @@ describe("parseRosterConfig", () => {
     );
     expect(config.sheetCandidates).toEqual(["Gordon"]);
     expect(config.adminTitles).toEqual(["a b"]);
+  });
+});
+
+describe("cleanRosterReading", () => {
+  const blank = {
+    sheetCandidates: "",
+    leavingSheet: "",
+    adminTitles: "",
+    columns: AUTOMATIC_COLUMNS,
+  };
+
+  it("reads one name per line", () => {
+    const reading = cleanRosterReading({
+      sheetCandidates: "Carson\n\n Gordon ",
+      leavingSheet: " Leavers ",
+      adminTitles: "Unit  Supervisor\nHead Student Supervisor",
+      columns: { ...AUTOMATIC_COLUMNS, title: " Job Title " },
+    });
+    expect(reading).toEqual({
+      sheetCandidates: ["Carson", "Gordon"],
+      leavingSheet: "Leavers",
+      adminTitles: ["unit supervisor", "head student supervisor"],
+      columns: { ...AUTOMATIC_COLUMNS, title: "Job Title" },
+    });
+  });
+
+  it("puts blank sheet names back to the defaults", () => {
+    const reading = cleanRosterReading(blank);
+    expect(reading.sheetCandidates).toEqual(DEFAULT_ROSTER_CONFIG.sheetCandidates);
+    expect(reading.leavingSheet).toBe(DEFAULT_ROSTER_CONFIG.leavingSheet);
+  });
+
+  // Unlike the sheets, an empty admin list is a real choice: nobody is an admin by title.
+  it("keeps an empty admin title list empty", () => {
+    expect(cleanRosterReading(blank).adminTitles).toEqual([]);
+  });
+});
+
+describe("validateRosterReading", () => {
+  const ok = cleanRosterReading({
+    sheetCandidates: "Gordon",
+    leavingSheet: "People Leaving",
+    adminTitles: "Head Student Supervisor",
+    columns: AUTOMATIC_COLUMNS,
+  });
+
+  it("accepts an ordinary reading", () => {
+    expect(validateRosterReading(ok)).toBeNull();
+  });
+
+  it("refuses two columns with the same name, whatever the capitals", () => {
+    expect(
+      validateRosterReading({
+        ...ok,
+        columns: { ...AUTOMATIC_COLUMNS, name: "Email", email: "email" },
+      }),
+    ).toMatch(/same name/);
+  });
+
+  it("refuses an overlong name", () => {
+    expect(validateRosterReading({ ...ok, leavingSheet: "x".repeat(101) })).toMatch(/under 100/);
   });
 });

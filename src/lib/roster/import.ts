@@ -144,11 +144,11 @@ export async function importRoster({
   allowMassDeactivation = false,
   releaseUndatedCloses,
 }: ImportOptions): Promise<ImportSummary> {
-  // How the file is read is the term's own: sheet names, the titles that mean
-  // admin and the titles to skip (edited on /admin/roster).
+  // How the file is read is the term's own: sheet and column names, the titles
+  // that mean admin and the titles to skip (edited on /admin/roster).
   const config = await loadRosterConfig(db, termId);
   const { sheetName, grid, leavingGrid } = await readRosterGrid(workbook, requestedSheet, config);
-  const rows = extractRosterRows(grid);
+  const rows = extractRosterRows(grid, config.columns);
   const resignations = leavingGrid
     ? extractResignationDates(leavingGrid)
     : new Map<string, string>();

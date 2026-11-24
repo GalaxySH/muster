@@ -34,6 +34,8 @@ export interface ScheduleEmailDialogProps {
   studentEmail: string;
   displayName: string;
   positionName: string;
+  /** The current term's name, for `{{term}}`. */
+  termName: string;
   template: ScheduleEmailTemplate;
   cc: string;
   from: string;
@@ -77,12 +79,13 @@ export function SendScheduleEmailDialog({
       const vars = buildScheduleEmailVars(
         { displayName: p.displayName, position: p.positionName },
         fields,
+        p.termName,
       );
       return { ok: true as const, email: renderScheduleEmail(draft, vars, p.shifts) };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
-  }, [fields, draft, p.displayName, p.positionName, p.shifts]);
+  }, [fields, draft, p.displayName, p.positionName, p.termName, p.shifts]);
 
   function send() {
     setError(null);

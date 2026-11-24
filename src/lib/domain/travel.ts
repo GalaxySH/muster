@@ -1,9 +1,9 @@
 /**
  * Travel-excusal cutoff rule (PLAN.md §5 #8, §7b, §8).
  *
- * Travel is excused only if its entry was created BEFORE the global
- * semester-start cutoff (9/1 by default; admin-configurable via app_settings,
- * see lib/settings.ts). What happens to a LATE entry is the policy below. The
+ * Travel is excused only if its entry was created BEFORE the term's cutoff
+ * (the day before the term starts by default; the admin can move it, see
+ * lib/settings.ts). What happens to a LATE entry is the policy below. The
  * cutoff is its own config value, independent of per-position form windows
  * (§13).
  */
@@ -20,7 +20,7 @@ export type LateTravelPolicy = "refuse" | "accept-and-flag";
  * the cutoff are REFUSED outright: nothing is stored, so every stored entry is
  * excused by construction and the `travel_late` flag never raises. The
  * effective policy is admin-configurable at runtime (`getLateTravelPolicy` in
- * lib/settings.ts, toggled on /admin/groups); switching to "accept-and-flag"
+ * lib/settings.ts, toggled on /admin/terms); switching to "accept-and-flag"
  * restores the previous behavior end to end: late entries are stored with
  * `excused: false`, the "not excused (late)" badges render, and
  * finalizeSubmission raises `travel_late`.

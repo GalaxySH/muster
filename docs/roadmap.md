@@ -598,8 +598,7 @@ Four defects in one flow (`closes/admin-actions.ts`, `domain/close-claims.ts`):
   (`groups/gate.ts:43`), so only manual `assignCloseClaim` recovers it.
 
 Wants: a max-range guard plus a slot-count preview before writing; the year shown
-in close dates (`formatCloseDate` prints none today, so a 2025 and a 2026 slot
-look identical); a term concept or at minimum a bulk "clear all claims"; and a
+in close dates (**done in 1.49**: `formatCloseDate` prints it); a term concept or at minimum a bulk "clear all claims"; and a
 hub alert when the newest slot is in the past.
 
 ### 7.4 Drive failures that report healthy — **S**

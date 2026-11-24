@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phase 1 is built (PLAN 1.48). Phases 2 to 6 are not.** Branch
+**Status: Phases 1 and 2 are built (PLAN 1.48 and 1.49). Phases 3 to 6 are not.** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -850,3 +850,57 @@ request-side loader, 256 results, with `main`'s code and saved the output.
   travel accepted, the default cutoff, the stored coverage pool, 321 group
   memberships, and `shift-lead` as the only position that picks closes.
 - The CI check from §7 item 1 is `src/lib/terms/scope-usage.test.ts`.
+
+## 11. Phase 2 as built
+
+Built on 2026-11-23 as PLAN 1.49. No migration: every column it needs came with
+0041 and 0043.
+
+**What it covers.** Everything in the Phase 2 list in §5: the Semester page at
+`/admin/terms`, the hub split and the term name in the admin header, the roster
+settings on `/admin/roster` (sheets, admin titles, column names), `{{term}}` in the
+schedule email with the stale-name warning, the form-paste year rule, the year on
+close dates, the term in CSV names, and the last "9/1" in copy.
+
+**Where it differs from the plan above.**
+
+1. **The term name sits in `AppHeader`**, beside the student finder, for any signed-in
+   admin. That covers every admin page with one change, and also shows on the student
+   pages an admin opens, which is useful when testing the form.
+2. **The travel cutoff keeps its own panel** on the Semester page instead of becoming
+   two more fields in the details form. It saves on its own, as it always has, and
+   Reset still restores the default.
+3. **Changing the first day never moves the travel cutoff** (owner decision,
+   2026-11-23). The plan did not say what happens to the cutoff when the start date
+   changes. It stays where it was set. The panel then shows it as no longer the
+   default and offers Reset, which puts it on the day before the new first day.
+4. **The form-paste year comes from the term's start date alone**, not its range: a
+   month and day belongs to the first year it comes round on or after the start of the
+   month before the term begins. Travel is often entered for dates after the term ends
+   (winter break, summer), so the end date is the wrong bound. For a September start
+   this is the old rule exactly.
+5. **A named roster column is required.** Blank means the built-in matching, where the
+   start date stays optional. Once a term names a start date column, a sheet without
+   it stops the import before anything is written, the same as any other missing
+   column.
+6. **The stale-name warning compares against other terms' names**, as planned, so it
+   has nothing to say while there is one term. It starts working with Phase 4. It
+   cannot notice a name that only ever existed in the text, for example after the
+   current term is renamed.
+7. **"Roster" on the hub is still called "Roster import"**, and close inventory stays
+   under Review as "Weekend closes". Only the grouping changed.
+8. **The missing-pointer alert on the hub is not built.** A missing or dangling
+   `current_term_id` still fails closed by throwing, which also takes the hub down, so
+   there is no page left to show an alert on. It needs an error boundary that does not
+   read the term, and belongs with Phase 4, the first release that moves the pointer.
+
+**How it was verified.** Unit tests for the new pure rules (term details, the cutoff
+the year rule, column matching, the roster settings
+cleaner) and the full suite. In the browser on a throwaway MariaDB: the Semester page
+saved a rename and a new start date, refused an end date before the start and a name
+another term holds, left the travel cutoff where it was when the start date moved, and
+warned about a saved email naming another term; the hub showed the two groups; the
+email preview filled in the term; close dates showed the year; and the responses CSV
+was named with the term. A CSV with every header reworded failed with the built-in
+matching, then imported correctly once the column names and an extra admin title were
+saved on `/admin/roster`.

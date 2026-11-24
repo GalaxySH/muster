@@ -4,19 +4,18 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
 import { getRosterStatus } from "@/lib/roster/status";
-import { getExcludedRosterTitles } from "@/lib/settings";
+import { getRosterConfig } from "@/lib/settings";
 import { RosterImportPanel } from "@/components/admin/RosterImportPanel";
 import { ExcludedTitlesPanel } from "@/components/admin/ExcludedTitlesPanel";
+import { RosterReadingPanel } from "@/components/admin/RosterReadingPanel";
 
 export default async function AdminRosterPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/admin/roster");
   if (!session.isAdmin) redirect("/me");
 
-  const [status, excludedTitles] = await Promise.all([
-    getRosterStatus(),
-    getExcludedRosterTitles(),
-  ]);
+  const [status, config] = await Promise.all([getRosterStatus(), getRosterConfig()]);
+  const defaultSheet = config.sheetCandidates[0];
 
   return (
     <Page>
@@ -30,9 +29,9 @@ export default async function AdminRosterPage() {
         longer lists is taken off the roster (they drop out of the response list, export, and
         non-response tracking, though their submission is kept). If that would take off more than a
         fifth of the roster, the import stops and asks you first. Shift leads who leave come off
-        their weekend closes after the resignation date on the People Leaving sheet; if there is no
-        date, the import asks you. Leave <strong>Sheet</strong> blank to read the Gordon sheet.
-        Re-importing the same file is safe.
+        their weekend closes after the resignation date on the {config.leavingSheet} sheet; if there
+        is no date, the import asks you. Leave <strong>Sheet</strong> blank to read the{" "}
+        {defaultSheet} sheet. Re-importing the same file is safe.
       </p>
 
       <section style={card}>
@@ -74,7 +73,7 @@ export default async function AdminRosterPage() {
 
       <section style={card}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload workbook</h2>
-        <RosterImportPanel />
+        <RosterImportPanel defaultSheet={defaultSheet} />
       </section>
 
       <section style={card}>
@@ -83,7 +82,22 @@ export default async function AdminRosterPage() {
           Rows with these position titles are skipped by the import. They are not added as students
           or admins.
         </p>
-        <ExcludedTitlesPanel titles={excludedTitles} />
+        <ExcludedTitlesPanel titles={[...config.excludedTitles]} />
+      </section>
+
+      <section style={card}>
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Roster settings</h2>
+        <p style={{ margin: "0 0 10px", fontSize: 14, color: "#555" }}>
+          How this semester&apos;s tracker is read.
+        </p>
+        <RosterReadingPanel
+          reading={{
+            sheetCandidates: config.sheetCandidates.join("\n"),
+            leavingSheet: config.leavingSheet,
+            adminTitles: [...config.adminTitles].join("\n"),
+            columns: config.columns,
+          }}
+        />
       </section>
     </Page>
   );

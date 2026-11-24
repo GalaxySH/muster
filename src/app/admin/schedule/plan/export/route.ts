@@ -7,6 +7,7 @@
 import { getAppSession } from "@/lib/auth/session";
 import { buildExportModel, exportFileText } from "@/lib/w2w/export-data";
 import { encodeCp1252 } from "@/lib/text/cp1252";
+import { currentTermId } from "@/lib/terms/current";
 
 const UNAVAILABLE_MESSAGE = {
   "no-plan": "No shift plan has been imported yet.",
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
   return new Response(new Uint8Array(bytes), {
     headers: {
       "Content-Type": "text/csv; charset=windows-1252",
-      "Content-Disposition": `attachment; filename="muster-w2w-week-${week}.csv"`,
+      "Content-Disposition": `attachment; filename="muster-w2w-${await currentTermId()}-week-${week}.csv"`,
       "Cache-Control": "no-store",
     },
   });

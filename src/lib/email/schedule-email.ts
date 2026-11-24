@@ -38,8 +38,8 @@ export type ScheduleEmailTemplate = Pick<ScheduleEmailConfig, "subject" | "body"
 };
 
 export const DEFAULT_SCHEDULE_EMAIL: ScheduleEmailConfig = {
-  subject: "Your Fall 2026 work schedule",
-  body: `Your <b>Fall 2026</b> work schedule as a {{position}} will go into effect on <b>{{ start_date | date: "%A, %B %-d" }}</b>. Your schedule is posted in When2Work. If there are issues with your schedule that conflict with your course schedule or mandatory extracurricular events, you will need to contact <mark>gdec_h-o@g-groups.wisc.edu</mark> in order to get your schedule adjusted before you begin with proof of the conflict (class schedule screenshot). Otherwise, this schedule will remain the same for the entirety of the semester! We look forward to seeing you soon!
+  subject: "Your {{term}} work schedule",
+  body: `Your <b>{{term}}</b> work schedule as a {{position}} will go into effect on <b>{{ start_date | date: "%A, %B %-d" }}</b>. Your schedule is posted in When2Work. If there are issues with your schedule that conflict with your course schedule or mandatory extracurricular events, you will need to contact <mark>gdec_h-o@g-groups.wisc.edu</mark> in order to get your schedule adjusted before you begin with proof of the conflict (class schedule screenshot). Otherwise, this schedule will remain the same for the entirety of the semester! We look forward to seeing you soon!
 
 {% if schedule_table %}Your shifts:
 
@@ -84,6 +84,8 @@ export function parseScheduleEmailConfig(raw: string | null): ScheduleEmailConfi
  * which the renderer builds from the shifts. Optional text is "" when not given.
  */
 export interface ScheduleEmailVars {
+  /** The current term's name, e.g. "Fall 2026". */
+  term: string;
   first_name: string;
   full_name: string;
   position: string;
@@ -109,8 +111,10 @@ export function firstNameOf(displayName: string): string {
 export function buildScheduleEmailVars(
   student: { displayName: string; position: string },
   input: ScheduleEmailInput,
+  termName: string,
 ): ScheduleEmailVars {
   return {
+    term: termName,
     first_name: firstNameOf(student.displayName),
     full_name: student.displayName.trim(),
     position: student.position,
@@ -133,6 +137,7 @@ export function validateScheduleEmailInput(input: ScheduleEmailInput): string | 
 
 /** The variables key shown on the settings page. */
 export const SCHEDULE_EMAIL_VARIABLES: { name: string; about: string }[] = [
+  { name: "term", about: "The semester's name." },
   { name: "first_name", about: "The student's first name." },
   { name: "full_name", about: "The student's full name." },
   { name: "position", about: "The student's position." },
@@ -156,8 +161,12 @@ export const SCHEDULE_EMAIL_VARIABLES: { name: string; about: string }[] = [
   },
 ];
 
-/** Values used for the settings preview and for checking a template on save. */
+/**
+ * Values used for the settings preview and for checking a template on save.
+ * The preview and the test send put the current term's name over `term`.
+ */
 export const SAMPLE_VARS: ScheduleEmailVars = {
+  term: "Fall 2026",
   first_name: "Alex",
   full_name: "Alex Example",
   position: "Culinary Assistant",

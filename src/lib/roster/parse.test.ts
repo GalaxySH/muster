@@ -63,6 +63,64 @@ describe("extractRosterRows", () => {
     ]);
   });
 
+  describe("with column names set on the term", () => {
+    const RENAMED = [
+      ["Employee", "Job", "UW Address", "Intl Student", "First Shift", "Email"],
+      ["Ann A", "Dishwasher", "ann@wisc.edu", "Yes", "2026-08-20", "personal@example.com"],
+    ];
+    const columns = {
+      name: "Employee",
+      email: "UW Address",
+      title: "job",
+      international: " Intl  Student ",
+      startDate: "First Shift",
+    };
+
+    it("reads the named headers, whatever their capitals and spacing", () => {
+      expect(extractRosterRows(RENAMED, columns)).toEqual([
+        {
+          name: "Ann A",
+          positionTitle: "Dishwasher",
+          email: "ann@wisc.edu",
+          international: "Yes",
+          hireDate: "2026-08-20",
+        },
+      ]);
+    });
+
+    it("can't read a reworded sheet without them", () => {
+      expect(() => extractRosterRows(RENAMED)).toThrow(/header row/);
+    });
+
+    // A named column replaces the built-in guess, so the other "Email" column is not used.
+    it("uses the named column even when a built-in match also exists", () => {
+      expect(extractRosterRows(RENAMED, columns)[0]!.email).toBe("ann@wisc.edu");
+    });
+
+    it("names the missing column when a named header isn't in the sheet", () => {
+      expect(() => extractRosterRows(RENAMED, { ...columns, title: "Role" })).toThrow(
+        /Could not find the Role column/,
+      );
+      expect(() => extractRosterRows(RENAMED, { ...columns, startDate: "Hired" })).toThrow(
+        /Could not find the Hired column/,
+      );
+      expect(() => extractRosterRows(RENAMED, { ...columns, name: "Person" })).toThrow(
+        /a row with Person and UW Address columns/,
+      );
+    });
+
+    it("finds a blank one the built-in way", () => {
+      const rows = extractRosterRows(
+        [
+          ["Employee", "Title", "Email", "International"],
+          ["Ann A", "Dishwasher", "ann@wisc.edu", "No"],
+        ],
+        { name: "Employee", email: "", title: "", international: "", startDate: "" },
+      );
+      expect(rows[0]).toMatchObject({ name: "Ann A", positionTitle: "Dishwasher", hireDate: "" });
+    });
+  });
+
   it("reads an older single-header sheet with a Position Title column", () => {
     const rows = extractRosterRows([
       ["Name", "Position Title", "Email", "International? (Y/N)", "Start Date"],

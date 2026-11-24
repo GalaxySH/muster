@@ -5,7 +5,12 @@
 import { eq } from "drizzle-orm";
 import { appSettings, terms } from "@/lib/db/schema";
 import type { DbOrTx } from "@/lib/terms/term-id";
-import { parseRosterConfig, type RosterConfig } from "./config";
+import {
+  parseRosterConfig,
+  type RosterColumns,
+  type RosterConfig,
+  type RosterReading,
+} from "./config";
 import { effectiveExcludedTitles, SETTING_EXCLUDED_ROSTER_TITLES } from "./position-mapping";
 
 /** A term's roster config with every fallback applied, ready for the import to compare against. */
@@ -14,6 +19,7 @@ export interface EffectiveRosterConfig {
   leavingSheet: string;
   adminTitles: ReadonlySet<string>;
   excludedTitles: ReadonlySet<string>;
+  columns: RosterColumns;
 }
 
 async function storedConfig(db: DbOrTx, termId: string): Promise<RosterConfig> {
@@ -49,6 +55,7 @@ export async function loadRosterConfig(db: DbOrTx, termId: string): Promise<Effe
     leavingSheet: config.leavingSheet,
     adminTitles: new Set(config.adminTitles),
     excludedTitles,
+    columns: config.columns,
   };
 }
 
@@ -72,4 +79,21 @@ export async function saveExcludedTitles(
     .insert(appSettings)
     .values({ key: SETTING_EXCLUDED_ROSTER_TITLES, value: legacy })
     .onDuplicateKeyUpdate({ set: { value: legacy } });
+}
+
+/**
+ * Save how the term's tracker is read (already cleaned and checked): the
+ * sheets, the admin titles and the column names. The excluded titles are saved
+ * on their own above and are left as they are.
+ */
+export async function saveRosterReading(
+  db: DbOrTx,
+  termId: string,
+  reading: RosterReading,
+): Promise<void> {
+  const config = await storedConfig(db, termId);
+  await db
+    .update(terms)
+    .set({ rosterConfig: JSON.stringify({ ...config, ...reading }) })
+    .where(eq(terms.id, termId));
 }

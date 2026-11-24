@@ -7,6 +7,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadCurrentSchedule } from "@/lib/schedule/data";
 import { buildScheduleMatrix } from "@/lib/schedule/export";
 import { toCsv } from "@/lib/admin/export";
+import { currentTermId } from "@/lib/terms/current";
 
 const BOM = String.fromCharCode(0xfeff); // UTF-8 BOM for Excel
 
@@ -21,7 +22,7 @@ export async function GET() {
   return new Response(BOM + toCsv(buildScheduleMatrix(schedule.students)), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="muster-schedule-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="muster-schedule-${await currentTermId()}-${date}.csv"`,
       "Cache-Control": "no-store",
     },
   });

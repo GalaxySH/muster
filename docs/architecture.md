@@ -29,6 +29,14 @@ only the current term can be changed.
     submissions query stays inside a term; `currentRunOf`, `currentPlanOf` and
     `closeClaimInTerm` do the same for runs, plans and close claims (a claim has no
     term column, it is scoped through its slot).
+- **The Semester page (`/admin/terms`, 1.49).** `TermDetailsForm` edits the current
+  term's name, dates, new-hire date and schedule note through `saveTermDetails`
+  (`lib/admin/term-actions.ts`); the rules are pure, in `domain/terms.ts`
+  (`validateTermDetails`, `termYearFor`, `termNamesIn`). Saving the details never
+  moves the travel cutoff, even when the first day changes. The page
+  also holds `TravelCutoffPanel` and warns when the saved schedule email names
+  another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
+  and the hub nav is grouped into "This semester" and "All semesters".
 - **Who resolves the term.** Request-side loaders and actions call `currentTermId()`
   themselves: they are defined as "the current term's" data. Anything that takes a
   database handle or a transaction (`importRoster`, `applyPositionChange`,
@@ -365,9 +373,10 @@ ingest** — written by the admin (picker / pasted emails) or the dormant
 `groups` + the two student columns; `0006` drops the old unused `form_windows` table
 (superseded); `0007` adds `groups.lockAfterSubmit`. The seed inserts the "New Student"
 group only if absent (default-flagged only when no group holds the flag). The
-**travel-excusal cutoff** (default 9/1) lives in `app_settings` (`getTravelCutoff` in
-`settings.ts`), editable on `/admin/groups` (`TravelCutoffPanel`), which also carries
-the **"Accept late travel" toggle** (`SETTING_LATE_TRAVEL_ACCEPT`, read via
+**travel-excusal cutoff** (default: the day before the term starts) lives on the term
+(`getTravelCutoff` in `settings.ts`), editable on the Semester page, `/admin/terms`
+(`TravelCutoffPanel`, moved there from `/admin/groups` in 1.49), which also carries
+the **"Accept late travel" toggle** (`terms.late_travel_accept`, read via
 `getLateTravelPolicy`, written by `setLateTravelAccepted`). Off (default), on/after the
 cutoff the travel step **refuses** new entries and locks existing ones; on, entries
 keep flowing but store `excused: false` (late) and finalize raises `travel_late`. The
@@ -1343,9 +1352,16 @@ be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-l
 
 **How the file is read is the term's own (1.48).** `roster/config.ts` is the pure
 shape and parser of `terms.roster_config` (sheets tried, the leavers sheet, admin
-titles, excluded titles; each field falls back to its built-in default on its own) and
-`roster/config-data.ts` reads and writes it through a database handle, so the CLI
-shares it. `importRoster` takes `termId` from its caller, loads that config, and reads
+titles, excluded titles, column names; each field falls back to its built-in default
+on its own) and `roster/config-data.ts` reads and writes it through a database handle,
+so the CLI shares it. Since 1.49 all of it is edited on `/admin/roster`: the excluded
+titles in `ExcludedTitlesPanel` as before, the rest in `RosterReadingPanel`
+(`setRosterReading` in `admin/actions.ts`, cleaned and checked by
+`cleanRosterReading` / `validateRosterReading`). **Column names** are for a tracker
+whose headers were reworded past the built-in matching: `extractRosterRows(grid,
+columns)` matches a named header exactly (normalized like titles) and requires it,
+and finds a blank one the built-in way. The People Leaving sheet always uses the
+built-in matching. `importRoster` takes `termId` from its caller, loads that config, and reads
 this term's title mappings and positions only. Excluded titles fall back to the
 pre-term `excluded_roster_titles` setting until the term saves its own list.
 

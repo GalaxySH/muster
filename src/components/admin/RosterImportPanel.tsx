@@ -28,7 +28,7 @@ const SKIP_REASON_LABEL: Record<string, string> = {
   excluded_title: "excluded title",
 };
 
-export function RosterImportPanel() {
+export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export function RosterImportPanel() {
             type="text"
             value={sheetName}
             onChange={(e) => setSheetName(e.target.value)}
-            placeholder="Gordon"
+            placeholder={defaultSheet}
             disabled={pending}
             style={{ fontSize: 14, padding: "4px 6px", width: 120 }}
           />

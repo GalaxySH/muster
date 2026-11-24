@@ -52,7 +52,12 @@ import { currentTerm, currentTermId } from "@/lib/terms/current";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { terms } from "@/lib/db/schema";
 import { submissionOf } from "@/lib/terms/scope";
-import { saveExcludedTitles } from "@/lib/roster/config-data";
+import { saveExcludedTitles, saveRosterReading } from "@/lib/roster/config-data";
+import {
+  cleanRosterReading,
+  validateRosterReading,
+  type RosterReadingInput,
+} from "@/lib/roster/config";
 
 export interface AdminActionResult {
   ok: boolean;
@@ -271,14 +276,14 @@ export async function setTravelCutoff(iso: string | null): Promise<AdminActionRe
   // The retired setting, kept in step for a rollback (see lib/settings.ts).
   if (iso === null) await deleteSetting(SETTING_TRAVEL_CUTOFF);
   else await setSetting(SETTING_TRAVEL_CUTOFF, cutoff.toISOString());
-  revalidatePath("/admin/groups");
+  revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/intro");
   return { ok: true };
 }
 
 /**
- * Toggle the late-travel policy (PLAN §8; /admin/groups, beside the cutoff).
+ * Toggle the late-travel policy (PLAN §8; /admin/terms, beside the cutoff).
  * On, the travel step keeps accepting entries after the cutoff but stores them
  * unexcused ("accept-and-flag"); off restores the default "refuse". The hub's
  * cutoff-past alert reads this too.
@@ -292,7 +297,7 @@ export async function setLateTravelAccepted(accepted: boolean): Promise<AdminAct
     .where(eq(terms.id, await currentTermId()));
   // The retired setting, kept in step for a rollback (see lib/settings.ts).
   await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
-  revalidatePath("/admin/groups");
+  revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/admin");
   return { ok: true };
@@ -397,6 +402,36 @@ export async function setExcludedRosterTitles(raw: string): Promise<SaveExcluded
   await saveExcludedTitles(getDb(), await currentTermId(), titles);
   revalidatePath("/admin/roster");
   return { ok: true, saved: titles };
+}
+
+/**
+ * Save how the current term's roster tracker is read (edited on
+ * /admin/roster): the sheets to look for, the titles that mean admin, and the
+ * header names of columns the built-in matching can't find.
+ */
+export async function setRosterReading(input: RosterReadingInput): Promise<AdminActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const columns = input?.columns ?? {};
+  const reading = cleanRosterReading({
+    sheetCandidates: String(input?.sheetCandidates ?? ""),
+    leavingSheet: String(input?.leavingSheet ?? ""),
+    adminTitles: String(input?.adminTitles ?? ""),
+    columns: {
+      name: String(columns.name ?? ""),
+      email: String(columns.email ?? ""),
+      title: String(columns.title ?? ""),
+      international: String(columns.international ?? ""),
+      startDate: String(columns.startDate ?? ""),
+    },
+  });
+  const error = validateRosterReading(reading);
+  if (error) return { ok: false, error };
+
+  await saveRosterReading(getDb(), await currentTermId(), reading);
+  revalidatePath("/admin/roster");
+  return { ok: true };
 }
 
 export interface RebuildSheetResult extends AdminActionResult {

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.48
+- **Version:** 1.49
 - **Last updated:** 2026-11-23
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -592,8 +592,8 @@ scheduler (not auto-parsed).
   allowed, **at most 20** (`MAX_TRAVEL_REQUESTS`). **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
   admin-configurable; same cutoff for all positions) is excused. What happens on/after
   the cutoff is the **admin-set late policy** (the "Accept late travel" toggle beside the
-  cutoff on `/admin/groups`, stored in `app_settings`, read via `getLateTravelPolicy` in
-  `lib/settings.ts`). Off (the default, decided 2026-07-09): the step **refuses new
+  cutoff on the Semester page, `/admin/terms`, stored on the term, read via
+  `getLateTravelPolicy` in `lib/settings.ts`). Off (the default, decided 2026-07-09): the step **refuses new
   entries** and locks existing ones, so every stored entry is excused by construction.
   On (`"accept-and-flag"`): the step keeps accepting entries (removal stays open with
   them), but they are stored `excused: false` and render red "not excused (late)"
@@ -804,8 +804,10 @@ Design and phases: `docs/semester-domains-plan.md`.
   hub flags them rather than losing a real worker silently; §4.2, 0.91). **How the
   tracker is read is the term's own** (`Term.rosterConfig`, 1.48): the sheets tried
   (default `Gordon`, then `People Coming`), the leavers sheet (`People Leaving`), the
-  titles that mean admin, and the excluded titles. Each field falls back to its
-  built-in default on its own. Excluded titles also fall back to the pre-term
+  titles that mean admin, the excluded titles, and (1.49) the header names of the
+  Name, Email, Title, International and Start Date columns. Each field falls back to
+  its built-in default on its own; a blank column name means the built-in header
+  matching. All of it is edited on `/admin/roster`. Excluded titles also fall back to the pre-term
   `excluded_roster_titles` setting until the term saves a list.
 - **AppSetting**: `key` (PK) → `value` (string; JSON where a key needs structure). The
   one global key/value store for admin-set config that isn't per-student or per-group,
@@ -1639,6 +1641,35 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.49 (2026-11-23)** — **Semester domains, Phase 2: the Semester page, and fall
+  leaves the copy (§8, §9, §10a; issue #40, `docs/semester-domains-plan.md`).** Still
+  one term. No migration. (1) **`/admin/terms` ("Semester").** Edits the current
+  term's name, first and last day, new-hire date and schedule note
+  (`saveTermDetails` in `lib/admin/term-actions.ts`, checked by the pure
+  `domain/terms.ts`). The travel cutoff panel and the late-travel switch moved here
+  from `/admin/groups`. Changing the first day never moves the cutoff; it stays
+  where it was set until an admin changes or resets it. A name another term already has is refused. Like
+  every write, it resolves the current term itself. (2) **The admin hub's
+  "Configuration" and "Email" groups became "This semester" and "All semesters"**,
+  and the current term's name shows beside the student finder on every page an admin
+  opens. (3) **Roster settings on `/admin/roster`.** The sheets to read, the leavers
+  sheet, the titles that mean admin and optional column names are edited there and
+  stored in `terms.roster_config` (`setRosterReading`). A named column is matched
+  exactly and must be present, including a named start date; a blank one is found as
+  before. With nothing saved the import reads exactly as it did. (4) **Schedule
+  email: `{{term}}`.** The default subject and body use it instead of "Fall 2026",
+  and the preview, the test send and the real send fill in the current term's name. A
+  saved custom template is not rewritten; the Semester page warns when the saved
+  subject or body contains another term's name. (5) **Form paste:** a pasted travel
+  date takes its year from the current term's start date (`termYearFor`) instead of
+  the year the form was answered. For a September start the result is the same:
+  August through December is that year, January through July the next. (6) **Close
+  dates show the year** ("Fri Sep 4, 2026"), which closes that part of roadmap 7.3.
+  (7) **CSV download names carry the term**: `muster-responses-<term>-<date>.csv`,
+  `muster-schedule-<term>-<date>.csv` and `muster-w2w-<term>-week-a.csv`. (8) Copy:
+  the change-request placeholder and the cutoff alert no longer say "9/1" or point at
+  Groups. **Still to come:** close requirements per Shift Lead (Phase 3) and starting
+  a new semester (Phase 4).
 - **1.48 (2026-11-23)** — **Semester domains, Phase 1: everything is scoped to a term,
   with no change in behavior (§9, §13, §18a; issue #40,
   `docs/semester-domains-plan.md`).** Muster was built for one cycle. This release puts

@@ -75,6 +75,7 @@ import {
   successPillStyle,
   dangerPillStyle,
 } from "@/components/admin/ui";
+import { currentTerm } from "@/lib/terms/current";
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -234,7 +235,8 @@ export default async function StudentDetailPage({
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.
   const allPositions = await positionOptions();
-  const [scheduleEmail, emailEnabled] = await Promise.all([
+  const [term, scheduleEmail, emailEnabled] = await Promise.all([
+    currentTerm(),
     getScheduleEmailConfig(),
     getEmailSendingEnabled(),
   ]);
@@ -341,6 +343,7 @@ export default async function StudentDetailPage({
           </Link>
           <FormPasteButton
             studentEmail={detail.email}
+            termStartsOn={term.startsOn}
             onFile={{
               positionName: position?.name ?? null,
               desiredHours: submission?.desiredHours ?? null,
@@ -366,6 +369,7 @@ export default async function StudentDetailPage({
               studentEmail: detail.email,
               displayName: detail.displayName,
               positionName: position?.name ?? "your position",
+              termName: term.name,
               template: {
                 subject: scheduleEmail.subject,
                 body: scheduleEmail.body,

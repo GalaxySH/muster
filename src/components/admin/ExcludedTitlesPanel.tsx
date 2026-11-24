@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Excluded roster titles (roadmap 1.7): the import skips People Coming rows
- * whose position title is on this list (neither student nor admin). Stored in
- * app_settings, falling back to the hardcoded SKIP_TITLES fixture until first
- * saved; both the upload action and the CLI importer read the stored list.
+ * Excluded roster titles (roadmap 1.7): the import skips roster rows whose
+ * position title is on this list (neither student nor admin). Stored on the
+ * term, falling back to the hardcoded SKIP_TITLES fixture until first saved;
+ * both the upload action and the CLI importer read the stored list.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";

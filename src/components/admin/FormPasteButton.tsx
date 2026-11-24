@@ -41,9 +41,12 @@ type Read = { plan: Plan } | { error: string } | null;
 export function FormPasteButton({
   studentEmail,
   onFile,
+  termStartsOn,
 }: {
   studentEmail: string;
   onFile: OnFile;
+  /** The current term's start date, which gives the pasted travel dates their year. */
+  termStartsOn: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -61,8 +64,8 @@ export function FormPasteButton({
     if (parsed.paste.email !== studentEmail.toLowerCase()) {
       return { error: `This response is from ${parsed.paste.email}, not this student.` };
     }
-    return { plan: buildPlan(parsed.paste, onFile, new Date()) };
-  }, [text, studentEmail, onFile]);
+    return { plan: buildPlan(parsed.paste, onFile, termStartsOn) };
+  }, [text, studentEmail, onFile, termStartsOn]);
 
   const plan = read && "plan" in read ? read.plan : null;
   const isOn = (s: Step) => checked[s.id] ?? s.on;

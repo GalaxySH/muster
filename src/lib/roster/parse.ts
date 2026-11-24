@@ -23,6 +23,7 @@
  */
 import { normalizeEmail, isWiscEmail } from "@/lib/auth/policy";
 import { ADMIN_TITLES, normalizeTitle } from "./position-mapping";
+import { AUTOMATIC_COLUMNS, type RosterColumns } from "./config";
 
 /** A workbook whose shape we can't make sense of. Surfaced to the admin verbatim. */
 export class RosterFormatError extends Error {
@@ -103,6 +104,16 @@ const contains =
 
 const NAME_MATCHERS = [exact("name")];
 const EMAIL_MATCHERS = [exact("email"), contains("email")];
+const TITLE_MATCHERS = [exact("title"), contains("position"), contains("title")];
+const INTERNATIONAL_MATCHERS = [contains("international")];
+const START_DATE_MATCHERS = [exact("start date"), contains("start date"), contains("hire")];
+
+/**
+ * The matchers for one column: the header the term names for it, matched
+ * exactly, or the built-in matching when the term names none.
+ */
+const matchersFor = (named: string, builtIn: readonly HeaderMatcher[]): readonly HeaderMatcher[] =>
+  normalizeTitle(named) ? [exact(normalizeTitle(named))] : builtIn;
 
 /**
  * The first column matching any matcher, matchers tried in order across the
@@ -128,46 +139,59 @@ function requireColumn(
 }
 
 /** The index of the header row: the first row carrying both a Name and an Email column. */
-function findHeaderRow(grid: readonly (readonly string[])[]): number {
+function findHeaderRow(
+  grid: readonly (readonly string[])[],
+  nameMatchers: readonly HeaderMatcher[] = NAME_MATCHERS,
+  emailMatchers: readonly HeaderMatcher[] = EMAIL_MATCHERS,
+  columns: RosterColumns = AUTOMATIC_COLUMNS,
+): number {
   const limit = Math.min(HEADER_SCAN_ROWS, grid.length);
   for (let r = 0; r < limit; r++) {
     const headers = grid[r]!.map(normalizeTitle);
-    if (
-      findColumn(headers, NAME_MATCHERS) !== null &&
-      findColumn(headers, EMAIL_MATCHERS) !== null
-    ) {
+    if (findColumn(headers, nameMatchers) !== null && findColumn(headers, emailMatchers) !== null) {
       return r;
     }
   }
   throw new RosterFormatError(
-    "Could not find the header row. The sheet needs a row with Name and Email columns.",
+    `Could not find the header row. The sheet needs a row with ${columns.name || "Name"} and ${columns.email || "Email"} columns.`,
   );
 }
 
 /**
  * Pull the minimized fields out of a sheet grid, locating columns by header
  * text so the column order (which differs between unit sheets) doesn't matter.
+ * `columns` carries the header names the term set for a reworded tracker; a
+ * blank one is found the built-in way.
  */
-export function extractRosterRows(grid: readonly (readonly string[])[]): RawRosterRow[] {
-  const headerRow = findHeaderRow(grid);
+export function extractRosterRows(
+  grid: readonly (readonly string[])[],
+  columns: RosterColumns = AUTOMATIC_COLUMNS,
+): RawRosterRow[] {
+  const nameMatchers = matchersFor(columns.name, NAME_MATCHERS);
+  const emailMatchers = matchersFor(columns.email, EMAIL_MATCHERS);
+  const headerRow = findHeaderRow(grid, nameMatchers, emailMatchers, columns);
   // Header cells are normalized the same way titles are: trimmed, lowercased,
   // whitespace-collapsed (they wrap across lines in some exports), accents stripped.
   const headers = grid[headerRow]!.map(normalizeTitle);
 
-  const nameCol = requireColumn(headers, NAME_MATCHERS, "Name");
+  const nameCol = requireColumn(headers, nameMatchers, columns.name || "Name");
   const titleCol = requireColumn(
     headers,
-    [exact("title"), contains("position"), contains("title")],
-    "Title",
+    matchersFor(columns.title, TITLE_MATCHERS),
+    columns.title || "Title",
   );
-  const emailCol = requireColumn(headers, EMAIL_MATCHERS, "Email");
-  const intlCol = requireColumn(headers, [contains("international")], "International");
-  // Optional: not every sheet carries a start date.
-  const hireCol = findColumn(headers, [
-    exact("start date"),
-    contains("start date"),
-    contains("hire"),
-  ]);
+  const emailCol = requireColumn(headers, emailMatchers, columns.email || "Email");
+  const intlCol = requireColumn(
+    headers,
+    matchersFor(columns.international, INTERNATIONAL_MATCHERS),
+    columns.international || "International",
+  );
+  // Optional when found the built-in way: not every sheet carries a start
+  // date. A start date column the term names must be there.
+  const hireMatchers = matchersFor(columns.startDate, START_DATE_MATCHERS);
+  const hireCol = columns.startDate
+    ? requireColumn(headers, hireMatchers, columns.startDate)
+    : findColumn(headers, hireMatchers);
 
   const cell = (row: readonly string[], col: number | null) =>
     col === null ? "" : (row[col] ?? "").trim();

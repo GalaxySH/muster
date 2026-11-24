@@ -159,7 +159,7 @@ export interface DashboardSnapshot {
   config: {
     /** DRIVE_FOLDER_ID is set; when false, uploads land in a personal Drive. */
     driveFolderConfigured: boolean;
-    /** Effective travel-excusal cutoff (admin value or the 9/1 default). */
+    /** Effective travel-excusal cutoff (the term's own). */
     travelCutoff: Date;
     /** The admin's late policy: true = travel past the cutoff is accepted as late (PLAN §8). */
     lateTravelAccepted: boolean;
@@ -676,8 +676,8 @@ function buildAlerts(
       severity: "warning",
       title: "The travel cutoff has passed, so students can no longer add travel.",
       detail: "A form window is still open. Move the cutoff later if this is too early.",
-      href: "/admin/groups",
-      linkLabel: "Groups",
+      href: "/admin/terms",
+      linkLabel: "Semester",
     });
   }
 

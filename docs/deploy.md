@@ -170,7 +170,7 @@ git tag v1.0.0 && git push origin v1.0.0   # → Deploy workflow runs
 Watch the Actions run; it ends by verifying `/api/health` on the box's loopback
 bind over SSH (not the public URL; see the deploy.yml note above).
 
-**1.48 (semester domains, Phase 1).** Migrations 0037 to 0043 only add: new tables
+**1.48 and 1.49 (semester domains, Phases 1 and 2).** 1.49 adds no migration. Migrations 0037 to 0043 only add: new tables
 and columns, each new `term_id` with a database default of `2026-fall`, and new
 unique keys added before the old ones are dropped. They are written to be
 re-runnable, so if `migrate` stops partway (it exits 1 silently, §5), fix the cause

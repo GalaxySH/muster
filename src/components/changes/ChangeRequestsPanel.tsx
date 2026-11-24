@@ -187,7 +187,7 @@ export function ChangeRequestsPanel({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
-            placeholder="e.g. I want to move my 9/1 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
+            placeholder="e.g. I want to move my Tuesday 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
             style={{ ...input, fontFamily: "inherit" }}
           />
         </label>

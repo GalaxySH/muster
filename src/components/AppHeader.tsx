@@ -2,8 +2,9 @@
  * The shared top-of-page header. A Home element is always present (the user's
  * requirement); optional `children` render as additional breadcrumb crumbs after
  * it: the wizard step breadcrumb on the form flow, or an "Admin" crumb on admin
- * pages. For an admin, the student finder sits on the right, so they can look
- * anyone up from any page. Server-rendered: the roster is read only once the
+ * pages. For an admin, the current semester's name and the student finder sit
+ * on the right, so they always know which term they are working in and can
+ * look anyone up from any page. Server-rendered: the roster is read only once the
  * session is known to be an admin's, so it never reaches a student's page.
  */
 import Link from "next/link";
@@ -12,6 +13,7 @@ import { faHouse } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { getAppSession } from "@/lib/auth/session";
 import { listRosterNames } from "@/lib/roster/lookup";
 import { StudentQuickSearch } from "./StudentQuickSearch";
+import { currentTerm } from "@/lib/terms/current";
 
 export async function AppHeader({
   homeHref = "/me",
@@ -26,7 +28,9 @@ export async function AppHeader({
   children?: React.ReactNode;
 }) {
   const session = await getAppSession();
-  const students = session?.isAdmin ? await listRosterNames() : null;
+  const [students, term] = session?.isAdmin
+    ? await Promise.all([listRosterNames(), currentTerm()])
+    : [null, null];
 
   const home = (
     <span style={{ fontWeight: 500 }}>
@@ -56,7 +60,14 @@ export async function AppHeader({
         )}
         {children}
       </nav>
-      {students && <StudentQuickSearch students={students} />}
+      {students && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", minWidth: 0 }}>
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
+            {term.name}
+          </span>
+          <StudentQuickSearch students={students} />
+        </div>
+      )}
     </header>
   );
 }

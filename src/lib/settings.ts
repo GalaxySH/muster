@@ -16,7 +16,7 @@ import {
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
 import { currentTerm, currentTermId } from "@/lib/terms/current";
-import { loadRosterConfig } from "@/lib/roster/config-data";
+import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/config-data";
 
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
@@ -100,7 +100,7 @@ export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boole
 }
 
 /**
- * The current term's late-travel policy (PLAN §8), admin-toggled on /admin/groups.
+ * The current term's late-travel policy (PLAN §8), admin-toggled on /admin/terms.
  * Off (the default) keeps the domain's "refuse" policy: nothing past the cutoff
  * is stored. On, entries past the cutoff are accepted but stored unexcused
  * ("accept-and-flag"), and finalize raises the travel_late flag.
@@ -138,14 +138,15 @@ export async function getChangeDigestRecipients(): Promise<string[]> {
 }
 
 /**
- * The excluded roster titles (PLAN §4.2, roadmap 1.7): import rows with these
- * position titles are skipped outright (neither student nor admin). Admin-edited
- * on /admin/roster and stored on the term; falls back to the SKIP_TITLES fixture
- * until first saved. The reader lives in roster/config-data.ts so the CLI-safe
- * importer can use it without this server-only module.
+ * How the current term's roster tracker is read (PLAN §4.2): the sheets, the
+ * column names, the titles that mean admin, and the titles skipped outright
+ * (neither student nor admin; they fall back to the SKIP_TITLES fixture until
+ * first saved). Admin-edited on /admin/roster and stored on the term. The
+ * reader lives in roster/config-data.ts so the CLI-safe importer can use it
+ * without this server-only module.
  */
-export async function getExcludedRosterTitles(): Promise<string[]> {
-  return [...(await loadRosterConfig(getDb(), await currentTermId())).excludedTitles];
+export async function getRosterConfig(): Promise<EffectiveRosterConfig> {
+  return loadRosterConfig(getDb(), await currentTermId());
 }
 
 /**

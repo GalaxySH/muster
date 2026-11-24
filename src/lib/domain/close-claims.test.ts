@@ -99,9 +99,9 @@ describe("closeClaimsFeasibility", () => {
 });
 
 describe("formatCloseDate", () => {
-  it("renders a short weekday + month + day label", () => {
-    expect(formatCloseDate("2026-09-04")).toBe("Fri Sep 4");
-    expect(formatCloseDate("2026-12-12")).toBe("Sat Dec 12");
+  it("renders a short weekday, month, day and year label", () => {
+    expect(formatCloseDate("2026-09-04")).toBe("Fri Sep 4, 2026");
+    expect(formatCloseDate("2026-12-12")).toBe("Sat Dec 12, 2026");
   });
 });
 
@@ -113,12 +113,12 @@ describe("formatCloseSlot", () => {
         startMinutes: CLOSE_START_MINUTES,
         endMinutes: CLOSE_END_MINUTES,
       }),
-    ).toBe("Fri Sep 4, 6p–11:30p");
+    ).toBe("Fri Sep 4, 2026, 6p–11:30p");
   });
 
   it("uses each slot's own times, not the defaults", () => {
     expect(formatCloseSlot({ date: "2026-12-12", startMinutes: 17 * 60, endMinutes: 23 * 60 })).toBe(
-      "Sat Dec 12, 5p–11p",
+      "Sat Dec 12, 2026, 5p–11p",
     );
   });
 });

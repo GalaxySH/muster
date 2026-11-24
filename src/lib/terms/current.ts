@@ -11,7 +11,7 @@
 import "server-only";
 import { cache } from "react";
 import { getDb } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { terms } from "@/lib/db/schema";
 import { getCurrentTermId } from "./term-id";
 
@@ -31,3 +31,12 @@ export const currentTerm = cache(async (): Promise<Term> => {
   if (!term) throw new Error(`The current term "${termId}" does not exist.`);
   return term;
 });
+
+/** Every other term's name. The Semester page checks saved copy against them. */
+export async function listOtherTermNames(): Promise<string[]> {
+  const rows = await getDb()
+    .select({ name: terms.name })
+    .from(terms)
+    .where(ne(terms.id, await currentTermId()));
+  return rows.map((r) => r.name);
+}

@@ -261,7 +261,8 @@ describe("buildScheduleEmailVars", () => {
   const input = { startDate: "2026-10-04", firstShiftTime: " 7:00 AM " };
 
   it("trims the typed values and fills the student's name and position", () => {
-    expect(buildScheduleEmailVars(student, input)).toEqual({
+    expect(buildScheduleEmailVars(student, input, "Spring 2027")).toEqual({
+      term: "Spring 2027",
       first_name: "Alex",
       full_name: "Alex Example",
       position: "Barista",
@@ -290,6 +291,13 @@ describe("validateScheduleEmailInput", () => {
       /first shift/,
     );
   });
+});
+
+it("the default email names the term it is sent in", () => {
+  const email = renderScheduleEmail(DEFAULT_SCHEDULE_EMAIL, { ...SAMPLE_VARS, term: "Spring 2027" }, []);
+  expect(email.subject).toBe("Your Spring 2027 work schedule");
+  expect(email.html).toContain("<b>Spring 2027</b>");
+  expect(DEFAULT_SCHEDULE_EMAIL.subject + DEFAULT_SCHEDULE_EMAIL.body).not.toMatch(/Fall 2026/);
 });
 
 it("the sample shifts render a table (the settings preview relies on it)", () => {

@@ -56,7 +56,8 @@ const empty: OnFile = {
   submittedAt: null,
 };
 
-const now = new Date("2026-11-21T12:00:00Z");
+// The term the pasted response is for starts here; travel dates take their year from it.
+const termStart = "2026-09-02";
 const step = (steps: Step[], id: string) => steps.find((s) => s.id === id);
 
 describe("parsePaste", () => {
@@ -150,42 +151,42 @@ describe("answers", () => {
 });
 
 describe("parseTravelDates", () => {
-  it("puts fall dates in the form's year and spring dates in the next", () => {
-    expect(parseTravelDates("10/01-10/04, 01/10-01/14", 2026).ranges).toEqual([
+  it("puts fall dates in the term's start year and spring dates in the next", () => {
+    expect(parseTravelDates("10/01-10/04, 01/10-01/14", termStart).ranges).toEqual([
       { start: "2026-10-01", end: "2026-10-04" },
       { start: "2027-01-10", end: "2027-01-14" },
     ]);
   });
 
   it("rolls an end before its start into the next year", () => {
-    expect(parseTravelDates("12/18-01/18", 2026).ranges).toEqual([
+    expect(parseTravelDates("12/18-01/18", termStart).ranges).toEqual([
       { start: "2026-12-18", end: "2027-01-18" },
     ]);
   });
 
   it("puts a summer range after the semester", () => {
-    expect(parseTravelDates("05/08-08/23", 2026).ranges).toEqual([
+    expect(parseTravelDates("05/08-08/23", termStart).ranges).toEqual([
       { start: "2027-05-08", end: "2027-08-23" },
     ]);
   });
 
   it("drops exact duplicates and accepts a missing space", () => {
-    expect(parseTravelDates("09/15-09/15, 09/15-09/15", 2026).ranges).toHaveLength(1);
-    expect(parseTravelDates("11/25-11/29,12/16-01/17", 2026).ranges).toEqual([
+    expect(parseTravelDates("09/15-09/15, 09/15-09/15", termStart).ranges).toHaveLength(1);
+    expect(parseTravelDates("11/25-11/29,12/16-01/17", termStart).ranges).toEqual([
       { start: "2026-11-25", end: "2026-11-29" },
       { start: "2026-12-16", end: "2027-01-17" },
     ]);
   });
 
   it("returns pieces it can't read", () => {
-    expect(parseTravelDates("Thanksgiving, 02/30-03/01, 11/25-11/28", 2026)).toEqual({
+    expect(parseTravelDates("Thanksgiving, 02/30-03/01, 11/25-11/28", termStart)).toEqual({
       ranges: [{ start: "2026-11-25", end: "2026-11-28" }],
       unread: ["Thanksgiving", "02/30-03/01"],
     });
   });
 
   it("is empty for no text", () => {
-    expect(parseTravelDates("", 2026)).toEqual({ ranges: [], unread: [] });
+    expect(parseTravelDates("", termStart)).toEqual({ ranges: [], unread: [] });
   });
 });
 
@@ -257,7 +258,7 @@ describe("buildPlan", () => {
         },
       }),
       { ...empty, desiredHours: 12, studentNotes: "old" },
-      now,
+      termStart,
     );
     expect(step(steps, "desiredHours")).toMatchObject({ hours: 15, current: "12h", on: true });
     expect(step(steps, "everyWeekend")).toMatchObject({ optIn: true, on: true });
@@ -272,14 +273,14 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ fields: { desiredHours: field("15"), everyWeekend: field("No") } }),
       { ...empty, desiredHours: 15 },
-      now,
+      termStart,
     );
     expect(step(steps, "desiredHours")?.on).toBe(false);
     expect(step(steps, "everyWeekend")?.on).toBe(false);
   });
 
   it("sends hours it can't read to the notes", () => {
-    const { steps } = buildPlan(paste({ fields: { desiredHours: field("15-20") } }), empty, now);
+    const { steps } = buildPlan(paste({ fields: { desiredHours: field("15-20") } }), empty, termStart);
     expect(step(steps, "desiredHours")).toBeUndefined();
     expect(step(steps, "notes")).toMatchObject({ lines: ["Hours per week: 15-20"] });
   });
@@ -288,7 +289,7 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ files: { courseSchedule: [file("c1")] } }),
       { ...empty, courseScheduleFileId: "m1", schedulerNotes: "form-file: c1 -> m1" },
-      now,
+      termStart,
     );
     expect(step(steps, "course:c1")).toMatchObject({ on: false, note: "Already imported." });
   });
@@ -297,7 +298,7 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ files: { courseSchedule: [file("c1")] } }),
       { ...empty, courseScheduleFileId: "other", schedulerNotes: "form-file: c1 -> m1" },
-      now,
+      termStart,
     );
     expect(step(steps, "course:c1")).toMatchObject({ on: true, note: "Replaces the one on file." });
   });
@@ -306,7 +307,7 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ files: { extracurricularFiles: [file("e1"), file("e2")] } }),
       { ...empty, extracurricularFileIds: ["m1"], schedulerNotes: "form-file: e1 -> m1" },
-      now,
+      termStart,
     );
     expect(step(steps, "ec:e1")?.on).toBe(false);
     expect(step(steps, "ec:e2")?.on).toBe(true);
@@ -325,7 +326,7 @@ describe("buildPlan", () => {
         },
       }),
       empty,
-      now,
+      termStart,
     );
     expect(steps.some((s) => s.kind === "courseSchedule" || s.kind === "extracurricularFile")).toBe(
       false,
@@ -345,7 +346,7 @@ describe("buildPlan", () => {
         files: { travelProof: [file("t1"), file("t2")] },
       }),
       empty,
-      now,
+      termStart,
     );
     const travel = steps.filter((s) => s.kind === "travel");
     expect(travel.map((s) => s.kind === "travel" && s.proof?.driveId)).toEqual([
@@ -363,7 +364,7 @@ describe("buildPlan", () => {
         files: { travelProof: [file("t1"), file("t2"), file("t3")] },
       }),
       empty,
-      now,
+      termStart,
     );
     expect(step(steps, "travel:0")).toMatchObject({
       travelNote:
@@ -378,7 +379,7 @@ describe("buildPlan", () => {
         files: { travelProof: [file("t1", { encoding: "link", data: undefined })] },
       }),
       empty,
-      now,
+      termStart,
     );
     expect(step(steps, "travel:0")).toMatchObject({
       proof: null,
@@ -390,13 +391,13 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ fields: { travelDates: field("12/18-01/18") } }),
       { ...empty, travel: [{ startDate: "2026-12-18", endDate: "2027-01-18", proofFileId: null }] },
-      now,
+      termStart,
     );
     expect(step(steps, "travel:0")).toMatchObject({ on: false, note: "Already on file." });
   });
 
   it("notes travel proof that has no dates", () => {
-    const { steps } = buildPlan(paste({ files: { travelProof: [file("t1")] } }), empty, now);
+    const { steps } = buildPlan(paste({ files: { travelProof: [file("t1")] } }), empty, termStart);
     expect(step(steps, "notes")).toMatchObject({
       lines: ["Travel proof with no dates: https://drive.google.com/open?id=t1"],
     });
@@ -413,7 +414,7 @@ describe("buildPlan", () => {
         unkeyed: [{ header: "Shirt size", value: "M" }],
       }),
       empty,
-      now,
+      termStart,
     );
     expect(heading).toBe("From the Google Form (9/3/2026):");
     expect(step(steps, "notes")).toMatchObject({
@@ -431,22 +432,22 @@ describe("buildPlan", () => {
     const { steps } = buildPlan(
       paste({ fields: { preferredName: field("Sam") } }),
       { ...empty, schedulerNotes: "Preferred name: Sam" },
-      now,
+      termStart,
     );
     expect(step(steps, "notes")?.on).toBe(false);
   });
 
   it("counts the response unless they submitted in Muster or it's already counted", () => {
-    expect(step(buildPlan(paste(), empty, now).steps, "response")?.on).toBe(true);
+    expect(step(buildPlan(paste(), empty, termStart).steps, "response")?.on).toBe(true);
     expect(
-      step(buildPlan(paste(), { ...empty, submittedVia: "muster" }, now).steps, "response"),
+      step(buildPlan(paste(), { ...empty, submittedVia: "muster" }, termStart).steps, "response"),
     ).toMatchObject({ on: false, note: "They already submitted in Muster." });
     expect(
       step(
         buildPlan(
           paste(),
           { ...empty, submittedVia: "google_form", submittedAt: "2026-09-03T21:48:33.000Z" },
-          now,
+          termStart,
         ).steps,
         "response",
       ),
@@ -463,7 +464,7 @@ describe("buildPlan", () => {
         ],
       }),
       empty,
-      now,
+      termStart,
     );
     expect(warnings).toEqual([
       "A newer response from this student is in row 81.",
@@ -472,7 +473,7 @@ describe("buildPlan", () => {
   });
 
   it("doesn't warn when the position matches", () => {
-    const { warnings } = buildPlan(paste({ fields: { position: field("cashier") } }), empty, now);
+    const { warnings } = buildPlan(paste({ fields: { position: field("cashier") } }), empty, termStart);
     expect(warnings).toEqual([]);
   });
 });
