@@ -705,10 +705,7 @@ term (§2.4). Only the current term can be edited, and there are no draft terms
 Terms are named freely by the admin (§2.1). Terms never overlap: exactly one is
 current at a time, and it is set once per term.
 
-Still open:
+A new term copies the previous term's positions, blocks, title mappings and
+roster settings as its starting point (§2.4).
 
-1. **Copy forward or start empty.** The plan copies the previous term's
-   positions, blocks, title mappings and roster settings into a new term as a
-   starting point (recommended: rebuilding every position and its blocks by
-   hand each term is slow and error-prone). The alternative is to start each
-   term with none, as groups do.
+Nothing is open.
