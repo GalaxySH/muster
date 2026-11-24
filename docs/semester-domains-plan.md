@@ -1,15 +1,22 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phases 1 and 2 are built (PLAN 1.48 and 1.49). Phases 3 to 6 are not.** Branch
+**Status: Phases 1 to 3 are built (PLAN 1.48, 1.49 and 1.51). Phases 4 to 7 are not.** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
+
+**Revised 2026-11-24.** Two owner decisions changed the design after Phase 2: an
+admin works in whichever term they have **selected**, and **every term stays fully
+editable by admins**, the roster import included. That replaces the frozen roster
+snapshot (§2.3), the rule that only the current term can be edited (§2.9), the
+frozen Drive sheets (§2.6) and the old-term browsing phase. §12 lists what changed
+and why. Nothing built in Phases 1 and 2 is undone.
 
 Muster was built for one cycle (fall 2026) and assumes it everywhere: one
 submission per student ever, one close inventory, one "current" schedule run,
 one set of Drive sheets, and a handful of fall dates in code. This plan makes
 the **term** (a semester) the domain the app runs in. Students always see the
 current term and start it with a clean form. Every earlier term stays in the
-database and stays readable by admins. Everything that is fall-specific today
+database, and an admin can select it and keep working in it. Everything that is fall-specific today
 either derives from the current term or is edited on a new **Semester** settings
 tab.
 
@@ -93,31 +100,66 @@ plumbing and stay global.
 | `w2w_position_map` | `term_id` NOT NULL; PK `(term_id, w2w_position_id)` | It points at positions, so it follows them. |
 | `roster_imports` | `term_id` NOT NULL | Which term an import was for. |
 | `groups` | `term_id` NOT NULL; `UNIQUE(term_id, name)` replaces `UNIQUE(name)` | Each term has its own groups and windows (§2.5). |
-| `group_members` (new) | `term_id`, `student_email`, `group_id`, `assigned_auto`; PK `(term_id, student_email)` | Membership leaves `students.group_id` (§2.5). |
+| `term_members` (new; Phase 1 built it as `group_members`) | `term_id`, `student_email`, `position_id`, `on_roster`, `roster_title`, `group_id`, `assigned_auto`; PK `(term_id, student_email)` | One row per person per term: their roster place (§2.3) and their group (§2.5). |
 | `close_requirements` (new) | `term_id`, `student_email`, `required`, `set_by`, `set_at`; PK `(term_id, student_email)` | One Shift Lead's own close count for the term (§2.8). |
 
 Two settings move with them: `schedule_params` (its coverage pool is a list of
 position ids) and `excluded_roster_titles` become per-term, the first as a
 term-suffixed settings key and the second inside `roster_config`.
 
-Untouched and global: `students` (apart from losing `group_id`),
+Global: `students`, which becomes the person only (email, name, international,
+hire date, last seen) once its roster columns move to `term_members` (§2.3);
 `position_changes`, `admin_users`, `admin_google_grants`, `magic_links`,
 `w2w_employees`.
 
-### 2.3 The roster: live tables are the current term, a snapshot is the past
+### 2.3 The roster: one membership row per person per term
 
-The alternative, a full per-term enrollment table replacing the roster columns
-on `students`, would touch every `onRoster` and `positionId` reader (60+ sites,
-all three modules, auth-adjacent). It is the wrong trade for a live app.
+*Rewritten 2026-11-24. The first version kept `students` as the current term's
+roster and wrote a frozen snapshot of the closing term at the flip. That cannot
+support an earlier term that is still being worked in: its roster has to take
+imports, position changes and departures like any other.*
 
-Instead: **`students` always describes the current term**, exactly as today, and
-starting a new term writes the closing term's roster to a frozen
-**`term_members`** table (`term_id`, `email`, `display_name`, `position_id`,
-`position_name`, `international`, `hired_on`), one row per
-on-roster student at that moment. `position_id` is the closing term's own
-position row, which is kept and locked; the name is snapshotted beside it for
-the same reason `position_changes` does it. Archive readers (§5, Phase 5) take their
-roster from `term_members`; live readers do not change.
+**`students` is the person. `term_members` is their place in one term.**
+
+| On `students` (global) | On `term_members` (per term) |
+|---|---|
+| `email`, `display_name` | `position_id` (a position of that term) |
+| `international`, `hired_on` | `on_roster` |
+| `last_seen_at` | `roster_title` |
+| | `group_id`, `assigned_auto` (§2.5) |
+
+- Every roster reader joins `term_members` for the term it is working in, through
+  one predicate in `lib/terms/scope.ts` (`memberOf(termId)`, the same shape as
+  `submissionOfStudent`). About 85 read sites in 20 files use
+  `students.positionId`, `onRoster` or `rosterTitle` today; they all move to it.
+- **This is the roster-read path that caused the v0.96 outage.** The join is on
+  the table's primary key `(term_id, student_email)`, and the group now comes off
+  the same row, so the responses list has one membership join, not two. Query
+  plans are checked on a production-sized copy with two terms before release.
+- **Phase 1 built `group_members`.** It has not been released, so its migration
+  is amended to create `term_members` with the roster columns added, instead of
+  shipping one table and then a second beside it. `lib/groups/membership.ts`
+  keeps its job and writes the same row.
+- **Expand, then contract**, as with the group columns: `students.position_id`,
+  `on_roster` and `roster_title` stay and are written in step with the *current*
+  term's membership until the contract release, so the previous image still
+  works after a rollback. Nothing reads them.
+- **The roster import writes the membership of the term it is run in** (§2.9).
+  The absence guard, the position-change path, the departed-schedule release
+  and the close release all act on that term only.
+- **Person facts follow the current term.** An import into the current term
+  updates names, the international flag and hire dates, and the admin list
+  (`admin_users`). An import into an earlier term changes only that term's
+  membership and creates a person row for anyone not seen before. An old
+  tracker must not overwrite today's names or today's admins.
+- **Who is "known" for sign-in** is unchanged: anyone with a `students` row.
+  Whether a student can use the form is decided by their membership in the
+  current term (on the roster, in a group with an open window).
+
+**Starting a new term** copies each on-roster member of the closing term into the
+new one, with the position remapped to the new term's copy and no group. The
+closing term's rows are left exactly as they were, so there is nothing to
+snapshot and nothing to re-point.
 
 ### 2.4 Positions, shift blocks and roster handling: per term
 
@@ -140,17 +182,17 @@ point**: positions, live blocks, title mappings, roster settings, the W2W map
 and the engine params, each as new rows for the new term with ids remapped.
 The admin then renames, adds and removes freely, and none of it touches the old
 term. Position return dates are not copied. Retired blocks are not copied.
-Every student's `position_id` is re-pointed at the matching new-term position in
-the same transaction, without writing `position_changes` rows (nobody changed
-jobs).
+Each on-roster member gets a membership row in the new term pointing at the
+matching new position (§2.3), without writing `position_changes` rows (nobody
+changed jobs). The closing term's rows are not touched.
 
 What this buys:
 
-- Old selections, old runs and the roster snapshot keep pointing at old-term
-  positions and blocks that nobody can edit any more, so history stops being
-  rewritten (finding 5).
-- Delete, retire, orphan and revalidation logic only ever sees current-term
-  rows, so a spring edit can no longer write flags onto fall submissions or be
+- Old selections, old runs and old memberships keep pointing at their own term's
+  positions and blocks, so a spring edit cannot rewrite fall (finding 5). Fall's
+  own configuration changes only when an admin selects fall and edits it.
+- Delete, retire, orphan and revalidation logic only ever sees the rows of the
+  term it runs in, so a spring edit can no longer write flags onto fall submissions or be
   blocked by fall picks. A position can be deleted in the new term even though
   the old term still uses its predecessor.
 - No change to how selections, runs or plans reference blocks.
@@ -180,8 +222,8 @@ on a global row.
 
 - `groups` gains `term_id`. A term's groups are its own rows, with their own
   windows, `lock_after_submit` and default flag.
-- Membership moves off `students.group_id` and `group_assigned_auto` into
-  `group_members`, keyed by term and email. One reader,
+- Membership moves off `students.group_id` and `group_assigned_auto` onto the
+  person's `term_members` row (§2.3), keyed by term and email. One reader,
   `groupOf(db, email, termId)`, replaces the direct column reads
   (`resolveStudentAccess`, the sweep, the assigners, the admin lists).
 - A group belongs to the term it was created in and to no other. Nothing is
@@ -203,8 +245,8 @@ on a global row.
 - Test accounts are synthetic and not on any roster, so starting a term enrolls every
   existing test account in the new term's test group and they keep working.
 
-This replaces two things the first version of this plan had: clearing windows
-and membership at the flip, and snapshotting a group name into `term_members`.
+This replaces clearing windows and membership at the flip, which the first
+version of this plan had.
 
 ### 2.6 Drive
 
@@ -216,9 +258,11 @@ the rename is pushed to the Drive folder name as a best-effort extra.
 The legacy fall term keeps its existing ids and its files at the root, so
 nothing in Drive moves or is renamed.
 
-Sheet sync only ever targets the current term. After a flip the old term's
-sheets are never written again, which makes them a frozen human-readable
-archive at no cost. Starting a new term runs one last sync of all three first.
+Sheet sync targets the term the request is working in (§2.9), so each term's
+sheets follow that term's data for as long as anyone edits it. An earlier term's
+sheets are not frozen: a fall shift changed in December shows up in fall's
+schedule sheet. Proofs an admin adds while working in a term go to that term's
+folder.
 
 ### 2.7 Where the code lives
 
@@ -330,25 +374,95 @@ Shift Lead, so nothing changes until an admin edits a number.
 
 PLAN §18a is rewritten to match.
 
-### 2.9 Only the current term can be edited
+### 2.9 The term a request works in
 
-- **Every write resolves the current term itself.** No server action accepts a
-  term id from the client, so there is no code path that can write to another
-  term. An old term's submissions, groups, positions, blocks, closes, runs and
-  settings are read-only by construction, not by a check that could be missed.
-- **No drafts.** "Start a new semester" asks for a name and the start and end
-  dates, then creates the term and makes it current in one step. Setup happens
-  afterwards, in the current term. This is safe because a new term starts with
-  nobody in a group, so every student form is closed until the admin opens it.
-- **Making an earlier term current again** is the one way to edit it, and
-  exists to undo a mistaken start. It is refused once the newer term has any
-  submission, unless forced. It restores each student's position and roster
-  flag from that term's snapshot, since the student rows were re-pointed when
-  the newer term started.
+*Rewritten 2026-11-24. The first version made earlier terms read-only by
+construction. The owner needs to keep changing fall's schedule while the form is
+collecting for spring, and decided that an admin who selects a term may edit all
+of it.*
+
+Two different things were both called "the current term". They are named apart
+from here on:
+
+- **The current term** is the one being collected: `app_settings.current_term_id`.
+  It is what every student sees and writes to.
+- **The working term** is the term one request reads and writes. For a student it
+  is always the current term. For an admin it is the term they have selected, or
+  the current term when they have selected none.
+
+**One resolver.** `currentTermId()` and `currentTerm()` in `lib/terms/current.ts`
+become `workingTermId()` and `workingTerm()`, and every loader and action that
+calls them today keeps calling them. That is the whole of how a page or an action
+learns its term: no route segment, no form field, no second source. The rename is
+mechanical and is done so that "current" keeps one meaning.
+
+```
+workingTermId():
+  session = getAppSession()
+  if session.isAdmin and a selection cookie is present and names a real term:
+      return that term
+  return the current term
+```
+
+- **Students are locked to the current term by the server.** Nothing is stored
+  for them. The selection is ignored unless the session is an admin's, and admin
+  status is recomputed on every request as it is today, so a student cannot reach
+  another term by any request they can make, and a student signed in across a
+  flip moves to the new term on their next request.
+- **An admin's selection is an override, not a copy of the current term.** It
+  lives in its own httpOnly cookie holding a term id, set by one server action
+  behind `requireAdmin`. It is not in the sign-in token, so no auth code changes.
+  With no selection an admin follows the current term and moves with it at a
+  flip. A selection naming a term that no longer exists is ignored.
+- **It applies to every request the admin makes**, including the student pages
+  if they open them and the CSV routes.
+- **Work with no session uses the current term**: the digest scheduler, the cron
+  route, the health endpoint and the CLI scripts (which take a term argument
+  where they write).
+- `getAppSession` must still not read the term (§7 item 3). The resolver reads
+  the session, never the reverse.
+
+**Every term is fully editable by an admin who has selected it**: responses,
+groups and windows, positions and blocks, closes, runs and plans, the term's own
+details, and the roster import. Selecting the term is what makes the action
+deliberate. Three things keep it from being an accident:
+
+1. **A banner on every page** whenever the working term is not the current one,
+   naming the term, with one click back. It sits in `AppHeader`, which every
+   page already renders.
+2. **A stale tab cannot write to the wrong term.** The selection belongs to the
+   browser, not the tab, so a tab still showing fall can submit after another
+   tab switched to spring. The server is the authority, in two parts. Every row
+   id an action receives is already checked against the term (Phase 1), which
+   covers any edit to something that exists. The few actions that name no
+   existing row (the roster import, generating a schedule or the close
+   inventory, saving term details or term settings) also send the term id the
+   page was rendered for, and `requireAdmin` refuses when it is not the working
+   term. Open tabs reload themselves when the selection changes, as a
+   convenience on top.
+3. **Destructive confirmations name the term.** The roster import's summary and
+   its absence-guard override, schedule generation and clearing say which
+   semester they will change.
+
+**What still follows the current term, whatever is selected:** which term
+students collect into, "Start a new semester", the hub's missing-pointer alert,
+analytics' "signed in this term" (`activated_at`), and the person facts and admin
+list an import may update (§2.3).
+
+**No drafts.** "Start a new semester" asks for a name and the start and end
+dates, then creates the term and makes it current in one step. Setup happens
+afterwards. This is safe because a new term starts with nobody in a group, so
+every student form is closed until the admin opens it. An admin who had fall
+selected stays in fall; an admin with no selection lands in the new term.
+
+**Making an earlier term current again** exists to undo a mistaken start. It is
+now only the pointer moving back: no roster is restored, because no roster was
+re-pointed. It is refused once the newer term has any submission, unless forced.
 
 ### 2.10 Term settings and global settings look different
 
-- The current term's name shows in the admin header on every admin page.
+- The working term's name shows in the admin header on every admin page, and is
+  the control for selecting another term (§2.9).
 - The admin hub's "Configuration" group splits in two: **This semester** and
   **All semesters**.
 - The "start a new semester" confirmation lists what starts empty, what is
@@ -420,7 +534,8 @@ migrate` exits 1 silently on SQL errors. So the schema change is
 3. On `submissions`: **add** `UNIQUE(student_email, term_id)` first, **then**
    drop `submissions_student_email_unique`. The foreign key to `students` needs
    an index led by `student_email` at every moment; dropping first fails.
-4. Add `term_members` (empty).
+4. (Superseded: the roster snapshot table was never built. `term_members` is now
+   the live membership table, created in step 5.)
 4a. Positions and roster handling: add `term_id` with the same default to
    `positions`, `shift_blocks`, `roster_title_mappings`, `w2w_position_map` and
    `roster_imports`; widen the two primary keys by adding the new key before
@@ -435,7 +550,11 @@ migrate` exits 1 silently on SQL errors. So the schema change is
    and the `dev-test` id.
    **`students.group_id` is left in place and still
    written** until the contract release, so a rollback finds it current.
-6. Closes (ships with Phase 3, same expand pattern): add
+5a. Roster (ships with Phase 3; the step 5 migration is amended while it is
+   unreleased): the table is `term_members`, with `position_id`, `on_roster` and
+   `roster_title` backfilled from `students`. Those three `students` columns stay
+   and are still written for the current term until the contract release.
+6. Closes (ships with Phase 4, same expand pattern): add
    `terms.close_requirement` default 3, create `close_requirements`, and insert a
    row of 3 for every current Shift Lead.
 
@@ -446,7 +565,8 @@ before.
 
 **Contract (a later release, after soak):** drop the defaults, so an insert that
 forgets `term_id` fails loudly instead of landing in fall, and drop
-`students.group_id` and `students.group_assigned_auto`. In the meantime the
+`students.group_id`, `group_assigned_auto`, `position_id`, `on_roster` and
+`roster_title`. In the meantime the
 Drizzle schema declares the columns with no default, so TypeScript already
 requires every insert to supply it.
 
@@ -456,8 +576,9 @@ production backup before tagging, with the troubleshooting probe from
 
 ## 5. Phases
 
-Each phase is its own PR and its own release. Phases 1 to 4 are required before
-the spring form opens.
+Each phase is its own release. Phases 1 to 6 are required before the spring form
+opens: the fall schedule is still being changed while spring is collected, so
+working in a selected term (Phase 5) can no longer wait until after the flip.
 
 ### Phase 1: term-scope everything, no behavior change
 
@@ -510,10 +631,31 @@ Still one term. This is where fall leaves the code.
 - Close dates show the year (roadmap 7.3).
 - CSV download names include the term slug.
 
-### Phase 3: a close requirement per Shift Lead
+### Phase 3: the roster per term
 
-Everything in §2.8. It needs Phase 1's term-scoped closes and nothing from
-Phase 4, and it is useful on its own for the leads promoted this fall.
+*New on 2026-11-24 (§2.3). Required before a second term exists.* Still one term,
+and with one term the app must behave identically: this phase is gated the way
+Phase 1 was, by running every loader on a real database before and after.
+
+- Amend Phase 1's unreleased `group_members` migration to create `term_members`
+  with `position_id`, `on_roster` and `roster_title`, backfilled from `students`.
+- `memberOf(termId)` in `lib/terms/scope.ts`, and every reader of
+  `students.positionId`, `onRoster` and `rosterTitle` moved onto it. The
+  source-scan test that guards submissions queries gains the same rule for
+  these three columns.
+- Writers (the roster import, `applyPositionChange`, `reconcileAdmins`, test
+  accounts, the per-student position changer) write the membership row and keep
+  the retired `students` columns in step for the current term.
+- The import updates person facts and `admin_users` only when run in the
+  current term.
+- Query plans for the responses list, non-responses and the schedule loaders on
+  a production-sized copy with two terms.
+
+### Phase 4: a close requirement per Shift Lead
+
+Everything in §2.8. It needs Phase 1's term-scoped closes and nothing from the
+later phases, and it is useful on its own for the leads promoted this fall. It
+can be built before or after Phase 3.
 
 - `terms.close_requirement`, `close_requirements`, the backfill, and
   `ensureCloseRequirements` at its five call sites.
@@ -526,48 +668,53 @@ Phase 4, and it is useful on its own for the leads promoted this fall.
 - The default on the Semester tab.
 - The "Muster SL Closes" sheet gains the required column.
 
-### Phase 4: starting a new term
+### Phase 5: working in a selected term
+
+*New on 2026-11-24 (§2.9). It replaces the old "browsing an old term" phase: there
+are no separate old-term pages, because every admin page shows the working term.*
+
+- `workingTermId()` / `workingTerm()` replacing `currentTermId()` /
+  `currentTerm()`, with the selection cookie, its `selectTerm` action, and the
+  rule that only an admin's selection is honoured. Unit-tested as a pure
+  decision (session, cookie, known terms in; term out).
+- The term control and the off-current banner in `AppHeader`.
+- The rendered-term check in `requireAdmin` for the actions that name no
+  existing row, and tabs reloading on a selection change.
+- Term named in the destructive confirmations.
+- Per-term Drive folder and sheet keys (§2.6), since sync now has to reach a
+  term that is not the current one.
+- The audit from Phase 1 repeated in reverse: every place that must keep using
+  the *current* term (listed in §2.9) is checked to read the pointer and not the
+  working term.
+- Verified with a synthetic second term: as an admin in each term in turn, every
+  page shows and changes only that term; as a student, with a forged selection
+  cookie, every page and action still uses the current term.
+
+### Phase 6: starting a new term
 
 This release drops the `term_id` column defaults if an earlier one has not (§10).
 
 - **Start a new semester**, one admin action on the Semester tab. It asks for a
   name and the start and end dates, shows what will happen (§2.10), and requires
-  typing the new name:
-  1. Final sync of the closing term's three sheets (best effort, reported).
-  2. In one transaction: snapshot `term_members`; create the term with its dates
-     prefilled from the start date; copy positions, live blocks, title mappings,
-     roster settings, the W2W map and engine params with ids remapped; re-point
-     every student's position; create the default and test groups and enroll
-     the test accounts; create close requirements for the current Shift Leads;
-     set `current_term_id`; stamp `activated_at`.
-- Per-term Drive folder and sheet keys (§2.6).
+  typing the new name. In one transaction: create the term with its dates
+  prefilled from the start date; copy positions, live blocks, title mappings,
+  roster settings, the W2W map and engine params with ids remapped; copy each
+  on-roster member into the new term with the remapped position and no group;
+  create the default and test groups and enroll the test accounts; create close
+  requirements for the current Shift Leads; set `current_term_id`; stamp
+  `activated_at`.
 - Making an earlier term current again (§2.9).
 - Analytics: "signed in" means `last_seen_at >= activated_at`.
 - A written rollover runbook in `docs/` (order: start the semester, fix the
   dates, rename and edit positions, adjust the roster settings, import the new
   tracker, assign groups and set windows, generate closes, adjust close
-  requirements).
+  requirements; and how to go back to the earlier term to keep its schedule up
+  to date).
 
-### Phase 5: browsing an old term
+### Phase 7: contract and cleanup
 
-After the flip to spring, this is how fall is looked at from inside Muster. The
-data is kept either way; this phase is only about having pages for it.
-
-- `/admin/terms/[id]`: headline counts, the response list, the per-student
-  response (availability, travel, proofs, flags, notes), the close claims and
-  the saved schedule runs for that term, all read-only, plus CSV downloads.
-- Built on a `rosterFor(termId)` source (live `students` for the current term,
-  `term_members` for a past one) feeding the existing loaders
-  (`listResponses`, `loadStudentDetail`, `loadExportData`, `loadScheduleForRun`)
-  and the existing pure view builders, so there is one read path and no second
-  set of pages.
-
-Until Phase 5 ships, an old term is still reachable three ways: its frozen Drive
-sheets, its proofs folder, and the database.
-
-### Phase 6: contract and cleanup
-
-Drop the column defaults and the old group columns (§4), delete the retired settings keys and any helper
+Drop the column defaults, the old group columns and the old roster columns on
+`students` (§4), delete the retired settings keys and any helper
 left with a single caller, and update `CLAUDE.md`'s current-state section.
 
 ## 6. Edge cases
@@ -584,7 +731,8 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 - `lockAfterSubmit` reads the current term's submission, so a fall submission no
   longer locks a returner out of spring.
 - A student opens a fall proof link after the flip: `studentOwnsFile` checks the
-  current term only, so it is refused. Admin proof viewing is unaffected.
+  current term only, so it is refused. An admin sees a term's proofs while
+  working in it.
 - Shift Leads: fall claims no longer count toward spring's requirement, and the
   closes step is dormant again until spring inventory exists.
 - A student promoted to Shift Lead mid-term gets a requirement row at the
@@ -592,8 +740,8 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
   number until an admin lowers it. The closes tab does not mark late additions.
 - A lead with a requirement of 0 never sees the closes step and is never blocked
   by it.
-- A student whose position changes between terms: the fall snapshot keeps the
-  old position; `position_changes` keeps the history as today.
+- A student whose position changes between terms: their fall membership keeps
+  the fall position; `position_changes` keeps the history as today.
 - Someone who left and comes back two terms later: the roster import re-lists
   them and they start the current term clean. Their old submission is still in
   its own term.
@@ -601,7 +749,23 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 **Admin**
 
 - Admin on-behalf-of edits, form paste and "mark scheduled" all resolve the
-  current term's submission.
+  working term's submission (§2.9).
+- **Fall's schedule during spring collection.** The admin selects fall, and adds
+  or removes shifts, marks people scheduled, sends the schedule email (with
+  fall's run and fall's name) and round-trips the W2W plan exactly as before the
+  flip. Fall's sheet follows.
+- **Someone joins or leaves fall after the flip.** Select fall and upload the
+  tracker, or change the one person by hand. It changes fall's membership only;
+  spring's roster and today's admin list are untouched (§2.3).
+- **An admin forgets they are in fall.** The banner is on every page, and the
+  roster import and the generator name the term before they run.
+- **Two tabs in different terms.** Not possible: the selection is per browser.
+  The older tab's writes are refused (§2.9) and it reloads.
+- **A change request belongs to the term it was filed in**, which is the working
+  term of whoever filed it (§2.9). A student is always in the current term, so a
+  request they file once the form has switched to spring is a spring request. A
+  request an admin enters while working in fall is a fall request. The admin
+  queue lists every term, so nothing is lost at a flip.
 - The admin's internal copy belongs to a submission, so it stays with its term.
 - The generator's first run in a new term has no previous run and no scheduled
   marks, so nothing is frozen or carried forward.
@@ -624,15 +788,17 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
   normal semester turnover. That is expected; the runbook says to review the
   list and use the override.
 - Importing the new tracker **before** starting the new semester would take
-  leavers off the fall lists before the snapshot is taken, and would read the
-  new format with fall's settings. The runbook orders it after.
+  leavers off the fall roster and read the new format with fall's settings. The
+  runbook orders it after. If it happens anyway, fall can now be put right by
+  selecting it and importing the fall tracker again.
 
 **System**
 
 - The digest scheduler and the health endpoint do not depend on the term.
 - Test accounts live in the test group, whose window is 2000 to 2100. Starting
   a term enrolls every test account in the new term's test group.
-- Nothing in an old term can be changed from any screen (§2.9).
+- A student can never read or write an earlier term, whatever cookie they send
+  (§2.9). An admin can, after selecting it.
 - `scripts/generate-availability.ts` and `tune-schedule-params.ts` need the term
   in their inserts and snapshot shape.
 - A missing or dangling `current_term_id` must fail closed: student forms lock
@@ -667,6 +833,16 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 8. **Parallel branches.** The migration number is taken at merge time; renumber
    if another branch lands first.
 
+9. **The working term is ambient.** Nothing on a URL says which term a page is
+   showing, so a bookmarked or emailed admin link opens in whatever term the
+   admin has selected. The digest's deep links go to the change-request queue,
+   which lists every term, so they are unaffected.
+10. **Code that means "the current term" must say so.** After Phase 5 the
+   resolver every loader calls returns the working term. The short list in §2.9
+   that must keep reading the pointer is the place a wrong choice would be
+   silent: for example "Start a new semester" run while fall is selected must
+   still close the current term, not fall.
+
 ## 8. Verification
 
 Because the unit tests cannot see a missing filter, each phase is checked
@@ -697,14 +873,20 @@ and test groups created for every term and nothing else carried over
 late-travel setting moves onto the term with the cutoff (§2.1); close
 requirements are per term and per Shift Lead (§2.8).
 
-The flip to spring happens after Phase 4 and does not wait for the old-term
-pages in Phase 5; until then fall is read from its frozen Drive sheets. A lead
+The flip to spring happens after Phase 6 (revised 2026-11-24; it used to be
+allowed before the old-term pages existed). A lead
 promoted mid-term starts at the full default, with no late-add marker on the
 closes tab.
 
 Positions, shift blocks and everything about how the roster is read are per
-term (§2.4). Only the current term can be edited, and there are no draft terms
-(§2.9). Term-scoped and global settings are shown apart (§2.10).
+term (§2.4). There are no draft terms (§2.9). Term-scoped and global settings
+are shown apart (§2.10).
+
+Settled on 2026-11-24: an admin works in the term they have selected, held in
+their session and used for every request they make; students are locked to the
+current term by the server (§2.9). Every term is fully editable by an admin who
+has selected it, the roster import included. That makes the roster per term
+(§2.3).
 
 Terms are named freely by the admin (§2.1). Terms never overlap: exactly one is
 current at a time, and it is set once per term.
@@ -712,9 +894,19 @@ current at a time, and it is set once per term.
 A new term copies the previous term's positions, blocks, title mappings and
 roster settings as its starting point (§2.4).
 
+Settled on 2026-11-24: the roster is per term, keyed by term and email (§2.3). A
+change request belongs to the working term of whoever files it: the current term
+for a student, the selected term for an admin (§6).
+
 Nothing is open.
 
 ## 10. Phase 1 as built
+
+*Phase numbers in §10 and §11 are the ones in use when they were written. After
+the 2026-11-24 revision: the old Phase 3 (close requirements) is Phase 4, the old
+Phase 4 (starting a new term) is Phase 6, the old Phase 5 (browsing an old term)
+is replaced by the new Phase 5, and the old Phase 6 (contract) is Phase 7.
+`group_members` in these sections is the table that becomes `term_members`.*
 
 Built on 2026-11-23 as PLAN 1.48, migrations 0037 to 0043. With one term in the
 database the app behaves as before; §8's one-term check passed (below).
@@ -904,3 +1096,106 @@ email preview filled in the term; close dates showed the year; and the responses
 was named with the term. A CSV with every header reworded failed with the built-in
 matching, then imported correctly once the column names and an extra admin title were
 saved on `/admin/roster`.
+
+## 12. Revision of 2026-11-24: selected terms, all of them editable
+
+**What prompted it.** The fall schedule keeps changing until the semester ends,
+and the form has to switch to spring for collection before then. The plan had
+earlier terms read-only from the moment of the flip, reachable only through
+frozen sheets. The owner needs to add and remove fall shifts during that
+overlap, and decided on the general form: an admin selects a term and everything
+in it is editable.
+
+**What changed in the plan.**
+
+| Was | Is | Section |
+|---|---|---|
+| Only the current term can be edited | An admin edits whichever term they have selected; students are locked to the current term | §2.9 |
+| Every loader reads "the current term" | Every loader reads "the working term" from one session-aware resolver | §2.9 |
+| `students` is the current roster; a frozen snapshot is the past | `students` is the person; `term_members` is their place in each term, live for all of them | §2.3 |
+| The flip re-points every student's position | The flip adds membership rows for the new term and leaves the old ones alone | §2.3, §2.4 |
+| An old term's sheets freeze at the flip | Each term's sheets follow that term | §2.6 |
+| Phase 5: read-only pages for an old term, after the flip | Phase 5: working in a selected term, before the flip | §5 |
+| Undoing a flip restores the roster from the snapshot | Undoing a flip is the pointer moving back | §2.9 |
+
+**What it costs.** One new phase (the roster per term, Phase 3). It is the same
+kind of change as Phase 1's submissions split and Phase 1's group move, on about
+85 read sites, and it is on the roster-read path, so it gets the same loader
+comparison and a query-plan check. It was the option §2.3 originally rejected as
+the wrong trade for a live app; a fully editable earlier term leaves no
+alternative, because a frozen snapshot cannot take an import.
+
+**What it saves.** The separate old-term pages, the snapshot and re-point step,
+the roster restore when undoing a flip, and the second membership join on the
+responses list.
+
+**What is not redone.** Phase 1's `term_id` columns, scope predicates and row-id
+checks are exactly what the working term needs, and Phase 2 is untouched. The one
+piece of Phase 1 that changes is the unreleased `group_members` table, which
+becomes `term_members`.
+
+## 13. Phase 3 as built
+
+Built on 2026-11-24 as PLAN 1.51, migration 0044. With one term the app behaves as
+before. Where this differs from §2.3 and §5, this section and the code are right.
+
+1. **A new migration, not an amended one.** §2.3 says to amend Phase 1's unreleased
+   migration. 0039 is left alone and 0044 renames `group_members` to `term_members`,
+   swaps its foreign keys for ones with the new name, adds the columns and backfills.
+   A database that already ran 0039 (every throwaway used so far) then migrates the
+   same way production will. 0037 to 0044 ship together.
+2. **Everyone gets a row.** The backfill writes a row for every `students` row, on the
+   roster or off it, so with one term an inner join returns exactly what a bare
+   `students` read did. That is what made the before-and-after comparison exact.
+3. **The retired columns are renamed in code**, to `legacyPositionId`,
+   `legacyOnRoster` and `legacyRosterTitle`. Every reader then failed to compile,
+   which is how all 116 sites in 32 files were found, and it replaces the source-scan
+   rule §5 planned for these columns: the old names cannot be written by accident.
+4. **`onRosterStudent` moved to `lib/terms/scope.ts`** and takes the term. It stays an
+   EXISTS test so the dozen call sites that only filter need no join. Queries that
+   also need the position join `term_members` and filter on the joined row.
+5. **Lists use an inner join.** The response list, non-responses, the group picker,
+   test accounts and the sweep list only people with a row in the term. A lookup by
+   email (`findStudentByEmail`, the per-student page) uses a left join and reads
+   someone outside the term as off the roster with no position.
+6. **Sign-in does not read the term.** `findPersonName` reads `students` only and is
+   what the magic-link eligibility check uses, so a broken term pointer cannot stop
+   anyone signing in (§7 item 3).
+7. **Not done here, because it needs a second term to mean anything:** the rule that an
+   import into an earlier term leaves person facts and the admin list alone, and the
+   rule that the retired columns follow the current term only (§2.3). Today the
+   importer's term is always the current one. Both land with Phase 5, and
+   `lib/terms/members.ts` says so in its header.
+8. **A position change for someone with no row in the term creates the row**
+   (`enrollMember` is an upsert). Giving someone a job in a term is what makes them
+   part of it.
+
+**How it was verified.**
+
+- **Every loader, before and after, on a real MariaDB.** A throwaway database with
+  migrations through 0043, the seed, 80 synthetic submitted students and added variety
+  (non-responders, people who left, drafts, test accounts, titles with no position,
+  groups, closes, two runs, change requests). All 316 loader results were captured
+  with the previous commit's code, then 0044 was applied and they were captured again
+  with this code. They are identical except that the student record no longer carries
+  the two retired group fields. The first pass found one query that used the new
+  column without joining the table (`loadCoverage`'s cell count); type checking had
+  passed it.
+- **Each writer, through the UI on that database:** a roster import with two
+  departures, a new hire and a position change (the change routine ran, picks and
+  scheduled shifts were handled as before); a per-student position move; a group
+  change; mapping a title with no position (two people moved); making one position an
+  alias of another (15 people moved); assigning a close; creating and deleting a test
+  account; generating a schedule including people who did not respond; a manual shift
+  edit. After each, a query confirmed the retired `students` columns match
+  `term_members` for every person (0 mismatches).
+- **Pages:** 15 admin pages and the student pages as a current student, someone who
+  left and a new hire with no group.
+- **Two terms:** a second term with its own positions, 19 members and 7 submissions.
+  Fall's 316 results did not change. With the pointer on spring, every list showed
+  spring's people only, the same person held a different position in each term, and
+  someone with no spring row read as off the roster.
+- Unit tests for the four predicates and the three writers, and the full suite.
+
+**Not verified:** the W2W plan import's roster read was changed and reviewed but not
+run (it needs a W2W export file); the rehearsal of 0044 on a copy of production data.
