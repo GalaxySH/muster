@@ -1692,9 +1692,12 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     being left already has responses.
   - **Engine params are per term** (migration **0047**, data only: the saved value
     is copied to `schedule_params:<term>`; the old key is kept for a rollback).
-  - **Closes start at 3.** A new term's closes per Shift Lead is 3 and every
-    lead's own number in it is 3, whatever the closing term's default or a lead's
-    own number had become.
+  - **Closes per Shift Lead carries forward.** The number is a setting (the
+    Semester page), and a new term takes it from the term before; every lead
+    starts the new term on it. A number an admin gave one lead does not carry
+    over. No code holds the number: migration **0050** drops the column default
+    of 3 that 0045 used to seed fall's setting, so the 3 exists only as fall's
+    saved value.
   - **Analytics:** "signed in" counts visits since the term was started. The
     first term was never started from the app, so migration **0048** clears the
     start stamp 0037 gave it and every visit counts there, as before.

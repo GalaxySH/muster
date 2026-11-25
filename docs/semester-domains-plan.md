@@ -1426,9 +1426,13 @@ operation in one transaction; the runbook is `docs/semester-rollover.md`.
 - **Aliases are not copied.** A position merged into another is left behind, and
   title mappings and W2W mappings that pointed at it are pointed at its target's
   copy.
-- **Closes start at 3 in every new term** (§2.1). The term's default is 3 and
-  each lead's own number is made from it, so neither the closing term's default
-  nor a number an admin gave one lead carries over.
+- **Closes per Shift Lead carries forward** (the owner's decision; §2.1 said
+  prefilled 3). It is a setting, edited on the Semester page, and the number
+  must not be written anywhere else. A new term copies the setting from the
+  term before, and each lead's own number in the new term is made from it, so a
+  number an admin gave one lead does not carry over. Migration 0050 drops the
+  column default of 3 that 0045 used to give fall its value, and the schema no
+  longer declares one, so a term cannot be inserted without naming the number.
 - **Test accounts** are carried into the new term's test group whatever their
   roster flag, with their position remapped.
 - **Engine params** were still one global setting. They are per term now
@@ -1472,9 +1476,12 @@ operation in one transaction; the runbook is `docs/semester-rollover.md`.
 - **Second rehearsal, with 0048 and 0049.** On a fresh same-day copy, 0037 to
   0049 applied in about five seconds. No `term_id` column has a default
   afterwards, an insert naming no term is refused, fall's `activated_at` is
-  null, and running 0048 and 0049 again changed nothing. With fall's default
-  set to 2 and one lead's number to 1 beforehand, the new term's default was 3
-  and all 34 of its leads were on 3. The copy was deleted.
+  null, and running 0048 and 0049 again changed nothing. The copy was deleted.
+- **Third rehearsal, with 0050.** On a fresh same-day copy, 0037 to 0050
+  applied. Fall's setting is 3 and its 48 leads are on 3, the column has no
+  default, and running 0050 again changed nothing. With fall's setting changed
+  to 2 and one lead's number to 1, the new term's setting was 2 and all 34 of
+  its leads were on 2. The copy was deleted.
 - The production build with no database reachable.
 
 **Not verified.** `startNewTerm` has no unit test of its own; it is checked on

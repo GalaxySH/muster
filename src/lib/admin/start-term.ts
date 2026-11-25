@@ -29,7 +29,6 @@ import {
   w2wPositionMap,
 } from "@/lib/db/schema";
 import { ensureCloseRequirements } from "@/lib/closes/requirements";
-import { DEFAULT_CLOSE_REQUIREMENT } from "@/lib/domain/close-claims";
 import { newTermDefaults, termSettingKey, termSlug } from "@/lib/domain/terms";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { syncRetiredRosterColumns } from "@/lib/terms/members";
@@ -130,9 +129,10 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
       lateTravelAccept: false,
       ...newTermDefaults(input.startsOn),
       rosterConfig: source.rosterConfig,
-      // Every lead starts a semester on the standard number, whatever the
-      // closing semester's default or their own number had become.
-      closeRequirement: DEFAULT_CLOSE_REQUIREMENT,
+      // The Semester page's "Closes per Shift Lead" carries forward, and every
+      // lead starts the new semester on it. A number an admin gave one lead
+      // does not carry over.
+      closeRequirement: source.closeRequirement,
       activatedAt: new Date(),
       createdBy: input.createdBy,
     });

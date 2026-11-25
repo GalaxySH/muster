@@ -22,7 +22,8 @@ only the order to do things in.
 2. **Check the dates.** On the same page: the travel cutoff (set to the day
    before the first day), the new hire date (three months before the first
    day), and the schedule note students see when they finish. Closes per Shift
-   Lead starts at 3, and so does every lead's own number.
+   Lead is carried over from the last semester, and every lead starts on it;
+   change it here before generating closes if this semester should differ.
 3. **Positions.** Rename, add, remove and re-time positions and shift blocks for
    the new semester. They are copies, so nothing you change touches the old
    semester. Set return dates; they are not copied.

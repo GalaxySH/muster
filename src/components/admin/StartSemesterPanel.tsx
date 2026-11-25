@@ -22,13 +22,14 @@ interface TermRef {
 const STARTS_EMPTY = [
   "Responses, proofs and travel",
   "Groups and form windows. Every form is closed until you open one",
-  "Weekend closes. Every Shift Lead starts on 3",
+  "Weekend closes",
   "Schedules and W2W shift plans",
 ];
 const COPIED = [
   "Positions and shift blocks",
   "Everyone on the roster now, in no group",
   "Title mappings and how the tracker is read",
+  "Closes per Shift Lead. Every lead starts on that number",
   "W2W position map and schedule settings",
   "Test accounts",
 ];

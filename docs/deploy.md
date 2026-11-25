@@ -200,7 +200,7 @@ check that `responses_sheet_id:2026-fall` equals `responses_sheet_id` in
 `app_settings`; if the copy is missing, the next sync finds the sheet by name at the
 Drive root instead of making a new one.
 
-**1.56 (semester domains, Phase 6).** Three more migrations, none of which rebuilds a
+**1.56 (semester domains, Phase 6).** Four more migrations, none of which rebuilds a
 table or changes a row of student data:
 
 - 0047, data only: copies the saved engine params to `schedule_params:<term>`. The
@@ -208,6 +208,8 @@ table or changes a row of student data:
 - 0048, data only: clears `terms.activated_at` on the first term.
 - 0049: drops the `'2026-fall'` default from the eleven `term_id` columns that had
   one. Metadata only.
+- 0050: drops the default of 3 from `terms.close_requirement`. Metadata only; fall
+  keeps the 3 it has. The pre-1.48 image never reads or writes that column.
 
 **What 0049 means for the deploy.** Production runs an image from before 1.48 until
 this release's container starts. `migrate` finishes first, and for the few seconds

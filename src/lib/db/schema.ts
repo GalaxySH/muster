@@ -91,7 +91,9 @@ export const terms = mysqlTable("terms", {
   // How many weekend closes a Shift Lead owes this term unless an admin sets
   // their own number (close_requirements). Copied onto a lead's row when it is
   // created, and never followed afterwards.
-  closeRequirement: int("close_requirement").notNull().default(3),
+  // No default here on purpose: the number is a setting (the Semester page's
+  // "Closes per Shift Lead"), and a new term takes it from the one before.
+  closeRequirement: int("close_requirement").notNull(),
   /** When it became the current term. */
   activatedAt: datetime("activated_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),

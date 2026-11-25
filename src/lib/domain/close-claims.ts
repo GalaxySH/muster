@@ -10,9 +10,6 @@
  */
 import { formatTime, parseTime } from "./time";
 
-/** How many closes a Shift Lead owes in a semester until an admin says otherwise. */
-export const DEFAULT_CLOSE_REQUIREMENT = 3;
-
 /** The most closes one lead can be asked for. Zero means none are asked. */
 export const MAX_CLOSE_REQUIREMENT = 20;
 
