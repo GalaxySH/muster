@@ -1,6 +1,10 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { redeemAndSignIn } from "@/lib/auth/magic-link-actions";
-import { Page } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { ButtonLink, Card, Notice } from "@/components/student/ui";
+import { FormSubmitButton } from "@/components/student/FormControls";
+
+export const metadata: Metadata = { title: "Sign-in link" };
 
 /**
  * Magic-link redemption: the "Confirm it's you" step (PLAN §11). Visiting the
@@ -20,44 +24,59 @@ export default async function RedeemPage({
 
   if (!token) {
     return (
-      <Page width="narrow">
-        <h1>Sign-in link</h1>
-        <p>This sign-in link is missing or invalid.</p>
-        <p>
-          <Link href="/signin">Request a new link</Link>
-        </p>
-      </Page>
+      <StudentPage width="narrow" home="none">
+        <Card>
+          <h1>Sign-in link</h1>
+          <p>This sign-in link is missing or invalid.</p>
+          <ButtonLink href="/signin" block>
+            Request a new link
+          </ButtonLink>
+        </Card>
+      </StudentPage>
     );
   }
 
   return (
-    <Page width="narrow">
-      <h1>Confirm it&apos;s you</h1>
+    <StudentPage width="narrow" home="none">
       {error && (
-        <p style={{ color: "var(--color-text-danger, #b00)" }}>
-          That link is invalid, expired, or already used.
-        </p>
+        <Notice tone="danger" role="alert">
+          <p>That link is invalid, expired, or already used.</p>
+        </Notice>
       )}
-      <p style={{ color: "#555" }}>
-        Re-enter the <strong>@wisc.edu</strong> email this link was sent to, to finish signing in.
-      </p>
-      <form action={redeemAndSignIn} style={{ display: "grid", gap: 8, maxWidth: 360 }}>
-        <input type="hidden" name="token" defaultValue={token} />
-        <input
-          type="email"
-          name="email"
-          placeholder="you@wisc.edu"
-          defaultValue={email ?? ""}
-          required
-          style={{ padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 14 }}
-        />
-        <button type="submit">Sign in</button>
-      </form>
+      <Card>
+        <h1>Confirm it&apos;s you</h1>
+        <form action={redeemAndSignIn} className="sf-stack">
+          <input type="hidden" name="token" defaultValue={token} />
+          <div className="sf-field">
+            <label htmlFor="redeem-email" className="sf-label">
+              Your wisc.edu email
+            </label>
+            <input
+              id="redeem-email"
+              type="email"
+              name="email"
+              placeholder="you@wisc.edu"
+              defaultValue={email ?? ""}
+              autoComplete="email"
+              required
+              className="sf-input"
+              aria-describedby="redeem-email-hint"
+            />
+            <p id="redeem-email-hint" className="sf-hint">
+              Re-enter the <strong>@wisc.edu</strong> email this link was sent to, to finish
+              signing in.
+            </p>
+          </div>
+          <FormSubmitButton block pendingLabel="Signing you in…">
+            Sign in
+          </FormSubmitButton>
+        </form>
+      </Card>
       {error && (
-        <p style={{ marginTop: 14, fontSize: 13 }}>
-          <Link href="/signin">Request a new link</Link>
-        </p>
+        <ButtonLink href="/signin" variant="secondary" block>
+          Request a new link
+        </ButtonLink>
       )}
-    </Page>
+    </StudentPage>
   );
 }

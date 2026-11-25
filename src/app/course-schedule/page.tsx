@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
@@ -15,9 +15,11 @@ import {
   NoGroupNotice,
   SubmittedLockBanner,
 } from "@/components/FormWindowBanner";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page, PrimaryLink } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { StudentDeadEnd } from "@/components/student/StudentDeadEnd";
+import { Notice, StepActions } from "@/components/student/ui";
+
+export const metadata: Metadata = { title: "Course schedule" };
 
 export default async function CourseSchedulePage({
   searchParams,
@@ -43,21 +45,23 @@ export default async function CourseSchedulePage({
   const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Course schedule &amp; activities</h1>
-        <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
-        <Link href="/me">Back</Link>
-      </Page>
+      <StudentDeadEnd title="Course schedule">
+        <Notice tone="warning">
+          <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
+        </Notice>
+      </StudentDeadEnd>
     );
   }
 
-  const [evidence, drive] = await Promise.all([loadEvidence(student.email, termId), getDriveGrantStatus()]);
+  const [evidence, drive] = await Promise.all([
+    loadEvidence(student.email, termId),
+    getDriveGrantStatus(),
+  ]);
 
   if (onBehalf) {
     return (
-      <Page>
-        <AppHeader />
+      <StudentPage>
+        <h1>Course schedule</h1>
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
         <WorkingTerm>
           <CourseScheduleForm
@@ -66,7 +70,7 @@ export default async function CourseSchedulePage({
             onBehalfOf={onBehalf.email}
           />
         </WorkingTerm>
-      </Page>
+      </StudentPage>
     );
   }
 
@@ -77,22 +81,17 @@ export default async function CourseSchedulePage({
 
   if (access.access === "no-group") {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Course schedule &amp; activities</h1>
+      <StudentDeadEnd title="Course schedule">
         <NoGroupNotice />
-        <Link href="/me">Back</Link>
-      </Page>
+      </StudentDeadEnd>
     );
   }
 
   const editable = access.canEdit;
+  const uploaded = Boolean(evidence.courseScheduleFileId);
 
   return (
-    <Page>
-      <AppHeader>
-        <WizardSteps steps={nav.steps} current="course-schedule" reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage nav={nav} current="course-schedule">
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
@@ -102,18 +101,15 @@ export default async function CourseSchedulePage({
           closesAt={access.closesAt}
         />
       )}
+      <h1>Course schedule</h1>
       <CourseScheduleForm initial={evidence} driveConnected={drive.connected} editable={editable} />
       {editable && !evidence.submitted && (
-        <p style={{ marginTop: 16 }}>
-          {evidence.courseScheduleFileId ? (
-            <PrimaryLink href="/availability">Continue</PrimaryLink>
-          ) : (
-            <span style={{ color: "#777", fontSize: 14 }}>
-              Upload your course schedule to continue.
-            </span>
-          )}
-        </p>
+        <StepActions
+          backHref="/intro"
+          nextHref="/availability"
+          blockedReason={uploaded ? undefined : "Upload your course schedule to continue."}
+        />
       )}
-    </Page>
+    </StudentPage>
   );
 }

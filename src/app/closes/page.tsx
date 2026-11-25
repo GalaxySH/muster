@@ -1,5 +1,5 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
@@ -7,11 +7,16 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { loadCloseBoard, loadCloseRequirement } from "@/lib/closes/data";
 import { closeStepApplies } from "@/lib/domain/close-claims";
 import { CloseClaimBoard } from "@/components/closes/CloseClaimBoard";
-import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page } from "@/components/ui";
+import {
+  FormWindowBanner,
+  NoGroupNotice,
+  SubmittedLockBanner,
+} from "@/components/FormWindowBanner";
+import { StudentPage } from "@/components/student/StudentPage";
+import { StudentDeadEnd } from "@/components/student/StudentDeadEnd";
 import { currentTermId } from "@/lib/terms/working";
+
+export const metadata: Metadata = { title: "Weekend closes" };
 
 /**
  * SL-only wizard step (PLAN §18a): claim weekend close shifts from the dated
@@ -36,31 +41,30 @@ export default async function ClosesPage() {
 
   if (access.access === "no-group") {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Weekend closes</h1>
+      <StudentDeadEnd title="Weekend closes">
         <NoGroupNotice />
-        <Link href="/me">Back</Link>
-      </Page>
+      </StudentDeadEnd>
     );
   }
 
   return (
-    <Page>
-      <AppHeader>
-        <WizardSteps steps={nav.steps} current="closes" reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage nav={nav} current="closes">
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
-        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+        <FormWindowBanner
+          state={access.state}
+          opensAt={access.opensAt}
+          closesAt={access.closesAt}
+        />
       )}
       <h1>Weekend closes</h1>
-      <p style={{ color: "#555" }}>
+      <p className="sf-muted">
         You are required to work {requirement.required} weekend close{" "}
-        {requirement.required === 1 ? "shift" : "shifts"} this semester. Pick your shifts below. Each shift has a limited number of spots, and they are first come first served.
+        {requirement.required === 1 ? "shift" : "shifts"} this semester. Pick your shifts below.
+        Each shift has a limited number of spots, and they are first come first served.
       </p>
       <CloseClaimBoard initial={board} editable={access.canEdit} submitted={access.submitted} />
-    </Page>
+    </StudentPage>
   );
 }

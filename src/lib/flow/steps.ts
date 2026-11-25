@@ -91,17 +91,21 @@ export function flowStatus(i: FlowInputs): FlowStatus {
   // A shift lead who started picking closes but hasn't finished clearly passed
   // travel already; send them back to the board. With no picks yet, travel is
   // still the next unvisited step (travel completion itself is un-inferable).
-  if (i.closesRequired && i.closeClaimCount > 0 && !closeClaimsComplete(i.closeClaimCount, i.closeClaimsNeeded))
+  if (
+    i.closesRequired &&
+    i.closeClaimCount > 0 &&
+    !closeClaimsComplete(i.closeClaimCount, i.closeClaimsNeeded)
+  )
     return { kind: "continue", href: CLOSES_STEP.href, stepLabel: "your weekend closes" };
   return { kind: "continue", href: "/travel", stepLabel: "travel & finishing up" };
 }
 
 /**
  * Which wizard steps the student may navigate to (PLAN §4). Mirrors the per-step
- * "Next" gates so the breadcrumb can't jump ahead of the data: availability needs
+ * "Next" gates so the step indicator can't jump ahead of the data: availability needs
  * a course schedule; travel (and closes, for SLs) needs that plus a complete
  * availability. Once submitted, everything is open for review. Used to disable
- * locked breadcrumb crumbs the same way a locked "Next" button is hidden.
+ * locked steps in the indicator the same way a locked "Next" button is hidden.
  */
 export function reachableStepKeys(
   i: Pick<

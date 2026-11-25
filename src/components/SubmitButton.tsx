@@ -1,41 +1,12 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { ActionButton } from "@/components/ui";
 
 /**
- * Submit button for `<form action={serverAction}>` forms: reads the form's
- * pending state via useFormStatus, so server pages get a disabled + label-swap
- * pending signal without becoming client components themselves.
- */
-export function SubmitButton({
-  variant = "primary",
-  pendingLabel,
-  style,
-  children,
-}: {
-  variant?: "primary" | "secondary";
-  pendingLabel?: string;
-  style?: React.CSSProperties;
-  children: React.ReactNode;
-}) {
-  const { pending } = useFormStatus();
-  return (
-    <ActionButton
-      type="submit"
-      variant={variant}
-      pending={pending}
-      pendingLabel={pendingLabel}
-      style={style}
-    >
-      {children}
-    </ActionButton>
-  );
-}
-
-/**
- * The same submit-with-pending-state, drawn as an inline text link rather than a
- * button, for a form action that belongs in a line of running text.
+ * A submit for a `<form action={serverAction}>`, drawn as an inline text link
+ * for a form action that belongs in a line of running text. It reads the
+ * form's pending state via useFormStatus, so a server page gets the disabled,
+ * relabelled control without becoming a client component.
  */
 export function SubmitTextLink({
   pendingLabel,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { GridModel, SubGrid } from "@/lib/availability/grid";
 import {
@@ -11,9 +11,33 @@ import {
 } from "@/lib/availability/selection";
 import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
 import { hourCap } from "@/lib/domain/caps";
-import { DAY_LABEL, type Day, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
+import {
+  DAY_LABEL,
+  type Day,
+  type Position,
+  type SelectedShift,
+  type ShiftBlock,
+} from "@/lib/domain/types";
 import { saveAvailability } from "@/lib/availability/actions";
-import { ActionButton, InfoCard } from "@/components/ui";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faCircleCheck,
+  faFire,
+  faMinus,
+  faStar,
+  faTriangleExclamation,
+} from "@awesome.me/kit-925f6dce39/icons/classic/solid";
+import { faCircle } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
+import {
+  ActionBar,
+  Button,
+  Card,
+  Notice,
+  Pill,
+  StatusLine,
+  VisuallyHidden,
+} from "@/components/student/ui";
 import { useUnsavedChangesWarning } from "@/components/useUnsavedChangesWarning";
 
 /** The user-editable fields, snapshotted at load/save to detect unsaved edits. */
@@ -66,7 +90,7 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
   const [optIn, setOptIn] = useState(props.initialEveryWeekendOptIn);
   const [desired, setDesired] = useState(props.initialDesiredHours?.toString() ?? "");
   const [notes, setNotes] = useState(props.initialNotes);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; lines: string[] } | null>(null);
   const [saved, setSaved] = useState<FormSnapshot>(() => ({
     selectedKeys: selectionToKeys(props.initialSelection),
     optIn: props.initialEveryWeekendOptIn,
@@ -143,9 +167,11 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
     if (props.preview) {
       setMessage({
         ok: true,
-        text: `Preview mode: nothing saved (would ${
-          mode === "continue" ? "save and continue" : "save a draft"
-        }).`,
+        lines: [
+          `Preview mode: nothing saved (would ${
+            mode === "continue" ? "save and continue" : "save a draft"
+          }).`,
+        ],
       });
       return;
     }
@@ -173,79 +199,122 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
       }
       setMessage({
         ok: res.ok,
-        text: res.ok
-          ? mode === "draft"
-            ? "Draft saved."
-            : res.autoAssigned
-              ? `Saved. You didn't pick a weekend shift, so we kept one for you: ${res.autoAssigned.label}.`
-              : "Saved."
-          : res.errors.join(" · "),
+        lines: res.ok
+          ? [
+              mode === "draft"
+                ? "Draft saved."
+                : res.autoAssigned
+                  ? `Saved. You didn't pick a weekend shift, so we kept one for you: ${res.autoAssigned.label}.`
+                  : "Saved.",
+            ]
+          : res.errors,
       });
     });
   }
 
+  // What is still unmet, for the action bar and for screen readers. Soft checks
+  // never block, so they are not counted.
+  const todo = requirements.filter((r) => !r.passed && r.severity === "hard").length;
+  const todoText =
+    todo === 0
+      ? "All requirements met"
+      : `${todo} ${todo === 1 ? "requirement" : "requirements"} left`;
+  // Spoken a moment after the last change, so ticking several cells in a row
+  // is announced once. It starts filled in, so loading the page says nothing.
+  const [announced, setAnnounced] = useState(todoText);
+  useEffect(() => {
+    const t = setTimeout(() => setAnnounced(todoText), 800);
+    return () => clearTimeout(t);
+  }, [todoText]);
+
+  // Continuing with requirements unmet takes the student to the list of what is
+  // left, instead of a dead button that gives no reason.
+  const requirementsRef = useRef<HTMLElement>(null);
+  const [flagged, setFlagged] = useState(false);
+  function continueOrExplain(advanceTo?: string) {
+    if (!canSubmit) {
+      setFlagged(true);
+      requirementsRef.current?.focus();
+      return;
+    }
+    run("continue", advanceTo);
+  }
+
+  const states = new Set<CellState>();
+  for (const sub of [props.gridModel.weekday, props.gridModel.weekend]) {
+    for (const row of sub?.rows ?? []) {
+      for (const day of sub!.days) {
+        states.add(cellState(selectionKey(row.block.id, day), selected, autoAssigned, coveredKeys));
+      }
+    }
+  }
+
   return (
-    <div style={{ maxWidth: 980 }}>
+    <>
       {props.preview && (
-        <p
-          role="note"
-          style={{
-            background: "#fff4d6",
-            border: "1px solid #e0c060",
-            borderRadius: 6,
-            padding: "0.5rem 0.8rem",
-            fontSize: 14,
-          }}
-        >
-          <strong>Admin preview.</strong> This is the student view of the {props.position.name}{" "}
-          form. Toggling cells exercises live validation, but nothing is saved.
-        </p>
+        <Notice tone="warning" role="note" title="Admin preview">
+          <p>
+            This is the student view of the {props.position.name} form. Toggling cells exercises
+            live validation, but nothing is saved.
+          </p>
+        </Notice>
       )}
 
-      <h1>Choose your availability preferences</h1>
-      <p style={{ color: "#555" }}>Position: {props.position.name}</p>
-      <p style={{ color: "#555" }}>
-        Check every shift you&apos;d be willing to work. This is your{" "}
-        <strong>availability</strong>, not your final schedule.{" "}
-        <strong>You must meet the minimum policy requirements to submit.</strong> If you do
-        not submit your availability, we will assign you a schedule based on your course
-        schedule only.
+      <div className="sf-cluster">
+        <h1>Your availability</h1>
+        {props.initialStatus === "submitted" && <Pill tone="success">Submitted</Pill>}
+      </div>
+      <p className="sf-muted">Position: {props.position.name}</p>
+      <p className="sf-muted">
+        Check every shift you&apos;d be willing to work. This is your <strong>availability</strong>,
+        not your final schedule.{" "}
+        <strong>You must meet the minimum policy requirements to submit.</strong> If you do not
+        submit your availability, we will assign you a schedule based on your course schedule only.
       </p>
 
-      {anyHighDemand && (
-        <InfoCard tone="info">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              aria-hidden
-              style={{
-                display: "inline-block",
-                width: 4,
-                height: 18,
-                borderRadius: 1,
-                background: "#d33",
-                flex: "none",
-              }}
-            />
-            <span>
-              This mark means a lot of students already picked that shift. Choosing less busy
-              shifts can help you get the hours you want.
-            </span>
-          </div>
-        </InfoCard>
-      )}
+      <ul className="sf-legend" aria-label="What the marks mean">
+        <li>
+          <LegendCell state="on" /> Your pick
+        </li>
+        {states.has("covered") && (
+          <li>
+            <LegendCell state="covered" /> Covered by a longer shift you picked
+          </li>
+        )}
+        {states.has("auto") && (
+          <li>
+            <LegendCell state="auto" /> Picked for you
+          </li>
+        )}
+        {anyHighDemand && (
+          <li>
+            <span className="sf-cell-hot" aria-hidden>
+              <FontAwesomeIcon icon={faFire} />
+            </span>{" "}
+            A lot of students picked this shift. Choosing less busy shifts can help you get the
+            hours you want.
+          </li>
+        )}
+      </ul>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", alignItems: "flex-start" }}>
-        <Grid
-          sub={props.gridModel.weekday}
-          selected={selected}
-          covered={coveredKeys}
-          autoAssigned={autoAssigned}
-          onToggle={toggle}
-          editable={editable}
-        />
+      <div
+        className={
+          props.gridModel.weekend ? "sf-avail-grids sf-avail-grids--two" : "sf-avail-grids"
+        }
+      >
+        <Card>
+          <Grid
+            sub={props.gridModel.weekday}
+            selected={selected}
+            covered={coveredKeys}
+            autoAssigned={autoAssigned}
+            onToggle={toggle}
+            editable={editable}
+          />
+        </Card>
 
         {props.gridModel.weekend && (
-          <div style={{ display: "flex", flexDirection: "column" }}>
+          <Card>
             <Grid
               sub={props.gridModel.weekend}
               selected={selected}
@@ -254,139 +323,199 @@ export function AvailabilityForm(props: AvailabilityFormProps) {
               onToggle={toggle}
               editable={editable}
             />
-            <p
-              style={{
-                background: "#f5f5f5",
-                padding: "0.6rem 0.8rem",
-                borderRadius: 6,
-                fontSize: 14,
-                marginTop: 12,
-              }}
-            >
+            <p className="sf-small sf-gap-top">
               You&apos;ll be placed on an <strong>A/B weekend rotation</strong> (a weekend shift
               every other weekend).
-              <label style={{ display: "block", marginTop: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={optIn}
-                  disabled={!editable}
-                  onChange={(e) => setOptIn(e.target.checked)}
-                />{" "}
+            </p>
+            <label className="sf-check">
+              <input
+                type="checkbox"
+                checked={optIn}
+                disabled={!editable}
+                onChange={(e) => setOptIn(e.target.checked)}
+              />
+              <span>
                 I&apos;d rather work <strong>every</strong> weekend (in exchange for fewer weekday
                 shifts).
-              </label>
-            </p>
+              </span>
+            </label>
+          </Card>
+        )}
+      </div>
+
+      <Card>
+        <div className="sf-field">
+          <label htmlFor="desired-hours" className="sf-label">
+            Desired weekly hours
+          </label>
+          <div className="sf-hours">
+            <input
+              id="desired-hours"
+              className="sf-input sf-num"
+              type="number"
+              inputMode="numeric"
+              min={minHours}
+              required
+              aria-describedby="desired-hours-hint"
+              value={desired}
+              disabled={!editable}
+              onChange={(e) => setDesired(e.target.value)}
+            />
+            {editable && (
+              <>
+                <Button variant="secondary" small onClick={() => setDesired(String(minHours))}>
+                  Min ({minHours}h)
+                </Button>
+                <Button variant="secondary" small onClick={() => setDesired(String(maxHours))}>
+                  Max ({maxHours}h)
+                </Button>
+              </>
+            )}
           </div>
-        )}
-      </div>
+          <p id="desired-hours-hint" className="sf-hint">
+            International students are limited to a maximum of 20 hours/week. Domestic students are
+            limited to 30 hours/week.
+          </p>
+        </div>
+      </Card>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          flexWrap: "wrap",
-          margin: "1.2rem 0",
-        }}
-      >
-        <label>
-          Desired weekly hours <span style={{ color: "#b00" }}>(required)</span>:{" "}
-          <input
-            type="number"
-            min={minHours}
-            required
-            value={desired}
-            disabled={!editable}
-            onChange={(e) => setDesired(e.target.value)}
-            style={{ width: 70 }}
+      <Card>
+        <div className="sf-field">
+          <label htmlFor="schedule-notes" className="sf-label">
+            Anything we should know about your schedule?{" "}
+            <span className="sf-optional">(optional)</span>
+          </label>
+          <textarea
+            id="schedule-notes"
+            className="sf-textarea"
+            value={notes}
+            readOnly={!editable}
+            onChange={(e) => {
+              setNotes(e.target.value);
+              setMessage(null);
+            }}
+            rows={3}
+            placeholder="e.g. I prefer mornings, or I can close on Fridays"
           />
-        </label>
-        {editable && (
-          <>
-            <button type="button" onClick={() => setDesired(String(minHours))}>
-              Min ({minHours}h)
-            </button>
-            <button type="button" onClick={() => setDesired(String(maxHours))}>
-              Max ({maxHours}h)
-            </button>
-          </>
-        )}
+        </div>
+      </Card>
+
+      <section
+        id="requirements"
+        ref={requirementsRef}
+        tabIndex={-1}
+        className="sf-card sf-anchor"
+        aria-labelledby="requirements-title"
+      >
+        <h2 id="requirements-title">Requirements</h2>
+        <p className="sf-muted sf-small sf-num">
+          {validation.capacity.weeklyAverageHours.toFixed(1)}h available · {validation.daysCovered}{" "}
+          {validation.daysCovered === 1 ? "day" : "days"} selected
+        </p>
+        <ul className={flagged ? "sf-checklist sf-checklist--flagged" : "sf-checklist"}>
+          {requirements.map((c) => {
+            const kind = c.passed ? "passed" : c.severity === "hard" ? "todo" : "soft";
+            return (
+              <li key={c.key} className={`sf-check--${kind}`}>
+                <FontAwesomeIcon icon={CHECK_ICON[kind]} aria-hidden />
+                <span>
+                  <VisuallyHidden>{CHECK_WORD[kind]}: </VisuallyHidden>
+                  {c.label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <div role="status">
+        <VisuallyHidden>{announced}</VisuallyHidden>
       </div>
-      <p style={{ color: "#555", fontSize: 14 }}>
-        International students are limited to a maximum of 20 hours/week. Domestic students are limited to 30 hours/week.
-      </p>
 
-      <div style={{ margin: "1.2rem 0" }}>
-        <label htmlFor="schedule-notes" style={{ display: "block", color: "#555", marginBottom: 6 }}>
-          Anything we should know about your schedule?{" "}
-          <span style={{ color: "#888" }}>(optional)</span>
-        </label>
-        <textarea
-          id="schedule-notes"
-          value={notes}
-          readOnly={!editable}
-          onChange={(e) => {
-            setNotes(e.target.value);
-            setMessage(null);
-          }}
-          rows={3}
-          placeholder="e.g. I prefer mornings; I have a standing commitment Tue afternoons; happy to close on Fridays…"
-          style={{ width: "100%", maxWidth: 640, boxSizing: "border-box", padding: 8 }}
-        />
-      </div>
-
-      <ChecklistPanel
-        summary={`${validation.capacity.weeklyAverageHours.toFixed(1)}h available · ${validation.daysCovered} day(s) selected`}
-        items={requirements}
-      />
-
-      <div style={{ display: "flex", gap: 10, marginTop: "1rem", alignItems: "center" }}>
-        {editable && !editMode && (
-          <>
-            <ActionButton
+      {editable ? (
+        <ActionBar
+          status={
+            message ? (
+              <StatusLine ok={message.ok} role={message.ok ? "status" : "alert"}>
+                {message.lines.length === 1 ? (
+                  message.lines[0]
+                ) : (
+                  <ul className="sf-list">
+                    {message.lines.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </StatusLine>
+            ) : (
+              <a href="#requirements" className="sf-num">
+                {todoText}
+              </a>
+            )
+          }
+        >
+          {!editMode && (
+            <Button
               variant="secondary"
               onClick={() => run("draft")}
               pending={pending}
               pendingLabel="Saving…"
             >
               Save draft
-            </ActionButton>
-            <ActionButton
-              onClick={() => run("continue", "/travel")}
-              pending={pending}
-              pendingLabel="Saving…"
-              disabled={!canSubmit}
-            >
-              Save and continue
-            </ActionButton>
-          </>
-        )}
-        {editable && editMode && (
-          <ActionButton
-            onClick={() => run("continue")}
+            </Button>
+          )}
+          <Button
+            onClick={() => continueOrExplain(editMode ? undefined : "/travel")}
             pending={pending}
             pendingLabel="Saving…"
-            disabled={!canSubmit}
+            aria-disabled={!canSubmit}
+            aria-describedby="requirements-title"
           >
-            Save changes
-          </ActionButton>
-        )}
-        {props.initialStatus === "submitted" && (
-          <span style={{ color: "#196127" }}>✓ submitted</span>
-        )}
-        {!editable && (
-          <span style={{ color: "#777" }}>
-            Read-only. Your form window isn&apos;t open for edits right now.
-          </span>
-        )}
-      </div>
-
-      {message && (
-        <p role="status" style={{ color: message.ok ? "#196127" : "#b00", marginTop: 10 }}>
-          {message.text}
-        </p>
+            {editMode ? "Save changes" : "Save and continue"}
+          </Button>
+        </ActionBar>
+      ) : (
+        <p className="sf-muted">Read-only. Your form window isn&apos;t open for edits right now.</p>
       )}
-    </div>
+    </>
+  );
+}
+
+type CellState = "on" | "auto" | "covered" | "off";
+
+function cellState(
+  key: string,
+  selected: Set<string>,
+  autoAssigned: Set<string>,
+  covered: Set<string>,
+): CellState {
+  return selected.has(key)
+    ? "on"
+    : autoAssigned.has(key)
+      ? "auto"
+      : covered.has(key)
+        ? "covered"
+        : "off";
+}
+
+const CELL_ICON = { on: faCheck, auto: faStar, covered: faMinus, off: faCheck } as const;
+/** Appended to a cell's name, so its state reaches a screen reader and not only the eye. */
+const CELL_STATE_NAME = {
+  on: "",
+  off: "",
+  auto: ", picked for you",
+  covered: ", covered by a longer shift you picked",
+} as const;
+
+const CHECK_ICON = { passed: faCircleCheck, todo: faCircle, soft: faTriangleExclamation } as const;
+const CHECK_WORD = { passed: "Done", todo: "To do", soft: "Note" } as const;
+
+/** A small, inert copy of a cell for the legend. */
+function LegendCell({ state }: { state: CellState }) {
+  return (
+    <span className={`sf-cell sf-cell--${state}`} aria-hidden>
+      <FontAwesomeIcon icon={CELL_ICON[state]} />
+    </span>
   );
 }
 
@@ -406,62 +535,60 @@ function Grid({
   editable: boolean;
 }) {
   const heading = sub.dayType === "weekday" ? "Weekdays" : "Weekend";
-  // The weekend variant splits the Sun and Sat columns with a gap and rule
-  // (PLAN §7): the scheduling week starts on Sunday, so the two days sit at
-  // opposite ends of the week, not side by side.
+  const headingId = `grid-${sub.dayType}`;
+  // The weekend variant splits the Sun and Sat columns with a rule (PLAN §7):
+  // the scheduling week starts on Sunday, so the two days sit at opposite ends
+  // of the week, not side by side.
   const variants =
-    (sub.dayType === "weekend" ? " avail-grid--weekend" : "") +
-    (editable ? "" : " avail-grid--locked");
+    (sub.dayType === "weekend" ? " sf-grid--weekend" : "") + (editable ? "" : " sf-grid--locked");
   return (
-    <section>
-      <h2 style={{ fontSize: 15, color: "#444" }}>{heading}</h2>
-      <table className={`avail-grid${variants}`}>
+    <>
+      <h2 id={headingId}>{heading}</h2>
+      <table className={`sf-grid${variants}`} aria-labelledby={headingId}>
         <thead>
           <tr>
-            <th />
+            <td />
             {sub.days.map((d) => (
-              <th key={d}>{DAY_LABEL[d]}</th>
+              <th key={d} scope="col">
+                {DAY_LABEL[d]}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {sub.rows.map((row) => (
             <tr key={row.block.id}>
-              <th scope="row" className="avail-rowlabel">
+              <th scope="row" className="sf-grid-rowlabel">
                 {row.label}
-                {row.isOpen && <span className="avail-tag">open</span>}
-                {row.isClose && <span className="avail-tag">close</span>}
+                {row.isOpen && <span className="sf-grid-tag">Opening</span>}
+                {row.isClose && <span className="sf-grid-tag">Closing</span>}
               </th>
               {sub.days.map((day, di) => {
-                const key = selectionKey(row.block.id, day);
-                const state = selected.has(key)
-                  ? "on"
-                  : autoAssigned.has(key)
-                    ? "auto"
-                    : covered.has(key)
-                      ? "covered"
-                      : "off";
+                const state = cellState(
+                  selectionKey(row.block.id, day),
+                  selected,
+                  autoAssigned,
+                  covered,
+                );
                 const isHot = row.highDemandDays[di];
                 return (
                   <td key={day}>
                     <button
                       type="button"
-                      className={`avail-cell avail-cell--${state}`}
+                      className={`sf-cell sf-cell--${state}`}
                       aria-pressed={state === "on"}
-                      aria-label={`${row.label} ${DAY_LABEL[day]}`}
-                      title={
-                        state === "auto"
-                          ? "We auto-assigned this weekend shift because you didn't pick one. Click to choose your own."
-                          : state === "covered"
-                            ? "Already covered by a longer shift you selected"
-                            : isHot
-                              ? "A lot of students picked this shift"
-                              : undefined
-                      }
+                      aria-label={`${row.label} ${DAY_LABEL[day]}${CELL_STATE_NAME[state]}${
+                        isHot ? ", busy shift" : ""
+                      }`}
+                      aria-disabled={!editable}
                       onClick={() => onToggle(row.block.id, day)}
                     >
-                      {isHot && <span aria-hidden className="avail-hot" />}
-                      {state === "auto" ? "★" : state === "covered" ? "–" : "✓"}
+                      {isHot && (
+                        <span aria-hidden className="sf-cell-hot">
+                          <FontAwesomeIcon icon={faFire} />
+                        </span>
+                      )}
+                      <FontAwesomeIcon icon={CELL_ICON[state]} aria-hidden />
                     </button>
                   </td>
                 );
@@ -470,33 +597,6 @@ function Grid({
           ))}
         </tbody>
       </table>
-    </section>
-  );
-}
-
-function ChecklistPanel({ summary, items }: { summary: string; items: RequirementItem[] }) {
-  return (
-    <section
-      style={{
-        marginTop: "1.2rem",
-        border: "1px solid #e2e2e2",
-        borderRadius: 8,
-        padding: "0.8rem 1rem",
-      }}
-    >
-      <div style={{ fontSize: 14, color: "#555", marginBottom: 6 }}>Requirements ({summary})</div>
-      <ul
-        style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 14, display: "grid", gap: 4 }}
-      >
-        {items.map((c) => (
-          <li
-            key={c.key}
-            style={{ color: c.passed ? "#196127" : c.severity === "hard" ? "#b00" : "#946c00" }}
-          >
-            {c.passed ? "✓" : c.severity === "hard" ? "✗" : "⚠"} {c.label}
-          </li>
-        ))}
-      </ul>
-    </section>
+    </>
   );
 }

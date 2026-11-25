@@ -104,10 +104,32 @@ export function overlaps(a: TimeRange, b: TimeRange): boolean {
   return a.start < b.end && b.start < a.end;
 }
 
+/**
+ * The app's own time zone (Madison). Dates shown to people are read in it, so
+ * the server and the browser agree on the day.
+ */
+export const APP_TIME_ZONE = "America/Chicago";
+
+/** Short month names, indexed like `Date.getUTCMonth()`. */
+export const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
 /** Today's date in Madison as "YYYY-MM-DD". */
 export function chicagoToday(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Chicago",
+    timeZone: APP_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -4,7 +4,7 @@
  * Warn before unsaved form edits are lost: a native beforeunload prompt for tab
  * close / refresh / external navigation, plus a confirm() on same-tab link
  * clicks: the App Router has no route-change blocking API, and the links that
- * leave a wizard page (AppHeader Home, the WizardSteps breadcrumb) live outside
+ * leave a wizard page (the top bar, the step progress) live outside
  * the form component, so a document-level capture listener is the seam. Capture
  * phase runs before Next's <Link> onClick; stopPropagation on decline cancels
  * that client navigation too. Programmatic router.push (e.g. after a successful

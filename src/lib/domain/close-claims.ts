@@ -8,7 +8,7 @@
  * unless an admin set another. This module is pure (dates are YYYY-MM-DD
  * strings, all math in UTC); the atomic claim write lives in the server layer.
  */
-import { formatTime, parseTime } from "./time";
+import { MONTH_LABELS, formatTime, parseTime } from "./time";
 
 /** The most closes one lead can be asked for. Zero means none are asked. */
 export const MAX_CLOSE_REQUIREMENT = 20;
@@ -173,20 +173,54 @@ export function closeClaimsFeasibility(input: {
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTH_LABELS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
 ] as const;
 
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ] as const;
 
 /** A slot date without its year, e.g. "Fri Sep 4", for use under a heading that carries it. */
 export function formatCloseDay(iso: string): string {
   const d = toUtc(iso);
-  return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `${DAY_LABELS[d.getUTCDay()]} ${monthDay(d)}`;
+}
+
+const monthDay = (d: Date): string => `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+
+/** A slot date as a student reads it on the picking board, e.g. "Friday, Nov 27". */
+export function formatCloseDayLong(iso: string): string {
+  const d = toUtc(iso);
+  return `${DAY_NAMES[d.getUTCDay()]}, ${monthDay(d)}`;
+}
+
+/**
+ * A weekend's Friday and Saturday, from its key (the Friday): "Nov 27 to 28",
+ * or "Oct 31 to Nov 1" when the Saturday starts a month.
+ */
+export function formatCloseWeekend(fridayIso: string): string {
+  const fri = toUtc(fridayIso);
+  const sat = new Date(fri.getTime() + DAY_MS);
+  const end = fri.getUTCMonth() === sat.getUTCMonth() ? String(sat.getUTCDate()) : monthDay(sat);
+  return `${monthDay(fri)} to ${end}`;
 }
 
 /**
@@ -195,7 +229,7 @@ export function formatCloseDay(iso: string): string {
  */
 export function formatCloseDate(iso: string): string {
   const d = toUtc(iso);
-  return `${DAY_LABELS[d.getUTCDay()]} ${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  return `${DAY_LABELS[d.getUTCDay()]} ${monthDay(d)}, ${d.getUTCFullYear()}`;
 }
 
 /** One-line label for a whole slot, e.g. "Fri Sep 4, 2026, 6p–11:30p". */

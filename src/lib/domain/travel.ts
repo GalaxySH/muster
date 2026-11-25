@@ -7,6 +7,7 @@
  * cutoff is its own config value, independent of per-position form windows
  * (§13).
  */
+import { APP_TIME_ZONE, MONTH_LABELS } from "./time";
 
 /** True if a travel entry created at `createdAt` is excused under the cutoff. */
 export function isTravelExcused(createdAt: Date, cutoff: Date): boolean {
@@ -81,3 +82,34 @@ export const TRAVEL_STANDING_LABEL: Record<TravelStanding, string> = {
   late: "not excused (late)",
   unproven: "not excused (no proof)",
 };
+
+/** The cutoff as a student reads it, e.g. "Jan 15, 2027": the day it falls on in Madison. */
+export function formatCutoffDate(cutoff: Date): string {
+  return cutoff.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: APP_TIME_ZONE,
+  });
+}
+
+/**
+ * "Nov 25 to Nov 29, 2026" from two stored "YYYY-MM-DD" days. Read off the
+ * strings, never through a Date, so no timezone can move a day. The year is
+ * said once when both days share it, and a one-day trip is a single date.
+ * Anything that isn't a stored day is shown as it is.
+ */
+export function formatTravelRange(startIso: string, endIso: string): string {
+  const parse = (iso: string) => {
+    const [, y, m, d] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso) ?? [];
+    const month = MONTH_LABELS[Number(m) - 1];
+    return month ? { year: y, day: `${month} ${Number(d)}` } : null;
+  };
+  const start = parse(startIso);
+  const end = parse(endIso);
+  if (!start || !end) return `${startIso} to ${endIso}`;
+  if (startIso === endIso) return `${end.day}, ${end.year}`;
+  return start.year === end.year
+    ? `${start.day} to ${end.day}, ${end.year}`
+    : `${start.day}, ${start.year} to ${end.day}, ${end.year}`;
+}

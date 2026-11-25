@@ -1,15 +1,5 @@
 import { signOutAction } from "@/lib/auth/actions";
-import { SubmitButton, SubmitTextLink } from "@/components/SubmitButton";
-
-export function SignOutButton() {
-  return (
-    <form action={signOutAction}>
-      <SubmitButton variant="secondary" pendingLabel="Signing out…">
-        Sign out
-      </SubmitButton>
-    </form>
-  );
-}
+import { SubmitTextLink } from "@/components/SubmitButton";
 
 /** Sign out as a text link, for sitting beside the signed-in email in a header. */
 export function SignOutLink() {

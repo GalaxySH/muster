@@ -4,15 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { finalizeSubmission } from "@/lib/availability/actions";
-import { ActionButton } from "@/components/ui";
+import { ActionBar, Button, ButtonLink, StatusLine } from "@/components/student/ui";
 
 /**
- * The exit-page submit (PLAN §13). Calls finalizeSubmission, the single place a
- * submission flips to "submitted", and on success returns the student to /me
- * (now the "done" view). On a validation/missing-course-schedule error it shows
- * the message with a link to the step that needs fixing.
+ * The exit-page submit (PLAN §13), in the page's action bar beside the Back
+ * link. Calls finalizeSubmission, the single place a submission flips to
+ * "submitted", and on success returns the student to /me (now the "done"
+ * view). On a validation/missing-course-schedule error it shows the message
+ * with a link to the step that needs fixing.
  */
-export function FinishButton() {
+export function FinishButton({ backHref }: { backHref: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<{ message: string; fixHref?: string } | null>(null);
@@ -31,20 +32,21 @@ export function FinishButton() {
   }
 
   return (
-    <div>
-      <ActionButton onClick={submit} pending={pending} pendingLabel="Submitting…">
+    <ActionBar
+      status={
+        err && (
+          <StatusLine ok={false} role="alert">
+            {err.message} {err.fixHref && <Link href={err.fixHref}>Go fix it</Link>}
+          </StatusLine>
+        )
+      }
+    >
+      <ButtonLink href={backHref} variant="secondary">
+        Back
+      </ButtonLink>
+      <Button onClick={submit} pending={pending} pendingLabel="Submitting…">
         Submit my preferences
-      </ActionButton>
-      {err && (
-        <p role="status" style={{ color: "#b00", marginTop: 10 }}>
-          ✗ {err.message}{" "}
-          {err.fixHref && (
-            <Link href={err.fixHref} style={{ color: "#b00" }}>
-              Go fix it
-            </Link>
-          )}
-        </p>
-      )}
-    </div>
+      </Button>
+    </ActionBar>
   );
 }

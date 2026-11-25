@@ -1,23 +1,24 @@
-import { AppHeader } from "@/components/AppHeader";
-import { Page, PrimaryLink } from "@/components/ui";
+import type { Metadata } from "next";
+import { StudentPage } from "@/components/student/StudentPage";
+import { ButtonLink } from "@/components/student/ui";
+
+export const metadata: Metadata = { title: "Page not found" };
 
 /**
  * App-wide 404 (Next.js `not-found` convention). It renders the same for every
- * visitor apart from the admin's student finder in AppHeader; the Home crumb and
+ * visitor apart from the admin's tools in the shell; the Home link and the
  * button lead to /me, which bounces to /signin when needed.
  */
 export default function NotFound() {
   return (
-    <Page width="narrow">
-      <AppHeader />
+    <StudentPage width="narrow">
       <h1>Page not found</h1>
-      <p style={{ color: "#555" }}>
-        We can&apos;t find that page. The address may be mistyped, or the page may have
-        moved.
+      <p className="sf-muted">
+        We can&apos;t find that page. The address may be mistyped, or the page may have moved.
       </p>
-      <p style={{ marginTop: 20 }}>
-        <PrimaryLink href="/me">Go to your home page</PrimaryLink>
-      </p>
-    </Page>
+      <ButtonLink href="/me" block>
+        Go to your home page
+      </ButtonLink>
+    </StudentPage>
   );
 }

@@ -18,6 +18,8 @@ import {
   MAX_CLOSE_REQUIREMENT,
   formatCloseDate,
   formatCloseSlot,
+  formatCloseDayLong,
+  formatCloseWeekend,
 } from "./close-claims";
 
 describe("close-shift constants", () => {
@@ -175,9 +177,9 @@ describe("formatCloseSlot", () => {
   });
 
   it("uses each slot's own times, not the defaults", () => {
-    expect(formatCloseSlot({ date: "2026-12-12", startMinutes: 17 * 60, endMinutes: 23 * 60 })).toBe(
-      "Sat Dec 12, 2026, 5p–11p",
-    );
+    expect(
+      formatCloseSlot({ date: "2026-12-12", startMinutes: 17 * 60, endMinutes: 23 * 60 }),
+    ).toBe("Sat Dec 12, 2026, 5p–11p");
   });
 });
 
@@ -236,5 +238,23 @@ describe("groupCloseWeekends", () => {
 
   it("returns nothing for no closes", () => {
     expect(groupCloseWeekends([])).toEqual([]);
+  });
+});
+
+describe("formatCloseDayLong", () => {
+  it("names the weekday in full, with the month and day", () => {
+    expect(formatCloseDayLong("2026-11-27")).toBe("Friday, Nov 27");
+    expect(formatCloseDayLong("2026-11-28")).toBe("Saturday, Nov 28");
+  });
+});
+
+describe("formatCloseWeekend", () => {
+  it("says the month once when the weekend stays inside it", () => {
+    expect(formatCloseWeekend("2026-11-27")).toBe("Nov 27 to 28");
+  });
+
+  it("names both months when Saturday starts a new one", () => {
+    expect(formatCloseWeekend("2026-10-30")).toBe("Oct 30 to 31");
+    expect(formatCloseWeekend("2027-04-30")).toBe("Apr 30 to May 1");
   });
 });

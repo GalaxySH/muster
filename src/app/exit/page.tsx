@@ -1,14 +1,16 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { FinishButton } from "@/components/FinishButton";
 import { loadWizardNav } from "@/lib/flow/data";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { Notice } from "@/components/student/ui";
 import { currentTermId } from "@/lib/terms/working";
 import { getTerm } from "@/lib/terms/term-id";
 import { getDb } from "@/lib/db";
+
+export const metadata: Metadata = { title: "Almost done" };
 
 /**
  * Final wizard step (PLAN §13). Sets expectations (these are preferences, not a
@@ -22,39 +24,32 @@ export default async function ExitPage() {
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email, termId);
   const { scheduleNote } = await getTerm(getDb(), termId);
+  const backHref = nav.steps[nav.steps.length - 1]?.href ?? "/me";
 
   return (
-    <Page>
-      <AppHeader>
-        <WizardSteps steps={nav.steps} reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage nav={nav} progressLabel="Review and submit" stepsDone>
       <h1>Almost done</h1>
 
-      <div
+      <Notice
+        tone="info"
         role="note"
-        style={{
-          background: "#e7f0fb",
-          border: "1px solid #b6d2f2",
-          borderRadius: 8,
-          padding: "1rem 1.2rem",
-          fontSize: 15,
-          margin: "1rem 0 1.4rem",
-        }}
+        title="Reminder: This submits your schedule preferences, not your schedule."
       >
-        <strong>Reminder: This submits your schedule preferences, not your schedule.</strong>
-        <p style={{ margin: "8px 0 0" }}>
-          You haven&apos;t been scheduled yet. We will create your schedule once we have everyone&apos;s preferences.
+        <p>
+          You haven&apos;t been scheduled yet. We will create your schedule once we have
+          everyone&apos;s preferences.
         </p>
-        <p style={{ margin: "8px 0 0" }}>
-          {scheduleNote} We will update you if there are any delays. We will send out emails notifying you when your schedule is ready.
+        <p>
+          {scheduleNote} We will update you if there are any delays. We will send out emails
+          notifying you when your schedule is ready.
         </p>
-      </div>
+      </Notice>
 
-      <p style={{ color: "#555", marginBottom: 16 }}>
+      <p className="sf-muted">
         You can keep editing your responses until your form window closes.
       </p>
 
-      <FinishButton />
-    </Page>
+      <FinishButton backHref={backHref} />
+    </StudentPage>
   );
 }

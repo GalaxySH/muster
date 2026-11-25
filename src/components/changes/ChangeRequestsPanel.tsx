@@ -11,7 +11,7 @@
  * target's position offers its shift times as one-click inserts, plus a
  * "Multiple" one for everyone.
  */
-import { useRef, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   createChangeRequest,
@@ -29,14 +29,34 @@ import {
   type ChangeRequestDay,
   type ShiftTimeBlock,
 } from "@/lib/domain/change-requests";
-import { ACCEPT } from "@/components/evidence/shared";
-import { ActionButton } from "@/components/ui";
+import { APP_TIME_ZONE } from "@/lib/domain/time";
+import { ACCEPT, FORMAT_HINT } from "@/components/evidence/shared";
+import { Button, Card, Pill, StatusLine, VisuallyHidden } from "@/components/student/ui";
+import { FilePicker } from "@/components/student/FormControls";
 import { EmployeePicker, type EmployeeOption } from "./EmployeePicker";
 
 export interface ChangeRequestsAdminProps {
   /** Pre-seeded from the per-student admin page's quick link (?student=). */
   initialEmployee: EmployeeOption | null;
 }
+
+/** "Nov 25", in the app's own time zone so the server and the browser print the same day. */
+function sentLabel(createdAt: ChangeRequestRow["createdAt"]): string {
+  return new Date(createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: APP_TIME_ZONE,
+  });
+}
+
+const STATUS_PILL: Record<
+  ChangeRequestStatus,
+  { label: string; tone: "neutral" | "success" | "warning" }
+> = {
+  open: { label: "Open", tone: "warning" },
+  withdrawn: { label: "Withdrawn", tone: "neutral" },
+  resolved: { label: "Resolved", tone: "success" },
+};
 
 export function ChangeRequestsPanel({
   initial,
@@ -49,6 +69,7 @@ export function ChangeRequestsPanel({
   admin?: ChangeRequestsAdminProps;
 }) {
   const termId = useRenderedTermId();
+  const ids = useId();
   const [requests, setRequests] = useState(initial);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [employee, setEmployee] = useState<EmployeeOption | null>(admin?.initialEmployee ?? null);
@@ -57,7 +78,10 @@ export function ChangeRequestsPanel({
   const [comment, setComment] = useState("");
   const [permanent, setPermanent] = useState(true);
   const [resolveOnSubmit, setResolveOnSubmit] = useState(false);
+  // Read at submit. Bumping the key remounts the picker, which empties it
+  // after a request is sent.
   const fileInput = useRef<HTMLInputElement>(null);
+  const [filePickerKey, setFilePickerKey] = useState(0);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingSubmit, startSubmit] = useTransition();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
@@ -66,7 +90,11 @@ export function ChangeRequestsPanel({
 
   function applyResult(res: ChangeRequestActionResult, successText: string) {
     if (res.requests) setRequests(res.requests);
-    setMsg(res.ok ? { ok: true, text: successText } : { ok: false, text: res.error ?? "Something went wrong." });
+    setMsg(
+      res.ok
+        ? { ok: true, text: successText }
+        : { ok: false, text: res.error ?? "Something went wrong." },
+    );
   }
 
   // Admin only: swap the request list and shift times to whoever the form now
@@ -100,7 +128,7 @@ export function ChangeRequestsPanel({
         fd.set("employee", employee.email);
         fd.set("termId", termId);
       }
-      for (const file of fileInput.current?.files ?? []) fd.append("files", file);
+      for (const file of Array.from(fileInput.current?.files ?? [])) fd.append("files", file);
       const res = await createChangeRequest(fd);
       const target = employee ? ` for ${employee.displayName}` : "";
       applyResult(
@@ -116,7 +144,7 @@ export function ChangeRequestsPanel({
         setComment("");
         setPermanent(true);
         setResolveOnSubmit(false);
-        if (fileInput.current) fileInput.current.value = "";
+        setFilePickerKey((k) => k + 1);
       }
     });
   }
@@ -134,201 +162,180 @@ export function ChangeRequestsPanel({
   }
 
   return (
-    <div>
-      <section style={formCard}>
-        {admin && (
-          <div style={{ ...field, marginBottom: 12, maxWidth: 380 }}>
-            Employee
-            <EmployeePicker value={employee} onChange={selectEmployee} />
-            <span style={{ fontWeight: 400, fontSize: 12, color: "#777" }}>
-              Pick who this request is for. Leave it empty to send the request as yourself.
-            </span>
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <label style={field}>
-            Day
-            <select
-              value={day}
-              onChange={(e) => setDay(e.target.value as ChangeRequestDay)}
-              style={input}
-            >
-              {CHANGE_REQUEST_DAY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div style={{ ...field, flex: 1, minWidth: 180 }}>
-            <label style={field}>
-              Shift time
+    <>
+      <Card>
+        <h2>New request</h2>
+        <div className="sf-stack">
+          {admin && (
+            <div className="sf-field">
+              <span id={`${ids}-employee`} className="sf-label">
+                Employee
+              </span>
+              <div
+                role="group"
+                aria-labelledby={`${ids}-employee`}
+                aria-describedby={`${ids}-employee-hint`}
+              >
+                <EmployeePicker value={employee} onChange={selectEmployee} />
+              </div>
+              <p id={`${ids}-employee-hint`} className="sf-hint">
+                Pick who this request is for. Leave it empty to send the request as yourself.
+              </p>
+            </div>
+          )}
+          <div className="sf-request-when">
+            <div className="sf-field">
+              <label htmlFor={`${ids}-day`} className="sf-label">
+                Day
+              </label>
+              <select
+                id={`${ids}-day`}
+                value={day}
+                onChange={(e) => setDay(e.target.value as ChangeRequestDay)}
+                className="sf-input"
+              >
+                {CHANGE_REQUEST_DAY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sf-field">
+              <label htmlFor={`${ids}-shift`} className="sf-label">
+                Shift time
+              </label>
               <input
+                id={`${ids}-shift`}
                 type="text"
                 value={shiftText}
                 onChange={(e) => setShiftText(e.target.value)}
                 placeholder="e.g. 2p to 5p"
-                style={input}
+                className="sf-input"
               />
-            </label>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            </div>
+          </div>
+          <div className="sf-field">
+            <p id={`${ids}-times`} className="sf-hint">
+              Tap a time to add it.
+            </p>
+            <div role="group" aria-labelledby={`${ids}-times`} className="sf-chips">
               {shiftTimes.map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setShiftText((cur) => insertShiftTime(cur, t))}
                   aria-label={`Add ${t}`}
-                  style={shiftTimePill}
+                  className="sf-chip sf-num"
                 >
                   {t}
                 </button>
               ))}
             </div>
           </div>
-        </div>
-        <label style={{ ...field, marginTop: 10 }}>
-          What do you need?
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            rows={3}
-            placeholder="e.g. I want to move my Tuesday 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
-            style={{ ...input, fontFamily: "inherit" }}
-          />
-        </label>
-        <label style={checkboxRow}>
-          <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
-          This is a permanent change (uncheck for a one-time change)
-        </label>
-        {admin && (
-          <label style={{ ...checkboxRow, display: "flex" }}>
+          <div className="sf-field">
+            <label htmlFor={`${ids}-comment`} className="sf-label">
+              What do you need?
+            </label>
+            <textarea
+              id={`${ids}-comment`}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={3}
+              placeholder="e.g. I want to move my Tuesday 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
+              aria-describedby={`${ids}-comment-hint`}
+              className="sf-textarea"
+            />
+            <p id={`${ids}-comment-hint`} className="sf-hint">
+              If your request is for a non-permanent change, put the specific date in the
+              description.
+            </p>
+          </div>
+          <label className="sf-check">
             <input
               type="checkbox"
-              checked={resolveOnSubmit}
-              onChange={(e) => setResolveOnSubmit(e.target.checked)}
+              checked={permanent}
+              onChange={(e) => setPermanent(e.target.checked)}
             />
-            Mark as resolved on submission
+            <span>This is a permanent change (uncheck for a one-time change)</span>
           </label>
-        )}
-        <label style={{ ...field, marginTop: 12 }}>
-          Supporting docs (optional, up to {MAX_CHANGE_REQUEST_FILES} files)
-          <input ref={fileInput} type="file" accept={ACCEPT} multiple style={{ fontSize: 14 }} />
-        </label>
-        <p style={{ margin: "6px 0 0", fontSize: 13, color: "#946c00" }}>
-          Changes because of a required event or extracurricular activity must include supporting proof.
-        </p>
-        <div style={{ marginTop: 12 }}>
-          <ActionButton onClick={submit} pending={pendingSubmit} pendingLabel="Sending…">
-            Send request
-          </ActionButton>
+          {admin && (
+            <label className="sf-check">
+              <input
+                type="checkbox"
+                checked={resolveOnSubmit}
+                onChange={(e) => setResolveOnSubmit(e.target.checked)}
+              />
+              <span>Mark as resolved on submission</span>
+            </label>
+          )}
+          <div className="sf-field">
+            <FilePicker
+              key={filePickerKey}
+              name="files"
+              label={`Supporting docs (optional, up to ${MAX_CHANGE_REQUEST_FILES} files)`}
+              hint={FORMAT_HINT}
+              accept={ACCEPT}
+              multiple
+              inputRef={fileInput}
+            />
+            <p className="sf-hint">
+              Changes because of a required event or extracurricular activity must include
+              supporting proof.
+            </p>
+          </div>
+          <div>
+            <Button block onClick={submit} pending={pendingSubmit} pendingLabel="Sending…">
+              Send request
+            </Button>
+            {msg && (
+              <StatusLine ok={msg.ok} role={msg.ok ? "status" : "alert"}>
+                {msg.text}
+              </StatusLine>
+            )}
+          </div>
         </div>
-        {msg && (
-          <p role="status" style={{ margin: "10px 0 0", fontSize: 14, color: msg.ok ? "#196127" : "#b00" }}>
-            {msg.ok ? "✓ " : "✗ "}
-            {msg.text}
-          </p>
-        )}
-      </section>
+      </Card>
 
-      <h2 style={{ fontSize: 17, margin: "22px 0 8px" }}>
+      <h2 className="sf-request-list-title">
         {employee ? `Requests for ${employee.displayName}` : "Your requests"}
       </h2>
       {loadingList ? (
-        <p style={{ color: "#555", fontSize: 14 }}>Loading…</p>
+        <p className="sf-muted sf-small">Loading…</p>
       ) : requests.length === 0 ? (
-        <p style={{ color: "#555", fontSize: 14 }}>
+        <p className="sf-muted sf-small">
           {employee ? "No requests yet." : "You haven't sent any requests yet."}
         </p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
-          {requests.map((r) => (
-            <li key={r.id} style={requestCard}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 600 }}>
-                  {changeRequestDayLabel(r.day)} · {r.shiftText}
-                  <span style={{ fontWeight: 400, color: "#777" }}>
-                    {" "}
-                    · {r.permanent ? "permanent" : "one time"}
-                  </span>
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <StatusBadge status={r.status} />
-                  <span style={{ fontSize: 12, color: "#777" }}>
-                    {new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
-                </span>
-              </div>
-              <p style={{ margin: "6px 0 0", fontSize: 14, whiteSpace: "pre-wrap" }}>{r.comment}</p>
-              {r.status === "open" && (
-                <div style={{ marginTop: 8 }}>
-                  <ActionButton
-                    variant="secondary"
+        <ul className="sf-request-list">
+          {requests.map((r) => {
+            const what = `${changeRequestDayLabel(r.day)} · ${r.shiftText}`;
+            return (
+              <li key={r.id} className="sf-card">
+                <div className="sf-card-head">
+                  <h3 className="sf-request-title">{what}</h3>
+                  <Pill tone={STATUS_PILL[r.status].tone}>{STATUS_PILL[r.status].label}</Pill>
+                </div>
+                <p className="sf-small sf-muted">
+                  {r.permanent ? "Permanent" : "One time"} · Sent {sentLabel(r.createdAt)}
+                </p>
+                <p className="sf-prewrap">{r.comment}</p>
+                {r.status === "open" && (
+                  <Button
+                    variant="danger"
+                    small
                     pending={withdrawingId === r.id}
                     pendingLabel="Withdrawing…"
                     onClick={() => withdraw(r.id)}
-                    style={{ padding: "0.25rem 0.7rem", fontSize: 13 }}
                   >
-                    Withdraw
-                  </ActionButton>
-                </div>
-              )}
-            </li>
-          ))}
+                    Withdraw<VisuallyHidden> request for {what}</VisuallyHidden>
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
-    </div>
+    </>
   );
 }
-
-function StatusBadge({ status }: { status: ChangeRequestStatus }) {
-  const styles: Record<ChangeRequestStatus, React.CSSProperties> = {
-    open: { background: "#e7f0fb", color: "#1a66cc" },
-    withdrawn: { background: "#f0f0f0", color: "#666" },
-    resolved: { background: "#e6f4ea", color: "#196127" },
-  };
-  return (
-    <span style={{ ...styles[status], borderRadius: 10, padding: "1px 8px", fontSize: 12, fontWeight: 600 }}>
-      {status}
-    </span>
-  );
-}
-
-const formCard: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-};
-const requestCard: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  borderRadius: 8,
-  padding: "0.7rem 0.9rem",
-};
-const shiftTimePill: React.CSSProperties = {
-  padding: "2px 9px",
-  border: "1px solid #ccc",
-  borderRadius: 12,
-  background: "#f7f7f7",
-  fontSize: 12,
-  fontWeight: 400,
-  cursor: "pointer",
-};
-const checkboxRow: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  marginTop: 10,
-  fontSize: 14,
-  cursor: "pointer",
-};
-const field: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  fontSize: 13,
-  fontWeight: 600,
-};
-const input: React.CSSProperties = {
-  padding: "6px 8px",
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  fontSize: 14,
-};

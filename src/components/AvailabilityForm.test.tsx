@@ -87,11 +87,8 @@ describe("AvailabilityForm", () => {
     renderForm({ highDemand: new Set([demandCellKey("wd-open", "mon")]) });
     expect(screen.getByText(/less busy shifts/i)).toBeInTheDocument();
     // The mark lands on Monday's cell only, not every day of the block row.
-    expect(screen.getByRole("button", { name: "6:30a–10:15a Mon" })).toHaveAttribute(
-      "title",
-      "A lot of students picked this shift",
-    );
-    expect(screen.getByRole("button", { name: "6:30a–10:15a Tue" })).not.toHaveAttribute("title");
+    expect(screen.getByRole("button", { name: "6:30a–10:15a Mon, busy shift" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "6:30a–10:15a Tue" })).toBeInTheDocument();
   });
 
   it("toggles a cell's pressed state on click", async () => {
@@ -109,7 +106,11 @@ describe("AvailabilityForm", () => {
     const user = userEvent.setup();
     renderForm();
     const cont = screen.getByRole("button", { name: "Save and continue" });
-    expect(cont).toBeDisabled();
+    expect(cont).toHaveAttribute("aria-disabled", "true");
+    // Pressing it early saves nothing and points at what is left to do.
+    await user.click(cont);
+    expect(saveAvailability).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Requirements" })).toHaveFocus();
 
     // Satisfy the availability hard rules.
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Mon" }));
@@ -118,11 +119,11 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "8:30a–11a Sat" }));
 
     // Still blocked: desired hours is required.
-    expect(cont).toBeDisabled();
+    expect(cont).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText(/enter your desired weekly hours/i)).toBeInTheDocument();
 
     await user.type(screen.getByRole("spinbutton"), "14");
-    expect(cont).toBeEnabled();
+    expect(cont).toHaveAttribute("aria-disabled", "false");
 
     await user.click(cont);
     expect(saveAvailability).toHaveBeenCalledTimes(1);
@@ -148,12 +149,12 @@ describe("AvailabilityForm", () => {
     expect(input).toHaveAttribute("min", "10");
 
     await user.type(input, "5");
-    expect(cont).toBeDisabled();
+    expect(cont).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText(/at least 10h/i)).toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "10");
-    expect(cont).toBeEnabled();
+    expect(cont).toHaveAttribute("aria-disabled", "false");
   });
 
   it("treats a missing weekend shift as a soft warning, not a hard block", async () => {
@@ -164,7 +165,10 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "6:30a–10:15a Wed" }));
     await user.type(screen.getByRole("spinbutton"), "12");
 
-    expect(screen.getByRole("button", { name: "Save and continue" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save and continue" })).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
     expect(screen.getByText(/no weekend shift/i)).toBeInTheDocument();
   });
 
@@ -178,12 +182,10 @@ describe("AvailabilityForm", () => {
       ],
     });
     const short = screen.getByRole("button", { name: "10a–12:45p Mon" });
-    expect(short).not.toHaveAttribute("title");
 
     await user.click(screen.getByRole("button", { name: "10a–2p Mon" }));
 
-    expect(short).toHaveAttribute("title", expect.stringContaining("covered"));
-    expect(short).toHaveTextContent("–");
+    expect(short).toHaveAccessibleName("10a–12:45p Mon, covered by a longer shift you picked");
     expect(short).toHaveAttribute("aria-pressed", "false"); // covered, not selected
   });
 
@@ -218,9 +220,7 @@ describe("AvailabilityForm", () => {
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText(/we kept one for you/i)).toBeInTheDocument();
-    const autoCell = screen.getByRole("button", { name: "8:30a–11a Sat" });
-    expect(autoCell).toHaveTextContent("★");
-    expect(autoCell).toHaveAttribute("title", expect.stringContaining("auto-assigned"));
+    const autoCell = screen.getByRole("button", { name: "8:30a–11a Sat, picked for you" });
     expect(autoCell).toHaveAttribute("aria-pressed", "false"); // server-owned, not a manual pick
     expect(push).not.toHaveBeenCalled(); // editing in place — no wizard advance
   });

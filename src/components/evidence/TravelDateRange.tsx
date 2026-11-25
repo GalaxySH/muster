@@ -19,8 +19,12 @@ export function TravelDateRange({
   layout = "stacked",
   disabled = false,
 }: {
-  /** "stacked" puts each label above its input (the admin modal); "inline" beside it. */
-  layout?: "stacked" | "inline";
+  /**
+   * "stacked" is the admin modal's plain pair. "field" is the student form's:
+   * the two dates side by side in the student design system (app/student.css),
+   * so it only looks right inside a StudentPage.
+   */
+  layout?: "stacked" | "field";
   disabled?: boolean;
 }) {
   const endRef = useRef<HTMLInputElement>(null);
@@ -38,23 +42,47 @@ export function TravelDateRange({
     if (!end.value || end.value < start) end.value = start;
   }
 
-  const labelStyle = layout === "inline" ? inlineLabel : stackedLabel;
+  const inputClass = layout === "field" ? "sf-input" : undefined;
+  const start = (
+    <input
+      type="date"
+      name="startDate"
+      required
+      disabled={disabled}
+      defaultValue={today}
+      onChange={(e) => syncEnd(e.target.value)}
+      className={inputClass}
+    />
+  );
+  const end = (
+    <input
+      type="date"
+      name="endDate"
+      required
+      disabled={disabled}
+      ref={endRef}
+      className={inputClass}
+    />
+  );
+
+  if (layout === "field") {
+    return (
+      <div className="sf-fields-2 sf-dates">
+        <label className="sf-field">
+          <span className="sf-label">Start</span>
+          {start}
+        </label>
+        <label className="sf-field">
+          <span className="sf-label">End</span>
+          {end}
+        </label>
+      </div>
+    );
+  }
   return (
     <div style={row}>
-      <label style={labelStyle}>
-        Start{" "}
-        <input
-          type="date"
-          name="startDate"
-          required
-          disabled={disabled}
-          defaultValue={today}
-          onChange={(e) => syncEnd(e.target.value)}
-        />
-      </label>
-      <label style={labelStyle}>
-        End <input type="date" name="endDate" required disabled={disabled} ref={endRef} />
-      </label>
+      <label style={stackedLabel}>Start {start}</label>
+      <label style={stackedLabel}>End {end}</label>
     </div>
   );
 }
@@ -65,6 +93,4 @@ const row: React.CSSProperties = {
   flexWrap: "wrap",
   alignItems: "center",
 };
-/** The student form runs its labels beside the inputs; the admin modal stacks them. */
-const inlineLabel: React.CSSProperties = { fontSize: 14 };
 const stackedLabel: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13 };

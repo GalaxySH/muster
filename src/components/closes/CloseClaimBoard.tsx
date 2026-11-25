@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * The SL weekend-close picking board (PLAN §18a). One column per weekend day
- * (Fri/Sat), one row per weekend; each cell shows whether the slot is still
- * open and a claim/release control. Status polls every few seconds (and
+ * The SL weekend-close picking board (PLAN §18a). A list grouped by weekend,
+ * one row per slot (Friday, then Saturday); each row shows whether the slot is
+ * still open and a claim/release control. Status polls every few seconds (and
  * refreshes with every action result) so a lost claim race self-corrects with
  * a friendly message instead of a lock. Shows open/full only, never counts or
  * names; counts are admin-only.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck, faCircleCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import {
   claimCloseSlot,
   releaseCloseClaim,
@@ -19,10 +21,11 @@ import type { CloseBoard, CloseSlotView } from "@/lib/closes/data";
 import {
   closeClaimsComplete,
   closeWeekendKey,
-  formatCloseDate,
+  formatCloseDayLong,
+  formatCloseWeekend,
 } from "@/lib/domain/close-claims";
 import { formatTime } from "@/lib/domain/time";
-import { ActionButton, PrimaryLink } from "@/components/ui";
+import { Button, Pill, StatusLine, StepActions, VisuallyHidden } from "@/components/student/ui";
 
 const POLL_MS = 10_000;
 
@@ -78,137 +81,102 @@ export function CloseClaimBoard({
   }
   const weekendRows = [...weekends.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-  function renderCell(slot: CloseSlotView | undefined) {
-    if (!slot) return <td style={cellStyle} />;
+  function renderSlot(slot: CloseSlotView) {
     const pending = pendingSlot === slot.id;
+    const day = formatCloseDayLong(slot.date);
     return (
-      <td style={cellStyle}>
-        <div style={rowStyle}>
-          <div>
-            <span style={{ fontWeight: 600 }}>{formatCloseDate(slot.date)}</span>{" "}
-            <span style={{ fontSize: 13, color: "#555" }}>
-              {formatTime(slot.startMinutes)}–{formatTime(slot.endMinutes)}
-            </span>
-          </div>
-          <div style={{ whiteSpace: "nowrap" }}>
-            {slot.mine ? (
-              <>
-                <span style={{ color: "#196127", fontWeight: 600 }}>✓ Yours</span>
-                {editable && (
-                  <ActionButton
-                    variant="secondary"
-                    pending={pending}
-                    pendingLabel="Releasing…"
-                    onClick={() => run(slot.id, releaseCloseClaim)}
-                    style={smallButton}
-                  >
-                    Release
-                  </ActionButton>
-                )}
-              </>
-            ) : slot.full ? (
-              <span style={{ color: "#999" }}>Full</span>
-            ) : (
-              <>
-                <span style={{ color: "#555" }}>Open</span>
-                {editable && (
-                  <ActionButton
-                    pending={pending}
-                    pendingLabel="Claiming…"
-                    disabled={complete}
-                    onClick={() => run(slot.id, claimCloseSlot)}
-                    style={smallButton}
-                  >
-                    Claim
-                  </ActionButton>
-                )}
-              </>
-            )}
-          </div>
+      <li key={slot.id} className={slot.mine ? "sf-close-row sf-close-row--mine" : "sf-close-row"}>
+        <div className="sf-close-when">
+          <span className="sf-close-date">{day}</span>
+          <span className="sf-close-time sf-num">
+            {formatTime(slot.startMinutes)} to {formatTime(slot.endMinutes)}
+          </span>
         </div>
-      </td>
+        <div className="sf-close-state">
+          {slot.mine ? (
+            <>
+              <Pill tone="success">
+                <FontAwesomeIcon icon={faCheck} aria-hidden /> Yours
+              </Pill>
+              {editable && (
+                <Button
+                  variant="quiet"
+                  small
+                  pending={pending}
+                  pendingLabel="Releasing…"
+                  onClick={() => run(slot.id, releaseCloseClaim)}
+                >
+                  Release<VisuallyHidden> {day}</VisuallyHidden>
+                </Button>
+              )}
+            </>
+          ) : slot.full ? (
+            <Pill>Full</Pill>
+          ) : (
+            <>
+              <Pill>Open</Pill>
+              {editable && (
+                <Button
+                  variant="secondary"
+                  small
+                  pending={pending}
+                  pendingLabel="Claiming…"
+                  disabled={complete}
+                  onClick={() => run(slot.id, claimCloseSlot)}
+                >
+                  Claim<VisuallyHidden> {day}</VisuallyHidden>
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </li>
     );
   }
 
   return (
-    <div>
-      <p style={{ fontWeight: 600, color: complete ? "#196127" : "#1a2233" }}>
-        {complete
-          ? `✓ You have your ${board.required} ${closesWord}.`
-          : `You have picked ${board.myClaimCount} of ${board.required}.`}
-      </p>
-      {complete && editable && (
-        <p style={{ fontSize: 14, color: "#555" }}>
-          To switch a shift, release one of your picks first, then claim another.
+    <>
+      <div className={complete ? "sf-close-summary sf-close-summary--done" : "sf-close-summary"}>
+        {/* Always mounted, so a claim or release is announced. */}
+        <p className="sf-close-count" aria-live="polite">
+          {complete && <FontAwesomeIcon icon={faCircleCheck} aria-hidden />}
+          <span>
+            {complete
+              ? `You have your ${board.required} ${closesWord}.`
+              : `You have picked ${board.myClaimCount} of ${board.required}.`}
+          </span>
         </p>
-      )}
-      {error && (
-        <p role="status" style={{ color: "#b00" }}>
-          ✗ {error}
-        </p>
-      )}
-
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={headStyle}>Friday</th>
-              <th style={headStyle}>Saturday</th>
-            </tr>
-          </thead>
-          <tbody>
-            {weekendRows.map(([key, w]) => (
-              <tr key={key}>
-                {renderCell(w.fri)}
-                {renderCell(w.sat)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {complete && editable && (
+          <p className="sf-small sf-muted">
+            To switch a shift, release one of your picks first, then claim another.
+          </p>
+        )}
+        {error && (
+          <StatusLine ok={false} role="alert">
+            {error}
+          </StatusLine>
+        )}
       </div>
 
+      {weekendRows.map(([key, w]) => (
+        <section key={key} aria-labelledby={`close-weekend-${key}`}>
+          <h2 id={`close-weekend-${key}`} className="sf-close-weekend">
+            {formatCloseWeekend(key)}
+          </h2>
+          <ul className="sf-rows sf-close-rows">
+            {w.fri && renderSlot(w.fri)}
+            {w.sat && renderSlot(w.sat)}
+          </ul>
+        </section>
+      ))}
+
       {editable && !submitted && (
-        <div style={{ marginTop: 20 }}>
-          {complete ? (
-            <PrimaryLink href="/exit">Continue</PrimaryLink>
-          ) : (
-            <ActionButton disabled>Continue</ActionButton>
-          )}
-          {!complete && (
-            <p style={{ fontSize: 14, color: "#777", marginTop: 8 }}>
-              Pick {board.required} {closesWord} to continue.
-            </p>
-          )}
-        </div>
+        <StepActions
+          backHref="/travel"
+          nextHref="/exit"
+          blockedReason={complete ? undefined : `Pick ${board.required} ${closesWord} to continue.`}
+        />
       )}
-    </div>
+    </>
   );
 }
-
-const cellStyle: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  padding: "6px 12px",
-  verticalAlign: "middle",
-  width: "50%",
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const headStyle: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  padding: "8px 12px",
-  textAlign: "left",
-  background: "#f7f8fa",
-};
-
-const smallButton: React.CSSProperties = {
-  marginLeft: 10,
-  padding: "0.25rem 0.7rem",
-  fontSize: 13,
-};

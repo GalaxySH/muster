@@ -36,6 +36,13 @@ describe("TravelDateRange", () => {
     expect(end().value).toBe("2026-09-30");
   });
 
+  it("keeps the same behaviour in the student form's layout", () => {
+    render(<TravelDateRange layout="field" />);
+    expect(start().value).toBe(localDay(new Date()));
+    fireEvent.change(start(), { target: { value: "2026-09-06" } });
+    expect(end().value).toBe("2026-09-06");
+  });
+
   it("disables both inputs when the form is locked", () => {
     render(<TravelDateRange disabled />);
     expect(start()).toBeDisabled();

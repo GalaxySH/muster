@@ -8,6 +8,8 @@ import {
   minutesBetween,
   overlaps,
   chicagoToday,
+  APP_TIME_ZONE,
+  MONTH_LABELS,
   type TimeRange,
 } from "./time";
 
@@ -124,5 +126,17 @@ describe("chicagoToday", () => {
   it("reads today in Madison, not UTC", () => {
     // 03:00 UTC on 9/29 is still the evening of 9/28 in Chicago.
     expect(chicagoToday(new Date("2026-09-29T03:00:00Z"))).toBe("2026-09-28");
+  });
+});
+
+describe("shared date constants", () => {
+  it("names Madison's zone", () => {
+    expect(APP_TIME_ZONE).toBe("America/Chicago");
+  });
+
+  it("lists the twelve short month names in calendar order", () => {
+    expect(MONTH_LABELS).toHaveLength(12);
+    expect(MONTH_LABELS[0]).toBe("Jan");
+    expect(MONTH_LABELS[11]).toBe("Dec");
   });
 });
