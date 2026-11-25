@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
 import { generateSchedule } from "@/lib/schedule/actions";
 
 /**
@@ -18,6 +19,8 @@ export function GenerateScheduleButton({
   hasPlan: boolean;
   positions: { id: string; name: string }[];
 }) {
+  const termId = useRenderedTermId();
+  const termName = useRenderedTermName();
   const [confirming, setConfirming] = useState(false);
   const [includeNonResponders, setIncludeNonResponders] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -35,7 +38,7 @@ export function GenerateScheduleButton({
   const submit = () => {
     setConfirming(false);
     startTransition(async () => {
-      const res = await generateSchedule({
+      const res = await generateSchedule(termId, {
         repairFromPlan: repairOnly,
         includeNonResponders,
         scope: scoped ? { positionIds: scopeIds } : undefined,
@@ -118,6 +121,7 @@ export function GenerateScheduleButton({
         ) : (
           <>
             <span style={{ fontSize: 13 }}>
+              <strong>{termName}.</strong>{" "}
               {scoped
                 ? `${hasRun ? "Rebuild" : "Generate"} recommendations for ${listNames(scopeNames)} only?`
                 : includeNonResponders

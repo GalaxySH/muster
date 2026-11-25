@@ -66,7 +66,8 @@ Observed from `EXPORT.CSV` (Gordon, week of 12/20–12/26/2026, 1017 rows):
 
 ## 3. Output format (what Muster emits)
 
-Two files, `muster-w2w-week-a.csv` and `muster-w2w-week-b.csv`:
+Two files, `muster-w2w-<term>-week-a.csv` and `muster-w2w-<term>-week-b.csv` (the
+term id is in the name since 1.49):
 
 - Same column set and ordering as the import, same cp1252 encoding, minus dated
   identity: `Date` is emitted **empty** (W2W prefers Date over Day Of Week when both

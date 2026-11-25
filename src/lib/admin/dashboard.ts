@@ -21,6 +21,7 @@ import { digestSchedulerEnabled, env } from "@/lib/env";
 import {
   changeRequests,
   flags,
+  termMembers,
   groups,
   positions,
   shiftBlocks,
@@ -55,6 +56,8 @@ import type {
   DashboardStudent,
   RecentSubmission,
 } from "./dashboard-view";
+import { workingTermId } from "@/lib/terms/working";
+import { memberOf, onRosterStudent, rosterOf, submissionOfStudent } from "@/lib/terms/scope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much history the submissions sparkline shows. */
@@ -63,6 +66,7 @@ export const SPARKLINE_DAYS = 14;
 const RECENT_LIMIT = 5;
 
 export async function loadAdminDashboard(now: Date = new Date()): Promise<DashboardSnapshot> {
+  const termId = await workingTermId();
   const [
     studentRows,
     groupRows,
@@ -98,19 +102,21 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
         name: groups.name,
         opensAt: groups.opensAt,
         closesAt: groups.closesAt,
+        isTest: sql<number>`${groups.kind} <=> 'test'`.mapWith(Boolean),
       })
       .from(groups)
+      .where(eq(groups.termId, termId))
       .orderBy(asc(groups.name)),
-    loadChangeRequestCounts(now),
+    loadChangeRequestCounts(termId, now),
     loadFlagCounts(),
     loadTravel(now),
-    loadCloses(),
+    loadCloses(termId),
     getDriveGrantStatus(),
     getDriveLastOkAt(),
     getDriveLastError(),
-    getSheetUrl(RESPONSES_SHEET),
-    getLastSheetSync(RESPONSES_SHEET),
-    getLastSheetSync(CLOSES_SHEET),
+    getSheetUrl(RESPONSES_SHEET, termId),
+    getLastSheetSync(RESPONSES_SHEET, termId),
+    getLastSheetSync(CLOSES_SHEET, termId),
     getEmailSendingEnabled(),
     getChangeDigestEnabled(),
     getChangeDigestRecipients(),
@@ -118,12 +124,12 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     getRosterStatus(),
     loadPositionConfigs(),
     loadNonAssignablePositions(),
-    getTravelCutoff(now).then((r) => r.cutoff),
-    getLateTravelPolicy(),
+    getTravelCutoff(termId).then((r) => r.cutoff),
+    getLateTravelPolicy(termId),
     loadCoverage(),
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
-    loadScheduleStatus(),
+    loadScheduleStatus(termId),
     getW2wMapIssues(),
   ]);
 
@@ -176,8 +182,8 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
  * measured from the run's generation time; restoring an old run does not make
  * its content any newer.
  */
-async function loadScheduleStatus(): Promise<DashboardSnapshot["schedule"]> {
-  const run = await loadCurrentRunRow();
+async function loadScheduleStatus(termId: string): Promise<DashboardSnapshot["schedule"]> {
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { hasRun: false, newSubmissions: 0, edited: 0 };
   const staleness = await loadScheduleStaleness(run.generatedAt);
   return { hasRun: true, ...staleness };
@@ -189,27 +195,29 @@ async function loadScheduleStatus(): Promise<DashboardSnapshot["schedule"]> {
  * keeps the hub's headline numbers and the non-response page in agreement.
  */
 async function loadStudentRoll(): Promise<DashboardStudent[]> {
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
-      groupId: students.groupId,
+      positionId: termMembers.positionId,
+      groupId: termMembers.groupId,
       status: submissions.status,
       scheduled: submissions.scheduled,
       courseScheduleFileId: submissions.courseScheduleFileId,
       updatedAt: submissions.updatedAt,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-    .where(eq(students.onRoster, true))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(submissions, submissionOfStudent(termId))
+    .where(eq(termMembers.onRoster, true))
     .orderBy(asc(students.displayName), asc(students.email));
 
   return rows.map((r) => ({
     email: r.email,
     displayName: r.displayName,
     positionId: r.positionId,
-    groupId: r.groupId,
+    groupId: r.groupId ?? null,
     status: r.status ?? null,
     scheduled: r.scheduled ?? false,
     hasCourseSchedule: Boolean(r.courseScheduleFileId),
@@ -225,17 +233,27 @@ async function loadStudentRoll(): Promise<DashboardStudent[]> {
  */
 async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs"]> {
   const db = getDb();
+  const termId = await workingTermId();
   const [posRows, blockRows, staffRows] = await Promise.all([
     db
       .select()
       .from(positions)
-      .where(and(eq(positions.active, true), isNull(positions.mergedIntoId))),
-    db.select().from(shiftBlocks).where(liveBlocksOnly()),
+      .where(
+        and(
+          eq(positions.termId, termId),
+          eq(positions.active, true),
+          isNull(positions.mergedIntoId),
+        ),
+      ),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select()
+      .from(shiftBlocks)
+      .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId))),
+    db
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
   ]);
 
   const staff = new Map(staffRows.map((r) => [r.positionId, Number(r.n)]));
@@ -264,11 +282,11 @@ async function loadPositionConfigs(): Promise<DashboardSnapshot["positionConfigs
 async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssignablePositions"]> {
   const rows = await getDb()
     .select({ name: positions.name, n: sql<number>`count(*)` })
-    .from(students)
-    .innerJoin(positions, eq(students.positionId, positions.id))
+    .from(termMembers)
+    .innerJoin(positions, eq(termMembers.positionId, positions.id))
     .where(
       and(
-        eq(students.onRoster, true),
+        rosterOf(await workingTermId()),
         or(eq(positions.active, false), isNotNull(positions.mergedIntoId)),
       ),
     )
@@ -281,7 +299,11 @@ async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssig
   };
 }
 
-async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["changeRequests"]> {
+/** The term's open requests: the hub card counts what the queue lists. */
+async function loadChangeRequestCounts(
+  termId: string,
+  now: Date,
+): Promise<DashboardSnapshot["changeRequests"]> {
   const cutoff = new Date(now.getTime() - DAY_MS);
   const [row] = await getDb()
     .select({
@@ -290,7 +312,7 @@ async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["ch
       recent: sql<number>`sum(case when ${changeRequests.createdAt} >= ${cutoff} then 1 else 0 end)`,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.status, "open"));
+    .where(and(eq(changeRequests.status, "open"), eq(changeRequests.termId, termId)));
 
   return {
     open: Number(row?.open ?? 0),
@@ -301,12 +323,13 @@ async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["ch
 
 /** Flags on on-roster students only; off-roster people are not the admin's work. */
 async function loadFlagCounts(): Promise<{ type: DbFlagType; count: number }[]> {
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({ type: flags.type, n: sql<number>`count(*)` })
     .from(flags)
     .innerJoin(submissions, eq(flags.submissionId, submissions.id))
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
-    .where(eq(students.onRoster, true))
+    .innerJoin(students, submissionOfStudent(termId))
+    .where(onRosterStudent(termId))
     .groupBy(flags.type);
   return rows.map((r) => ({ type: r.type, count: Number(r.n) }));
 }
@@ -334,8 +357,8 @@ async function loadTravel(now: Date): Promise<DashboardSnapshot["travel"]> {
   return [...byId.values()];
 }
 
-async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
-  if (!(await hasCloseInventory())) {
+async function loadCloses(termId: string): Promise<DashboardSnapshot["closes"]> {
+  if (!(await hasCloseInventory(termId))) {
     return {
       hasInventory: false,
       leadsTotal: 0,
@@ -345,7 +368,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
       feasible: true,
     };
   }
-  const view = await loadCloseAdmin();
+  const view = await loadCloseAdmin(termId);
   return {
     hasInventory: true,
     leadsTotal: view.leads.length,
@@ -372,6 +395,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
  */
 async function loadCoverage(): Promise<CoverageCell[]> {
   const db = getDb();
+  const termId = await workingTermId();
   const eff = effectiveSelections();
   const [blocks, takerRows, staffedPositions] = await Promise.all([
     db
@@ -385,7 +409,9 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       })
       .from(shiftBlocks)
       .innerJoin(positions, eq(shiftBlocks.positionId, positions.id))
-      .where(and(eq(positions.active, true), liveBlocksOnly())),
+      .where(
+        and(eq(positions.active, true), liveBlocksOnly(), eq(shiftBlocks.termId, termId)),
+      ),
     db
       .select({
         blockId: eff.shiftBlockId,
@@ -394,20 +420,20 @@ async function loadCoverage(): Promise<CoverageCell[]> {
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
+      .innerJoin(students, submissionOfStudent(termId))
       .where(
         and(
           eq(submissions.status, "submitted"),
-          eq(students.onRoster, true),
+          onRosterStudent(termId),
           eq(eff.autoAssigned, false),
         ),
       )
       .groupBy(eff.shiftBlockId, eff.day),
     db
-      .select({ positionId: students.positionId })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
   ]);
 
   const staffed = new Set(staffedPositions.map((p) => p.positionId));
@@ -447,6 +473,7 @@ async function loadCoverage(): Promise<CoverageCell[]> {
 
 async function loadRecentSubmissions(): Promise<RecentSubmission[]> {
   const db = getDb();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       id: submissions.id,
@@ -456,12 +483,13 @@ async function loadRecentSubmissions(): Promise<RecentSubmission[]> {
       submittedAt: submissions.submittedAt,
     })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .innerJoin(students, submissionOfStudent(termId))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     .where(
       and(
         eq(submissions.status, "submitted"),
-        eq(students.onRoster, true),
+        eq(termMembers.onRoster, true),
         isNotNull(submissions.submittedAt),
       ),
     )
@@ -501,14 +529,15 @@ async function loadSubmissionsPerDay(now: Date): Promise<{ date: string; count: 
   const start = new Date(now.getTime() - (SPARKLINE_DAYS - 1) * DAY_MS);
   start.setUTCHours(0, 0, 0, 0);
 
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       day: sql<string>`date(${submissions.submittedAt})`,
       n: sql<number>`count(*)`,
     })
     .from(submissions)
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
-    .where(and(eq(students.onRoster, true), gte(submissions.submittedAt, start)))
+    .innerJoin(students, submissionOfStudent(termId))
+    .where(and(onRosterStudent(termId), gte(submissions.submittedAt, start)))
     .groupBy(sql`date(${submissions.submittedAt})`);
 
   const counts = new Map(

@@ -12,6 +12,7 @@
  * "Multiple" one for everyone.
  */
 import { useRef, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   createChangeRequest,
   withdrawChangeRequest,
@@ -35,8 +36,6 @@ import { EmployeePicker, type EmployeeOption } from "./EmployeePicker";
 export interface ChangeRequestsAdminProps {
   /** Pre-seeded from the per-student admin page's quick link (?student=). */
   initialEmployee: EmployeeOption | null;
-  /** The admin's own roster email, or null when they aren't a known student. */
-  selfEmail: string | null;
 }
 
 export function ChangeRequestsPanel({
@@ -49,6 +48,7 @@ export function ChangeRequestsPanel({
   initialBlocks: ShiftTimeBlock[];
   admin?: ChangeRequestsAdminProps;
 }) {
+  const termId = useRenderedTermId();
   const [requests, setRequests] = useState(initial);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [employee, setEmployee] = useState<EmployeeOption | null>(admin?.initialEmployee ?? null);
@@ -69,15 +69,17 @@ export function ChangeRequestsPanel({
     setMsg(res.ok ? { ok: true, text: successText } : { ok: false, text: res.error ?? "Something went wrong." });
   }
 
-  // Admin only: swap the request list and shift times to whoever the form now acts for.
+  // Admin only: swap the request list and shift times to whoever the form now
+  // acts for. A cleared field sends null, which reads the admin's own.
   function selectEmployee(next: EmployeeOption | null) {
     setEmployee(next);
     setMsg(null);
-    const email = next?.email ?? admin?.selfEmail ?? null;
+    const email = next?.email ?? null;
     startListLoad(async () => {
-      const [list, nextBlocks] = email
-        ? await Promise.all([adminListChangeRequests(email), adminShiftTimeBlocks(email)])
-        : [[], []];
+      const [list, nextBlocks] = await Promise.all([
+        adminListChangeRequests(email, termId),
+        adminShiftTimeBlocks(email, termId),
+      ]);
       setRequests(list);
       setBlocks(nextBlocks);
     });
@@ -94,7 +96,10 @@ export function ChangeRequestsPanel({
       fd.set("comment", comment);
       if (permanent) fd.set("permanent", "1");
       if (resolveOnSubmit) fd.set("resolved", "1");
-      if (employee) fd.set("employee", employee.email);
+      if (employee) {
+        fd.set("employee", employee.email);
+        fd.set("termId", termId);
+      }
       for (const file of fileInput.current?.files ?? []) fd.append("files", file);
       const res = await createChangeRequest(fd);
       const target = employee ? ` for ${employee.displayName}` : "";
@@ -187,7 +192,7 @@ export function ChangeRequestsPanel({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
-            placeholder="e.g. I want to move my 9/1 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
+            placeholder="e.g. I want to move my Tuesday 7p-11:30p shift to 4:30p-7:45p because my lab section moved."
             style={{ ...input, fontFamily: "inherit" }}
           />
         </label>

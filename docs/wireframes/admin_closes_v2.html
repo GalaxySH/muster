@@ -1,0 +1,620 @@
+<h2 class="sr-only">Wireframe of Muster's rebuilt SL weekend closes page: a collapsible lead progress table with each lead's required number, single and batch edit, then the closes grouped by weekend with one chip per assigned lead and dashed placeholders for open spots.</h2>
+
+<!-- Self-contained on purpose: this file redeclares the globals.css tokens so it
+     opens in a browser on its own. The values mirror src/app/globals.css. Muster
+     is light-only, so this mockup is too.
+
+     Static: the filter, the batch bar and the menus are drawn in one state each.
+     The lead progress section uses a native <details>, so it does open and close.
+     Design source: docs/semester-domains-plan.md §2.8, "Closes tab layout". -->
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .wf {
+    --color-text-primary: #1a2233;
+    --color-text-secondary: #4a5568;
+    --color-text-tertiary: #8a94a6;
+    --color-text-info: #1a66cc;
+    --color-text-success: #196127;
+    --color-text-warning: #946c00;
+    --color-text-danger: #b00020;
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f4f6fa;
+    --color-background-info: #e7f0fd;
+    --color-background-success: #e6f4ea;
+    --color-background-warning: #fff4d6;
+    --color-background-danger: #fdecef;
+    --color-border-secondary: #ccd2de;
+    --color-border-tertiary: #e2e6ee;
+    --color-border-warning: #e0c060;
+    --border-radius-md: 6px;
+    --border-radius-lg: 10px;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    background: var(--color-background-primary);
+    font-size: 14px;
+    line-height: 1.45;
+    padding: 24px 28px 48px;
+    max-width: 1180px;
+    box-sizing: border-box;
+  }
+  .wf *,
+  .wf *::before,
+  .wf *::after {
+    box-sizing: border-box;
+  }
+  .wf h1 {
+    font-size: 26px;
+    margin: 0 0 4px;
+  }
+  .wf .lede {
+    color: var(--color-text-secondary);
+    margin: 0 0 18px;
+  }
+  .wf a {
+    color: var(--color-text-info);
+    text-decoration: none;
+  }
+  .wf .crumbs {
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+    margin-bottom: 14px;
+  }
+
+  /* Panels */
+  .wf .panel {
+    border: 1px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 16px;
+    background: var(--color-background-primary);
+  }
+  .wf details.panel > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .wf details.panel > summary::-webkit-details-marker {
+    display: none;
+  }
+  .wf details.panel > summary::before {
+    content: "▸";
+    color: var(--color-text-tertiary);
+    font-size: 12px;
+  }
+  .wf details.panel[open] > summary::before {
+    content: "▾";
+  }
+  .wf .panel-title {
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .wf .panel-sum {
+    color: var(--color-text-secondary);
+  }
+  .wf .panel-sum b.short {
+    color: var(--color-text-danger);
+  }
+  .wf .panel-sum b.over {
+    color: var(--color-text-warning);
+  }
+  .wf .panel-body {
+    padding: 0 18px 16px;
+  }
+  .wf .note {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin: 0 0 12px;
+  }
+
+  /* Pills */
+  .wf .pill {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .wf .pill.short,
+  .wf .pill.overfull {
+    background: var(--color-background-danger);
+    color: var(--color-text-danger);
+  }
+  .wf .pill.done,
+  .wf .pill.full {
+    background: var(--color-background-success);
+    color: var(--color-text-success);
+  }
+  .wf .pill.over {
+    background: var(--color-background-warning);
+    color: var(--color-text-warning);
+  }
+  .wf .pill.room {
+    background: var(--color-background-info);
+    color: var(--color-text-info);
+  }
+
+  /* Lead progress toolbar */
+  .wf .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .wf .seg {
+    border: 1px solid var(--color-border-secondary);
+    background: var(--color-background-primary);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+  .wf .seg.on {
+    background: var(--color-text-primary);
+    border-color: var(--color-text-primary);
+    color: #fff;
+  }
+  .wf .batch {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-background-info);
+    border-radius: var(--border-radius-md);
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .wf input.num {
+    width: 56px;
+    font: inherit;
+    padding: 4px 6px;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    text-align: center;
+  }
+  .wf .btn {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-text-info);
+    background: var(--color-text-info);
+    color: #fff;
+  }
+
+  /* Lead table */
+  .wf table.leads {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .wf table.leads th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--color-border-tertiary);
+  }
+  .wf table.leads td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--color-border-tertiary);
+    vertical-align: middle;
+  }
+  .wf table.leads tr.sel td {
+    background: var(--color-background-info);
+  }
+  .wf table.leads td.c,
+  .wf table.leads th.c {
+    width: 34px;
+  }
+  .wf table.leads td.n,
+  .wf table.leads th.n {
+    width: 170px;
+    white-space: nowrap;
+  }
+  .wf .custom {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    margin-left: 6px;
+  }
+
+  /* Closes */
+  .wf .closes-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 22px 0 4px;
+  }
+  .wf .closes-head h2 {
+    font-size: 18px;
+    margin: 0;
+  }
+  .wf .month {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 18px 0 8px;
+  }
+  .wf .weekend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .wf .close {
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .wf .close + .close {
+    border-left: 1px solid var(--color-border-tertiary);
+  }
+  .wf .close.none {
+    background: var(--color-background-secondary);
+    color: var(--color-text-tertiary);
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+  }
+  .wf .close-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .wf .close-date {
+    font-weight: 600;
+  }
+  .wf .close-time {
+    color: var(--color-text-tertiary);
+    font-size: 13px;
+  }
+  .wf .menu {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+    padding: 0 4px;
+    position: relative;
+  }
+  .wf .menu-open {
+    position: absolute;
+    right: 0;
+    top: 22px;
+    background: #fff;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 4px 14px rgba(26, 34, 51, 0.12);
+    font-size: 13px;
+    padding: 6px 12px;
+    white-space: nowrap;
+    color: var(--color-text-danger);
+    z-index: 1;
+  }
+  .wf .spots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .wf .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: 999px;
+    padding: 3px 4px 3px 11px;
+    background: var(--color-background-primary);
+    font-size: 13px;
+    max-width: 100%;
+  }
+  .wf .chip .x {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .wf .chip.extra {
+    border-color: var(--color-border-warning);
+    background: var(--color-background-warning);
+  }
+  .wf .open {
+    display: inline-flex;
+    align-items: center;
+    border: 1px dashed var(--color-border-secondary);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+    min-width: 92px;
+    min-height: 28px;
+  }
+  .wf .open.add {
+    color: var(--color-text-info);
+    border-color: var(--color-text-info);
+  }
+
+  .wf .callout {
+    border-left: 3px solid var(--color-text-tertiary);
+    background: var(--color-background-secondary);
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin: 28px 0 0;
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+  }
+
+  /* Phone: a weekend stacks, the lead table drops its header and wraps. */
+  @media (max-width: 640px) {
+    .wf {
+      padding: 16px;
+    }
+    .wf .weekend {
+      grid-template-columns: 1fr;
+    }
+    .wf .close + .close {
+      border-left: 0;
+      border-top: 1px solid var(--color-border-tertiary);
+    }
+    .wf .close.none {
+      display: none;
+    }
+    .wf .batch {
+      margin-left: 0;
+      width: 100%;
+    }
+    .wf table.leads thead {
+      display: none;
+    }
+    .wf table.leads tr {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border-tertiary);
+      padding: 6px 0;
+    }
+    .wf table.leads td {
+      border: 0;
+      padding: 2px 6px;
+      width: auto !important;
+    }
+    .wf table.leads td.name {
+      grid-column: 2;
+    }
+    .wf table.leads td.st {
+      grid-column: 3;
+      grid-row: 1;
+      text-align: right;
+    }
+    .wf table.leads td.n {
+      grid-column: 2 / 4;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+    .wf table.leads td.n::before {
+      content: attr(data-label) " ";
+    }
+  }
+</style>
+
+<div class="wf">
+  <div class="crumbs">Home · Admin · Responses &nbsp;&nbsp; Fall 2026</div>
+  <h1>SL weekend closes</h1>
+  <p class="lede">
+    Shift Leads pick weekend closes as part of the availability form. A new lead starts at 3.
+    <a href="#">Change on the Semester page</a>
+  </p>
+
+  <!-- Opens expanded when anyone is short or over, collapsed when every lead is done.
+       The summary line stays visible either way. -->
+  <details class="panel" open>
+    <summary>
+      <span class="panel-title">Shift Lead progress</span>
+      <span class="panel-sum">
+        <b class="short">2 short</b> and <b class="over">1 over</b> of 6 leads. 4 on the default of 3, 2 with their own number.
+      </span>
+    </summary>
+    <div class="panel-body">
+      <div class="toolbar">
+        <button class="seg on">All 6</button>
+        <button class="seg">Short 2</button>
+        <button class="seg">Over 1</button>
+        <!-- Appears once a row is ticked. -->
+        <div class="batch">
+          <span>2 selected</span>
+          <span>Set closes to</span>
+          <input class="num" type="number" value="2" min="0" max="20" />
+          <button class="btn">Apply</button>
+        </div>
+      </div>
+
+      <table class="leads">
+        <thead>
+          <tr>
+            <th class="c"><input type="checkbox" aria-label="Select all" /></th>
+            <th>Shift Lead</th>
+            <th class="n">Required</th>
+            <th class="n">Picked</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="c"><input type="checkbox" /></td>
+            <td class="name"><a href="#">Alvarez, Maya</a></td>
+            <td class="n" data-label="Required"><input class="num" type="number" value="3" /></td>
+            <td class="n" data-label="Picked">3</td>
+            <td class="st"><span class="pill done">Done</span></td>
+          </tr>
+          <tr class="sel">
+            <td class="c"><input type="checkbox" checked /></td>
+            <td class="name"><a href="#">Brandt, Owen</a></td>
+            <td class="n" data-label="Required"><input class="num" type="number" value="3" /></td>
+            <td class="n" data-label="Picked">1</td>
+            <td class="st"><span class="pill short">Short by 2</span></td>
+          </tr>
+          <tr>
+            <td class="c"><input type="checkbox" /></td>
+            <td class="name"><a href="#">Chen, Lily</a></td>
+            <td class="n" data-label="Required">
+              <input class="num" type="number" value="1" /><span class="custom">own number</span>
+            </td>
+            <td class="n" data-label="Picked">1</td>
+            <td class="st"><span class="pill done">Done</span></td>
+          </tr>
+          <tr class="sel">
+            <td class="c"><input type="checkbox" checked /></td>
+            <td class="name"><a href="#">Dorsey, Paul</a></td>
+            <td class="n" data-label="Required"><input class="num" type="number" value="3" /></td>
+            <td class="n" data-label="Picked">0</td>
+            <td class="st"><span class="pill short">Short by 3</span></td>
+          </tr>
+          <tr>
+            <td class="c"><input type="checkbox" /></td>
+            <td class="name"><a href="#">Eze, Nora</a></td>
+            <td class="n" data-label="Required">
+              <input class="num" type="number" value="2" /><span class="custom">own number</span>
+            </td>
+            <td class="n" data-label="Picked">3</td>
+            <td class="st"><span class="pill over">Over by 1</span></td>
+          </tr>
+          <tr>
+            <td class="c"><input type="checkbox" /></td>
+            <td class="name"><a href="#">Fischer, Tom</a></td>
+            <td class="n" data-label="Required"><input class="num" type="number" value="3" /></td>
+            <td class="n" data-label="Picked">3</td>
+            <td class="st"><span class="pill done">Done</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note" style="margin-top: 10px">
+        Changing a number saves when you leave the box. It never removes a close a lead already has.
+      </p>
+    </div>
+  </details>
+
+  <div class="closes-head">
+    <h2>Closes</h2>
+    <span class="panel-sum">5 closes, 15 spots, 10 filled. Leads need 15 in total.</span>
+    <a href="#" style="margin-left: auto">Inventory and Google Sheet</a>
+  </div>
+
+  <div class="month">November 2026</div>
+
+  <div class="weekend">
+    <div class="close">
+      <div class="close-top">
+        <span class="close-date">Fri Nov 27</span>
+        <span class="close-time">6p–11:30p</span>
+        <span class="pill full">Full</span>
+        <button class="menu" aria-label="More">⋯</button>
+      </div>
+      <div class="spots">
+        <span class="chip">Alvarez, Maya <button class="x" aria-label="Remove">×</button></span>
+        <span class="chip">Chen, Lily <button class="x" aria-label="Remove">×</button></span>
+        <span class="chip">Fischer, Tom <button class="x" aria-label="Remove">×</button></span>
+      </div>
+    </div>
+    <div class="close">
+      <div class="close-top">
+        <span class="close-date">Sat Nov 28</span>
+        <span class="close-time">6p–11:30p</span>
+        <span class="pill room">2 open</span>
+        <button class="menu" aria-label="More">
+          ⋯
+          <span class="menu-open">Remove this close</span>
+        </button>
+      </div>
+      <div class="spots">
+        <span class="chip">Brandt, Owen <button class="x" aria-label="Remove">×</button></span>
+        <!-- The first open spot is the picker: a select of leads who still need a close. -->
+        <span class="open add">+ Add a lead ▾</span>
+        <span class="open">Open</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="month">December 2026</div>
+
+  <div class="weekend">
+    <div class="close">
+      <div class="close-top">
+        <span class="close-date">Fri Dec 4</span>
+        <span class="close-time">6p–11:30p</span>
+        <span class="pill overfull">1 over</span>
+        <button class="menu" aria-label="More">⋯</button>
+      </div>
+      <div class="spots">
+        <span class="chip">Alvarez, Maya <button class="x" aria-label="Remove">×</button></span>
+        <span class="chip">Eze, Nora <button class="x" aria-label="Remove">×</button></span>
+        <span class="chip">Fischer, Tom <button class="x" aria-label="Remove">×</button></span>
+        <!-- More leads than spots, after the capacity was lowered. -->
+        <span class="chip extra">Gupta, Ravi <button class="x" aria-label="Remove">×</button></span>
+      </div>
+    </div>
+    <div class="close">
+      <div class="close-top">
+        <span class="close-date">Sat Dec 5</span>
+        <span class="close-time">6p–11:30p</span>
+        <span class="pill room">3 open</span>
+        <button class="menu" aria-label="More">⋯</button>
+      </div>
+      <div class="spots">
+        <span class="open add">+ Add a lead ▾</span>
+        <span class="open">Open</span>
+        <span class="open">Open</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="weekend">
+    <div class="close">
+      <div class="close-top">
+        <span class="close-date">Fri Dec 11</span>
+        <span class="close-time">6p–11:30p</span>
+        <span class="pill room">1 open</span>
+        <button class="menu" aria-label="More">⋯</button>
+      </div>
+      <div class="spots">
+        <span class="chip">Eze, Nora <button class="x" aria-label="Remove">×</button></span>
+        <span class="chip">Alvarez, Maya <button class="x" aria-label="Remove">×</button></span>
+        <span class="open add">+ Add a lead ▾</span>
+      </div>
+    </div>
+    <!-- A weekend whose Saturday was removed from the inventory. -->
+    <div class="close none">No Saturday close</div>
+  </div>
+
+  <p class="callout">
+    Mockup notes. The inventory form and the Google Sheet controls move behind the link beside
+    "Closes" so the page opens on the two things used daily. The status pill on a close is
+    green when full, blue with room, red when over. On a phone each weekend stacks Friday above
+    Saturday and the lead table becomes one block per lead.
+  </p>
+</div>

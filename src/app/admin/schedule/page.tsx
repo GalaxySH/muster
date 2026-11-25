@@ -28,6 +28,7 @@ import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
 import { CoverageGrid, CoverageLegend, legendChip } from "@/components/admin/CoverageGrid";
 import { getSchedulingParams } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import { rebuildScheduleSheet } from "@/lib/schedule/actions";
 import {
   countScheduledMarks,
@@ -54,7 +55,6 @@ import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
 import { getCurrentPlan } from "@/lib/w2w/plan-data";
 import { summarizeAssignedCoverage, type CoverageSummary } from "@/lib/domain/scheduling/coverage";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { stalenessMessage, type StudentRunDiff } from "@/lib/domain/scheduling/diff";
 import { storedSchedulingParams } from "@/lib/domain/scheduling/params";
@@ -86,6 +86,7 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [
     sp,
     coverage,
@@ -101,17 +102,19 @@ export default async function AdminSchedulePage({
   ] = await Promise.all([
     searchParams,
     loadCoverage(),
-    loadCurrentSchedule(),
-    getSchedulingParams(),
+    loadCurrentSchedule(termId),
+    getSchedulingParams(termId),
     listScheduleRuns(),
-    getSheetUrl(SCHEDULE_SHEET),
-    getLastSheetSync(SCHEDULE_SHEET),
+    getSheetUrl(SCHEDULE_SHEET, termId),
+    getLastSheetSync(SCHEDULE_SHEET, termId),
     loadFrozenMismatches(),
-    getCurrentPlan(),
+    getCurrentPlan(termId),
     loadScopeLedger(),
     countScheduledMarks(),
   ]);
   const scopePositions = coverage.map((c) => ({ id: c.positionId, name: c.positionName }));
+  // The positions whose holders pick weekend closes: Shift Lead, by flag.
+  const leadPositionIds = coverage.filter((c) => c.picksCloses).map((c) => c.positionId);
   const positionNames = new Map(scopePositions.map((p) => [p.id, p.name]));
   const hasPlan = plan !== null;
   const staleness = schedule ? await loadScheduleStaleness(schedule.generatedAt) : null;
@@ -188,7 +191,8 @@ export default async function AdminSchedulePage({
             so a ticked box there would look like a setting and do nothing. */}
         <ScheduleParamsForm
           initial={params}
-          positions={scopePositions.filter((p) => p.id !== SHIFT_LEAD_POSITION_ID)}
+          positions={scopePositions.filter((p) => !leadPositionIds.includes(p.id))}
+          leadPositionIds={leadPositionIds}
         />
       </section>
 

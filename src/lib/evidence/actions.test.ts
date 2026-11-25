@@ -25,8 +25,9 @@ import { getDb } from "@/lib/db";
 import { requireEditableStudent } from "@/lib/groups/gate";
 import { relayDelete, relayUpload } from "@/lib/drive/relay";
 import { getLateTravelPolicy, getTravelCutoff } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import { ensureSubmissionId } from "./data";
-import { addTravelRequest, removeCourseSchedule } from "./actions";
+import { addTravelRequest, removeCourseSchedule, uploadCourseSchedule } from "./actions";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
@@ -108,6 +109,7 @@ const asStudent = () =>
     email: STUDENT,
     positionId: "ca",
     onBehalf: false,
+    termId: "test-term",
   });
 
 const asAdminFor = () =>
@@ -116,10 +118,29 @@ const asAdminFor = () =>
     email: STUDENT,
     positionId: "ca",
     onBehalf: true,
+    termId: "test-term",
   });
+
+/**
+ * The working term reads "A" and then "B", as if a semester started while the
+ * action ran. The gate stands in for the real one: it resolves the term once
+ * and hands it back, and the action may use nothing else.
+ */
+const termMovesAfterGate = (onBehalf: boolean) => {
+  let calls = 0;
+  vi.mocked(workingTermId).mockImplementation(async () => (calls++ === 0 ? "A" : "B"));
+  vi.mocked(requireEditableStudent).mockImplementation(async () => ({
+    ok: true,
+    email: STUDENT,
+    positionId: "ca",
+    onBehalf,
+    termId: await workingTermId(),
+  }));
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(workingTermId).mockImplementation(async () => "test-term");
   vi.mocked(ensureSubmissionId).mockResolvedValue("sub-1");
   // Well before the cutoff, so the student path is never refused for lateness
   // and every entry here is excused on its own merits.
@@ -221,6 +242,52 @@ describe("addTravelRequest proof rule", () => {
 
     expect(res).toEqual({ ok: true, fileId: "DRIVE1" });
     expect(inserts[0]!.values.proofFileId).toBe("DRIVE1");
+  });
+});
+
+describe("one term per action", () => {
+  const courseForm = (onBehalfOf?: string) => {
+    const data = new FormData();
+    data.set("file", pngFile());
+    if (onBehalfOf) {
+      data.set("student", onBehalfOf);
+      data.set("termId", "A");
+    }
+    return data;
+  };
+
+  it("uploads a student's course schedule into the gate's term only", async () => {
+    termMovesAfterGate(false);
+    useDb({ submissions: [{ courseScheduleFileId: null }] });
+
+    expect(await uploadCourseSchedule(courseForm())).toEqual({ ok: true, fileId: "DRIVE1" });
+    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(relayUpload).toHaveBeenCalledWith(expect.objectContaining({ termId: "A" }));
+    expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT, "A");
+  });
+
+  it("uploads on a student's behalf into the gate's term only", async () => {
+    termMovesAfterGate(true);
+    useDb({ submissions: [{ courseScheduleFileId: null }] });
+
+    expect(await uploadCourseSchedule(courseForm(STUDENT))).toEqual({ ok: true, fileId: "DRIVE1" });
+    expect(requireEditableStudent).toHaveBeenCalledWith(STUDENT, "A");
+    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(relayUpload).toHaveBeenCalledWith(expect.objectContaining({ termId: "A" }));
+    expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT, "A");
+  });
+
+  it("judges and stores a travel entry in the gate's term only", async () => {
+    termMovesAfterGate(false);
+    const { inserts } = useDb();
+
+    expect(await addTravelRequest(travelForm(pngFile()))).toEqual({ ok: true, fileId: "DRIVE1" });
+    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(getTravelCutoff).toHaveBeenCalledWith("A");
+    expect(getLateTravelPolicy).toHaveBeenCalledWith("A");
+    expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT, "A");
+    expect(relayUpload).toHaveBeenCalledWith(expect.objectContaining({ termId: "A" }));
+    expect(inserts).toHaveLength(1);
   });
 });
 

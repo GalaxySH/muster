@@ -15,12 +15,23 @@ import {
 } from "@/lib/domain/travel";
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
-import {
-  effectiveExcludedTitles,
-  SETTING_EXCLUDED_ROSTER_TITLES,
-} from "@/lib/roster/position-mapping";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
+import { termSettingKey } from "@/lib/domain/terms";
+import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/config-data";
 
+/**
+ * The Drive keys below are per term: read and write them through
+ * `termSettingKey(base, termId)`.
+ */
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
+/** The cached id of a term's own Drive folder. Per term, like the keys beside it. */
+export const SETTING_TERM_FOLDER_ID = "term_folder_id";
+/**
+ * The id of the one term whose files live at the Drive root instead of in a
+ * folder of their own: the term that existed before terms had folders.
+ */
+export const SETTING_DRIVE_ROOT_TERM = "drive_root_term";
 export const SETTING_RESPONSES_SHEET_ID = "responses_sheet_id";
 export const SETTING_RESPONSES_SHEET_SYNCED_AT = "responses_sheet_synced_at";
 export const SETTING_CLOSES_SHEET_ID = "closes_sheet_id";
@@ -29,10 +40,6 @@ export const SETTING_SCHEDULE_SHEET_ID = "schedule_sheet_id";
 export const SETTING_SCHEDULE_SHEET_SYNCED_AT = "schedule_sheet_synced_at";
 /** "1"/"0": whether ungrouped students get swept into the default group (PLAN §13). Absent ⇒ off. */
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
-/** ISO instant overriding the default 9/1 travel cutoff (PLAN §8). Absent ⇒ default. */
-export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
-/** "1"/"0": accept travel after the cutoff as late/unexcused (PLAN §8). Absent ⇒ refuse. */
-export const SETTING_LATE_TRAVEL_ACCEPT = "late_travel_accept";
 /** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
 export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 /** "1"/"0": the daily schedule-change digest (roadmap 3.1). Absent ⇒ enabled. */
@@ -86,30 +93,27 @@ export async function deleteSetting(key: string): Promise<void> {
 }
 
 /**
- * The effective travel-excusal cutoff (PLAN §8): the admin-configured instant
- * if one is stored, else the 9/1 default for the current cycle.
+ * The term's travel-excusal cutoff (PLAN §8). `isCustom` says whether the admin
+ * moved it off the term's default, the day before the term starts.
  */
 export async function getTravelCutoff(
-  now: Date = new Date(),
+  termId: string,
 ): Promise<{ cutoff: Date; isCustom: boolean }> {
-  const raw = await getSetting(SETTING_TRAVEL_CUTOFF);
-  if (raw) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) return { cutoff: d, isCustom: true };
-  }
-  return { cutoff: defaultTravelCutoff(now), isCustom: false };
+  const term = await getTerm(getDb(), termId);
+  return {
+    cutoff: term.travelCutoff,
+    isCustom: term.travelCutoff.getTime() !== defaultTravelCutoff(term.startsOn).getTime(),
+  };
 }
 
 /**
- * The effective late-travel policy (PLAN §8), admin-toggled on /admin/groups.
+ * The term's late-travel policy (PLAN §8), admin-toggled on /admin/terms.
  * Off (the default) keeps the domain's "refuse" policy: nothing past the cutoff
  * is stored. On, entries past the cutoff are accepted but stored unexcused
  * ("accept-and-flag"), and finalize raises the travel_late flag.
  */
-export async function getLateTravelPolicy(): Promise<LateTravelPolicy> {
-  return (await getSetting(SETTING_LATE_TRAVEL_ACCEPT)) === "1"
-    ? "accept-and-flag"
-    : LATE_TRAVEL_POLICY;
+export async function getLateTravelPolicy(termId: string): Promise<LateTravelPolicy> {
+  return (await getTerm(getDb(), termId)).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
 }
 
 /**
@@ -141,23 +145,25 @@ export async function getChangeDigestRecipients(): Promise<string[]> {
 }
 
 /**
- * The excluded roster titles (PLAN §4.2, roadmap 1.7): import rows with these
- * position titles are skipped outright (neither student nor admin). Admin-edited
- * on /admin/roster; falls back to the SKIP_TITLES fixture until first saved. The
- * key and parsing live in roster/position-mapping.ts so the CLI-safe importer
- * can read the same setting without this server-only module.
+ * How the current term's roster tracker is read (PLAN §4.2): the sheets, the
+ * column names, the titles that mean admin, and the titles skipped outright
+ * (neither student nor admin; they fall back to the SKIP_TITLES fixture until
+ * first saved). Admin-edited on /admin/roster and stored on the term. The
+ * reader lives in roster/config-data.ts so the CLI-safe importer can use it
+ * without this server-only module.
  */
-export async function getExcludedRosterTitles(): Promise<string[]> {
-  return [...effectiveExcludedTitles(await getSetting(SETTING_EXCLUDED_ROSTER_TITLES))];
+export async function getRosterConfig(): Promise<EffectiveRosterConfig> {
+  return loadRosterConfig(getDb(), await workingTermId());
 }
 
 /**
  * The schedule engine's tunable knobs (docs/schedule-generation-plan.md §3.2),
  * admin-set on /admin/schedule; the domain defaults apply until first saved
- * (and whenever the stored value is unreadable).
+ * (and whenever the stored value is unreadable). They are stored per term
+ * because they name positions (the coverage pool), and each term has its own.
  */
-export async function getSchedulingParams(): Promise<SchedulingParams> {
-  return parseSchedulingParams(await getSetting(SETTING_SCHEDULE_PARAMS));
+export async function getSchedulingParams(termId: string): Promise<SchedulingParams> {
+  return parseSchedulingParams(await getSetting(termSettingKey(SETTING_SCHEDULE_PARAMS, termId)));
 }
 
 /**

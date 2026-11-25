@@ -68,20 +68,13 @@ export const ADMIN_TITLES: ReadonlySet<string> = new Set([
 /**
  * Titles to exclude from the import entirely (neither student nor admin).
  * Initial default only: once an admin saves the excluded-titles setting on
- * /admin/roster, the stored list is authoritative (see effectiveExcludedTitles).
+ * /admin/roster, the stored list is authoritative (see loadRosterConfig).
  */
 export const SKIP_TITLES: ReadonlySet<string> = new Set([
   // The tracker spells it "Advisory"; older PCPL workbooks say "Advisor".
   "dining advisory board member (dab)",
   "dining advisor board member (dab)",
 ]);
-
-/**
- * app_settings key for the admin-edited excluded titles, stored one per line.
- * Lives here (not settings.ts, which is server-only) so the CLI-safe importer
- * can read the same setting through its own db handle.
- */
-export const SETTING_EXCLUDED_ROSTER_TITLES = "excluded_roster_titles";
 
 /**
  * Normalize a one-per-line title list: trim, lowercase, collapse whitespace,
@@ -96,15 +89,6 @@ export function normalizeTitleList(raw: string): string[] {
     if (title) titles.add(title);
   }
   return [...titles];
-}
-
-/**
- * The effective excluded-title set parseRoster compares against: the stored
- * setting when present (an explicitly saved empty list excludes nothing),
- * else the SKIP_TITLES fixture.
- */
-export function effectiveExcludedTitles(raw: string | null): ReadonlySet<string> {
-  return raw === null ? SKIP_TITLES : new Set(normalizeTitleList(raw));
 }
 
 /** What an edited roster-title list changes, against what is stored. */

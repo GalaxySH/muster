@@ -70,14 +70,17 @@ describe("decideTravelSubmission", () => {
 });
 
 describe("defaultTravelCutoff", () => {
-  it("is September 1, midnight Central (06:00 UTC), of the year the form is filled", () => {
-    expect(defaultTravelCutoff(new Date("2026-06-19T12:00:00Z")).toISOString()).toBe(
-      "2026-09-01T06:00:00.000Z",
-    );
+  it("is midnight Central (06:00 UTC) on the day before the term starts", () => {
+    expect(defaultTravelCutoff("2026-09-02").toISOString()).toBe("2026-09-01T06:00:00.000Z");
+  });
+
+  it("follows the term, across a month and a year boundary", () => {
+    expect(defaultTravelCutoff("2027-01-19").toISOString()).toBe("2027-01-18T06:00:00.000Z");
+    expect(defaultTravelCutoff("2027-01-01").toISOString()).toBe("2026-12-31T06:00:00.000Z");
   });
 
   it("treats August entries as before the cutoff and October as after", () => {
-    const cutoff = defaultTravelCutoff(new Date("2026-08-15T00:00:00Z"));
+    const cutoff = defaultTravelCutoff("2026-09-02");
     expect(isTravelExcused(new Date("2026-08-31T23:59:00Z"), cutoff)).toBe(true);
     expect(isTravelExcused(new Date("2026-10-01T00:00:00Z"), cutoff)).toBe(false);
   });

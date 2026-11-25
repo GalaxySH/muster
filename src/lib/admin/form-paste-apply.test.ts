@@ -61,7 +61,8 @@ const paste: FormPaste = {
   otherResponses: [],
 };
 
-const now = new Date("2026-11-21T12:00:00Z");
+// The term the pasted response is for starts here; travel dates take their year from it.
+const termStart = "2026-09-02";
 
 describe("toUpload", () => {
   it("decodes the pasted bytes into a File", async () => {
@@ -74,7 +75,7 @@ describe("toUpload", () => {
 
 describe("applyPlan", () => {
   it("runs every checked step and writes the footer for files that landed", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions();
 
     const results = await applyPlan({
@@ -106,7 +107,7 @@ describe("applyPlan", () => {
   });
 
   it("excuses a travel entry only when its proof goes with it", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions();
 
     await applyPlan({ student: "s", plan, chosen: plan.steps, onFile, actions });
@@ -121,7 +122,7 @@ describe("applyPlan", () => {
   });
 
   it("uses travel dates edited in the preview", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions();
     const chosen = plan.steps.map((s) =>
       s.id === "travel:1" && s.kind === "travel" ? { ...s, start: "2026-11-24" } : s,
@@ -134,7 +135,7 @@ describe("applyPlan", () => {
   });
 
   it("keeps going past a failure and leaves the failed file out of the footer", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions({
       uploadCourseSchedule: vi.fn(async () => ({ ok: false, error: "No Drive grant." })),
     });
@@ -152,7 +153,7 @@ describe("applyPlan", () => {
   });
 
   it("writes the footer even when the notes lines were unchecked", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions();
 
     await applyPlan({
@@ -167,7 +168,7 @@ describe("applyPlan", () => {
   });
 
   it("leaves the notes alone when nothing needs writing", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions();
 
     await applyPlan({
@@ -182,7 +183,7 @@ describe("applyPlan", () => {
   });
 
   it("reports a thrown action as a failed step", async () => {
-    const plan = buildPlan(paste, onFile, now);
+    const plan = buildPlan(paste, onFile, termStart);
     const actions = fakeActions({
       saveDesiredHours: vi.fn(async () => {
         throw new Error("network");

@@ -7,7 +7,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { changeRequestFiles, changeRequests, students } from "@/lib/db/schema";
+import { changeRequestFiles, changeRequests, students, terms } from "@/lib/db/schema";
 import { CHANGE_REQUEST_WINDOW_MS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 
 export type ChangeRequestStatus = "open" | "withdrawn" | "resolved";
@@ -22,8 +22,15 @@ export interface ChangeRequestRow {
   createdAt: Date;
 }
 
-/** One student's requests, newest first (drives both the student and admin lists). */
-export async function listChangeRequests(email: string): Promise<ChangeRequestRow[]> {
+/**
+ * One student's requests in one term, newest first. The request form passes
+ * the term it files in; the admin's per-student page passes the term being
+ * worked in, the same one the queue lists.
+ */
+export async function listChangeRequests(
+  email: string,
+  termId: string,
+): Promise<ChangeRequestRow[]> {
   const rows = await getDb()
     .select({
       id: changeRequests.id,
@@ -35,9 +42,28 @@ export async function listChangeRequests(email: string): Promise<ChangeRequestRo
       createdAt: changeRequests.createdAt,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.studentEmail, email))
+    .where(and(eq(changeRequests.studentEmail, email), eq(changeRequests.termId, termId)))
     .orderBy(desc(changeRequests.createdAt));
   return rows;
+}
+
+/**
+ * The semester of a request linked to a student's admin page, when it is not
+ * the one being worked in (the page lists only that one). Null for a request
+ * in the working term, an unknown id, or another student's request.
+ */
+export async function requestInOtherTerm(
+  email: string,
+  requestId: string,
+  workingTermId: string,
+): Promise<{ id: string; name: string } | null> {
+  const [row] = await getDb()
+    .select({ id: terms.id, name: terms.name })
+    .from(changeRequests)
+    .innerJoin(terms, eq(changeRequests.termId, terms.id))
+    .where(and(eq(changeRequests.id, requestId), eq(changeRequests.studentEmail, email)))
+    .limit(1);
+  return row && row.id !== workingTermId ? row : null;
 }
 
 /**
@@ -111,11 +137,12 @@ const adminRequestColumns = () => ({
 });
 
 /**
- * The admin queue, oldest first: open requests, plus resolved ones when the
- * show-resolved toggle is on. Withdrawn requests never appear (the student
- * pulled them back).
+ * The admin queue for one term, oldest first: open requests, plus resolved
+ * ones when the show-resolved toggle is on. Withdrawn requests never appear
+ * (the student pulled them back).
  */
 export async function listChangeRequestQueue(
+  termId: string,
   includeResolved: boolean,
 ): Promise<AdminChangeRequest[]> {
   return getDb()
@@ -123,19 +150,32 @@ export async function listChangeRequestQueue(
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
     .where(
-      includeResolved
-        ? ne(changeRequests.status, "withdrawn")
-        : eq(changeRequests.status, "open"),
+      and(
+        eq(changeRequests.termId, termId),
+        includeResolved
+          ? ne(changeRequests.status, "withdrawn")
+          : eq(changeRequests.status, "open"),
+      ),
     )
     .orderBy(changeRequests.createdAt);
 }
 
-/** Open requests not yet reported in a digest, oldest first (§roadmap 3.1). */
-export async function loadPendingDigestRequests(): Promise<AdminChangeRequest[]> {
+/**
+ * One term's open requests not yet reported in a digest, oldest first
+ * (roadmap 3.1). The digest passes the current term. An earlier term's
+ * unreported requests are never emailed; they stay in that term's queue.
+ */
+export async function loadPendingDigestRequests(termId: string): Promise<AdminChangeRequest[]> {
   return getDb()
     .select(adminRequestColumns())
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
-    .where(and(eq(changeRequests.status, "open"), isNull(changeRequests.digestSentAt)))
+    .where(
+      and(
+        eq(changeRequests.termId, termId),
+        eq(changeRequests.status, "open"),
+        isNull(changeRequests.digestSentAt),
+      ),
+    )
     .orderBy(changeRequests.createdAt);
 }

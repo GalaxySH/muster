@@ -11,6 +11,7 @@
  */
 import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { TRAVEL_STANDING_LABEL, travelStanding } from "@/lib/domain/travel";
 import {
   Thumb,
@@ -57,6 +58,7 @@ export function TravelForm({
   /** What to name as the contact (CONTACT_EMAIL, or the fallback phrase). */
   contactEmail: string;
 }) {
+  const termId = useRenderedTermId();
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   const canAddTravel = !pastCutoff || lateAccepted;
   const lateNow = pastCutoff && lateAccepted;
@@ -123,20 +125,20 @@ export function TravelForm({
               ) : (
                 <span style={noProof}>No proof</span>
               )}
-              <div style={{ flex: 1, fontSize: 14 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
                 <div>
                   {t.startDate} → {t.endDate}{" "}
                   <span style={t.excused ? excusedBadge : lateBadge}>
                     {TRAVEL_STANDING_LABEL[travelStanding(t)]}
                   </span>
                 </div>
-                {t.note && <div style={{ color: "#666" }}>{t.note}</div>}
+                {t.note && <div style={{ color: "#666", overflowWrap: "anywhere" }}>{t.note}</div>}
               </div>
               {canAddTravel && (
                 <button
                   type="button"
                   disabled={pending || !editable}
-                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf))}
+                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf, termId))}
                   style={{ color: "#b00" }}
                 >
                   Remove

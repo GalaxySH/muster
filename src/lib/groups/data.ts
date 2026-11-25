@@ -10,7 +10,7 @@
 import "server-only";
 import { and, asc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { groups, students, positions, submissions } from "@/lib/db/schema";
+import { groups, students, positions, submissions, termMembers } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { getSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -20,6 +20,9 @@ import {
   type WindowState,
 } from "@/lib/domain/window";
 import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
+import { workingTermId } from "@/lib/terms/working";
+import { submissionOf, memberOf } from "@/lib/terms/scope";
+import { groupOf, inGroup, inNoGroup } from "@/lib/groups/membership";
 
 export interface GroupRow {
   id: string;
@@ -28,20 +31,27 @@ export interface GroupRow {
   closesAt: Date | null;
   lockAfterSubmit: boolean;
   isDefault: boolean;
+  /** The term's test-accounts group, which is managed on /admin/test-users. */
+  isTest: boolean;
   memberCount: number;
   /** Member emails (sorted); feeds the per-group "copy emails" control. */
   memberEmails: string[];
 }
 
-/** All groups (default first, then by name) with their members. */
+/** The term's groups (default first, then by name) with their members. */
 export async function listGroups(): Promise<GroupRow[]> {
   const db = getDb();
-  const rows = await db.select().from(groups).orderBy(asc(groups.name));
+  const termId = await workingTermId();
+  const rows = await db
+    .select()
+    .from(groups)
+    .where(eq(groups.termId, termId))
+    .orderBy(asc(groups.name));
   const memberRows = await db
-    .select({ groupId: students.groupId, email: students.email })
-    .from(students)
-    .where(isNotNull(students.groupId))
-    .orderBy(asc(students.email));
+    .select({ groupId: termMembers.groupId, email: termMembers.studentEmail })
+    .from(termMembers)
+    .where(and(eq(termMembers.termId, termId), isNotNull(termMembers.groupId)))
+    .orderBy(asc(termMembers.studentEmail));
   const emailsByGroup = new Map<string, string[]>();
   for (const m of memberRows) {
     if (!m.groupId) continue;
@@ -60,6 +70,7 @@ export async function listGroups(): Promise<GroupRow[]> {
         closesAt: g.closesAt,
         lockAfterSubmit: g.lockAfterSubmit,
         isDefault: g.isDefault,
+        isTest: g.kind === "test",
         memberCount: memberEmails.length,
         memberEmails,
       };
@@ -68,13 +79,17 @@ export async function listGroups(): Promise<GroupRow[]> {
 }
 
 /**
- * The current default group: the one that catches swept/self-added students
- * (`isDefault` flag; exactly one by construction, re-pointable via
- * setDefaultGroup). Null only if the seed never ran.
+ * The term's default group: the one that catches swept/self-added students
+ * (`isDefault` flag; exactly one per term by construction, re-pointable via
+ * setDefaultGroup). Null only if the term was never given one.
  */
-export async function getDefaultGroup(): Promise<typeof groups.$inferSelect | null> {
+export async function getDefaultGroup(termId: string): Promise<typeof groups.$inferSelect | null> {
   const db = getDb();
-  const [g] = await db.select().from(groups).where(eq(groups.isDefault, true)).limit(1);
+  const [g] = await db
+    .select()
+    .from(groups)
+    .where(and(eq(groups.isDefault, true), eq(groups.termId, termId)))
+    .limit(1);
   return g ?? null;
 }
 
@@ -109,24 +124,18 @@ export type StudentAccess =
  */
 export async function resolveStudentAccess(
   emailRaw: string,
+  termId: string,
   now: Date = new Date(),
 ): Promise<StudentAccess> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
-  const [stu] = await db
-    .select({ groupId: students.groupId })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
-  if (!stu || !stu.groupId) return { access: "no-group" };
-
-  const [grp] = await db.select().from(groups).where(eq(groups.id, stu.groupId)).limit(1);
+  const grp = await groupOf(db, email, termId);
   if (!grp) return { access: "no-group" };
 
   const [sub] = await db
     .select({ status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
   const submitted = sub?.status === "submitted";
 
@@ -169,14 +178,17 @@ export interface PickerStudent {
 }
 
 /** Students matching the picker filters, ordered by name (PLAN §13). */
-export async function listStudentsForPicker(filters: PickerFilters = {}): Promise<PickerStudent[]> {
+export async function listStudentsForPicker(
+  filters: PickerFilters,
+  termId: string,
+): Promise<PickerStudent[]> {
   const db = getDb();
   const conds = [];
-  if (filters.onRoster !== undefined) conds.push(eq(students.onRoster, filters.onRoster));
-  if (filters.positionId === "none") conds.push(isNull(students.positionId));
-  else if (filters.positionId) conds.push(eq(students.positionId, filters.positionId));
-  if (filters.groupId === "none") conds.push(isNull(students.groupId));
-  else if (filters.groupId) conds.push(eq(students.groupId, filters.groupId));
+  if (filters.onRoster !== undefined) conds.push(eq(termMembers.onRoster, filters.onRoster));
+  if (filters.positionId === "none") conds.push(isNull(termMembers.positionId));
+  else if (filters.positionId) conds.push(eq(termMembers.positionId, filters.positionId));
+  if (filters.groupId === "none") conds.push(inNoGroup(termId));
+  else if (filters.groupId) conds.push(inGroup(filters.groupId));
   if (filters.search?.trim()) {
     const q = `%${filters.search.trim()}%`;
     conds.push(or(like(students.displayName, q), like(students.email, q)));
@@ -186,17 +198,19 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      onRoster: students.onRoster,
-      groupId: students.groupId,
+      onRoster: termMembers.onRoster,
+      groupId: termMembers.groupId,
       groupName: groups.name,
-      groupAssignedAuto: students.groupAssignedAuto,
+      groupAssignedAuto: termMembers.assignedAuto,
       hiredOn: students.hiredOn,
     })
     .from(students)
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groups, eq(students.groupId, groups.id))
+    // Inner: only people who belong to this term can be put in its groups.
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(groups, eq(termMembers.groupId, groups.id))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(asc(students.displayName), asc(students.email));
 
@@ -213,8 +227,8 @@ export async function listStudentsForPicker(filters: PickerFilters = {}): Promis
     positionId: r.positionId,
     positionName: r.positionName ?? null,
     onRoster: r.onRoster,
-    groupId: r.groupId,
+    groupId: r.groupId ?? null,
     groupName: r.groupName ?? null,
-    groupAssignedAuto: r.groupAssignedAuto,
+    groupAssignedAuto: r.groupAssignedAuto ?? false,
   }));
 }

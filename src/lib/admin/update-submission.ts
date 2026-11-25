@@ -2,14 +2,17 @@
  * The shared admin write onto a student's submission, used by the per-student
  * server actions. It lives outside the "use server" files on purpose: exported
  * from one, it would become a client-callable action taking an arbitrary patch.
+ * It takes the passed gate as its first argument, which is the only way to
+ * reach it: there is no calling it without `requireAdminIn`, and the term it
+ * writes in is the one the gate proved.
  */
 import "server-only";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
+import type { AdminInTerm } from "@/lib/auth/require-admin";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import type { AdminActionResult } from "./actions";
@@ -27,19 +30,17 @@ import type { AdminActionResult } from "./actions";
  * only when a caller sets it. Don't add it to `patch`.
  */
 export async function updateSubmission(
+  { termId }: AdminInTerm,
   studentEmail: string,
   patch: Partial<typeof submissions.$inferInsert>,
 ): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
-
   const email = normalizeEmail(studentEmail);
   // submissions.studentEmail is a foreign key, so an unknown address would fail
   // as a DB error rather than something we can report.
-  const student = await findStudentByEmail(email);
+  const student = await findStudentByEmail(email, termId);
   if (!student) return { ok: false, error: "That employee is not a known student." };
 
-  const submissionId = await ensureSubmissionId(email);
+  const submissionId = await ensureSubmissionId(email, termId);
   await getDb().update(submissions).set(patch).where(eq(submissions.id, submissionId));
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
   revalidatePath("/admin/responses");

@@ -11,13 +11,7 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
-import {
-  positions,
-  scheduleAssignments,
-  shiftBlocks,
-  students,
-  submissions,
-} from "@/lib/db/schema";
+import { positions, scheduleAssignments, shiftBlocks, students, submissions, termMembers } from "@/lib/db/schema";
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import {
   buildStudentScheduleGrid,
@@ -27,6 +21,7 @@ import {
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
+import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 export interface StudentScheduleView {
   email: string;
@@ -50,22 +45,26 @@ export type StudentScheduleLookup =
   | { kind: "unknown-student" };
 
 /** The popup's whole read: student, mark, layout blocks, current-run cells. */
-export async function loadStudentScheduleView(email: string): Promise<StudentScheduleLookup> {
+export async function loadStudentScheduleView(
+  email: string,
+  termId: string,
+): Promise<StudentScheduleLookup> {
   const db = getDb();
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { kind: "no-run" };
 
   const [student] = await db
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
       scheduled: submissions.scheduled,
     })
     .from(students)
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .where(eq(students.email, email))
     .limit(1);
   if (!student) return { kind: "unknown-student" };

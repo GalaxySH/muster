@@ -6,12 +6,13 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { liveBlocksOnly } from "@/lib/db/blocks";
-import { positions, shiftBlocks, students, submissions, shiftSelections } from "@/lib/db/schema";
+import { positions, shiftBlocks, submissions, shiftSelections, termMembers } from "@/lib/db/schema";
 import { toDomainPosition, toDomainBlock } from "@/lib/db/mappers";
 import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
+import { submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
 export interface PositionWithBlocks {
   position: Position;
@@ -47,7 +48,10 @@ export async function loadPositionWithBlocks(
  * least its target number of takers. See domain/demand.ts. Runs at grid load
  * (~cheap, two queries). Keys are `demandCellKey(blockId, day)`.
  */
-export async function loadHighDemandCells(positionId: string): Promise<Set<string>> {
+export async function loadHighDemandCells(
+  positionId: string,
+  termId: string,
+): Promise<Set<string>> {
   const db = getDb();
   // Per-block target staffing, to floor each cell individually.
   const blockRows = await db
@@ -64,15 +68,16 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     })
     .from(shiftSelections)
     .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
+    .innerJoin(termMembers, memberOfSubmission())
     // Join the block so picks on a removed shift can't be counted. They render
     // nowhere, but an uncounted target would let them into the contention
     // ranking and push a genuinely busy cell out of it.
     .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(
       and(
-        eq(students.positionId, positionId),
-        eq(students.onRoster, true),
+        submissionInTerm(termId),
+        eq(termMembers.positionId, positionId),
+        eq(termMembers.onRoster, true),
         eq(submissions.status, "submitted"),
         // Machine-assigned weekend cells aren't preferences; don't count them.
         eq(shiftSelections.autoAssigned, false),
@@ -113,8 +118,11 @@ export interface StudentForm {
  * Everything the form route needs. Returns null when the user has no roster
  * record (off-roster; onboarding handled separately).
  */
-export async function loadStudentForm(email: string): Promise<StudentForm | null> {
-  const student = await findStudentByEmail(email);
+export async function loadStudentForm(
+  email: string,
+  termId: string,
+): Promise<StudentForm | null> {
+  const student = await findStudentByEmail(email, termId);
   if (!student) return null;
 
   if (!student.positionId) {
@@ -134,7 +142,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.studentEmail, student.email))
+    .where(submissionOf(student.email, termId))
     .limit(1);
 
   let selection: SelectedShift[] = [];

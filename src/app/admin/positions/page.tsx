@@ -4,6 +4,7 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { Page } from "@/components/ui";
 import { listGhostTitles, listPositionsAdmin, positionOptions } from "@/lib/positions/data";
 import { getSchedulingParams } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import { GhostTitleSection } from "@/components/admin/GhostTitleCard";
 import { PositionCard } from "@/components/admin/PositionCard";
 import { AddPositionForm } from "@/components/admin/AddPositionForm";
@@ -18,11 +19,12 @@ export default async function AdminPositionsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/positions");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [items, ghosts, options, params] = await Promise.all([
     listPositionsAdmin(),
     listGhostTitles(),
-    positionOptions(),
-    getSchedulingParams(),
+    positionOptions(termId),
+    getSchedulingParams(termId),
   ]);
 
   // Working positions first, retired ones next, aliases last (name order within).

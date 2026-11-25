@@ -13,6 +13,7 @@
  * download when the dialog opens.
  */
 import { useMemo, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { ActionButton } from "@/components/ui";
@@ -34,6 +35,8 @@ export interface ScheduleEmailDialogProps {
   studentEmail: string;
   displayName: string;
   positionName: string;
+  /** The working term's name, for `{{term}}`. */
+  termName: string;
   template: ScheduleEmailTemplate;
   cc: string;
   from: string;
@@ -50,6 +53,7 @@ export function SendScheduleEmailDialog({
   ...p
 }: ScheduleEmailDialogProps & { onClose: () => void }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [today] = useState(() => chicagoToday(new Date()));
   // Minted once per opening, so a double click is one send (see the action).
   const [requestId] = useState(() => crypto.randomUUID());
@@ -77,12 +81,13 @@ export function SendScheduleEmailDialog({
       const vars = buildScheduleEmailVars(
         { displayName: p.displayName, position: p.positionName },
         fields,
+        p.termName,
       );
       return { ok: true as const, email: renderScheduleEmail(draft, vars, p.shifts) };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
-  }, [fields, draft, p.displayName, p.positionName, p.shifts]);
+  }, [fields, draft, p.displayName, p.positionName, p.termName, p.shifts]);
 
   function send() {
     setError(null);
@@ -93,7 +98,7 @@ export function SendScheduleEmailDialog({
         body: draft.body,
         includeCc,
         requestId,
-      });
+      }, termId);
       if (!res.ok) {
         setError(res.error ?? "Could not send.");
         return;

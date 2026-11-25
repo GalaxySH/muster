@@ -10,21 +10,18 @@
 import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { decodeCp1252 } from "@/lib/text/cp1252";
+import { DEFAULT_ROSTER_CONFIG } from "./config";
 import { RosterFormatError } from "./parse";
 import { parseCsv } from "@/lib/domain/csv";
 
 /** A workbook to read: a path on disk (CLI) or the uploaded bytes (admin UI). */
 export type WorkbookSource = string | Buffer;
 
-/**
- * Sheets tried, in order, when the caller doesn't name one. "Gordon" is the
- * unit Muster covers in the tracker workbook; "People Coming" keeps the older
- * PCPL workbooks importable.
- */
-export const ROSTER_SHEET_CANDIDATES = ["Gordon", "People Coming"] as const;
-
-/** The PCPL workbook's leavers sheet, read only for resignation dates. */
-export const LEAVING_SHEET = "People Leaving";
+/** Which sheets to read: the term's roster config, or the built-in defaults. */
+export interface RosterSheets {
+  sheetCandidates: readonly string[];
+  leavingSheet: string;
+}
 
 export interface RosterGrid {
   /** The worksheet the rows came from, or null for a CSV (which has no sheets). */
@@ -50,18 +47,22 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value);
 }
 
-function pickWorksheet(wb: ExcelJS.Workbook, requested?: string): ExcelJS.Worksheet {
+function pickWorksheet(
+  wb: ExcelJS.Workbook,
+  candidates: readonly string[],
+  requested?: string,
+): ExcelJS.Worksheet {
   const present = wb.worksheets.map((w) => `"${w.name}"`).join(", ");
   if (requested) {
     const ws = wb.getWorksheet(requested);
     if (ws) return ws;
     throw new RosterFormatError(`Sheet "${requested}" not found. This workbook has: ${present}`);
   }
-  for (const name of ROSTER_SHEET_CANDIDATES) {
+  for (const name of candidates) {
     const ws = wb.getWorksheet(name);
     if (ws) return ws;
   }
-  const wanted = ROSTER_SHEET_CANDIDATES.map((n) => `"${n}"`).join(" or ");
+  const wanted = candidates.map((n) => `"${n}"`).join(" or ");
   throw new RosterFormatError(
     `No ${wanted} sheet in this workbook. It has: ${present}. Choose a sheet and import again.`,
   );
@@ -98,6 +99,7 @@ function isXlsx(bytes: Buffer): boolean {
 export async function readRosterGrid(
   source: WorkbookSource,
   sheetName?: string,
+  sheets: RosterSheets = DEFAULT_ROSTER_CONFIG,
 ): Promise<RosterGrid> {
   const bytes = typeof source === "string" ? await readFile(source) : source;
 
@@ -109,8 +111,8 @@ export async function readRosterGrid(
   // ExcelJS's bundled Buffer typing predates @types/node's generic Buffer;
   // the runtime accepts a Node Buffer fine, so bridge the declared type.
   await wb.xlsx.load(bytes as unknown as Parameters<ExcelJS.Xlsx["load"]>[0]);
-  const ws = pickWorksheet(wb, sheetName);
-  const leaving = wb.getWorksheet(LEAVING_SHEET);
+  const ws = pickWorksheet(wb, sheets.sheetCandidates, sheetName);
+  const leaving = wb.getWorksheet(sheets.leavingSheet);
   return {
     sheetName: ws.name,
     grid: worksheetGrid(ws),

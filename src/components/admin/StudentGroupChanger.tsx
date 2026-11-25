@@ -7,6 +7,7 @@
  * same way. Sits under the position changer and borrows its look.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { assignStudents, unassignStudents } from "@/lib/groups/actions";
 
@@ -24,6 +25,7 @@ export function StudentGroupChanger({
   currentGroupId,
   options,
 }: StudentGroupChangerProps) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const current = currentGroupId ?? NO_GROUP;
@@ -37,7 +39,7 @@ export function StudentGroupChanger({
     startTransition(async () => {
       const res =
         target === NO_GROUP
-          ? await unassignStudents([studentEmail])
+          ? await unassignStudents([studentEmail], termId)
           : await assignStudents([studentEmail], target);
       if (!res.ok) {
         setMsg({ ok: false, text: res.error ?? "That did not work." });

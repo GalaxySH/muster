@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
 import { clearScheduleRun } from "@/lib/schedule/actions";
 
 /**
@@ -13,6 +14,8 @@ import { clearScheduleRun } from "@/lib/schedule/actions";
  * with nothing.
  */
 export function ClearScheduleButton({ markedScheduled }: { markedScheduled: number }) {
+  const termId = useRenderedTermId();
+  const termName = useRenderedTermName();
   const [confirming, setConfirming] = useState(false);
   const [unmark, setUnmark] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +24,7 @@ export function ClearScheduleButton({ markedScheduled }: { markedScheduled: numb
   const submit = () => {
     setConfirming(false);
     startTransition(async () => {
-      const res = await clearScheduleRun(unmark);
+      const res = await clearScheduleRun(termId, unmark);
       setError(res.ok ? null : (res.error ?? "Clear failed."));
     });
   };
@@ -35,7 +38,7 @@ export function ClearScheduleButton({ markedScheduled }: { markedScheduled: numb
       ) : (
         <>
           <span style={{ fontSize: 13, fontWeight: 400 }}>
-            Empty the schedule? You can restore it from this list.
+            Empty the {termName} schedule? You can restore it from this list.
           </span>
           {markedScheduled > 0 && (
             <label style={{ fontSize: 13, fontWeight: 400, display: "inline-flex", gap: 5 }}>

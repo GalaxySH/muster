@@ -1,3 +1,4 @@
+import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
@@ -5,6 +6,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 import { loadWizardNav } from "@/lib/flow/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { OnBehalfBanner } from "@/components/evidence/shared";
@@ -29,8 +31,16 @@ export default async function CourseSchedulePage({
   // from the per-student admin page). That path loads the target's evidence and
   // skips the group/window gates: the admin is the authority, not the window.
   const { student: studentParam } = await searchParams;
-  const onBehalf = session.isAdmin && studentParam ? await findStudentByEmail(studentParam) : null;
-  const student = onBehalf ?? (await findStudentByEmail(session.email));
+  // Their own page is the current semester's. For someone else it is the one
+  // the admin is working in.
+  let termId = await currentTermId();
+  let onBehalf: Awaited<ReturnType<typeof findStudentByEmail>> = null;
+  if (session.isAdmin && studentParam) {
+    const selected = await workingTermId();
+    onBehalf = await findStudentByEmail(studentParam, selected);
+    if (onBehalf) termId = selected;
+  }
+  const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
       <Page>
@@ -42,25 +52,27 @@ export default async function CourseSchedulePage({
     );
   }
 
-  const [evidence, drive] = await Promise.all([loadEvidence(student.email), getDriveGrantStatus()]);
+  const [evidence, drive] = await Promise.all([loadEvidence(student.email, termId), getDriveGrantStatus()]);
 
   if (onBehalf) {
     return (
       <Page>
         <AppHeader />
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
-        <CourseScheduleForm
-          initial={evidence}
-          driveConnected={drive.connected}
-          onBehalfOf={onBehalf.email}
-        />
+        <WorkingTerm>
+          <CourseScheduleForm
+            initial={evidence}
+            driveConnected={drive.connected}
+            onBehalfOf={onBehalf.email}
+          />
+        </WorkingTerm>
       </Page>
     );
   }
 
   const [access, nav] = await Promise.all([
-    resolveStudentAccess(student.email),
-    loadWizardNav(student.email),
+    resolveStudentAccess(student.email, termId),
+    loadWizardNav(student.email, termId),
   ]);
 
   if (access.access === "no-group") {

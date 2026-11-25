@@ -17,14 +17,16 @@ import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { ensureSubmissionId } from "@/lib/evidence/data";
+import { currentTermId } from "@/lib/terms/working";
 
 export async function confirmRosterInfo() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
-  const student = await findStudentByEmail(session.email);
+  const termId = await currentTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (student) {
-    const submissionId = await ensureSubmissionId(student.email);
+    const submissionId = await ensureSubmissionId(student.email, termId);
     const now = new Date();
     // The student acting on their own submission, so it counts as a student-side
     // change: `updated_at` moves (admin writes deliberately leave it alone).

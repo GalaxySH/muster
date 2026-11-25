@@ -48,6 +48,7 @@ describe("flowStatus", () => {
     availabilityComplete: false,
     closesRequired: false,
     closeClaimCount: 0,
+    closeClaimsNeeded: 3,
   };
 
   it("is done when submitted, regardless of other inputs", () => {

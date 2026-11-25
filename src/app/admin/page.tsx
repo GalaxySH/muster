@@ -13,6 +13,7 @@ import {
   faFileExport,
   faFileImport,
   faGear,
+  faGraduationCap,
   faInbox,
   faList,
   faMoon,
@@ -125,7 +126,9 @@ export default async function AdminPage() {
             <NavCard icon={faUserClock} title="Sign-in analytics" href="/admin/analytics" />
           </NavGroup>
 
-          <NavGroup title="Configuration">
+          {/* Settings that belong to the current term, apart from the ones that outlive it. */}
+          <NavGroup title="This semester">
+            <NavCard icon={faGraduationCap} title="Semester" href="/admin/terms" />
             <NavCard
               icon={faCalendar}
               title="Groups and windows"
@@ -151,12 +154,12 @@ export default async function AdminPage() {
               countLabel="W2W position mapping problems"
             />
             <NavCard icon={faFileImport} title="Roster import" href="/admin/roster" />
-            <NavCard icon={faGoogleDrive} title="Google Drive" href="/admin/drive" />
-            <NavCard icon={faUserGear} title="Test accounts" href="/admin/test-users" />
           </NavGroup>
 
-          <NavGroup title="Email">
+          <NavGroup title="All semesters">
             <NavCard icon={faGear} title="Email settings" href="/admin/email-settings" />
+            <NavCard icon={faGoogleDrive} title="Google Drive" href="/admin/drive" />
+            <NavCard icon={faUserGear} title="Test accounts" href="/admin/test-users" />
           </NavGroup>
         </AdminNav>
 

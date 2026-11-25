@@ -12,10 +12,10 @@ import "server-only";
  */
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { positions, students, submissions, w2wEmployees } from "@/lib/db/schema";
+import { positions, students, submissions, w2wEmployees, termMembers } from "@/lib/db/schema";
 import { effectiveRotation } from "@/lib/availability/effective";
 import { loadInternalCopiesByEmail } from "@/lib/availability/internal";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { memberOf } from "@/lib/terms/scope";
 import { decodeCp1252 } from "@/lib/text/cp1252";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
@@ -28,6 +28,7 @@ import {
 import type { PlanMatchReport, W2wPlanRow, W2wPositionMapEntry } from "@/lib/domain/w2w-plan/types";
 import { W2W_POSITION_MAP_SEED } from "./position-map-seed";
 import { loadPlanMatchInputs } from "./plan-data";
+import { submissionOfStudent } from "@/lib/terms/scope";
 
 /**
  * What a student's hours and day span have to be measured against. Read here
@@ -70,12 +71,13 @@ export type PlanAnalysisResult =
 export async function analyzePlanUpload(
   bytes: Uint8Array,
   rotationWeek: "a" | "b",
+  termId: string,
 ): Promise<PlanAnalysisResult> {
   const parsed = parseW2wPlan(decodeCp1252(bytes));
   if (!parsed.ok) return { ok: false, error: parsed.reason };
 
   const db = getDb();
-  const inputs = await loadPlanMatchInputs();
+  const inputs = await loadPlanMatchInputs(termId);
   // First use on a database that never ran db:seed (prod deploys run only
   // migrations): match against the known mapping so the report is not inert,
   // skipping entries whose Muster position this database does not have. The
@@ -98,18 +100,20 @@ export async function analyzePlanUpload(
       .select({
         email: students.email,
         displayName: students.displayName,
-        positionId: students.positionId,
+        positionId: termMembers.positionId,
         international: students.international,
         everyWeekendOptIn: submissions.everyWeekendOptIn,
         desiredHours: submissions.desiredHours,
       })
       .from(students)
-      .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-      .where(onRosterStudent()),
+      .innerJoin(termMembers, memberOf(termId))
+      .leftJoin(submissions, submissionOfStudent(termId))
+      .where(eq(termMembers.onRoster, true)),
     db
       .select({ id: positions.id, minHours: positions.minHours, minDays: positions.minDays })
-      .from(positions),
-    loadInternalCopiesByEmail(),
+      .from(positions)
+      .where(eq(positions.termId, termId)),
+    loadInternalCopiesByEmail(termId),
   ]);
 
   const emailByName = buildNameIndex(

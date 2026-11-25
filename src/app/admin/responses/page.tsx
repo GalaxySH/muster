@@ -4,6 +4,7 @@ import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listResponses } from "@/lib/admin/data";
 import { listGroups } from "@/lib/groups/data";
 import { listPositions } from "@/lib/positions/data";
+import { workingTermId } from "@/lib/terms/working";
 import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/response-filters";
 import { parseResponseSort } from "@/lib/admin/response-sort";
 import { ResponseList } from "@/components/admin/ResponseList";
@@ -51,7 +52,7 @@ export default async function ResponsesPage({
   const [rows, groups, positions] = await Promise.all([
     listResponses(filters),
     listGroups(),
-    listPositions({ includeInactive: true }),
+    listPositions(await workingTermId(), { includeInactive: true }),
   ]);
   const filtered = filterQuery !== "";
 

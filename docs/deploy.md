@@ -98,11 +98,13 @@ version tag deploys to the production box over SSH — automating the same
    with the same grants.
 
    > Troubleshooting: `drizzle-kit migrate` **exits 1 silently** on SQL
-   > errors (including privilege denials). To see the real error, run the
-   > same connection by hand:
-   > `docker compose run --rm migrate node -e "require('mysql2/promise').createConnection(process.env.DATABASE_URL).then(c=>c.query('select 1')).then(()=>console.log('DB OK')).catch(e=>console.error(e.message))"`
-   > and check `select * from muster.__drizzle_migrations` against the
-   > files in `drizzle/` to find where it stopped.
+   > errors (including privilege denials). To check the migrate account's
+   > connection by hand:
+   > `docker compose run --rm migrate node -e "require('mysql2/promise').createConnection(process.env.DATABASE_URL).then(c=>c.query('select 1')).then(()=>console.log('DB OK')).catch(e=>console.error(e.message))"`.
+   > That proves only the connection. To find which migration stopped and see
+   > its real error, follow "If migrate fails or hangs" under Releasing.
+   > `__drizzle_migrations` records a hash and a `created_at` per migration,
+   > not a file name.
 6. **Backups** — nightly logical dump of the whole central instance
    (`ops/backup/backup-mariadb.sh`): `--all-databases --single-transaction`
    (no locking of other apps), gzip + integrity check, 14-day rotation in
@@ -168,11 +170,288 @@ git tag v1.0.0 && git push origin v1.0.0   # → Deploy workflow runs
 ```
 
 Watch the Actions run; it ends by verifying `/api/health` on the box's loopback
-bind over SSH (not the public URL; see the deploy.yml note above).
+bind over SSH (not the public URL; see the deploy.yml note above). From 1.58 the
+check also reads the current-term pointer, so a deploy that leaves it missing or
+broken fails here.
 
-Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
-Don't push a new tag at an older commit: a tag push runs that commit's workflow,
-and one from before the forced command is refused. Migrations aren't reversed, so
+### What a deploy does, and how long the site is down
+
+`docker compose up -d --build` builds both images while the old container keeps
+serving. Then it stops and removes the old `app` container, creates the new one,
+runs `migrate`, and starts the new `app` only after `migrate` exits 0. The old
+image never serves a migrated database. The site is simply down from the moment
+the old container stops until the new one answers, and the host Apache returns
+proxy errors meanwhile. From v1.37 to v1.47 that took 6 to 10 seconds, of which
+`migrate` took 3 to 5. Re-deploying an unchanged image keeps the running
+container, so the site stays up.
+
+No migration sets a lock wait timeout, so an `ALTER TABLE` waits for any session
+that holds the table. Before a release with migrations:
+
+- Deploy at a quiet hour, and not near the 03:17 nightly backup.
+- Close any open `mariadb` session on the `muster` database.
+
+### If migrate fails or hangs
+
+When `migrate` fails, the workflow fails at "Deploy commit on server" and skips
+the health check. The old container is already gone, and the new `app`
+container exists in state Created with nothing to start it. The site stays down
+until `migrate` succeeds. On the box, in `/opt/muster`:
+
+1. Run `docker compose ps -a`. A failed run shows `migrate` as `Exited (1)` and
+   `app` as `Created`.
+2. If `migrate` is still running, it is probably waiting for a lock. Run
+   `SHOW PROCESSLIST;` as the migrate user and look for
+   `Waiting for table metadata lock`. End the session that holds the table with
+   `KILL <id>;` and `migrate` carries on.
+3. Find the last migration that was applied:
+
+   ```sql
+   SELECT COUNT(*) AS applied, MAX(created_at) AS last FROM muster.__drizzle_migrations;
+   ```
+
+   `created_at` equals the `when` of that migration's entry in
+   `drizzle/meta/_journal.json`, so grep the journal for it. The next file in
+   `drizzle/` is the one that failed. It may be half applied: MariaDB commits each
+   DDL statement as it runs, and no row is recorded for a failed migration. For
+   the semester release, `applied` is 37 before it and 54 after it.
+4. Get the real error by running the failed file by hand:
+
+   ```bash
+   sed 's/--> statement-breakpoint//' drizzle/<file>.sql | mariadb -h 127.0.0.1 -u musterm -p muster
+   ```
+
+   Every migration from 0037 on is written to be run again safely.
+5. Fix the cause, then run `docker compose up -d`. The images are already built,
+   so this runs `migrate` again and then starts `app`.
+6. Check `curl -fsS http://127.0.0.1:3000/api/health`.
+
+If it cannot be fixed soon, go back to v1.47 (below). If the failed migration is
+0048 or earlier, v1.47 runs against the database as it is. If it is 0049 or
+later, run rollback step 1 first.
+
+### The semester release (1.48 to 1.61, migrations 0037 to 0054)
+
+Production runs v1.47. No release between 1.47 and this one is tagged, so this
+deploy applies 0037 to 0054 in one `migrate`. On a copy of production they took
+about 6 seconds, so expect about 15 seconds of proxy errors. This release changes
+the image, so that downtime cannot be avoided; follow the advice above.
+
+- 0037 to 0044: create `terms` with one row, `2026-fall`, and the
+  `current_term_id` pointer; add `term_id` to every per-semester table, adding
+  each new unique key before the old one is dropped; give `terms` its dates,
+  cutoffs and roster settings; create `term_members` with a row for every person,
+  copied from `students`.
+- 0045: a `close_requirement` on `terms` and the `close_requirements` table, with
+  a row of 3 for everyone holding a closes position.
+- 0046 and 0047, data only: copy the cached Drive ids, the sync stamps and the
+  saved engine params to keys ending in `:2026-fall`, and set `drive_root_term`.
+- 0048, data only: clear `terms.activated_at` on the first term.
+- 0049 and 0050: drop the `'2026-fall'` default from the eleven `term_id` columns
+  and the default of 3 from `terms.close_requirement`. Metadata only.
+- 0051: drop `position_id`, `on_roster`, `roster_title`, `group_id` and
+  `group_assigned_auto` from `students`, with their two foreign keys. The values
+  are fall's rows in `term_members`.
+- 0052, data only: save the pre-term excluded-titles list onto each term that has
+  none of its own, then delete the settings rows nothing reads: `travel_cutoff`,
+  `late_travel_accept`, `excluded_roster_titles`, the seven bare Drive keys and
+  the bare `schedule_params`.
+- 0053: close slot dates are unique within a term, not across all terms.
+- 0054: `term_members.last_seen_at`, a nullable column, filled for the current
+  term from `students.last_seen_at`.
+
+Before the deploy, note `responses_sheet_id` in `app_settings`. After it:
+
+- `SELECT * FROM terms` shows one row, `2026-fall`.
+- ``SELECT value FROM app_settings WHERE `key` = 'current_term_id'`` reads
+  `2026-fall`.
+- `responses_sheet_id:2026-fall` holds the value you noted (0052 deleted the bare
+  key). If it is missing, the next sync finds the sheet by name at the Drive root.
+  If `proofs_folder_id:2026-fall` is missing, the next upload makes a new
+  `proofs` folder, because folders are never looked up by name.
+
+### Rolling back after the semester release
+
+**v1.47 is the only rollback target.** After migration 0051 no image from before
+1.57 works against the database:
+
+- v1.47 reads the dropped `students` columns, and it cannot insert into the
+  term-scoped tables without the defaults 0049 dropped.
+- 1.48 to 1.50 read the dropped columns too, so most pages fail.
+- 1.51 to 1.56 no longer read them but still write them, and every insert into
+  `students` names them. Pages load, but a roster import, creating a test
+  account, a position change, a group change, starting a semester and making one
+  current all fail.
+
+None of 1.48 to 1.57 was ever tagged in any case.
+
+**Once a second semester exists, never roll back past 1.48 at all**: v1.47 reads
+every term at once. Starting a semester is not part of a deploy
+(`docs/semester-rollover.md`).
+
+**The cleaner way back** is to restore last night's backup and then deploy v1.47.
+It loses every write since 03:17. The dump holds every database on the box, so
+restore only Muster's (see Backups below):
+
+```bash
+sudo zcat <file> | sudo mariadb --one-database muster
+```
+
+A restore leaves behind the tables the dump does not hold (`terms`,
+`term_members`, `close_requirements`). v1.47 does not read them, but drop them
+before deploying this release again, or 0044's rename fails. (This was not
+rehearsed.)
+
+**Rolling back without losing writes.** Rehearsed on a migrated copy of
+production on 2026-11-25.
+
+1. Run the SQL below as the migrate user
+   (`mariadb -h 127.0.0.1 -u musterm -p muster`) while the new release is still
+   serving. It keeps working with these changes in place. From then until v1.47
+   serves, make no roster, position, group, travel or Drive changes: the new
+   release does not write the places v1.47 reads.
+2. Run the Deploy workflow by hand from `main` with version `v1.47`. Its
+   `migrate` applies nothing.
+
+```sql
+ALTER TABLE `submissions` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `change_requests` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `close_slots` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `schedule_runs` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `shift_plans` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `groups` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `positions` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `shift_blocks` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `roster_imports` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `roster_title_mappings` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+ALTER TABLE `w2w_position_map` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+
+ALTER TABLE `students`
+  ADD COLUMN IF NOT EXISTS `position_id` varchar(64),
+  ADD COLUMN IF NOT EXISTS `on_roster` boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS `roster_title` varchar(128),
+  ADD COLUMN IF NOT EXISTS `group_id` varchar(64),
+  ADD COLUMN IF NOT EXISTS `group_assigned_auto` boolean NOT NULL DEFAULT false;
+UPDATE `students` s
+JOIN `term_members` m ON m.`student_email` = s.`email` AND m.`term_id` = '2026-fall'
+SET s.`position_id` = m.`position_id`, s.`on_roster` = m.`on_roster`,
+    s.`roster_title` = m.`roster_title`, s.`group_id` = m.`group_id`,
+    s.`group_assigned_auto` = m.`assigned_auto`;
+ALTER TABLE `students` ADD CONSTRAINT `students_position_id_positions_id_fk`
+  FOREIGN KEY IF NOT EXISTS (`position_id`) REFERENCES `positions`(`id`)
+  ON DELETE no action ON UPDATE no action;
+ALTER TABLE `students` ADD CONSTRAINT `students_group_id_groups_id_fk`
+  FOREIGN KEY IF NOT EXISTS (`group_id`) REFERENCES `groups`(`id`)
+  ON DELETE set null ON UPDATE no action;
+
+INSERT INTO `app_settings` (`key`, `value`)
+SELECT x.`k`, x.`v` FROM (
+  SELECT 'travel_cutoff' AS `k`,
+         DATE_FORMAT(`travel_cutoff`, '%Y-%m-%dT%H:%i:%s.000Z') AS `v`
+    FROM `terms` WHERE `id` = '2026-fall'
+  UNION ALL
+  SELECT 'late_travel_accept', IF(`late_travel_accept`, '1', '0')
+    FROM `terms` WHERE `id` = '2026-fall'
+  UNION ALL
+  SELECT SUBSTRING_INDEX(`key`, ':', 1), `value` FROM `app_settings`
+   WHERE `key` IN ('proofs_folder_id:2026-fall',
+     'responses_sheet_id:2026-fall', 'responses_sheet_synced_at:2026-fall',
+     'closes_sheet_id:2026-fall', 'closes_sheet_synced_at:2026-fall',
+     'schedule_sheet_id:2026-fall', 'schedule_sheet_synced_at:2026-fall',
+     'schedule_params:2026-fall')
+) x
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+
+INSERT INTO `app_settings` (`key`, `value`)
+SELECT 'excluded_roster_titles',
+       IF(JSON_LENGTH(x.`j`) = 0, '',
+          REPLACE(SUBSTRING(x.`j`, 3, CHAR_LENGTH(x.`j`) - 4), '","', CHAR(10)))
+FROM (
+  SELECT JSON_COMPACT(JSON_EXTRACT(COALESCE(NULLIF(`roster_config`, ''), '{}'),
+                                   '$.excludedTitles')) AS `j`
+  FROM `terms` WHERE `id` = '2026-fall'
+) x
+WHERE x.`j` IS NOT NULL
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+```
+
+It puts the eleven `term_id` defaults back, adds the five `students` columns back
+and fills them from fall's `term_members` rows, restores their two foreign keys,
+and writes back the settings rows 0052 deleted, from the term row and the
+per-term keys. In the rehearsal, afterwards the five columns matched the original
+production values for all 458 people, both foreign keys were back, all eleven
+defaults were back, every settings row production has today was restored with
+the same value, and running it a second time changed nothing. The one difference
+is a `travel_cutoff` row that production does not have today. It holds the
+default instant, so v1.47 behaves the same but shows the cutoff as set by hand.
+
+0053 needs no rollback step: v1.47 works with close dates unique per term.
+Nor does 0054: v1.47 never reads `term_members`, and it keeps stamping
+`students.last_seen_at`, which the roll-forward SQL below copies back in.
+
+**Rolling forward again** after such a rollback:
+
+1. On the box, run `docker compose stop app`, so v1.47 writes nothing more.
+2. Run the SQL below as the migrate user. It copies what v1.47 wrote into the
+   places the new release reads.
+3. Re-run four migrations by hand:
+
+   ```bash
+   for f in 0045_close_requirements 0049_drop_term_id_defaults 0051_contract_students 0052_contract_settings; do sed 's/--> statement-breakpoint//' "drizzle/$f.sql" | mariadb -h 127.0.0.1 -u musterm -p muster; done
+   ```
+
+4. Deploy the new tag. Its `migrate` applies nothing, because
+   `__drizzle_migrations` already lists every migration.
+
+```sql
+INSERT INTO `term_members` (`term_id`, `student_email`, `position_id`, `on_roster`,
+  `roster_title`, `group_id`, `assigned_auto`, `last_seen_at`)
+SELECT '2026-fall', `email`, `position_id`, `on_roster`, `roster_title`, `group_id`,
+  `group_assigned_auto`, `last_seen_at`
+FROM `students`
+ON DUPLICATE KEY UPDATE `position_id` = VALUES(`position_id`),
+  `on_roster` = VALUES(`on_roster`), `roster_title` = VALUES(`roster_title`),
+  `group_id` = VALUES(`group_id`), `assigned_auto` = VALUES(`assigned_auto`),
+  `last_seen_at` = VALUES(`last_seen_at`);
+
+UPDATE `terms` t
+LEFT JOIN `app_settings` c ON c.`key` = 'travel_cutoff'
+LEFT JOIN `app_settings` l ON l.`key` = 'late_travel_accept'
+SET t.`travel_cutoff` = COALESCE(
+      STR_TO_DATE(LEFT(c.`value`, 19), '%Y-%m-%dT%H:%i:%s'), t.`travel_cutoff`),
+    t.`late_travel_accept` = COALESCE(l.`value` = '1', t.`late_travel_accept`)
+WHERE t.`id` = '2026-fall';
+
+UPDATE `terms` t
+JOIN `app_settings` s ON s.`key` = 'excluded_roster_titles'
+SET t.`roster_config` = JSON_SET(
+  COALESCE(NULLIF(t.`roster_config`, ''), '{}'),
+  '$.excludedTitles',
+  JSON_EXTRACT(
+    IF(TRIM(s.`value`) = '', '[]',
+       CONCAT('[', REPLACE(JSON_QUOTE(s.`value`), CONCAT(CHAR(92), 'n'), '","'), ']')),
+    '$'))
+WHERE t.`id` = '2026-fall';
+
+INSERT INTO `app_settings` (`key`, `value`)
+SELECT x.`k`, x.`v` FROM (
+  SELECT CONCAT(`key`, ':2026-fall') AS `k`, `value` AS `v` FROM `app_settings`
+   WHERE `key` IN ('proofs_folder_id', 'responses_sheet_id',
+     'responses_sheet_synced_at', 'closes_sheet_id', 'closes_sheet_synced_at',
+     'schedule_sheet_id', 'schedule_sheet_synced_at', 'schedule_params')
+) x
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+```
+
+In the rehearsal, after this SQL and the four files, `term_members`, the term
+row, `app_settings`, `close_requirements`, the absence of defaults and the
+`students` columns were identical to the state right after the migration.
+
+### Rolling back in general
+
+Run the Deploy workflow by hand from `main` and enter the previous tag. Don't
+push a new tag at an older commit: a tag push runs that commit's workflow, and
+one from before the forced command is refused. Migrations aren't reversed, so
 check that the older code works with the current schema first.
 
 ## Backups
@@ -203,10 +482,18 @@ Verify a dump is readable (should print `-- MariaDB dump …`):
 sudo zcat /var/backups/mariadb/$(sudo ls -t /var/backups/mariadb | head -1) | head -1
 ```
 
+Restore Muster's database only. The dump holds every database on the box, so
+without `--one-database` the restore replays every other app's data too:
+
+```bash
+sudo zcat <file> | sudo mariadb --one-database muster
+```
+
 ## Monitoring
 
-`GET /api/health` returns `200 {"ok":true}` when the app can reach the DB,
-`503` otherwise. It's unauthenticated (reveals only up/down) — point an
-external monitor (e.g. UptimeRobot) at it for the unattended semester. The
+`GET /api/health` returns `200 {"ok":true}` when the app can reach the DB and
+read the current term, `503` otherwise. It's unauthenticated (reveals only
+up/down), so point an external monitor (e.g. UptimeRobot) at it for the
+unattended semester. The
 compose `app` service also self-probes it, so `docker ps` shows `(unhealthy)`
 at a glance.

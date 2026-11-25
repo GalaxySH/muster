@@ -19,6 +19,7 @@
 import { cliDatabaseUrl, createDb } from "../lib/db/client";
 import { importRoster } from "../lib/roster/import";
 import { RosterClosesPrompt, RosterGuardError } from "../lib/roster/parse";
+import { getCurrentTermId } from "../lib/terms/term-id";
 
 function parseArgs(argv: string[]) {
   const positional: string[] = [];
@@ -57,6 +58,8 @@ async function main() {
   try {
     const summary = await importRoster({
       db,
+      termId: await getCurrentTermId(db),
+      updatePeople: true,
       workbook: filePath,
       importedBy,
       sheetName,
@@ -80,7 +83,7 @@ async function main() {
       for (const email of summary.movedToAdmin) console.log(`    ${email}`);
     }
     if (summary.closesReleased.length > 0) {
-      console.log("\n  closes opened up because the lead left:");
+      console.log("\n  closes opened up (the lead left or changed position):");
       for (const c of summary.closesReleased) console.log(`    ${c.email}  ${c.date}`);
     }
     if (summary.positionChanges.length > 0) {

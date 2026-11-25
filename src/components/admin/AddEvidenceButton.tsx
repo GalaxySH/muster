@@ -10,6 +10,7 @@
  * extracurricular box edits the details with proof as an optional extra.
  */
 import { useState, useTransition, type FormEvent } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import {
   addExtracurricularFile,
@@ -43,6 +44,7 @@ export function AddEvidenceButton({
   /** A course schedule is one file: naming the swap warns that uploading drops the old one. */
   replaces?: boolean;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export function AddEvidenceButton({
       // when the admin actually changed them.
       const notes = String(formData.get("notes") ?? "");
       if (kind === "extracurricular" && notes !== currentNotes) {
-        const saved = await saveExtracurricularNotes(notes, studentEmail);
+        const saved = await saveExtracurricularNotes(notes, studentEmail, termId);
         if (!saved.ok) {
           setError(saved.error ?? "The details did not save.");
           // A proof uploaded just before still landed, so show it.
@@ -105,6 +107,7 @@ export function AddEvidenceButton({
         <Modal label={title} onClose={close} maxWidth="420px">
           <form onSubmit={submit} style={formStyle(kind)}>
             <input type="hidden" name="student" value={studentEmail} />
+            <input type="hidden" name="termId" value={termId} />
 
             <div style={fieldArea}>
               {kind === "course" ? (

@@ -4,19 +4,26 @@
  * on /admin/positions), so re-running never clobbers admin edits. The default
  * group upsert stays idempotent as before. Invoked via `npm run db:seed`.
  */
-import { count, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { cliDatabaseUrl, createDb } from "./client";
 import { positions, shiftBlocks, groups, rosterTitleMappings, w2wPositionMap } from "./schema";
 import { POSITION_CONFIGS } from "../config/positions";
 import { W2W_POSITION_MAP_SEED } from "../w2w/position-map-seed";
 import { TITLE_TO_POSITION } from "../roster/position-mapping";
 import { DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME } from "../groups/constants";
+import { getCurrentTermId } from "../terms/term-id";
+
+/** The fixture position whose holders pick weekend closes (PLAN §18a). */
+const SEED_CLOSES_POSITION_ID = "shift-lead";
 
 async function main() {
   const url = cliDatabaseUrl();
 
   const { db, pool } = createDb(url);
   try {
+    // Everything seeded belongs to the term the migrations made current.
+    const termId = await getCurrentTermId(db);
+
     // Positions + blocks: seed only into an empty table, never over admin edits.
     const [positionRow] = await db.select({ n: count() }).from(positions);
     let seededPositions = false;
@@ -26,16 +33,19 @@ async function main() {
       await db.insert(positions).values(
         POSITION_CONFIGS.map(({ position }) => ({
           id: position.id,
+          termId,
           name: position.name,
           minHours: position.minHours,
           minDays: position.minDays,
           weekendExempt: position.weekendExempt,
+          picksCloses: position.id === SEED_CLOSES_POSITION_ID,
         })),
       );
       await db.insert(shiftBlocks).values(
         POSITION_CONFIGS.flatMap(({ blocks }) =>
           blocks.map((b) => ({
             id: b.id,
+            termId,
             positionId: b.positionId,
             dayType: b.dayType,
             startMinutes: b.start,
@@ -55,7 +65,11 @@ async function main() {
       await db
         .insert(rosterTitleMappings)
         .values(
-          Object.entries(TITLE_TO_POSITION).map(([title, positionId]) => ({ title, positionId })),
+          Object.entries(TITLE_TO_POSITION).map(([title, positionId]) => ({
+            termId,
+            title,
+            positionId,
+          })),
         );
       seededMappings = true;
     }
@@ -70,7 +84,7 @@ async function main() {
     const rows = W2W_POSITION_MAP_SEED.filter(
       (m) => !have.has(m.w2wPositionId) && known.has(m.musterPositionId),
     );
-    if (rows.length > 0) await db.insert(w2wPositionMap).values([...rows]);
+    if (rows.length > 0) await db.insert(w2wPositionMap).values(rows.map((m) => ({ ...m, termId })));
     for (const m of W2W_POSITION_MAP_SEED.filter(
       (m) => !have.has(m.w2wPositionId) && !known.has(m.musterPositionId),
     )) {
@@ -86,11 +100,17 @@ async function main() {
     const [existingDefault] = await db
       .select({ id: groups.id })
       .from(groups)
-      .where(eq(groups.isDefault, true))
+      .where(and(eq(groups.isDefault, true), eq(groups.termId, termId)))
       .limit(1);
     await db
       .insert(groups)
-      .values({ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME, isDefault: !existingDefault })
+      .values({
+        id: DEFAULT_GROUP_ID,
+        termId,
+        name: DEFAULT_GROUP_NAME,
+        kind: "default",
+        isDefault: !existingDefault,
+      })
       .onDuplicateKeyUpdate({ set: { id: sql`id` } });
 
     const seeded: string[] = [];

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { computeRunStats, type StatsStudent } from "@/lib/domain/scheduling/stats";
 import type { ScheduleAssignment } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
@@ -59,6 +60,20 @@ function coverBars(container: HTMLElement): HTMLElement[] {
   const cover = tables[tables.length - 1]!;
   return [...cover.querySelectorAll<HTMLElement>("div > div")];
 }
+
+describe("the collapsed section", () => {
+  it("starts closed with only its heading showing, and opens on click", async () => {
+    render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
+    const heading = screen.getByText("Schedule health");
+    expect(heading.tagName).toBe("SUMMARY");
+    expect(heading.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("By position")).not.toBeVisible();
+
+    await userEvent.click(heading);
+    expect(heading.closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("By position")).toBeVisible();
+  });
+});
 
 describe("the Cover table's bars", () => {
   it("draws every bar in the neutral color, whatever the row's tone", () => {

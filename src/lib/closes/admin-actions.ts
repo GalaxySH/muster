@@ -11,8 +11,14 @@ import { randomUUID } from "node:crypto";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { closeClaims, closeSlots, students } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import {
+  closeClaims,
+  closeRequirements,
+  closeSlots,
+  positions,
+  termMembers,
+} from "@/lib/db/schema";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import {
   syncSheet,
   trySyncSheet,
@@ -23,12 +29,17 @@ import {
 import {
   CLOSE_START_MINUTES,
   CLOSE_END_MINUTES,
-  REQUIRED_CLOSE_CLAIMS,
-  SHIFT_LEAD_POSITION_ID,
+  MAX_CLOSE_REQUIREMENT,
   generateCloseSlotDates,
   formatCloseDate,
+  isValidCloseRequirement,
 } from "@/lib/domain/close-claims";
+import { ensureCloseRequirements } from "./requirements";
 import { insertCloseClaim } from "./claim-write";
+import { positionPicksCloses } from "./data";
+import { workingTermId } from "@/lib/terms/working";
+import { closeClaimInTerm } from "@/lib/terms/scope";
+import { findStudentByEmail } from "@/lib/roster/lookup";
 
 export interface InventorySummary {
   created: number;
@@ -49,12 +60,11 @@ export interface GenerateInventoryResult {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CAPACITY = 20;
 
-export async function generateCloseInventory(input: {
-  start: string;
-  end: string;
-  capacity: number;
-}): Promise<GenerateInventoryResult> {
-  const gate = await requireAdmin();
+export async function generateCloseInventory(
+  termId: string,
+  input: { start: string; end: string; capacity: number },
+): Promise<GenerateInventoryResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const { start, end } = input;
@@ -71,7 +81,9 @@ export async function generateCloseInventory(input: {
 
   const db = getDb();
   const summary = await db.transaction(async (tx): Promise<InventorySummary> => {
-    const existing = await tx.select().from(closeSlots);
+    // The inventory is what switches closes on, so every lead has a number by then.
+    await ensureCloseRequirements(tx, termId);
+    const existing = await tx.select().from(closeSlots).where(eq(closeSlots.termId, termId));
     const claimCounts = await tx
       .select({ slotId: closeClaims.closeSlotId, n: count() })
       .from(closeClaims)
@@ -84,6 +96,7 @@ export async function generateCloseInventory(input: {
       .filter((w) => !existingByDate.has(w.date))
       .map((w) => ({
         id: randomUUID(),
+        termId,
         date: w.date,
         kind: w.kind,
         startMinutes: CLOSE_START_MINUTES,
@@ -126,7 +139,7 @@ export async function generateCloseInventory(input: {
 
   revalidatePath("/admin/closes");
   revalidatePath("/closes");
-  await trySyncSheet(CLOSES_SHEET, 0);
+  await trySyncSheet(CLOSES_SHEET, termId, 0);
   return { ok: true, summary };
 }
 
@@ -137,38 +150,39 @@ export interface CloseAssignResult {
 
 const ASSIGN_ERROR_MESSAGES = {
   gone: "That shift no longer exists.",
-  "lead-full": `That lead already has ${REQUIRED_CLOSE_CLAIMS} closes. Remove one of theirs first.`,
+  "lead-full": "That lead already has all their closes. Remove one of theirs first.",
   "slot-full": "That shift is already full.",
 } as const;
 
 /** After an admin claim change: refresh both surfaces and back up the sheet. */
-async function afterClaimChange() {
+async function afterClaimChange(termId: string) {
   revalidatePath("/admin/closes");
   revalidatePath("/closes");
-  await trySyncSheet(CLOSES_SHEET);
+  await trySyncSheet(CLOSES_SHEET, termId);
 }
 
 /**
  * Admin: put a Shift Lead on a close shift, no student interaction needed.
  * Goes through the same locking insert as student claims, so capacity and the
- * per-lead limit hold even against a concurrent student pick.
+ * per-lead limit hold even against a concurrent student pick. The same lead is
+ * in every term, so the page says which term it is showing.
  */
-export async function assignCloseClaim(slotId: string, email: string): Promise<CloseAssignResult> {
-  const gate = await requireAdmin();
+export async function assignCloseClaim(
+  slotId: string,
+  email: string,
+  termId: string,
+): Promise<CloseAssignResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const [lead] = await getDb()
-    .select({ positionId: students.positionId, onRoster: students.onRoster })
-    .from(students)
-    .where(eq(students.email, email))
-    .limit(1);
-  if (!lead || lead.positionId !== SHIFT_LEAD_POSITION_ID || !lead.onRoster)
+  const lead = await findStudentByEmail(email, termId);
+  if (!lead?.onRoster || !(await positionPicksCloses(lead.positionId)))
     return { ok: false, error: "Pick an active Shift Lead." };
 
-  const code = await insertCloseClaim(slotId, email);
+  const code = await insertCloseClaim(slotId, email, termId);
   if (code) return { ok: false, error: ASSIGN_ERROR_MESSAGES[code] };
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
 }
 
@@ -183,16 +197,17 @@ export async function removeCloseSlot(slotId: string): Promise<CloseAssignResult
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await workingTermId();
   const [slot] = await db
     .select({ id: closeSlots.id })
     .from(closeSlots)
-    .where(eq(closeSlots.id, slotId))
+    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, termId)))
     .limit(1);
   if (!slot) return { ok: false, error: "That shift no longer exists." };
 
   await db.delete(closeSlots).where(eq(closeSlots.id, slotId));
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
 }
 
@@ -204,12 +219,81 @@ export async function unassignCloseClaim(
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
+  const termId = await workingTermId();
   await getDb()
     .delete(closeClaims)
-    .where(and(eq(closeClaims.closeSlotId, slotId), eq(closeClaims.studentEmail, email)));
+    .where(
+      and(
+        eq(closeClaims.closeSlotId, slotId),
+        eq(closeClaims.studentEmail, email),
+        closeClaimInTerm(termId),
+      ),
+    );
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
+}
+
+export interface SetCloseRequirementsResult {
+  ok: boolean;
+  error?: string;
+  /** How many leads now carry the number. */
+  updated?: number;
+}
+
+/**
+ * Admin: set how many closes one lead, or several together, owe this term.
+ *
+ * It releases nothing. A lead left holding more than their new number shows as
+ * over and can unpick; one left short shows as short. Only people who hold a
+ * closes position in the term can be given a number. The same people can be
+ * leads in two terms, so the page says which term it is showing.
+ */
+export async function setCloseRequirements(
+  termId: string,
+  emails: string[],
+  required: number,
+): Promise<SetCloseRequirementsResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!isValidCloseRequirement(required))
+    return { ok: false, error: `Enter a whole number from 0 to ${MAX_CLOSE_REQUIREMENT}.` };
+
+  const wanted = [
+    ...new Set(
+      (Array.isArray(emails) ? emails : [])
+        .map((e) => String(e).trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (wanted.length === 0) return { ok: false, error: "Pick at least one lead." };
+
+  const db = getDb();
+  const leads = await db
+    .select({ email: termMembers.studentEmail })
+    .from(termMembers)
+    .innerJoin(positions, eq(positions.id, termMembers.positionId))
+    .where(
+      and(
+        eq(termMembers.termId, termId),
+        eq(positions.picksCloses, true),
+        inArray(termMembers.studentEmail, wanted),
+      ),
+    );
+  if (leads.length !== wanted.length)
+    return { ok: false, error: "Someone on that list is no longer a Shift Lead. Reload the page." };
+
+  const stamp = { required, setBy: gate.email, setAt: new Date() };
+  await db
+    .insert(closeRequirements)
+    .values(leads.map((l) => ({ termId, studentEmail: l.email, ...stamp })))
+    .onDuplicateKeyUpdate({ set: stamp });
+
+  revalidatePath("/me");
+  revalidatePath("/admin");
+  revalidatePath("/admin/students/[email]", "page");
+  await afterClaimChange(termId);
+  return { ok: true, updated: leads.length };
 }
 
 export interface RebuildClosesSheetResult {
@@ -223,7 +307,9 @@ export async function rebuildClosesSheet(): Promise<RebuildClosesSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(CLOSES_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(CLOSES_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/closes");
     return { ok: true, sync };
   } catch (e) {

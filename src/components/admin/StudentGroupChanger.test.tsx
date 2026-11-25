@@ -65,7 +65,7 @@ describe("StudentGroupChanger", () => {
     const { select, save } = setup("g1");
     fireEvent.change(select, { target: { value: "" } });
     fireEvent.click(save);
-    await waitFor(() => expect(unassign).toHaveBeenCalledWith(["stu@wisc.edu"]));
+    await waitFor(() => expect(unassign).toHaveBeenCalledWith(["stu@wisc.edu"], ""));
     expect(assign).not.toHaveBeenCalled();
   });
 

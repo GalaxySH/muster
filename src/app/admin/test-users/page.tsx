@@ -13,6 +13,7 @@ import {
 } from "@/lib/test-accounts/actions";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { positionOptions } from "@/lib/positions/data";
+import { workingTermId } from "@/lib/terms/working";
 import { MagicLinkCopy } from "@/components/admin/MagicLinkCopy";
 import { env } from "@/lib/env";
 
@@ -30,8 +31,6 @@ const ERROR_COPY: Record<TestAccountError, string> = {
   "invalid-position": "Pick a valid position.",
   exists: "An account with that name already exists. Pick a different name.",
   "not-found": "That test account no longer exists (or isn't a test account).",
-  "in-schedule":
-    "This account has shifts in the current schedule. Remove them under View response, then delete it.",
   signin: "Sign-in as the test account failed. Try again.",
 };
 
@@ -60,7 +59,10 @@ export default async function AdminTestUsersPage({
     token && linkFor && isTestAccountEmail(linkFor)
       ? `${env.NEXTAUTH_URL}/magic/redeem?token=${encodeURIComponent(token)}&email=${encodeURIComponent(linkFor)}`
       : null;
-  const [accounts, positions] = await Promise.all([listTestAccounts(), positionOptions()]);
+  const [accounts, positions] = await Promise.all([
+    listTestAccounts(),
+    positionOptions(await workingTermId()),
+  ]);
 
   return (
     <Page>
@@ -156,7 +158,7 @@ export default async function AdminTestUsersPage({
                       <Link href={`/admin/students/${encodeURIComponent(a.email)}`}>
                         View response
                       </Link>
-                      {a.canSignInAs && (
+                      {a.canManage && (
                         <>
                           <form action={signInAsTestAccount}>
                             <input type="hidden" name="email" value={a.email} />
@@ -166,14 +168,14 @@ export default async function AdminTestUsersPage({
                             <input type="hidden" name="email" value={a.email} />
                             <button type="submit">Get link</button>
                           </form>
+                          <form action={deleteTestAccount}>
+                            <input type="hidden" name="email" value={a.email} />
+                            <button type="submit" style={{ color: "#b00" }}>
+                              Delete
+                            </button>
+                          </form>
                         </>
                       )}
-                      <form action={deleteTestAccount}>
-                        <input type="hidden" name="email" value={a.email} />
-                        <button type="submit" style={{ color: "#b00" }}>
-                          Delete
-                        </button>
-                      </form>
                     </div>
                   </td>
                 </tr>

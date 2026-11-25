@@ -1,3 +1,4 @@
+import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
@@ -10,6 +11,7 @@ import {
 } from "@/components/changes/ChangeRequestsPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 
 /**
  * The always-available schedule change-request mini-flow (roadmap 3.1).
@@ -24,7 +26,10 @@ export default async function ChangeRequestsPage({
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/change-requests");
 
-  const student = await findStudentByEmail(session.email);
+  // Their own requests are the current semester's. An employee an admin acts
+  // for is looked up in the semester the admin is working in.
+  const ownTermId = await currentTermId();
+  const student = await findStudentByEmail(session.email, ownTermId);
   if (!student && !session.isAdmin) {
     return (
       <Page>
@@ -41,16 +46,17 @@ export default async function ChangeRequestsPage({
   let target: typeof student = null;
   if (session.isAdmin) {
     const { student: studentParam } = await searchParams;
-    target = studentParam ? await findStudentByEmail(studentParam) : null;
+    target = studentParam ? await findStudentByEmail(studentParam, await workingTermId()) : null;
     admin = {
       initialEmployee: target ? { email: target.email, displayName: target.displayName } : null,
-      selfEmail: student?.email ?? null,
     };
   }
 
   // The form starts out acting for the pre-seeded employee, else the signer.
   const formFor = target ?? student;
-  const requests = formFor ? await listChangeRequests(formFor.email) : [];
+  const requests = formFor
+    ? await listChangeRequests(formFor.email, target ? await workingTermId() : ownTermId)
+    : [];
   // Its position's shift times become the quick inserts under the shift time box.
   const loaded = formFor?.positionId ? await loadPositionWithBlocks(formFor.positionId) : null;
   const blocks = (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));
@@ -89,7 +95,9 @@ export default async function ChangeRequestsPage({
       <p style={{ color: "#555" }}>
         If your request is for a non-permanent change, put the specific date in the description.
       </p>
-      <ChangeRequestsPanel initial={requests} initialBlocks={blocks} admin={admin} />
+      <WorkingTerm>
+        <ChangeRequestsPanel initial={requests} initialBlocks={blocks} admin={admin} />
+      </WorkingTerm>
     </Page>
   );
 }

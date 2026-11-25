@@ -14,6 +14,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   changeRequests,
+  termMembers,
   groups,
   positionChanges,
   positions,
@@ -37,7 +38,6 @@ import { partitionSelection } from "@/lib/domain/orphans";
 import { loadStudentCloseClaims, type StudentCloseClaims } from "@/lib/closes/data";
 import { weekMinutesForRows, type ExistingAssignment } from "@/lib/domain/scheduling/manual";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import {
   applyResponseFilters,
   neighborFallbackFilters,
@@ -46,6 +46,11 @@ import {
 import { DEFAULT_SORT, sortResponses, type ResponseSort } from "./response-sort";
 import { upcomingTravel, type TravelWeek } from "./upcoming-travel";
 import type { Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
+import { workingTermId } from "@/lib/terms/working";
+import { memberOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
+import { groupOf, inTestGroup } from "@/lib/groups/membership";
+import { findStudentByEmail } from "@/lib/roster/lookup";
+import { localDay } from "@/lib/domain/calendar-day";
 
 export interface StudentDetail {
   email: string;
@@ -125,19 +130,13 @@ export interface PositionChangeRecord {
 export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail | null> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
+  const termId = await workingTermId();
 
-  const [student] = await db.select().from(students).where(eq(students.email, email)).limit(1);
+  const student = await findStudentByEmail(email, termId);
   if (!student) return null;
 
-  let group: string | null = null;
-  if (student.groupId) {
-    const [g] = await db
-      .select({ name: groups.name })
-      .from(groups)
-      .where(eq(groups.id, student.groupId))
-      .limit(1);
-    group = g?.name ?? null;
-  }
+  const ownGroup = await groupOf(db, email, termId);
+  const group = ownGroup?.name ?? null;
 
   let position: Position | null = null;
   let blocks: ShiftBlock[] = [];
@@ -172,7 +171,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
 
   let selection: SelectedShift[] = [];
@@ -226,8 +225,8 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   }
 
   const [evidence, closes] = await Promise.all([
-    loadEvidence(email),
-    loadStudentCloseClaims(email, student.positionId),
+    loadEvidence(email, termId),
+    loadStudentCloseClaims(email, student.positionId, termId),
   ]);
 
   return {
@@ -239,7 +238,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
     hiredOn: student.hiredOn,
     position,
     group,
-    groupId: student.groupId,
+    groupId: ownGroup?.id ?? null,
     blocks,
     submission,
     selection,
@@ -317,8 +316,8 @@ export interface ResponseRow {
  * schedule page's student table and the one-student popup quote, so no two
  * surfaces ever put different hours on the same rows.
  */
-async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
-  const run = await loadCurrentRunRow();
+async function scheduledMinutesByStudent(termId: string): Promise<Map<string, number>> {
+  const run = await loadCurrentRunRow(termId);
   if (!run) return new Map();
 
   const db = getDb();
@@ -356,14 +355,15 @@ async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
  */
 export async function listResponses(filters: ResponseFilters = {}): Promise<ResponseRow[]> {
   const db = getDb();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       email: students.email,
       displayName: students.displayName,
-      positionId: students.positionId,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      onRoster: students.onRoster,
-      groupId: students.groupId,
+      onRoster: termMembers.onRoster,
+      groupId: termMembers.groupId,
       groupName: groups.name,
       hiredOn: students.hiredOn,
       submissionId: submissions.id,
@@ -376,9 +376,11 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       updatedAt: submissions.updatedAt,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .leftJoin(groups, eq(students.groupId, groups.id))
+    // Inner: someone with no place in this term is not one of its students.
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(submissions, submissionOfStudent(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .leftJoin(groups, eq(termMembers.groupId, groups.id))
     // Roster + submission-state visibility are filter concerns:
     // applyResponseFilters hides off-roster students (PLAN §4.2), and students
     // with no submission unless the state filter asks for them.
@@ -400,19 +402,19 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     flagTypesBySub.set(f.submissionId, list);
   }
 
-  // Open change-request counts per student, one grouped query (same shape as
-  // the flags lookup above; the list badges the count next to the name).
+  // Open change-request counts per student in the term, one grouped query (same
+  // shape as the flags lookup above; the list badges the count next to the name).
   const openRequests = await db
     .select({
       email: changeRequests.studentEmail,
       count: sql<number>`count(*)`,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.status, "open"))
+    .where(and(eq(changeRequests.status, "open"), eq(changeRequests.termId, termId)))
     .groupBy(changeRequests.studentEmail);
   const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
 
-  const scheduledMinutes = await scheduledMinutesByStudent();
+  const scheduledMinutes = await scheduledMinutesByStudent(termId);
 
   const mapped: ResponseRow[] = rows.map((r) => {
     const flagTypes = (r.submissionId && flagTypesBySub.get(r.submissionId)) || [];
@@ -425,7 +427,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
       scheduled: r.scheduled ?? false,
       desiredHours: r.desiredHours,
       onRoster: r.onRoster,
-      groupId: r.groupId,
+      groupId: r.groupId ?? null,
       groupName: r.groupName,
       hiredOn: r.hiredOn,
       scheduledMinutes: scheduledMinutes.get(r.email) ?? null,
@@ -473,22 +475,24 @@ export interface NonResponseReport {
  */
 export async function listNonResponses(): Promise<NonResponseReport> {
   const db = getDb();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       email: students.email,
       displayName: students.displayName,
-      onRoster: students.onRoster,
-      groupId: students.groupId,
-      positionId: students.positionId,
+      onRoster: termMembers.onRoster,
+      testAccount: sql<number>`${inTestGroup(termId)}`,
+      positionId: termMembers.positionId,
       positionName: positions.name,
-      rosterTitle: students.rosterTitle,
+      rosterTitle: termMembers.rosterTitle,
       hiredOn: students.hiredOn,
       status: submissions.status,
       confirmedAt: submissions.confirmedAt,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-    .leftJoin(positions, eq(students.positionId, positions.id))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(submissions, submissionOfStudent(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
     .orderBy(
       sql`${students.hiredOn} is null`,
       asc(students.hiredOn),
@@ -517,7 +521,7 @@ export async function listNonResponses(): Promise<NonResponseReport> {
       if (status === "submitted") respondedCount += 1;
       else if (status === "draft") draftOnly.push(person);
       else noResponse.push(person);
-    } else if (status !== "missing" && r.groupId !== TEST_GROUP_ID) {
+    } else if (status !== "missing" && !Number(r.testAccount)) {
       // Admin-created test accounts are off-roster by design, not a roster gap.
       offRoster.push(person);
     }
@@ -587,9 +591,6 @@ export interface UpcomingTravelEntry {
   resolved: boolean;
 }
 
-const toIsoDate = (d: Date | string): string =>
-  typeof d === "string" ? d : d.toISOString().slice(0, 10);
-
 /**
  * On-roster students' travel grouped into the current + next weeks (roadmap 2.3),
  * so the scheduler can see who is away each week. Entries added past the cutoff
@@ -600,6 +601,7 @@ export async function loadUpcomingTravel(
   now: Date = new Date(),
 ): Promise<TravelWeek<UpcomingTravelEntry>[]> {
   const db = getDb();
+  const termId = await workingTermId();
   const rows = await db
     .select({
       id: travelRequests.id,
@@ -615,9 +617,10 @@ export async function loadUpcomingTravel(
     })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
-    .innerJoin(students, eq(submissions.studentEmail, students.email))
-    .leftJoin(positions, eq(students.positionId, positions.id))
-    .where(eq(students.onRoster, true))
+    .innerJoin(students, submissionOfStudent(termId))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(positions, eq(termMembers.positionId, positions.id))
+    .where(eq(termMembers.onRoster, true))
     // Name order so same-day entries within a week bucket read alphabetically.
     .orderBy(asc(students.displayName), asc(students.email));
 
@@ -626,8 +629,8 @@ export async function loadUpcomingTravel(
     studentEmail: r.studentEmail,
     studentName: r.studentName,
     positionName: r.positionName ?? null,
-    startDate: toIsoDate(r.startDate),
-    endDate: toIsoDate(r.endDate),
+    startDate: localDay(r.startDate),
+    endDate: localDay(r.endDate),
     note: r.note ?? null,
     excused: r.excused,
     proofFileId: r.proofFileId ?? null,

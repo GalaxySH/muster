@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { DIGEST_STALE_HOURS } from "@/lib/changes/digest-health";
 import type { DayType, Position, ShiftBlock } from "@/lib/domain/types";
-import { TEST_GROUP_ID, TEST_GROUP_NAME } from "@/lib/test-accounts/constants";
+import { TEST_GROUP_NAME } from "@/lib/test-accounts/constants";
+
+const TEST_GROUP_ID = "dev-test";
 import {
   buildDashboardView,
   STALLED_DRAFT_DAYS,
@@ -164,7 +166,7 @@ describe("group progress", () => {
       healthy({
         groups: [
           { id: "g1", name: "Returning", opensAt: null, closesAt: null },
-          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null },
+          { id: TEST_GROUP_ID, name: TEST_GROUP_NAME, opensAt: null, closesAt: null, isTest: true },
         ],
       }),
       NOW,

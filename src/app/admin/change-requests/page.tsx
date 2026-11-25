@@ -10,13 +10,15 @@ import { ShowResolvedToggle } from "@/components/admin/ShowResolvedToggle";
 import { ChangeRequestsEnabledToggle } from "@/components/admin/ChangeRequestsEnabledToggle";
 import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import { getChangeRequestsEnabled } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import { Page } from "@/components/ui";
 
 /**
- * The change-request queue (roadmap 3.1): open requests oldest first, with an
- * off-by-default toggle to mix resolved ones back in. A row links to the
- * student's response page, anchored to the request; the checkbox resolves it
- * in place (the row drops on refresh unless resolved rows are shown).
+ * The change-request queue (roadmap 3.1): the working term's open requests
+ * oldest first, with an off-by-default toggle to mix resolved ones back in. A
+ * row links to the student's response page, anchored to the request; the
+ * checkbox resolves it in place (the row drops on refresh unless resolved rows
+ * are shown).
  */
 export default async function AdminChangeRequestsPage({
   searchParams,
@@ -29,7 +31,7 @@ export default async function AdminChangeRequestsPage({
 
   const showResolved = (await searchParams).resolved === "1";
   const [requests, formEnabled] = await Promise.all([
-    listChangeRequestQueue(showResolved),
+    listChangeRequestQueue(await workingTermId(), showResolved),
     getChangeRequestsEnabled(),
   ]);
 

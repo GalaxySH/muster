@@ -1,11 +1,11 @@
 /**
  * The calendar day of a stored date, read in the frame it was built in.
  *
- * `mysql2` materializes a `date` column as `new Date(y, m - 1, d)`: midnight
- * LOCAL time. Reading that back through `toISOString` reads the UTC frame
- * instead and lands a day early on any host east of UTC, so the day has to come
- * off the local getters. Three call sites had each written that out for
- * themselves, which is three chances to get it wrong; it is one function now.
+ * A `date` column that holds a Date (the `calendarDay` type in db/schema.ts)
+ * is midnight LOCAL time when written and when read. Reading it through
+ * `toISOString` reads the UTC frame instead and lands a day early on any host
+ * east of UTC, so the day has to come off the local getters, through the one
+ * function here.
  *
  * `matchesStarted` sits here too because the comparison is the same idea: the
  * response dashboard and the group-assignment picker both filter the same

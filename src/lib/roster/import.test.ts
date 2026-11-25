@@ -68,20 +68,20 @@ function fakeTx(queues: Record<string, unknown[][]>) {
 describe("releaseDepartedSchedules", () => {
   it("does nothing when no one departed", async () => {
     const { tx, log } = fakeTx({});
-    await releaseDepartedSchedules(tx, []);
+    await releaseDepartedSchedules(tx, [], "t1");
     expect(log.writes).toEqual([]);
   });
 
   it("clears the scheduled mark and drops current-run rows when a current run exists", async () => {
     const { tx, log } = fakeTx({ schedule_runs: [[{ id: "run-1" }]] });
-    await releaseDepartedSchedules(tx, ["a@wisc.edu", "b@wisc.edu"]);
+    await releaseDepartedSchedules(tx, ["a@wisc.edu", "b@wisc.edu"], "t1");
     expect(log.writes).toEqual(["update:submissions", "delete:schedule_assignments"]);
     expect(log.updated[0]).toEqual({ table: "submissions", set: { scheduled: false } });
   });
 
   it("still clears the scheduled mark but deletes nothing when there is no current run", async () => {
     const { tx, log } = fakeTx({ schedule_runs: [[]] });
-    await releaseDepartedSchedules(tx, ["a@wisc.edu"]);
+    await releaseDepartedSchedules(tx, ["a@wisc.edu"], "t1");
     expect(log.writes).toEqual(["update:submissions"]);
   });
 });

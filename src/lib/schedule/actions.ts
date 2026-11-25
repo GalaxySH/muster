@@ -20,10 +20,11 @@ import {
   shiftSelections,
   students,
   submissions,
+  termMembers,
 } from "@/lib/db/schema";
 import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock, toDomainPosition } from "@/lib/db/mappers";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { applyInternalOverrides } from "@/lib/availability/effective";
 import { loadInternalCopiesByEmail } from "@/lib/availability/internal";
 import {
@@ -34,12 +35,12 @@ import {
   type SheetSyncResult,
 } from "@/lib/admin/sheet-sync";
 import { deriveOpenClose } from "@/lib/domain/blocks";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { termSettingKey } from "@/lib/domain/terms";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
-import { isReturningStudent, returnerCutoff } from "@/lib/flow/returner";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { isReturningStudent } from "@/lib/flow/returner";
+import { onRosterStudent, memberOf } from "@/lib/terms/scope";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import {
   applyScopeFreeze,
@@ -56,7 +57,7 @@ import type {
   StoredRunReport,
 } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
-import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
+import { getSchedulingParams, SETTING_SCHEDULE_PARAMS, setSetting } from "@/lib/settings";
 import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
 import {
   eligibleSubmittedFilter,
@@ -66,13 +67,9 @@ import {
 } from "./data";
 import { pruneStaleRuns, writeRunAsCurrent } from "./run-write";
 import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
-
-/**
- * The fall 2026 semester start, and the late-start threshold for a position
- * with no return date of its own. Cycle-specific, so it lives here next to the
- * clock rather than in the engine, which has no dates at all.
- */
-const DEFAULT_SEMESTER_START = "2026-09-02";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
+import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms/scope";
 
 /**
  * The Shift Lead weekend closing block, which the engine fills only as a last
@@ -91,10 +88,11 @@ function readFillIns(summaryJson: string | undefined): string[] {
   }
 }
 
-function shiftLeadWeekendCloseIds(blocks: readonly ShiftBlock[]): string[] {
-  const weekend = blocks.filter(
-    (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
-  );
+function shiftLeadWeekendCloseIds(
+  blocks: readonly ShiftBlock[],
+  leadPositionId: string,
+): string[] {
+  const weekend = blocks.filter((b) => b.positionId === leadPositionId && b.dayType === "weekend");
   const { closeId } = deriveOpenClose(weekend);
   return closeId ? [closeId] : [];
 }
@@ -139,21 +137,27 @@ export interface GenerateOptions {
   scope?: ScheduleScope;
 }
 
-export async function generateSchedule(options: GenerateOptions = {}): Promise<GenerateResult> {
-  const gate = await requireAdmin();
+export async function generateSchedule(
+  termId: string,
+  options: GenerateOptions = {},
+): Promise<GenerateResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
   const [positionRows, blockRows, studentRows, selectionRows, internalByEmail, currentRun, params] =
     await Promise.all([
-      db.select().from(positions),
+      db.select().from(positions).where(eq(positions.termId, termId)),
       // Retired blocks never enter a run: a pick left on one is orphaned, and
       // the engine skips any cell whose block is not in this map.
-      db.select().from(shiftBlocks).where(liveBlocksOnly()),
+      db
+        .select()
+        .from(shiftBlocks)
+        .where(and(liveBlocksOnly(), eq(shiftBlocks.termId, termId))),
       db
         .select({
           email: students.email,
-          positionId: students.positionId,
+          positionId: termMembers.positionId,
           international: students.international,
           everyWeekendOptIn: submissions.everyWeekendOptIn,
           desiredHours: submissions.desiredHours,
@@ -162,8 +166,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(submissions)
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
-        .where(eligibleSubmittedFilter()),
+        .innerJoin(students, submissionOfStudent(termId))
+        .innerJoin(termMembers, memberOf(termId))
+        .where(eligibleSubmittedFilter(termId)),
       db
         .select({
           email: submissions.studentEmail,
@@ -172,11 +177,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
-        .where(eligibleSubmittedFilter()),
-      loadInternalCopiesByEmail(),
-      loadCurrentRunRow(),
-      getSchedulingParams(),
+        .innerJoin(students, submissionOfStudent(termId))
+        .where(eligibleSubmittedFilter(termId)),
+      loadInternalCopiesByEmail(termId),
+      loadCurrentRunRow(termId),
+      getSchedulingParams(termId),
     ]);
 
   // Picks on a removed shift are dropped before anything reads them (PLAN
@@ -201,11 +206,11 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   );
 
   // Returner status is resolved here, not in the engine: the check needs a
-  // clock and the engine deliberately has none. The cutoff is captured once so
-  // every student in this run is judged against the same boundary, and it is
-  // stored on the run so a re-run either side of June 1 stays reproducible.
-  const now = new Date();
-  const cutoff = returnerCutoff(now);
+  // term and the engine deliberately has none. The cutoff is the term's
+  // new-hire date, read once so every student in this run is judged against the
+  // same boundary, and it is stored on the run so the run stays reproducible.
+  const term = await getTerm(db, termId);
+  const cutoff = term.newHireCutoff;
 
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
   // saved an internal copy, its cells and rotation replace the student's here.
@@ -218,7 +223,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
       desiredHours: r.desiredHours,
       submittedAt: r.submittedAt,
       scheduled: r.scheduled,
-      returner: isReturningStudent(r.hiredOn, now),
+      returner: isReturningStudent(r.hiredOn, cutoff),
       selection: selectionByEmail.get(r.email) ?? [],
     })),
     liveInternalByEmail,
@@ -247,12 +252,12 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // never overwrite what somebody actually said.
   if (options.includeNonResponders) {
     const responded = new Set(engineStudents.map((s) => s.email));
-    const notSubmitted = and(onRosterStudent(), ne(submissions.status, "submitted"));
+    const notSubmitted = and(onRosterStudent(termId), ne(submissions.status, "submitted"));
     const [rosterRows, draftCells] = await Promise.all([
       db
         .select({
           email: students.email,
-          positionId: students.positionId,
+          positionId: termMembers.positionId,
           international: students.international,
           everyWeekendOptIn: submissions.everyWeekendOptIn,
           desiredHours: submissions.desiredHours,
@@ -260,8 +265,9 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
           hiredOn: students.hiredOn,
         })
         .from(students)
-        .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-        .where(onRosterStudent()),
+        .innerJoin(termMembers, memberOf(termId))
+        .leftJoin(submissions, submissionOfStudent(termId))
+        .where(eq(termMembers.onRoster, true)),
       db
         .select({
           email: submissions.studentEmail,
@@ -270,7 +276,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, eq(submissions.studentEmail, students.email))
+        .innerJoin(students, submissionOfStudent(termId))
         .where(notSubmitted),
     ]);
 
@@ -295,7 +301,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         desiredHours: r.desiredHours,
         submittedAt: null,
         scheduled: r.scheduled ?? false,
-        returner: isReturningStudent(r.hiredOn, now),
+        returner: isReturningStudent(r.hiredOn, cutoff),
         fillIn: true,
         selection: fillInSelection(r.positionId!, domainBlocks, draftByEmail.get(r.email)),
       }));
@@ -352,7 +358,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         .filter((s) => !s.scheduled)
         .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
     );
-    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60);
+    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60, termId);
     if (!seeds) {
       return {
         ok: false,
@@ -389,17 +395,20 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
   // recovers from a bad run, so it must never be what blocks them.
   const previousFillIns = readFillIns(currentRun?.summaryJson);
 
+  // The position whose holders pick weekend closes. Empty when the term has
+  // none, which matches no block and no seat.
+  const leadPositionId = positionRows.find((p) => p.picksCloses)?.id ?? "";
   const result = generateAssignments({
     students: engineStudentsFinal,
     positions: positionRows.map(toDomainPosition),
     blocks: domainBlocks,
     previous: previousFinal,
     params,
-    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks),
+    deferredBlockIds: shiftLeadWeekendCloseIds(domainBlocks, leadPositionId),
     previousFillIns,
   });
   result.report.returners = {
-    cutoff: cutoff.toISOString().slice(0, 10),
+    cutoff,
     count: engineStudentsFinal.filter((s) => s.returner === true).length,
     unknownHireDate,
   };
@@ -411,7 +420,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
     hiredOn: hiredOnByEmail,
     positionOf: new Map(engineStudentsFinal.map((s) => [s.email, s.positionId])),
     returnDateOf: new Map(positionRows.map((p) => [p.id, p.returnDate])),
-    defaultStart: DEFAULT_SEMESTER_START,
+    defaultStart: term.startsOn,
   });
   // A health snapshot of the run as generated (fairness, stretch, coverage
   // fragility). The read-time validator stays the live truth about the rows;
@@ -435,7 +444,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
         frozen: frozenEmails.has(s.email),
       })),
       poolPositionIds: params.coveragePoolPositionIds,
-      leadPositionId: SHIFT_LEAD_POSITION_ID,
+      leadPositionId,
       // The run's own limit, so the health section and the read-time validator
       // judge a long stretch against the same number.
       maxConsecutiveDays: params.maxConsecutiveDays,
@@ -447,6 +456,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
 
   await db.transaction((tx) =>
     writeRunAsCurrent(tx, {
+      termId,
       assignments: result.assignments,
       report: storedReport,
       generatedBy: gate.email,
@@ -458,7 +468,7 @@ export async function generateSchedule(options: GenerateOptions = {}): Promise<G
 
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true, placed: result.assignments.length, repaired };
 }
 
@@ -480,20 +490,23 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await workingTermId();
   let error: string | null;
   try {
     error = await db.transaction(async (tx) => {
+      // Only a run of the working term can be restored: another term's run
+      // reads as gone, so it can never become this term's schedule.
       const [run] = await tx
         .select({ id: scheduleRuns.id, status: scheduleRuns.status })
         .from(scheduleRuns)
-        .where(eq(scheduleRuns.id, runId))
+        .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, termId)))
         .limit(1);
       if (!run) return "That run no longer exists.";
       if (run.status === "current") return "That run is already the current schedule.";
       await tx
         .update(scheduleRuns)
         .set({ status: "superseded" })
-        .where(eq(scheduleRuns.status, "current"));
+        .where(currentRunOf(termId));
       // The guard SELECT is a snapshot read, so a concurrent generate can prune
       // the target run between it and this write. Zero rows changed means the
       // run is gone; the flip above must roll back or no run stays current.
@@ -512,7 +525,7 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
 
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true };
 }
 
@@ -531,7 +544,10 @@ export async function setRunPinned(runId: string, pinned: boolean): Promise<SetP
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const [result] = await db.update(scheduleRuns).set({ pinned }).where(eq(scheduleRuns.id, runId));
+  const [result] = await db
+    .update(scheduleRuns)
+    .set({ pinned })
+    .where(and(eq(scheduleRuns.id, runId), eq(scheduleRuns.termId, await workingTermId())));
   if (result.affectedRows === 0) return { ok: false, error: "That run no longer exists." };
 
   revalidatePath("/admin/schedule");
@@ -551,12 +567,12 @@ export interface SaveSnapshotResult {
  * place. The live current run and its id are never touched, so this cannot
  * disturb what is on screen or in the Muster Schedule sheet.
  */
-export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
-  const gate = await requireAdmin();
+export async function saveScheduleRunSnapshot(termId: string): Promise<SaveSnapshotResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const current = await loadCurrentRunRow();
+  const current = await loadCurrentRunRow(termId);
   if (!current) return { ok: false, error: "No schedule has been generated yet." };
 
   const runId = randomUUID();
@@ -564,6 +580,7 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
   await db.transaction(async (tx) => {
     await tx.insert(scheduleRuns).values({
       id: runId,
+      termId: current.termId,
       generatedBy: gate.email,
       status: "superseded",
       // Nothing was solved here, only copied. The scope ledger reads this so a
@@ -589,7 +606,7 @@ export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
         .insert(scheduleAssignments)
         .values(rows.slice(i, i + 500).map((r) => ({ ...r, runId })));
     }
-    await pruneStaleRuns(tx);
+    await pruneStaleRuns(tx, current.termId);
   });
 
   revalidatePath("/admin/schedule");
@@ -633,14 +650,18 @@ const CLEARED_RUN_REPORT: StoredRunReport = {
  * after a clear they would have nothing to carry and the next run would leave
  * them empty.
  */
-export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<ClearScheduleResult> {
-  const gate = await requireAdmin();
+export async function clearScheduleRun(
+  termId: string,
+  alsoUnmarkScheduled: boolean,
+): Promise<ClearScheduleResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
   let unmarked = 0;
   await db.transaction(async (tx) => {
     await writeRunAsCurrent(tx, {
+      termId,
       assignments: [],
       report: CLEARED_RUN_REPORT,
       generatedBy: gate.email,
@@ -652,7 +673,7 @@ export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<Cl
       const [res] = await tx
         .update(submissions)
         .set({ scheduled: false })
-        .where(eq(submissions.scheduled, true));
+        .where(and(eq(submissions.scheduled, true), submissionInTerm(termId)));
       unmarked = res.affectedRows;
     }
   });
@@ -660,7 +681,7 @@ export async function clearScheduleRun(alsoUnmarkScheduled: boolean): Promise<Cl
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
   if (alsoUnmarkScheduled) revalidatePath("/admin/responses");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true, unmarked };
 }
 
@@ -678,7 +699,9 @@ export async function rebuildScheduleSheet(): Promise<RebuildScheduleSheetResult
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(SCHEDULE_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(SCHEDULE_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/schedule");
     return { ok: true, sync };
   } catch (e) {
@@ -706,7 +729,7 @@ export async function fetchCellAvailability(
 ): Promise<CellAvailabilityResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  return { ok: true, data: await loadCellAvailability(blockId, day) };
+  return { ok: true, data: await loadCellAvailability(blockId, day, await workingTermId()) };
 }
 
 /**
@@ -714,14 +737,17 @@ export async function fetchCellAvailability(
  * from the next generation on; each run also snapshots the values it used
  * into its stored report.
  */
-export async function saveScheduleParams(params: SchedulingParams): Promise<SaveParamsResult> {
-  const gate = await requireAdmin();
+export async function saveScheduleParams(
+  termId: string,
+  params: SchedulingParams,
+): Promise<SaveParamsResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const error = validateSchedulingParams(params);
   if (error) return { ok: false, error };
 
-  await setSetting(SETTING_SCHEDULE_PARAMS, JSON.stringify(params));
+  await setSetting(termSettingKey(SETTING_SCHEDULE_PARAMS, termId), JSON.stringify(params));
   revalidatePath("/admin/schedule");
   return { ok: true };
 }

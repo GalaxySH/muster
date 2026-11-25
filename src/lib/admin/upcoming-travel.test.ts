@@ -56,6 +56,12 @@ describe("upcomingTravel", () => {
     expect(result[0]!.entries.map((x) => x.name)).toEqual(["Amy", "Bev", "Cara"]);
   });
 
+  it("hands back the caller's rows untouched", () => {
+    const row = { ...e("Ann", "2026-01-07", "2026-01-07"), note: "Wedding", proofFileId: null };
+    const result = upcomingTravel([row], now);
+    expect(result[0]!.entries[0]).toBe(row);
+  });
+
   it("honors a custom horizon length", () => {
     // 1-week horizon (through 2026-01-13) drops the 01-14 entry.
     const result = upcomingTravel(

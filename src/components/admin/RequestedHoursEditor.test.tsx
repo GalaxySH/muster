@@ -49,7 +49,7 @@ describe("RequestedHoursEditor", () => {
 
     await waitFor(() => expect(screen.getByTitle("Click to edit")).toHaveTextContent("15h"));
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenCalledWith(EMAIL, 15);
+    expect(save).toHaveBeenCalledWith(EMAIL, 15, "");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -58,7 +58,7 @@ describe("RequestedHoursEditor", () => {
     const box = setup(12);
     fireEvent.change(box, { target: { value: "20" } });
     fireEvent.blur(box);
-    await waitFor(() => expect(save).toHaveBeenCalledWith(EMAIL, 20));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(EMAIL, 20, ""));
   });
 
   it("clears the answer when the box is emptied", async () => {
@@ -66,7 +66,7 @@ describe("RequestedHoursEditor", () => {
     const box = setup(12);
     fireEvent.change(box, { target: { value: "" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(save).toHaveBeenCalledWith(EMAIL, null));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(EMAIL, null, ""));
   });
 
   it("backs out on Escape without saving", () => {

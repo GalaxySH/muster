@@ -33,7 +33,7 @@ import {
   students,
   submissions,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { hourCap } from "@/lib/domain/caps";
 import { laborLimits } from "@/lib/domain/scheduling/labor";
@@ -51,9 +51,11 @@ import { toDomainBlock } from "@/lib/db/mappers";
 import type { ShiftBlock } from "@/lib/domain/types";
 import { loadCurrentRunRow } from "./data";
 import { effectiveRotation } from "@/lib/availability/effective";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import { isTestAccountEmail } from "@/lib/test-accounts/email";
 import { SCHEDULE_SHEET, trySyncSheet } from "@/lib/admin/sheet-sync";
+import { submissionOfStudent } from "@/lib/terms/scope";
+import { currentRunOf } from "@/lib/terms/scope";
 
 const NO_RUN_MESSAGE = "Generate a schedule first on the schedule page.";
 const OFF_ROSTER_MESSAGE =
@@ -84,13 +86,13 @@ const fail = (error: string): AssignmentEditResult => ({ ok: false, error });
 /** Aborts the transaction, carrying the refusal the admin should read. */
 class EditRefused extends Error {}
 
-async function refreshAfterEdit(studentEmail: string): Promise<void> {
+async function refreshAfterEdit(studentEmail: string, termId: string): Promise<void> {
   revalidatePath(`/admin/students/${encodeURIComponent(studentEmail)}`);
   revalidatePath("/admin/schedule");
   // Keep the Muster Schedule sheet from drifting behind hand edits; the
   // default cooldown batches a burst of saves into one resync, the same way
   // student submits treat the responses sheet.
-  await trySyncSheet(SCHEDULE_SHEET);
+  await trySyncSheet(SCHEDULE_SHEET, termId);
 }
 
 /**
@@ -112,9 +114,10 @@ export async function applyScheduleEdits(
   studentEmail: string,
   removes: readonly ScheduleEditCell[],
   adds: readonly ScheduleEditCell[],
-  weekendCohort?: Exclude<Cohort, "weekday">,
+  weekendCohort: Exclude<Cohort, "weekday"> | undefined,
+  termId: string,
 ): Promise<AssignmentEditResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return fail(gate.error);
   const email = normalizeEmail(studentEmail);
   if (!email) return fail("No student was named.");
@@ -135,12 +138,12 @@ export async function applyScheduleEdits(
     const [listed] = await db
       .select({ email: students.email })
       .from(students)
-      .where(and(eq(students.email, email), onRosterStudent()))
+      .where(and(eq(students.email, email), onRosterStudent(termId)))
       .limit(1);
     if (!listed) return fail(OFF_ROSTER_MESSAGE);
   }
 
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return fail(NO_RUN_MESSAGE);
 
   // The student's rotation and their cap context, in one read. Effective
@@ -155,7 +158,7 @@ export async function applyScheduleEdits(
       international: students.international,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
+    .leftJoin(submissions, submissionOfStudent(termId))
     .leftJoin(internalAvailability, eq(internalAvailability.submissionId, submissions.id))
     .where(eq(students.email, email))
     .limit(1);
@@ -172,7 +175,7 @@ export async function applyScheduleEdits(
       const [live] = await tx
         .select({ id: scheduleRuns.id })
         .from(scheduleRuns)
-        .where(eq(scheduleRuns.status, "current"))
+        .where(currentRunOf(run.termId))
         .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
         .limit(1);
       if (!live || live.id !== run.id) throw new EditRefused(RUN_MOVED_MESSAGE);
@@ -200,14 +203,21 @@ export async function applyScheduleEdits(
         )
         .for("update");
 
-      // Only live blocks can be added, and the coverage rule needs their times.
+      // Only live blocks of the run's term can be added, and the coverage rule
+      // needs their times.
       const wanted = [...new Set(adds.map((a) => a.blockId))];
       const blockById = new Map<string, ShiftBlock>();
       if (wanted.length > 0) {
         const blockRows = await tx
           .select()
           .from(shiftBlocks)
-          .where(and(inArray(shiftBlocks.id, wanted), liveBlocksOnly()));
+          .where(
+            and(
+              inArray(shiftBlocks.id, wanted),
+              liveBlocksOnly(),
+              eq(shiftBlocks.termId, run.termId),
+            ),
+          );
         for (const r of blockRows) blockById.set(r.id, toDomainBlock(r));
       }
 
@@ -299,7 +309,7 @@ export async function applyScheduleEdits(
     // No line. The batch still landed, exactly as it would with no warnings.
   }
 
-  await refreshAfterEdit(email);
+  await refreshAfterEdit(email, termId);
   return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
 }
 
@@ -321,13 +331,14 @@ export interface ClearStudentScheduleResult {
  */
 export async function clearStudentSchedule(
   studentEmail: string,
+  termId: string,
 ): Promise<ClearStudentScheduleResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   const email = normalizeEmail(studentEmail);
   if (!email) return { ok: false, error: "No student was named." };
 
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { ok: false, error: NO_RUN_MESSAGE };
 
   const db = getDb();
@@ -337,6 +348,6 @@ export async function clearStudentSchedule(
       and(eq(scheduleAssignments.runId, run.id), eq(scheduleAssignments.studentEmail, email)),
     );
 
-  if (result.affectedRows > 0) await refreshAfterEdit(email);
+  if (result.affectedRows > 0) await refreshAfterEdit(email, termId);
   return { ok: true, removed: result.affectedRows };
 }

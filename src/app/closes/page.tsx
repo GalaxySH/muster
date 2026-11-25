@@ -4,13 +4,14 @@ import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "@/lib/groups/data";
 import { loadWizardNav } from "@/lib/flow/data";
-import { hasCloseInventory, loadCloseBoard } from "@/lib/closes/data";
-import { REQUIRED_CLOSE_CLAIMS, SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
+import { loadCloseBoard, loadCloseRequirement } from "@/lib/closes/data";
+import { closeStepApplies } from "@/lib/domain/close-claims";
 import { CloseClaimBoard } from "@/components/closes/CloseClaimBoard";
 import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
+import { currentTermId } from "@/lib/terms/working";
 
 /**
  * SL-only wizard step (PLAN §18a): claim weekend close shifts from the dated
@@ -21,15 +22,16 @@ export default async function ClosesPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/closes");
 
-  const student = await findStudentByEmail(session.email);
+  const termId = await currentTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) redirect("/me");
-  if (student.positionId !== SHIFT_LEAD_POSITION_ID || !(await hasCloseInventory()))
-    redirect("/me");
+  const requirement = await loadCloseRequirement(student.email, student.positionId, termId);
+  if (!requirement || !closeStepApplies(requirement.required)) redirect("/me");
 
   const [access, nav, board] = await Promise.all([
-    resolveStudentAccess(student.email),
-    loadWizardNav(student.email),
-    loadCloseBoard(student.email),
+    resolveStudentAccess(student.email, termId),
+    loadWizardNav(student.email, termId),
+    loadCloseBoard(student.email, termId),
   ]);
 
   if (access.access === "no-group") {
@@ -55,8 +57,8 @@ export default async function ClosesPage() {
       )}
       <h1>Weekend closes</h1>
       <p style={{ color: "#555" }}>
-        Every Shift Lead is required to work {REQUIRED_CLOSE_CLAIMS} weekend close shifts this semester.
-        Pick your shifts below. Each shift has a limited number of spots, and they are first come first served.
+        You are required to work {requirement.required} weekend close{" "}
+        {requirement.required === 1 ? "shift" : "shifts"} this semester. Pick your shifts below. Each shift has a limited number of spots, and they are first come first served.
       </p>
       <CloseClaimBoard initial={board} editable={access.canEdit} submitted={access.submitted} />
     </Page>

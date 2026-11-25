@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.47
-- **Last updated:** 2026-11-22
+- **Version:** 1.61
+- **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -161,7 +161,7 @@ states that changes due to events/extracurriculars must include proof). Pure val
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
 withdrawable by the student. Requests
 render on the admin per-student page (§10) and are batched into a **daily digest email**
-to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
+of the current semester's new requests (1.61) to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
 daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
 no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
 remains as a manual fallback trigger (docs/deploy.md §7). An admin toggle on
@@ -188,7 +188,8 @@ but `/change-requests` itself and the admin queue stay reachable.
   leave the stale student row active), reported in the summary as moved to admin. People
   taken off the roster drop out of listed/required responses; their submission, name and
   position are retained in the DB. The import never deletes, except leavers' SL close
-  claims (below).
+  claims (below) and the closes of a lead it moves to a position that picks none
+  (1.52: from today on, without asking).
 - **Leavers' weekend closes (§18a, 1.36)** — a Shift Lead the import takes off the roster
   gives their closes back to the pool. When the workbook has a **People Leaving** sheet
   (the PCPL workbook; the Gordon tracker never has one), its **Resignation Effective
@@ -592,8 +593,8 @@ scheduler (not auto-parsed).
   allowed, **at most 20** (`MAX_TRAVEL_REQUESTS`). **Policy #8:** only travel submitted **before the cutoff** (default 9/1,
   admin-configurable; same cutoff for all positions) is excused. What happens on/after
   the cutoff is the **admin-set late policy** (the "Accept late travel" toggle beside the
-  cutoff on `/admin/groups`, stored in `app_settings`, read via `getLateTravelPolicy` in
-  `lib/settings.ts`). Off (the default, decided 2026-07-09): the step **refuses new
+  cutoff on the Semester page, `/admin/terms`, stored on the term, read via
+  `getLateTravelPolicy` in `lib/settings.ts`). Off (the default, decided 2026-07-09): the step **refuses new
   entries** and locks existing ones, so every stored entry is excused by construction.
   On (`"accept-and-flag"`): the step keeps accepting entries (removal stays open with
   them), but they are stored `excused: false` and render red "not excused (late)"
@@ -655,28 +656,55 @@ requests carry their own ≤ 3 files (§9).
 Minimal-by-default. **Do not ingest** Campus ID, phone, or onboarding-tracking
 columns from the roster.
 
-- **Student**: `email` (PK / lookup key — must equal Google sign-in email),
-  `displayName`, `positionId?` (from roster), `rosterTitle?` (raw PCPL position title,
-  stored at import; surfaces "ghost" titles that map to no position — §6.1),
-  `international` (from roster or
-  self-report), `hiredOn?` (date, from People Coming; drives the welcome-back greeting —
-  §4.1, roadmap 2.1), `onRoster: bool`, `groupId?` (form-window group — §13; null = no
-  access), `groupAssignedAuto: bool` (sticky: set by the default-assignment sweep /
-  self-add hook vs. a manual admin assignment).
-- **Position**: `id`, `name`, `minHours`, `minDays`, `weekendExempt: bool` (Barista),
+**Terms (1.48).** The app runs in one **term** (a semester) at a time, and the data
+below is split by it. `submissions`, `close_slots`, `schedule_runs`, `shift_plans`,
+`change_requests`, `groups`, `term_members`, `positions`, `shift_blocks`,
+`roster_title_mappings`, `w2w_position_map` and `roster_imports` each carry a `termId`.
+Everything hanging off a submission (picks, the internal copy, proofs, travel, flags)
+is scoped through it, close claims through their slot, and run and plan rows through
+their run and plan. **`students` is the person** (email, name, international, hire
+date, last seen); **`term_members` is their place in one term** (1.51): the position
+they hold in it, whether they are on its roster, the tracker title they were imported
+under, and their form-window group. Someone with no row in a term is not part of it.
+Students only ever see the current term. Admins will be able to select and edit an
+earlier one (`docs/semester-domains-plan.md` §2.9, not built yet).
+Design and phases: `docs/semester-domains-plan.md`.
+
+- **Term**: `id` (a slug fixed at creation, so a rename never moves rows; the first is
+  `2026-fall`), `name` (unique), `startsOn` (also the late-start threshold for a
+  position with no return date), `endsOn` (with `startsOn`, the default close inventory
+  range), `travelCutoff` (§8; defaults to midnight Central the day before `startsOn`),
+  `lateTravelAccept: bool` (§8), `newHireCutoff` (hired on or after it counts as new,
+  §13; `2026-06-01` for fall), `scheduleNote` (the exit page's sentence about when to
+  expect a schedule), `rosterConfig?` (JSON: how this term's tracker is read, see
+  RosterImport), `activatedAt?`, `createdAt`, `createdBy?`.
+  The current term is the `current_term_id` row in `app_settings`. A missing pointer
+  fails closed: every page errors instead of reading every term.
+- **Student**: the person only. `email` (PK and lookup key; must equal the Google
+  sign-in email), `displayName`, `international` (from roster or self-report), `hiredOn?`
+  (date, from People Coming; drives the welcome-back greeting, §4.1, roadmap 2.1),
+  `lastSeenAt?`. Their position, roster flag, tracker title and group are per term, on
+  **GroupMember** (the `term_members` table). The old `positionId`, `rosterTitle`,
+  `onRoster`, `groupId` and `groupAssignedAuto` columns were dropped in 1.57.
+- **Position**: `id`, `termId`, `name` (unique within its term), `minHours`, `minDays`,
+  `weekendExempt: bool` (Barista), `picksCloses: bool` (holders pick weekend closes,
+  §18a; this flag is what "Shift Lead" means to the code, so no id carries meaning),
   `active` (inactive = hidden from pickers/new assignment; still resolves for existing
   data), `mergedIntoId?` (alias mode — §6.1: writes are canonicalized so no student or
   selection ever references an alias).
-- **RosterTitleMapping**: `title` (normalized PCPL title, PK) → `positionId`. The
+- **RosterTitleMapping**: (`termId`, `title`) PK, `title` a normalized PCPL title →
+  `positionId`. The
   importer's title map, seeded once from the code fixture
   (`roster/position-mapping.ts`); ghost resolution on `/admin/positions` inserts rows,
   so new roster titles never require a code change.
-- **ShiftBlock**: `id`, `positionId`, `dayType` (`weekday`|`weekend`), `start`,
+- **ShiftBlock**: `id`, `termId` (its position's), `positionId`, `dayType`
+  (`weekday`|`weekend`), `start`,
   `end`, `desiredCapacity?` (admin-set target headcount per day the block runs; null =
   no target; feeds the coverage view and, later, the generator — roadmap 5.1).
   Open/close derived; high-demand is **computed** from selections (§7, roadmap
   2.5), no longer a stored column.
-- **Submission**: `id`, `studentEmail`, `submittedAt`, `confirmedAt?` (the engagement
+- **Submission**: `id`, `studentEmail`, `termId` (**one per student per term**:
+  unique on the pair), `submittedAt`, `confirmedAt?` (the engagement
   signal: stamped **only** when the student clicks "Yes, that's me" on `/me`, since an
   admin can create the row before the student ever signs in; §13.1),
   `everyWeekendOptIn: bool`,
@@ -754,22 +782,43 @@ columns from the roster.
   read "Dishwasher to Culinary Assistant", and an FK would add a fifth way for a
   position delete to refuse (see the FK register in `docs/architecture.md`).
 - **Group** (form-window owner — §13; supersedes the old per-position `FormWindow`):
-  `id`, `name` (unique), `opensAt?`, `closesAt?` (both null = unconfigured → locked),
+  `id`, `termId`, `name` (unique within its term), `kind?` (`default` | `test`: the two
+  groups every term is given; null for one an admin made. The test-accounts group is
+  found by this, never by its id), `opensAt?`, `closesAt?` (both null = unconfigured →
+  locked),
   `isDefault: bool` (exactly one; seeded as "New Student", re-pointable by the admin —
   the flag holder can't be deleted), `lockAfterSubmit: bool` (the optional third access
   gate — §13 #3: once on, a submitted member can no longer edit even inside an open
-  window). Students join via `students.groupId`. (The
+  window). Students join through **GroupMember**. (The
   **travel-excusal cutoff** is separate global config in `app_settings` — default 9/1,
   admin-set — not window-derived.)
+- **GroupMember** (1.48; the `term_members` table since 1.51): (`termId`,
+  `studentEmail`) PK, `positionId?` (from roster), `onRoster: bool`, `rosterTitle?`
+  (raw PCPL position title, stored at import; surfaces "ghost" titles that map to no
+  position, §6.1), `groupId?`, `assignedAuto: bool`. A person's place in one term.
+  No row, or a row with no group, means no form access, so a new term starts with
+  every form closed. `assignedAuto` is the sticky
+  marker (set by the default-assignment sweep / self-add hook, cleared by a manual
+  assignment): taking a swept student out keeps their row with a null group, so the
+  sweep does not put them straight back. `lib/terms/members.ts` writes the roster
+  place and `lib/groups/membership.ts` the group.
 - **AdminUser**: `email`, allowlist.
 - **AdminGoogleGrant**: `drive.file` refresh token (encrypted) for the image relay
   (§12) — admin-only; one row.
-- **RosterImport**: `id`, `importedAt`, `rowCount`, `importedBy`, `skippedNonWisc`
+- **RosterImport**: `id`, `termId`, `importedAt`, `rowCount`, `importedBy`, `skippedNonWisc`
   (rows dropped for a non-`wisc.edu` email — neither auth path accepts one, so the admin
-  hub flags them rather than losing a real worker silently; §4.2, 0.91).
+  hub flags them rather than losing a real worker silently; §4.2, 0.91). **How the
+  tracker is read is the term's own** (`Term.rosterConfig`, 1.48): the sheets tried
+  (default `Gordon`, then `People Coming`), the leavers sheet (`People Leaving`), the
+  titles that mean admin, the excluded titles, and (1.49) the header names of the
+  Name, Email, Title, International and Start Date columns. Each field falls back to
+  its built-in default on its own; a blank column name means the built-in header
+  matching. All of it is edited on `/admin/roster`. Excluded titles also fall back to the pre-term
+  `excluded_roster_titles` setting until the term saves a list.
 - **AppSetting**: `key` (PK) → `value` (string; JSON where a key needs structure). The
   one global key/value store for admin-set config that isn't per-student or per-group,
-  read through named accessors in `lib/settings.ts` (never ad-hoc). Current keys: the
+  read through named accessors in `lib/settings.ts` (never ad-hoc). Current keys:
+  `current_term_id` (which term the app runs in; read through `lib/terms`), the
   Drive/proofs folder id, the responses and SL-closes sheet ids + their last-sync
   stamps, `drive_last_ok_at` / `drive_last_error_at` (integration health — §10b), the
   travel cutoff + `late_travel_accept` (§7b), `excluded_roster_titles` (§4.2),
@@ -803,6 +852,9 @@ columns from the roster.
   inventory generated by the admin (semester range + capacity), not templated config.
 - **CloseClaim** (§18a): `closeSlotId` + `studentEmail` (composite PK — the
   double-claim guard), `claimedAt`. Cascades on slot or student deletion.
+- **CloseRequirement** (§18a, 1.53): `termId` + `studentEmail` (composite PK),
+  `required`, `setBy` (null when made automatically), `setAt`. One lead's own number
+  of closes for one term. The term's default is `Term.closeRequirement`.
 - **ScheduleRun** (recommended schedule — `docs/schedule-generation-plan.md` §2.2):
   `id`, `generatedAt`, `generatedBy` (admin email), `status` (`current`|`superseded`),
   `summaryJson` (the engine's run report), `restoredAt` + `restoredBy` (1.00 — stamped
@@ -993,9 +1045,12 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   proof image(s) + the optional **details text** (no structured parsing). Travel also
   shows each entry's inclusive date range + excused / "not excused (late)" state.
   - **PDF handling (decided — "option A"):** images get a real thumbnail + image
-    lightbox; **PDFs** show a generic placeholder card and open in the lightbox via an
-    `<iframe>` of the auth proxy (native browser PDF view) — no first-page thumbnail
-    render (a dependency we deferred). Served through `/api/evidence/[fileId]`.
+    lightbox; **PDFs** open in the lightbox via an `<iframe>` of the auth proxy (native
+    browser PDF view). Served through `/api/evidence/[fileId]`. Since 1.61 every
+    thumbnail is **Drive's own preview** (`?size=thumb`), which for a PDF is its first
+    page, so a PDF thumbnails like an image with no render dependency here; a file with
+    no preview shows a plain file box. The lightbox tries the original as an image and
+    switches to the `<iframe>` if it won't load.
   - Uploads are restricted to **PNG/JPEG/WebP/PDF** (HEIC dropped — won't render in
     `<img>`); the student hint says "PNG/JPEG images only". *Future:* may restrict the
     **course schedule** specifically to images so it always thumbnails beside the grid.
@@ -1217,8 +1272,16 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
   - **Folder layout (`DRIVE_FOLDER_ID` = root):** the **root holds the running
     responses spreadsheet** (below); **all proof files live in a single `proofs/`
     subfolder**, named `{studentEmail}__{kind}__{timestamp}.{ext}`. The app stores
-    only the `fileId`; the admin view renders inline via the same grant. (The
+    only the `fileId`; the admin view renders inline via the same grant, and
+    thumbnails on both sides are Drive's own preview images (1.61: the grant reads
+    each file's preview link, which is then fetched without the token and only from
+    a `*.googleusercontent.com` host), never cached or stored by the app (the viewer's browser keeps a served
+    thumbnail for 5 minutes, as it does an original). (The
     `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
+    **Per term since 1.55:** that layout is fall 2026's, which keeps its files at
+    the root. Every later term gets its own folder under the root, named after the
+    term, with its own `proofs/` and its own sheets, and each cached id is stored
+    under a key ending in the term id.
   - **Running responses spreadsheet (recovery + non-admin view):** a single
     **`Muster Responses` Google Sheet** in the root, rebuilt from the same export
     matrix the in-app CSV uses (one comprehensive row per submission; timestamp
@@ -1493,8 +1556,20 @@ under-18 test (deferred → fallback, §11).
 A **claim/inventory subsystem**, architecturally distinct from the rest of Muster
 (which is templated availability with no contention). Runs at the end of the SL form.
 
-- **Rules:** every Shift Lead claims **exactly 3** weekend closes to hold for the
-  semester; **Friday/Saturday closes only**; each close slot has **finite capacity**.
+- **Rules:** every Shift Lead claims **their own number** of weekend closes to hold
+  for the semester (1.53; it was a fixed 3); **Friday/Saturday closes only**; each close
+  slot has **finite capacity**.
+  - *The number.* The term has a default (`terms.close_requirement`, on the Semester
+    page). Each lead has a row in `close_requirements`, made with the default as it
+    stood when they became a lead and never following it afterwards, so an admin can
+    give a lead promoted mid-semester a smaller number. A lead with no row reads as
+    the default.
+  - A lead may hold up to their number and no more, and can submit once they hold
+    **at least** it. A number of 0 hides the step from that lead. Lowering a number
+    releases nothing (the lead shows as over); raising one leaves a submitted lead
+    short until they or an admin add a close.
+  - A lead who moves to a position that picks no closes gives theirs back from today
+    on (1.52), and keeps their number in case they return in the same term.
   Backend-enforced SL-only; students see only whether a slot is **open or full** —
   **never counts, never names**. Capacity and claim counts are admin-only (the SL
   board's view model carries a `full` boolean; the numbers never reach the client).
@@ -1517,16 +1592,18 @@ A **claim/inventory subsystem**, architecturally distinct from the rest of Muste
 - **Flow placement (§4.1 step 8):** the `/closes` wizard step sits between travel and
   exit, appears only for SLs **and** only once an inventory exists (the feature is
   dormant until the admin generates slots), unlocks with travel (needs course schedule +
-  complete availability), and gates `/exit`: `finalizeSubmission` refuses an SL with
-  ≠ 3 claims. `/me` shows a red warning card for any SL short of 3 picks.
-- **Admin:** `/admin/closes` — per-slot claims with names, per-lead progress, a
-  slots × capacity ≥ 3 × active-SLs **feasibility warning**, the inventory editor, and a
+  complete availability), and gates `/exit`: `finalizeSubmission` refuses an SL
+  holding fewer than their number. `/me` shows a red warning card for any SL short of
+  it.
+- **Admin:** `/admin/closes` — per-slot claims with names, per-lead progress against
+  each lead's own number, a **feasibility warning** when the inventory holds fewer
+  spots than the active leads' numbers add up to, the inventory editor, and a
   second backup Google Sheet (`Muster SL Closes`); `sheet-sync.ts` is parametrized by
   target (name + cached id + matrix builder) rather than copy-pasted. The claims table
   also has **direct assign/remove controls** (v0.53): the admin can put any active
   Shift Lead on a slot or take them off without the lead touching the form. Assignment
   goes through the **same locking insert** as student claims (`closes/claim-write.ts`,
-  shared by `actions.ts` and `admin-actions.ts`), so capacity and the 3-claim limit
+  shared by `actions.ts` and `admin-actions.ts`), so capacity and the lead's own limit
   hold even against a concurrent student pick; removal returns the seat to the pool.
 - **Leavers (1.36):** a roster import that takes a lead off the roster releases their
   closes after their resignation date, or asks the admin when there is no date (§4.2).
@@ -1598,6 +1675,488 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.61 (2026-11-25)** — **Two admin page changes, and preview thumbnails.** No
+  schema change.
+  - **Schedule health starts collapsed.** The Schedule health section on
+    `/admin/schedule` (`components/admin/ScheduleHealth.tsx`) is a native
+    `<details>` panel that is closed on every load and opens from its heading.
+    Nothing about what the page loads changed.
+  - **Upcoming travel shows the note and the proof.** Each entry on
+    `/admin/travel` (`components/admin/UpcomingTravelRow.tsx`) shows the trip's
+    note, clamped to two lines with the full text on hover, and its proof as the
+    same click-to-enlarge `EvidenceThumb` the per-student page uses, on the right
+    of the entry beside the dates and the resolved checkbox. An entry an admin
+    recorded with no proof shows no thumbnail.
+  - **Evidence thumbnails are Drive's previews and lazy load.** `?size=thumb` on
+    `/api/evidence/[fileId]` (same access check) relays Drive's own preview image
+    (`thumbnailLink`, read with the admin grant, then fetched without the token and
+    only from `*.googleusercontent.com`, never stored) instead of the
+    original, and `?size=preview` a larger one (1200px) for the course schedule on
+    the per-student page. The small image is `loading="lazy"`, so a long list only
+    fetches the previews scrolled into view, and never an original. A PDF's preview
+    is its first page, so the old "PDF" card is gone; the lightbox tries the
+    original as an image and opens the PDF viewer if that fails. A file with no
+    preview shows a plain file box. One `EvidenceThumb`
+    (`components/evidence/`) now serves every admin view and the student evidence
+    pages, which keep opening the file in a new tab; their only changes are the
+    preview image and the lazy load. A file with no preview there (one just
+    uploaded, before Drive has made it) loads the original as before, and shows the
+    file box only if that won't load as an image either, as a PDF did before.
+  - **A long travel note no longer overflows the per-student Travel card**, and its
+    proof thumbnail no longer shrinks.
+  - **Layout fixes found in the browser checks.** On `/admin/travel` the proof
+    thumbnails line up in one column (the dates column has a minimum width on
+    desktop), and at phone width the position drops to its own line under the
+    name. A long unbroken URL in a travel note now wraps on the student `/travel`
+    page instead of making the page scroll sideways. A long unbroken name on
+    `/admin/travel` breaks inside its row instead of pushing every row of its week
+    past the card at phone width (the week's grid column has a zero minimum).
+  - **The daily digest covers only the current semester.** `runChangeDigest` reads
+    the current term once, before it stamps anything, and `loadPendingDigestRequests`
+    selects only that term's open, unreported requests. A broken pointer throws, so
+    the run stamps and sends nothing (the scheduler logs it). An earlier semester's
+    open requests the digest never reported are not emailed after a new semester
+    starts; they stay in that semester's queue, and the runbook's first step says so.
+    The per-student page still says which semester a linked request is from, since
+    the admin following a digest link may have an earlier one selected.
+- **1.60 (2026-11-25)** — **The rest of the review's open items (issue #40).**
+  Migration 0054, additive.
+  - **Sign-ins are counted per semester.** `students.last_seen_at` is one stamp per
+    person, so analytics for an earlier semester counted a visit made after a later
+    one had started. `term_members.last_seen_at` (migration 0054, nullable) is
+    stamped with it for the current term (`auth/last-seen.ts`), and
+    `/admin/analytics` reads that. 0054 fills the current term from the stamps
+    people already have. The per-student Last seen card is still the person's own.
+  - **A person's own form is always the current semester's.** An admin who is also
+    on the roster, with another semester selected, was shown and saved their own
+    form in the selected one. `requireEditableStudent` and the change-request
+    target resolve `currentTermId()` when no one is named, the student pages pass
+    the current term to their loaders (`loadStudentForm`, `loadEvidence`,
+    `loadFlowState`, `loadWizardNav` and `loadHighDemandCells` now take the term),
+    and `?student=` on a student page keeps the selected one. Naming yourself
+    (`?student=<own email>`, or picking yourself on the change-request form) is on
+    behalf like anyone else, so it is the selected one too. The change-request
+    panel's reads follow the same rule as its write: the panel sends no email when
+    nobody is picked, and the server then reads the session's own requests and
+    shift times in the current term. Nothing changes for a student, whose working
+    term already was the current one.
+  - **A retried send is one email.** `sendEmail` now gives every email an
+    `Idempotency-Key` made from the message itself (recipient, sender, subject,
+    text, html, cc and reply-to as sent), so a send that timed out after Resend took
+    it and is sent again within about a day (Resend keeps keys 24 hours) is one
+    email, for every feature. Past that it is a new email; nothing guarantees
+    against a duplicate beyond the key's lifetime. A caller
+    that means to send the same message again passes a `sendId`: the schedule email
+    passes the dialog's request id (a double click is one email, reopening the
+    dialog is a new one) and the test send a fresh one each press. The digest and
+    magic links pass none, so a retry of the identical digest batch within a day
+    is one email. The digest still tries every recipient when one fails, and
+    stamps the requests reported once at least one recipient was sent it, even if
+    another send failed: a recipient whose send failed misses that digest, and the
+    requests stay in the admin queue. Holding the batch back instead would send
+    everyone else the whole growing list every day for as long as one address
+    kept failing. Only a run that reached nobody leaves the batch for the next
+    run (`changes/digest.ts`).
+  - **`updateSubmission` cannot be reached without the gate.** It takes the
+    result of `requireAdminIn` (`AdminInTerm`, which only that gate makes) and
+    works in the term it proved.
+  - **`assignCloseClaim`** takes the page's term and gates with `requireAdminIn`,
+    as do the change-request panel's two reads when someone is picked.
+  - **Row-id admin actions.** All of them in groups, positions, schedule, closes
+    and W2W were checked and already look their row up inside the working term.
+    `dismissFlag` and `setTravelResolved` did not, and now do. So do the three
+    change-request row actions: the admin queue, its counts and the per-student
+    list show only the selected semester's requests, and starting a new semester
+    does not carry open requests into it, so they stay in the earlier semester's
+    queue. The row actions also take the page's term and gate with
+    `requireAdminIn`, so a tab left on another semester is told to reload rather
+    than that the request no longer exists. The daily digest still reports every
+    semester's.
+  - **A digest link to another semester's request says so.** `changeRequestAdminPath`
+    adds `?request=<id>` (the `#` anchor stays), and when it names one of the
+    student's requests from a semester other than the selected one, the per-student
+    page shows "This request is from <semester>." with a button to switch to it
+    (`requestInOtherTerm` in `changes/data.ts`, looked up within that student).
+  - **The last managed-sheet race.** A sync replacing a deleted sheet shared one
+    in-flight resolution with plain lookups, so it could join a lookup that had
+    already read the dead id, get it back and fail. Replacing now has its own
+    flight per dead id (`upsertManagedSheet` in `drive/relay.ts`), shared only with
+    other syncs replacing that same id: it re-reads the cached id, uses it if
+    another sync already replaced the sheet, and otherwise creates one and caches it
+    before writing. It never searches Drive by name, and a second 404 fails the sync
+    rather than looping. The retry that papered over this is gone.
+- **1.59 (2026-11-25)** — **What the 1.58 review left open (issue #40).** No schema
+  change and no migration.
+  - **Calls out of the app have a time limit.** No call to Drive, Sheets or Resend
+    had one, so a hung call held its request open, and with it every upload or
+    sync sharing its folder or sheet resolution. `driveFetch` (`drive/api.ts`)
+    gives each Drive and Sheets call 30 seconds, 120 for one carrying file bytes;
+    the access-token refresh gets the same 30 through the auth client's
+    `transporterOptions`; a Resend send gets 30. A call that runs out throws, and
+    the caller's existing failure path handles it.
+  - **Duplicate sheets.** A managed sheet's id was cached only after its first
+    write, so a sync starting in between searched Drive by name and could miss a
+    sheet made a moment earlier. The id is now cached inside the shared
+    resolution, before any write. A sheet found deleted is replaced through the
+    same shared step: two syncs that find it gone together make one replacement,
+    and one that arrives later uses it (`upsertManagedSheet`, `drive/relay.ts`).
+  - **Calendar days read a day early west of UTC.** Drizzle's `date` column reads
+    the stored day as midnight UTC, while the app writes and reads these days in
+    the local frame, so `students.hired_on` showed the day before on a host west
+    of UTC. Production runs in UTC and was never affected. `hired_on` and the
+    travel `start_date` and `end_date` now use a `calendarDay` column type
+    (`db/schema.ts`) that is local midnight in both directions, and the three
+    copies of the travel readers' `toIsoDate` are `localDay`. Checked on a real
+    MariaDB in UTC, Los Angeles, Tokyo and Kiritimati; the old type failed the
+    same check in Los Angeles.
+  - **`startNewTerm` has a unit test** (`admin/start-term.test.ts`): the four
+    refusals, the id choice, what is copied under new ids, aliases followed to
+    their target in mappings, the W2W map, the params and the roster, the two
+    groups, and who is carried into which group.
+  - The roster import summary already lists every close it freed, including those
+    of a Shift Lead the sheet moved to another position, which are freed without
+    a prompt. The `closesReleased` comment now says so.
+- **1.58 (2026-11-25)** — **Semester domains: review fixes before release (issue #40;
+  `docs/semester-domains-plan.md` §18).** A security and correctness review of the
+  branch before its first deploy. What it found, and what the code does now:
+  - **Aliases and the W2W map.** Making a position an alias re-pointed the W2W
+    mapping of the same W2W id in every term, because every term holds the same W2W
+    ids. `repointW2wMappings` (`positions/actions.ts`) now also matches the source
+    position, so only that term's mapping moves.
+  - **One term per action.** React `cache` memoizes only during a render, so inside
+    a server action every `workingTermId()` call read the pointer again. An action
+    in flight while a semester started could gate in one term and write in the
+    other, and several actions awaited that pooled read inside an open transaction:
+    a request holding one connection while it waits for a second, which can starve
+    the 10-connection pool. The rule now: an action or route handler resolves the
+    term once, before any transaction, and passes it down; a transaction body never
+    resolves it (`terms/working.ts`, `positions/actions.ts`, `persistAvailability`).
+  - **Whole-term actions check the page's term.** `createPosition`,
+    `createPositionForTitle`, `createGroup`, `runDefaultAssignmentSweep`,
+    `saveScheduleParams`, `saveScheduleRunSnapshot` and `deleteW2wMapping` named no
+    row of the term, so a stale tab could act in the other one. They now take the
+    rendered term and gate with `requireAdminIn`. Hand edits to a schedule only
+    accept shift blocks of the run's term.
+  - **Position ids are random.** A new position got a slug of its name as its id,
+    which had to be unique across every term. It gets a random id now, so a name is
+    only compared within its term. `slugifyPositionId` is deleted.
+  - **Test accounts.** Deleting one deletes the person in every term, so it is
+    refused unless the address is a synthetic test address. The per-term schedule
+    check that guarded real addresses goes with it. Starting a semester carries only
+    synthetic test addresses into the new test group; a real student in the old one
+    carries over only if on the roster, with no group, like everyone else.
+  - **Drive.** A term's folder was found by name before it was created, so a
+    semester restarted under a reused name adopted the earlier one's folder and
+    sheets. Folders are now created on first use and cached, never looked up by
+    name, and concurrent first writes in a new term share one in-flight creation
+    (`drive/relay.ts`).
+  - **`/api/health`** reads the current-term pointer, so a broken pointer fails the
+    deploy check instead of passing on a bare connection.
+  - **Close dates are unique per term** (migration **0053**,
+    `close_slots_term_date_unique`), not across all terms. Generating closes for a
+    restarted or overlapping semester used to fail on a duplicate key. Migration
+    **0052**'s fill now also covers a term whose config holds an explicit JSON null
+    for the excluded titles. That cannot occur when 0037 to 0053 run in one deploy;
+    it protects databases where the newer code ran first, such as dev databases.
+  - **Deploy and rollback docs corrected** (`docs/deploy.md`). The old image never
+    serves a migrated database: compose stops it before `migrate` runs, so the site
+    is down until the new container answers (about 15 seconds for this release).
+    After 0051 no image from before 1.57 works, so v1.47 is the only rollback
+    target; the rollback and roll-forward SQL is written out and was rehearsed on a
+    migrated copy of production. New: a runbook for a failed or hung `migrate`, and
+    the backup restore limited to Muster's database (`--one-database`).
+- **1.57 (2026-11-25)** — **Semester domains, Phase 7: contract (issue #40;
+  `docs/semester-domains-plan.md` §4, §17).** Everything that was kept only so the
+  release before terms could still run is removed. No behavior changes.
+  - **`students` is only the person.** Its `position_id`, `on_roster`,
+    `roster_title`, `group_id` and `group_assigned_auto` columns are dropped
+    (migration **0051**). They moved to `term_members` in 1.48 and 1.51 and nothing
+    has read them since; the writes that kept them in step are gone
+    (`terms/members.ts`, `groups/membership.ts`, `syncRetiredRosterColumns`,
+    `isCurrentTermSql`).
+  - **Retired settings** (migration **0052**, data only). A term with no excluded
+    titles of its own used to fall back to the pre-term `excluded_roster_titles`
+    setting; each such term now has that list saved on it, so every term excludes
+    exactly what it did, and the fallback is gone. Then the rows nothing reads are
+    deleted: `travel_cutoff`, `late_travel_accept`, `excluded_roster_titles`, and
+    the Drive ids and engine params that 0046 and 0047 copied to per-term keys.
+  - **Rollback.** After this release no image from before 1.57 runs against the
+    database: v1.47 and 1.48 to 1.50 read the dropped columns, and 1.51 to 1.56
+    still write them, so their roster, position and group writes fail. v1.47 is
+    the only rollback target, with the rehearsed steps in `docs/deploy.md` (1.58).
+    (This bullet first said the old image keeps serving for a few seconds after
+    `migrate`. That was wrong: the old container is stopped before `migrate`
+    runs, so the site is down instead.)
+- **1.56 (2026-11-24)** — **Semester domains, Phase 6: starting a new semester
+  (issue #40; `docs/semester-domains-plan.md` §2.4, §2.5, §2.9, §16;
+  runbook `docs/semester-rollover.md`).** The Semester page gains **Start a new
+  semester**: a name, a first and last day, the name typed again, and one
+  action (`startSemester` over the plain `startNewTerm` in
+  `lib/admin/start-term.ts`). In one transaction it creates the term (id a slug
+  of the name, travel cutoff the day before the first day, new hire date three
+  months before it), copies the current term's configuration as new rows with
+  new ids (positions, live shift blocks, title mappings, how the tracker is
+  read, the W2W position map, the engine params), copies
+  everyone on the roster into it with their position and **no group**, creates
+  its Default and Test accounts groups and carries the test accounts over, gives
+  its Shift Leads a close requirement, and makes it current. **Nothing of the
+  earlier term changes.** Students move at once and their form is closed until
+  an admin opens a group. It always acts on the current term, whichever one the
+  admin is working in, and a second start from a stale page is refused.
+  - **Not copied:** responses, proofs, travel, groups and windows, closes,
+    schedules, plans, position return dates, retired blocks and aliases (what
+    pointed at an alias follows it to its target).
+  - **Making an earlier semester current again** (`makeSemesterCurrent`), shown on
+    the Semester page while working in a term that is not current. It undoes a
+    start made by mistake. Only the pointer moves. It asks first when the term
+    being left already has responses.
+  - **Engine params are per term** (migration **0047**, data only: the saved value
+    is copied to `schedule_params:<term>`; the old key is kept for a rollback).
+  - **Closes per Shift Lead carries forward.** The number is a setting (the
+    Semester page), and a new term takes it from the term before; every lead
+    starts the new term on it. A number an admin gave one lead does not carry
+    over. No code holds the number: migration **0050** drops the column default
+    of 3 that 0045 used to seed fall's setting, so the 3 exists only as fall's
+    saved value.
+  - **Analytics:** "signed in" counts visits since the term was started. The
+    first term was never started from the app, so migration **0048** clears the
+    start stamp 0037 gave it and every visit counts there, as before.
+  - **Switching semesters reloads the page**, so no form keeps the other
+    semester's values. (1.55 refreshed in place, which left the Semester page's
+    form showing the previous semester.)
+  - **Also in this release:** every admin write that names a person by email
+    carries the semester check from 1.55 (listed there).
+  - **The `term_id` column defaults are dropped** (migration **0049**, metadata
+    only). An insert that forgot its term now fails instead of being filed under
+    fall. From this release on, an image older than 1.48 cannot insert into the
+    term-scoped tables, so a rollback to one needs the defaults put back first
+    (`docs/deploy.md`). A deploy is not affected: the old container is stopped
+    before `migrate` runs (corrected in 1.58).
+- **1.55 (2026-11-24)** — **Semester domains, Phase 5: working in a selected semester
+  (issue #40; `docs/semester-domains-plan.md` §2.6, §2.9, §15).** Until now every
+  page and action read "the current term". Two terms are now named apart. The
+  **current term** is the one students fill in (`app_settings.current_term_id`). The
+  **working term** is the one a request reads and writes: always the current term
+  for a student, and for an admin the term they selected in the header, or the
+  current one when they selected none. One resolver decides it
+  (`workingTermId()` in `lib/terms/working.ts`, which replaces `lib/terms/current.ts`);
+  every loader and action that called `currentTermId()` now calls it, and nothing
+  else changed in them. **With one term in the database nothing looks or behaves
+  differently**: the header shows the term's name as plain text, as before.
+  - **Selecting.** With two or more terms the name in the admin header becomes a
+    control. The choice is an httpOnly cookie holding a term id, written only by
+    `selectTerm` (admin-gated, the term must exist), lasting 30 days. It is only a
+    request: it is honoured for an admin and for a term that exists, and ignored
+    for everyone else, so a student who sends it still gets the current term.
+    Admin status is recomputed per request as before. Selecting the current term
+    clears the cookie. Work with no request behind it (the digest scheduler, the
+    scripts) follows the current term.
+  - **Every term is fully editable by an admin who has selected it**, the roster
+    import included. A banner runs across the top of every page while the working
+    term is not the current one, naming both, with one click back.
+  - **A tab left on another semester cannot write to the wrong one.** Tabs of one
+    browser follow each other (a tab that sees the selection change reloads). The
+    server is the authority: a row id from the client is already looked up inside
+    the working term, and the actions that act on a whole term and name no row
+    now send the term their page was rendered for and are refused when it is not
+    the working term (`requireAdminIn`): the roster import, the W2W plan import,
+    generating and clearing a schedule, generating the close inventory, setting
+    close requirements, and saving the semester's details, travel cutoff,
+    late-travel switch, excluded titles and tracker reading. So does every admin
+    write that names a **person by email**, because the same person is in every
+    term: marking scheduled, notes, requested hours, the admin's copy of
+    availability, evidence and travel added for someone, a change request sent
+    for an employee, a position or group change, schedule edits, deleting a
+    response and the schedule email.
+  - **Confirmations name the semester**: generating and clearing a schedule, the
+    roster import's result and its absence-guard override.
+  - **An import into an earlier term changes only that term's roster.** Names, the
+    international flag, hire dates and the admin list follow the current term, so
+    an old tracker cannot overwrite them; a person not seen before is still added.
+    The retired `students` roster and group columns mirror the current term only.
+  - **Drive per term (§12).** Each term has its own folder under the Drive root,
+    named after the term, holding its own `proofs/` folder and its own three
+    sheets; sheet sync and proof uploads act on the working term. The cached ids
+    are stored per term (`responses_sheet_id:2026-fall`). Migration **0046** (data
+    only) copies fall's ids to its own keys and records that fall's files stay at
+    the root, so **nothing in Drive moves or is renamed**. The old keys are kept
+    for a rollback.
+  - **Not in this phase:** creating a second term (Phase 6), so on production the
+    control does not appear yet. A term's Drive folder is not renamed when the
+    term is.
+- **1.54 (2026-11-24)** — **Semester domains, Phase 4 (second part): the Closes page
+  rebuilt (§18a; `docs/semester-domains-plan.md` §2.8, §14;
+  `docs/wireframes/admin_closes_v2.html`).** This is where a lead's own number is
+  edited. **Shift Lead progress** is now a collapsible table: required, picked and a
+  status pill ("Short by 2", "Done", "Over by 1") per lead, a number box that saves
+  when you leave it, checkboxes with "Set closes to" for several leads at once, and
+  All / Short / Over filters. Its one-line summary stays visible when collapsed, and it
+  opens expanded only when someone is short or over. **Closes** are grouped by weekend
+  under a month heading that carries the year, Friday beside Saturday. Each assigned
+  lead is a chip with its own remove control, each open spot a dashed placeholder, and
+  the first open spot is the "Add a lead" picker, which assigns on select. A pill
+  shows a close as full, with room, or over. Removing a close moved into a row menu,
+  behind the same confirmation. The inventory form and the Google Sheet controls sit
+  behind "Inventory and Google Sheet" once an inventory exists. The old seven-column
+  `CloseClaimsTable` is deleted. No rule changed and there is no migration.
+- **1.53 (2026-11-24)** — **Semester domains, Phase 4 (first part): a close requirement
+  per Shift Lead (§9, §18a; issue #40, `docs/semester-domains-plan.md` §2.8, §14).** Every
+  lead owed exactly 3 weekend closes, a constant in a dozen places, with no way to say a
+  lead promoted in November owes fewer. Now the **term carries a default**
+  (`terms.close_requirement`, 3 for fall, edited on the Semester page as "Closes per
+  Shift Lead") and **each lead has their own number** (`close_requirements`, one row
+  per lead per term). A row is made with the default as it stands at that moment and
+  never follows it afterwards. The constant `REQUIRED_CLOSE_CLAIMS` is gone; the claim
+  limit, the submit gate, the closes step, the `/me` card, the per-student page, the
+  feasibility warning and the lead list all read the lead's number. **Rules:** a lead
+  may hold up to their number and no more; they can submit once they hold **at least**
+  it (it was "exactly 3", and "at least" is what makes lowering a number safe); a
+  number of 0 hides the closes step from that lead; lowering a number releases
+  nothing. A lead with no row yet reads as the term default, never as owing nothing.
+  Rows are made by one idempotent statement (`ensureCloseRequirements`) at the end of
+  a roster import, on a position change into a closes position, when a test account
+  is created, and when the inventory is generated. Migration **0045** adds the column
+  and the table and gives every current lead a row of 3, so **nothing changes for
+  anyone** until an admin edits a number. The `Muster SL Closes` sheet gains a second
+  table, one row per lead with required, picked and status. **Not in this part:** the
+  rebuilt Closes page, which is where an admin edits one lead's number or several
+  together. The action behind it (`setCloseRequirements`) is written; the page waits
+  on its mockup (`docs/wireframes/admin_closes_v2.html`) being agreed.
+- **1.52 (2026-11-24)** — **A lead who changes position gives their closes back (§4.2,
+  §18a).** Until now only leaving the roster released weekend closes: a Shift Lead moved
+  to another position kept claims on closes they would never work, and those seats read
+  as taken. Now a move from a position that picks closes to one that does not **opens up
+  that person's closes from today on**, in the same transaction as the move. Closes
+  already worked stay as the record, the same line a departure with no leaving date
+  draws. It lives in the shared position-change routine (`applyPositionChange`), so it
+  holds for every way a position changes: the roster import, a move by hand on the
+  per-student page, a title mapping and a ghost resolution. Unlike a departure with no
+  date it does not stop to ask, since the sheet (or the admin) has said outright that
+  the person is no longer a lead. The import summary lists the closes under "Closes
+  opened up", the per-student move reports the count, and the `position_change` flag
+  says how many were opened up. A move into a lead position, or between two positions
+  that both pick closes, touches nothing.
+- **1.51 (2026-11-24)** — **Semester domains, Phase 3: the roster per term (§4.2, §9,
+  §13; issue #40, `docs/semester-domains-plan.md` §2.3, §13).** Still one term, and with
+  one term nothing changes for anyone. A person's **position, roster flag and tracker
+  title move off `students`** onto their row in `term_members`, the table that already
+  held their group (it was `group_members`; migration `0044` renames it, adds the three
+  columns and gives every person a row). This is what lets an earlier semester keep its
+  own roster while a new one is collected, and take a roster import of its own.
+  (1) **Readers.** Every query that asked who is on the roster or what job someone
+  holds now goes through `lib/terms/scope.ts`: `memberOf(termId)` (the join),
+  `memberOfSubmission()`, `rosterOf(termId)` and `onRosterStudent(termId)` (moved from
+  `roster/lookup.ts`, now term-aware). `findStudentByEmail` returns the person with
+  their place in the current term. Lists of a term's people use an inner join, so
+  someone who was never part of a term does not appear in it. (2) **Writers.**
+  `lib/terms/members.ts` is the one writer (`enrollMember`, `setMemberPosition`,
+  `takeOffRoster`), used by the roster import, the three position-change paths, test
+  accounts and the dev scripts. The roster import reads and changes only the roster of
+  the term it runs in. (3) **Rollback.** `students.position_id`, `on_roster` and
+  `roster_title` stay and are written in step, so the release before the terms work
+  still runs against the migrated schema. In code they are named `legacy*`, so a new
+  read of them does not compile. The contract migration drops them. (4) **Sign-in**
+  reads the person only (`findPersonName`), never the term. Verified by running every
+  loader on a real MariaDB before and after (identical), exercising each writer, and a
+  two-term check; the record is §13 of the plan.
+- **1.50 (2026-11-23)** — **Hire dates are calendar days in every timezone (§9, §13).**
+  A fix, no migration and no data change. `students.hired_on` is a `date` column the
+  driver writes and reads as LOCAL midnight, but three places treated it as a UTC
+  instant. (1) **The per-student page showed every hire date one day early** in
+  production: the server runs in UTC and the page converted the value to Central.
+  It now shows the stored calendar day. (2) **`isReturningStudent`** compared instants
+  against a UTC-midnight cutoff; it now compares the hire date's `localDay` to the
+  term's `new_hire_cutoff` string, so someone hired exactly on the cutoff reads as a
+  new hire under any server clock (the deferred item in
+  `docs/generator-constraints-fairness-plan.md` §9.2). (3) **`parseHireDate`** built
+  UTC midnight, so an import run in a process west of UTC (the CLI on a Central
+  machine) stored the day before the sheet's date; it now builds local midnight. The
+  leavers' Resignation Effective Date is read the same way. In a UTC process (the
+  production container) only (1) changes anything. A roster imported from a Central
+  machine before this holds dates a day early, and the next import corrects them.
+- **1.49 (2026-11-23)** — **Semester domains, Phase 2: the Semester page, and fall
+  leaves the copy (§8, §9, §10a; issue #40, `docs/semester-domains-plan.md`).** Still
+  one term. No migration. (1) **`/admin/terms` ("Semester").** Edits the current
+  term's name, first and last day, new-hire date and schedule note
+  (`saveTermDetails` in `lib/admin/term-actions.ts`, checked by the pure
+  `domain/terms.ts`). The travel cutoff panel and the late-travel switch moved here
+  from `/admin/groups`. Changing the first day never moves the cutoff; it stays
+  where it was set until an admin changes or resets it. A name another term already has is refused. Like
+  every write, it resolves the current term itself. (2) **The admin hub's
+  "Configuration" and "Email" groups became "This semester" and "All semesters"**,
+  and the current term's name shows beside the student finder on every page an admin
+  opens. (3) **Roster settings on `/admin/roster`.** The sheets to read, the leavers
+  sheet, the titles that mean admin and optional column names are edited there and
+  stored in `terms.roster_config` (`setRosterReading`). A named column is matched
+  exactly and must be present, including a named start date; a blank one is found as
+  before. With nothing saved the import reads exactly as it did. (4) **Schedule
+  email: `{{term}}`.** The default subject and body use it instead of "Fall 2026",
+  and the preview, the test send and the real send fill in the current term's name. A
+  saved custom template is not rewritten; the Semester page warns when the saved
+  subject or body contains another term's name. (5) **Form paste:** a pasted travel
+  date takes its year from the current term's start date (`termYearFor`) instead of
+  the year the form was answered. For a September start the result is the same:
+  August through December is that year, January through July the next. (6) **Close
+  dates show the year** ("Fri Sep 4, 2026"), which closes that part of roadmap 7.3.
+  (7) **CSV download names carry the term**: `muster-responses-<term>-<date>.csv`,
+  `muster-schedule-<term>-<date>.csv` and `muster-w2w-<term>-week-a.csv`. (8) Copy:
+  the change-request placeholder and the cutoff alert no longer say "9/1" or point at
+  Groups. **Still to come:** close requirements per Shift Lead (Phase 3) and starting
+  a new semester (Phase 4).
+- **1.48 (2026-11-23)** — **Semester domains, Phase 1: everything is scoped to a term,
+  with no change in behavior (§9, §13, §18a; issue #40,
+  `docs/semester-domains-plan.md`).** Muster was built for one cycle. This release puts
+  the **term** under the data so a later release can start a new semester; with the one
+  term that exists (`2026-fall`, "Fall 2026") the app reads and writes exactly as
+  before. (1) **`terms` and the pointer.** A `terms` table and one `app_settings` row,
+  `current_term_id`. `lib/terms` resolves it: `getCurrentTermId(db)` for code that
+  holds a handle (the roster import, the position-change path, the scripts) and a
+  per-request `currentTermId()` for loaders and actions. No server action takes a term
+  from the client, so nothing can write to another term, and a missing pointer throws
+  rather than reading every term. (2) **One submission per student per term.**
+  `submissions` gains `term_id` and its unique key becomes (student, term). Every
+  submissions query goes through three predicates in `lib/terms/scope.ts`
+  (`submissionOf`, `submissionOfStudent` for the roster left-join, `submissionInTerm`);
+  a source-scanning test fails on any statement that uses none. (3) **Closes, runs,
+  plans, change requests.** `close_slots`, `schedule_runs`, `shift_plans` and
+  `change_requests` carry the term. Claims scope through their slot, so only this
+  term's closes count toward a lead's limit; "the current run", "the current plan" and
+  the ten-run retention are per term. The request form lists the current term; the
+  admin queue and the per-student page still show every term, so an open request is
+  never lost. (4) **Groups.** `groups` carry the term (name unique within it) and a
+  `kind` (`default`, `test`), and membership moves from `students.group_id` to
+  `group_members`. The test-accounts group is found by its kind, not the `dev-test` id.
+  (5) **Positions and roster handling.** `positions`, `shift_blocks`,
+  `roster_title_mappings`, `w2w_position_map` and `roster_imports` carry the term.
+  `positions.picks_closes` replaces the hardcoded `shift-lead` id everywhere (closes
+  step, claim gate, lead list, delete and alias guards, the generator's deferred
+  weekend close, the statistics), which also closes the roadmap 7.5 double-booking
+  note. The roster import reads its sheet names, admin titles and excluded titles from
+  `terms.roster_config`, with today's values as the defaults. The cross-coverage
+  pool's code default is now empty and the stored engine settings name the two fall
+  positions, so the statistics are unchanged. **Migrations 0037 to 0043 are
+  expand-only:** every new `term_id` has a database default of `2026-fall` (the Drizzle
+  schema declares none, so an insert that forgets the term does not compile), new
+  unique keys are added before old ones are dropped, and the retired
+  `students.group_id` / `group_assigned_auto` columns and `excluded_roster_titles`
+  setting are still written. The previous release therefore runs unchanged against the
+  migrated schema, which was verified by running both versions' loaders against the
+  same MariaDB data. (6) **The fall dates and rules are the term's.** Migration 0043
+  moves the travel cutoff and the late-travel switch from `app_settings` onto the term
+  (the two old keys are still written, never read), and adds the new-hire cutoff and
+  the schedule note. `getTravelCutoff` / `getLateTravelPolicy` read the term;
+  `isReturningStudent` takes the term's cutoff instead of deriving June 1 from the
+  clock; the generator's late-start threshold is the term's start date
+  (`DEFAULT_SEMESTER_START` is gone); the close inventory form defaults to the term's
+  start and end (`defaultCloseSemesterRange` is gone); and the exit page shows the
+  term's note. For fall every value is what it was. One deliberate difference: the
+  cutoff default no longer follows the calendar year, so it stays September 1, 2026
+  after New Year instead of sliding to September 2027. The cutoff panel on
+  `/admin/groups` still edits it; its copy no longer says "September 1". **Deferred to
+  later phases:** a screen to edit the term's name, dates, new-hire cutoff and note
+  (the Semester tab), per-term engine settings and Drive folders (with "start a new
+  semester"), and dropping the defaults and the retired columns and keys (the contract
+  release).
 - **1.47 (2026-11-22)** — **Missing email config stops a production boot, and the grid
   won't place a departed student (§14, §10a; issues #10, #18).** (1) `env-guard.ts` now
   refuses to start production when `RESEND_API_KEY` is empty or `EMAIL_FROM` is not a
@@ -1609,7 +2168,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   when every message was only logged (no key) or blocked by the test-recipient guard,
   the requests stay unstamped and the run returns `not-delivered`. The last-run stamp
   still lands, since it proves the scheduler fired. (3) `applyScheduleEdits` refuses a
-  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`),
+  batch that adds a shift for a student who is not on the roster (`onRosterStudent()`, in `lib/terms/scope.ts` since 1.51),
   closing the hole 1.26 named. Removals and the clear-schedule button stay allowed.
   **Test accounts** (the synthetic domain, `isTestAccountEmail`) are exempt and can be
   placed on purpose: the same on-roster filter keeps their rows off the schedule page,

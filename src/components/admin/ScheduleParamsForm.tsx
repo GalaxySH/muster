@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   ANNEAL_ITERATIONS_MAX,
   ANNEAL_ITERATIONS_MIN,
@@ -20,7 +21,6 @@ import {
   REPEAT_START_PENALTY_MIN,
   type SchedulingParams,
 } from "@/lib/domain/scheduling/params";
-import { SHIFT_LEAD_POSITION_ID } from "@/lib/domain/close-claims";
 import { saveScheduleParams } from "@/lib/schedule/actions";
 
 /**
@@ -30,10 +30,14 @@ import { saveScheduleParams } from "@/lib/schedule/actions";
 export function ScheduleParamsForm({
   initial,
   positions,
+  leadPositionIds,
 }: {
   initial: SchedulingParams;
   positions: { id: string; name: string }[];
+  /** Never pooled: the statistics measure leads on their own. */
+  leadPositionIds: string[];
 }) {
+  const termId = useRenderedTermId();
   const [dayCap, setDayCap] = useState(String(initial.dayCapHours));
   const [night, setNight] = useState(String(initial.nightPriority));
   const [evening, setEvening] = useState(String(initial.eveningPriority));
@@ -54,7 +58,7 @@ export function ScheduleParamsForm({
 
   const submit = () => {
     startTransition(async () => {
-      const res = await saveScheduleParams({
+      const res = await saveScheduleParams(termId, {
         dayCapHours: Number(dayCap),
         nightPriority: Number(night),
         eveningPriority: Number(evening),
@@ -76,7 +80,7 @@ export function ScheduleParamsForm({
         coveragePoolPositionIds: [
           ...positions.map((p) => p.id).filter((id) => pool.includes(id)),
           ...initial.coveragePoolPositionIds.filter(
-            (id) => id !== SHIFT_LEAD_POSITION_ID && !positions.some((p) => p.id === id),
+            (id) => !leadPositionIds.includes(id) && !positions.some((p) => p.id === id),
           ),
         ],
       });

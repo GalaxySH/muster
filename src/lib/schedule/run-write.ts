@@ -14,6 +14,7 @@ import type { Database } from "@/lib/db/client";
 import { scheduleAssignments, scheduleRuns } from "@/lib/db/schema";
 import { staleRunIds } from "@/lib/domain/scheduling/retention";
 import type { ScheduleAssignment, StoredRunReport } from "@/lib/domain/scheduling/types";
+import { currentRunOf } from "@/lib/terms/scope";
 
 /** A drizzle transaction handle. */
 export type DbTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -26,8 +27,10 @@ const RUN_RETENTION = 10;
  * beyond the retention count on the restore-or-generate clock, excluding the
  * current run and any pinned run. Shared by generation and by saving a
  * snapshot, since both add a row that can push an old one out of the window.
+ *
+ * Counted per term: generating in one semester never prunes another's runs.
  */
-export async function pruneStaleRuns(tx: DbTx): Promise<void> {
+export async function pruneStaleRuns(tx: DbTx, termId: string): Promise<void> {
   const allRuns = await tx
     .select({
       id: scheduleRuns.id,
@@ -36,7 +39,8 @@ export async function pruneStaleRuns(tx: DbTx): Promise<void> {
       generatedAt: scheduleRuns.generatedAt,
       restoredAt: scheduleRuns.restoredAt,
     })
-    .from(scheduleRuns);
+    .from(scheduleRuns)
+    .where(eq(scheduleRuns.termId, termId));
   const stale = staleRunIds(
     allRuns.map((r) => ({ ...r, rankedAt: r.restoredAt ?? r.generatedAt })),
     RUN_RETENTION,
@@ -47,8 +51,8 @@ export async function pruneStaleRuns(tx: DbTx): Promise<void> {
 }
 
 /**
- * Append the run that becomes the current schedule: supersede whatever was
- * current, insert the row, insert its assignments, prune. Every path that makes
+ * Append the run that becomes the term's current schedule: supersede whatever
+ * was current in that term, insert the row, insert its assignments, prune. Every path that makes
  * a new current run goes through here, so none of them can disagree about the
  * order of those four writes or forget the prune.
  *
@@ -59,6 +63,7 @@ export async function pruneStaleRuns(tx: DbTx): Promise<void> {
 export async function writeRunAsCurrent(
   tx: DbTx,
   args: {
+    termId: string;
     assignments: readonly ScheduleAssignment[];
     report: StoredRunReport;
     generatedBy: string;
@@ -70,9 +75,10 @@ export async function writeRunAsCurrent(
   await tx
     .update(scheduleRuns)
     .set({ status: "superseded" })
-    .where(eq(scheduleRuns.status, "current"));
+    .where(currentRunOf(args.termId));
   await tx.insert(scheduleRuns).values({
     id: runId,
+    termId: args.termId,
     generatedBy: args.generatedBy,
     status: "current",
     kind: args.kind,
@@ -92,6 +98,6 @@ export async function writeRunAsCurrent(
   for (let i = 0; i < rows.length; i += 500) {
     await tx.insert(scheduleAssignments).values(rows.slice(i, i + 500));
   }
-  await pruneStaleRuns(tx);
+  await pruneStaleRuns(tx, args.termId);
   return runId;
 }

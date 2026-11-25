@@ -598,8 +598,7 @@ Four defects in one flow (`closes/admin-actions.ts`, `domain/close-claims.ts`):
   (`groups/gate.ts:43`), so only manual `assignCloseClaim` recovers it.
 
 Wants: a max-range guard plus a slot-count preview before writing; the year shown
-in close dates (`formatCloseDate` prints none today, so a 2025 and a 2026 slot
-look identical); a term concept or at minimum a bulk "clear all claims"; and a
+in close dates (**done in 1.49**: `formatCloseDate` prints it); a term concept or at minimum a bulk "clear all claims"; and a
 hub alert when the newest slot is in the past.
 
 ### 7.4 Drive failures that report healthy — **S**
@@ -658,7 +657,8 @@ Wants: move the grant fetch inside the try in both functions; list all grants on
   with no targets anywhere still reports success while packing students onto the
   same cells. `positionCapacityCheck` returns `no_targets` and the hub
   deliberately stays silent. One stat tile is the only signal.
-- **`SHIFT_LEAD_POSITION_ID` is a hardcoded string** gating a whole subsystem. If
+- **Done in 1.48** (`positions.picks_closes` replaces the id).
+  ~~`SHIFT_LEAD_POSITION_ID` is a hardcoded string~~ gating a whole subsystem. If
   the Shift Lead position ever carries a different id, the closes step vanishes,
   feasibility computes against zero leads, and `shiftLeadWeekendCloseIds()`
   returns empty so the generator **double-books** the weekend close block the

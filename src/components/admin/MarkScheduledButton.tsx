@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { setScheduled } from "@/lib/admin/actions";
@@ -27,6 +28,7 @@ export function MarkScheduledButton({
   scheduled: boolean;
   email: ScheduleEmailDialogProps;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,7 +54,7 @@ export function MarkScheduledButton({
 
   function toggle() {
     startTransition(async () => {
-      const res = await setScheduled(email.studentEmail, !scheduled);
+      const res = await setScheduled(email.studentEmail, !scheduled, termId);
       if (res.ok) router.refresh();
       else alert(res.error ?? "Could not update.");
     });

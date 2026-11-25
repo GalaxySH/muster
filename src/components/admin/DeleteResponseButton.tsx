@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { deleteResponse } from "@/lib/admin/actions";
 
@@ -22,6 +23,7 @@ export function DeleteResponseButton({
   redirectTo?: string;
   variant?: "full" | "icon";
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -34,7 +36,7 @@ export function DeleteResponseButton({
     );
     if (!confirmed) return;
     startTransition(async () => {
-      const res = await deleteResponse(studentEmail);
+      const res = await deleteResponse(studentEmail, termId);
       if (!res.ok) {
         alert(res.error ?? "Could not delete the response.");
         return;

@@ -3,18 +3,18 @@
 /**
  * Admin-only group + form-window mutations (PLAN.md §13). All admin-gated.
  *
- * Assignment is persisted to `students.groupId`. Manual assignments
- * (picker / pasted emails) clear the sticky `groupAssignedAuto` marker; the
+ * Assignment is persisted per term through `./membership`. Manual assignments
+ * (picker / pasted emails) clear the sticky auto-assigned marker; the
  * default-assignment sweep sets it. The sweep is the batch "Save" action: it
  * only runs when the toggle is on and only touches genuinely-ungrouped,
  * never-auto-assigned students, so an admin's manual choices are never undone.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { groups, students } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { setSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -25,7 +25,8 @@ import {
   type PickerStudent,
 } from "./data";
 import { parseEmailList } from "./parse-emails";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
+import { workingTermId } from "@/lib/terms/working";
+import { assignMembers, listUnsweptEmails, unassignMembers } from "./membership";
 
 export interface ActionResult {
   ok: boolean;
@@ -34,6 +35,14 @@ export interface ActionResult {
 
 function revalidateGroups() {
   revalidatePath("/admin/groups");
+}
+
+/**
+ * WHERE for a group id sent by the client: it only matches a group of the
+ * working term, so no action here can change another semester's group.
+ */
+function thisTermsGroup(id: string, termId: string) {
+  return and(eq(groups.id, id), eq(groups.termId, termId));
 }
 
 /**
@@ -52,18 +61,18 @@ function parseInstant(value: string | null): Date | null {
 export async function searchStudentsForPicker(filters: PickerFilters): Promise<PickerStudent[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
-  return listStudentsForPicker(filters);
+  return listStudentsForPicker(filters, await workingTermId());
 }
 
-export async function createGroup(name: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
+export async function createGroup(termId: string, name: string): Promise<ActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return gate;
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "Enter a group name." };
 
   const db = getDb();
   try {
-    await db.insert(groups).values({ id: randomUUID(), name: trimmed, isDefault: false });
+    await db.insert(groups).values({ id: randomUUID(), termId, name: trimmed, isDefault: false });
   } catch {
     return { ok: false, error: "A group with that name already exists." };
   }
@@ -79,7 +88,10 @@ export async function renameGroup(id: string, name: string): Promise<ActionResul
 
   const db = getDb();
   try {
-    await db.update(groups).set({ name: trimmed }).where(eq(groups.id, id));
+    await db
+      .update(groups)
+      .set({ name: trimmed })
+      .where(thisTermsGroup(id, await workingTermId()));
   } catch {
     return { ok: false, error: "A group with that name already exists." };
   }
@@ -108,7 +120,10 @@ export async function setGroupWindow(
   }
 
   const db = getDb();
-  await db.update(groups).set({ opensAt, closesAt }).where(eq(groups.id, id));
+  await db
+    .update(groups)
+    .set({ opensAt, closesAt })
+    .where(thisTermsGroup(id, await workingTermId()));
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -127,7 +142,10 @@ export async function setGroupLockAfterSubmit(
   if (!gate.ok) return gate;
 
   const db = getDb();
-  await db.update(groups).set({ lockAfterSubmit: enabled }).where(eq(groups.id, id));
+  await db
+    .update(groups)
+    .set({ lockAfterSubmit: enabled })
+    .where(thisTermsGroup(id, await workingTermId()));
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -141,16 +159,24 @@ export async function setGroupLockAfterSubmit(
 export async function setDefaultGroup(id: string): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  if (id === TEST_GROUP_ID) {
+
+  const db = getDb();
+  const termId = await workingTermId();
+  const [g] = await db
+    .select({ id: groups.id, kind: groups.kind })
+    .from(groups)
+    .where(thisTermsGroup(id, termId))
+    .limit(1);
+  if (!g) return { ok: false, error: "Group not found." };
+  if (g.kind === "test") {
     return { ok: false, error: "The test-accounts group can't be the default." };
   }
 
-  const db = getDb();
-  const [g] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, id)).limit(1);
-  if (!g) return { ok: false, error: "Group not found." };
-
   await db.transaction(async (tx) => {
-    await tx.update(groups).set({ isDefault: false }).where(eq(groups.isDefault, true));
+    await tx
+      .update(groups)
+      .set({ isDefault: false })
+      .where(and(eq(groups.isDefault, true), eq(groups.termId, termId)));
     await tx.update(groups).set({ isDefault: true }).where(eq(groups.id, id));
   });
   revalidateGroups();
@@ -160,20 +186,24 @@ export async function setDefaultGroup(id: string): Promise<ActionResult> {
 export async function deleteGroup(id: string): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  if (id === TEST_GROUP_ID) {
-    // Deleting it would null members' group_id, stranding test accounts the
+
+  const db = getDb();
+  const [g] = await db
+    .select({ isDefault: groups.isDefault, kind: groups.kind })
+    .from(groups)
+    .where(thisTermsGroup(id, await workingTermId()))
+    .limit(1);
+  if (!g) return { ok: false, error: "Group not found." };
+  if (g.kind === "test") {
+    // Deleting it would empty its members' group, stranding test accounts the
     // /admin/test-users manager could no longer list or delete.
     return { ok: false, error: "The test-accounts group is managed on /admin/test-users and can't be deleted." };
   }
-
-  const db = getDb();
-  const [g] = await db.select({ isDefault: groups.isDefault }).from(groups).where(eq(groups.id, id)).limit(1);
-  if (!g) return { ok: false, error: "Group not found." };
   if (g.isDefault) {
     return { ok: false, error: "The default group can't be deleted. Make another group the default first." };
   }
 
-  // Members' group_id is set null by the FK (onDelete: set null) → they revert
+  // Members' group is set null by the FK (onDelete: set null) → they revert
   // to ungrouped (denied) until reassigned or swept.
   await db.delete(groups).where(eq(groups.id, id));
   revalidateGroups();
@@ -189,13 +219,26 @@ export async function assignStudents(emails: string[], groupId: string): Promise
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };
 
   const db = getDb();
-  const [g] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId)).limit(1);
+  const termId = await workingTermId();
+  const [g] = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .where(thisTermsGroup(groupId, termId))
+    .limit(1);
   if (!g) return { ok: false, error: "Group not found." };
 
-  await db
-    .update(students)
-    .set({ groupId, groupAssignedAuto: false })
+  // Only people who exist: a membership row needs a student behind it.
+  const known = await db
+    .select({ email: students.email })
+    .from(students)
     .where(inArray(students.email, normalized));
+  await assignMembers(
+    db,
+    termId,
+    known.map((s) => s.email),
+    groupId,
+    false,
+  );
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -220,7 +263,12 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
   }
 
   const db = getDb();
-  const [g] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId)).limit(1);
+  const termId = await workingTermId();
+  const [g] = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .where(thisTermsGroup(groupId, termId))
+    .limit(1);
   if (!g) return { ok: false, error: "Group not found.", assigned: 0, unmatched: [], invalid };
 
   const matched = valid.length
@@ -233,26 +281,21 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
   const matchedEmails = [...matchedSet];
   const unmatched = valid.filter((e) => !matchedSet.has(e));
 
-  if (matchedEmails.length > 0) {
-    await db
-      .update(students)
-      .set({ groupId, groupAssignedAuto: false })
-      .where(inArray(students.email, matchedEmails));
-  }
+  await assignMembers(db, termId, matchedEmails, groupId, false);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true, assigned: matchedEmails.length, unmatched, invalid };
 }
 
-/** Remove students from any group (sets group_id null; keeps the sticky marker). */
-export async function unassignStudents(emails: string[]): Promise<ActionResult> {
-  const gate = await requireAdmin();
+/** Remove students from their group this term (keeps the sticky marker). */
+export async function unassignStudents(emails: string[], termId: string): Promise<ActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return gate;
   const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))];
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };
 
-  const db = getDb();
-  await db.update(students).set({ groupId: null }).where(inArray(students.email, normalized));
+  // The gate proved this is the working term, so it needs no second lookup.
+  await unassignMembers(getDb(), termId, normalized);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -278,29 +321,19 @@ export interface SweepResult extends ActionResult {
  * (sticky). A no-op when the toggle is off. Idempotent: already-grouped and
  * already-auto students are skipped.
  */
-export async function runDefaultAssignmentSweep(): Promise<SweepResult> {
-  const gate = await requireAdmin();
+export async function runDefaultAssignmentSweep(termId: string): Promise<SweepResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error, enabled: false, swept: 0 };
 
   const enabled = await getDefaultAutoAssignEnabled();
   if (!enabled) return { ok: true, enabled: false, swept: 0 };
 
-  const target = await getDefaultGroup();
+  const target = await getDefaultGroup(termId);
   if (!target) return { ok: false, error: "No default group is set.", enabled: true, swept: 0 };
 
   const db = getDb();
-  const targets = await db
-    .select({ email: students.email })
-    .from(students)
-    .where(and(isNull(students.groupId), eq(students.groupAssignedAuto, false)));
-  if (targets.length > 0) {
-    await db
-      .update(students)
-      .set({ groupId: target.id, groupAssignedAuto: true })
-      .where(
-        and(isNull(students.groupId), eq(students.groupAssignedAuto, false)),
-      );
-  }
+  const targets = await listUnsweptEmails(db, termId);
+  await assignMembers(db, termId, targets, target.id, true);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true, enabled: true, swept: targets.length };

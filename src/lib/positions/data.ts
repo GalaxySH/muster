@@ -8,7 +8,7 @@
  * hidden from pickers and from new assignment.
  */
 import "server-only";
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, not, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   internalSelections,
@@ -19,10 +19,13 @@ import {
   students,
   submissions,
   w2wPositionMap,
+  termMembers,
 } from "@/lib/db/schema";
 import { toDomainPosition } from "@/lib/db/mappers";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 import type { DayType, Position } from "@/lib/domain/types";
+import { workingTermId } from "@/lib/terms/working";
+import { submissionOfStudent, rosterOf } from "@/lib/terms/scope";
+import { inTestGroup } from "@/lib/groups/membership";
 
 export interface PositionListItem {
   position: Position;
@@ -32,19 +35,23 @@ export interface PositionListItem {
 }
 
 /**
- * Positions ordered by name. Default: active, non-alias only (what the app
+ * The term's positions ordered by name. Default: active, non-alias only (what the app
  * treats as assignable); `includeInactive` returns every row.
  */
-export async function listPositions(opts?: {
-  includeInactive?: boolean;
-}): Promise<PositionListItem[]> {
+export async function listPositions(
+  termId: string,
+  opts?: { includeInactive?: boolean },
+): Promise<PositionListItem[]> {
   const rows = await getDb()
     .select()
     .from(positions)
     .where(
-      opts?.includeInactive
-        ? undefined
-        : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
+      and(
+        eq(positions.termId, termId),
+        opts?.includeInactive
+          ? undefined
+          : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
+      ),
     )
     .orderBy(asc(positions.name));
   return rows.map((row) => ({
@@ -55,8 +62,8 @@ export async function listPositions(opts?: {
 }
 
 /** Picker options (active, non-alias), ordered by name. */
-export async function positionOptions(): Promise<{ id: string; name: string }[]> {
-  const items = await listPositions();
+export async function positionOptions(termId: string): Promise<{ id: string; name: string }[]> {
+  const items = await listPositions(termId);
   return items.map(({ position }) => ({ id: position.id, name: position.name }));
 }
 
@@ -110,7 +117,9 @@ export interface AdminPositionItem {
   mergedIntoName: string | null;
   /** Return-to-work date ("YYYY-MM-DD") shown on /travel; null hides that card entirely. */
   returnDate: string | null;
-  /** students.positionId references, on- and off-roster (delete guard). */
+  /** Holders pick weekend closes. Built in: it can't be deleted or aliased. */
+  picksCloses: boolean;
+  /** People holding the position, on- and off-roster (delete guard). */
   studentCount: number;
   /** On-roster students holding this position (the capacity check's demand side). */
   onRosterCount: number;
@@ -136,6 +145,7 @@ export interface AdminPositionItem {
  */
 export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
   const db = getDb();
+  const termId = await workingTermId();
   const [
     posRows,
     blockRows,
@@ -147,20 +157,22 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     w2wMapRows,
     titleRows,
   ] = await Promise.all([
-    db.select().from(positions).orderBy(asc(positions.name)),
+    db.select().from(positions).where(eq(positions.termId, termId)).orderBy(asc(positions.name)),
     db
       .select()
       .from(shiftBlocks)
+      .where(eq(shiftBlocks.termId, termId))
       .orderBy(asc(shiftBlocks.startMinutes), asc(shiftBlocks.endMinutes)),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(eq(termMembers.termId, termId))
+      .groupBy(termMembers.positionId),
     db
-      .select({ positionId: students.positionId, n: sql<number>`count(*)` })
-      .from(students)
-      .where(and(eq(students.onRoster, true), isNotNull(students.positionId)))
-      .groupBy(students.positionId),
+      .select({ positionId: termMembers.positionId, n: sql<number>`count(*)` })
+      .from(termMembers)
+      .where(and(rosterOf(termId), isNotNull(termMembers.positionId)))
+      .groupBy(termMembers.positionId),
     // All selections, for the FK delete/edit guards (a test account's pick still
     // pins the block in the DB, so the guard must count it). The admin's
     // internal copies count the same way, so the removal warning matches what
@@ -180,15 +192,16 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
       .select({ blockId: shiftSelections.shiftBlockId, n: sql<number>`count(*)` })
       .from(shiftSelections)
       .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-      .innerJoin(students, eq(submissions.studentEmail, students.email))
-      .where(or(isNull(students.groupId), ne(students.groupId, TEST_GROUP_ID)))
+      .innerJoin(students, submissionOfStudent(termId))
+      .where(not(inTestGroup(termId)))
       .groupBy(shiftSelections.shiftBlockId),
     // W2W positions pointing here, for the delete confirm (roadmap 5.3).
     db
       .select({ positionId: w2wPositionMap.musterPositionId, n: sql<number>`count(*)` })
       .from(w2wPositionMap)
+      .where(eq(w2wPositionMap.termId, termId))
       .groupBy(w2wPositionMap.musterPositionId),
-    db.select().from(rosterTitleMappings),
+    db.select().from(rosterTitleMappings).where(eq(rosterTitleMappings.termId, termId)),
   ]);
 
   const nameById = new Map(posRows.map((p) => [p.id, p.name]));
@@ -231,6 +244,7 @@ export async function listPositionsAdmin(): Promise<AdminPositionItem[]> {
     mergedIntoId: p.mergedIntoId,
     mergedIntoName: p.mergedIntoId ? (nameById.get(p.mergedIntoId) ?? p.mergedIntoId) : null,
     returnDate: p.returnDate,
+    picksCloses: p.picksCloses,
     studentCount: studentCount.get(p.id) ?? 0,
     onRosterCount: onRosterCount.get(p.id) ?? 0,
     w2wMappingCount: w2wMappingCount.get(p.id) ?? 0,
@@ -253,10 +267,10 @@ export interface GhostTitle {
  */
 export async function listGhostTitles(): Promise<GhostTitle[]> {
   const rows = await getDb()
-    .select({ title: students.rosterTitle, n: sql<number>`count(*)` })
-    .from(students)
-    .where(and(eq(students.onRoster, true), isNull(students.positionId)))
-    .groupBy(students.rosterTitle);
+    .select({ title: termMembers.rosterTitle, n: sql<number>`count(*)` })
+    .from(termMembers)
+    .where(and(rosterOf(await workingTermId()), isNull(termMembers.positionId)))
+    .groupBy(termMembers.rosterTitle);
   return rows
     .map((r) => ({ title: r.title, count: Number(r.n) }))
     .sort((a, b) => b.count - a.count);

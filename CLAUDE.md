@@ -69,6 +69,16 @@ The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`) remains a
 manual fallback trigger, and `/admin/email-settings` shows the last run + run health
 (docs/deploy.md §7).
 
+**Semesters done** (issue #40, 1.48 to 1.61; `docs/semester-domains-plan.md`): the app
+runs in **terms**. Every per-semester table carries a `term_id`; `students` is only the
+person, and their position, roster flag and group are per term in `term_members`.
+Students always work in the **current** term; an admin can select another in the header
+and work in it fully (a banner shows while they do). A new semester is started from
+`/admin/terms`: it copies positions, blocks, roster settings and the roster, starts
+with empty forms and no groups, and leaves the earlier semester untouched and still
+editable. Each term has its own Drive folder and sheets. The rollover order is in
+`docs/semester-rollover.md`.
+
 **Per-subsystem architecture notes live in `docs/architecture.md`** — feature layering
 and module seams for the Tier 2 features (2.1–2.5), SL weekend-close picking (3.2),
 schedule change requests (3.1),
@@ -228,12 +238,12 @@ These are non-obvious and pervade the data model — internalize them before edi
   ≥1 open OR close selected (§6), spans ≥2 days (≥3 for SL) (§7). Soft: missing
   weekend → auto-assign + flag (Barista exempt) (§5). Travel on/after the **global
   cutoff** (default 9/1, admin-configurable) is **refused outright** by default (§8);
-  the admin's "Accept late travel" toggle on `/admin/groups` switches to
+  the admin's "Accept late travel" toggle on `/admin/terms` switches to
   accept-and-flag (entries stored `excused: false`, red "not excused (late)" cues,
   `travel_late` flag) — `getLateTravelPolicy` in `lib/settings.ts` over the seam in
-  `domain/travel.ts`. Shift Leads must additionally hold **exactly 3 weekend-close
-  claims** before they can finalize (§18a; dormant until an admin generates the
-  close inventory).
+  `domain/travel.ts`. Shift Leads must additionally hold **their own number of weekend-close
+  claims** before they can finalize (§18a; the term's default, 3 for fall, unless an
+  admin set the lead another; dormant until an admin generates the close inventory).
 - **Admins never overwrite student availability (1.07).** The admin grid's save
   writes an **internal copy** (`internal_availability` + `internal_selections`);
   `shift_selections` stays the student's own record. Scheduling surfaces read the
@@ -259,6 +269,26 @@ These are non-obvious and pervade the data model — internalize them before edi
 - `src/lib/config/positions.ts` — the **initial seed fixture** for positions/blocks
   (insert-only-when-empty; once seeded the DB is authoritative and admins edit on
   `/admin/positions`). A test asserts the fixture's derived open/close match PLAN §6.3.
+- `src/lib/terms/` — the semester the app runs in (PLAN 1.48). Every per-semester
+  table carries a `term_id`, and a query stays inside the term through the predicates
+  in `scope.ts`. A shared root like `lib/db`. Read "Terms" in `docs/architecture.md`
+  before writing any query on `submissions`, runs, plans, closes, groups or positions.
+  **A request works in one term (1.55):** `workingTermId()` in `working.ts`, the
+  current term for a student and the selected one for an admin. A person's own
+  form (the student pages, and an action sent with no `onBehalfOf`) is always the
+  current term, also for an admin with another selected (1.60). An admin who names
+  themselves as the person acted for is on behalf like anyone else, so that is the
+  working term (`?student=<own email>`, or picking yourself on the change-request
+  form). Use it everywhere else;
+  `currentTermId()` is only for what must follow the term students are filling in.
+  An admin action that acts on a whole term, or names a person by email, and names
+  no row of the term gates with `requireAdminIn(termId)` (on-behalf actions shared
+  with students: `requireEditableStudent(onBehalfOf, termId)`). A new semester is
+  started from the Semester page (`lib/admin/start-term.ts`; runbook
+  `docs/semester-rollover.md`).
+  **`students` is only the person (1.51).** Their position, roster flag and group are
+  per term, in `term_members`: join it with `memberOf(termId)` or filter with
+  `onRosterStudent(termId)`, and write it through `lib/terms/members.ts`.
 - `src/lib/db/` — Drizzle schema + client. `index.ts` is `server-only` (lazy pool);
   `client.ts` is the plain `createDb()` factory CLI scripts (seed/migrate) reuse.
 - `src/lib/env.ts` — zod-validated env; import only from server modules.

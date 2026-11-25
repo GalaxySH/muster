@@ -47,7 +47,6 @@ import { POSITIONS, SHIFT_BLOCKS } from "../lib/config/positions";
 import { toDomainBlock, toDomainPosition } from "../lib/db/mappers";
 import type { positions as positionsTable, shiftBlocks as blocksTable } from "../lib/db/schema";
 import { deriveOpenClose } from "../lib/domain/blocks";
-import { SHIFT_LEAD_POSITION_ID } from "../lib/domain/close-claims";
 import { EVENING_END_MINUTES } from "../lib/domain/scheduling/coverage";
 import { generateAssignments } from "../lib/domain/scheduling/engine";
 import { DEFAULT_SCHEDULING_PARAMS } from "../lib/domain/scheduling/params";
@@ -71,11 +70,11 @@ type ShiftBlockRow = typeof blocksTable.$inferSelect;
 const PENALTIES = [0, 2, 5, 10, 20] as const;
 
 /**
- * Fixed clock for returner resolution. `generateSchedule` uses `new Date()`;
- * pinning it here is what keeps a tuning table reproducible months later, since
- * returner status flips on June 1 and reorders the whole run.
+ * The new-hire cutoff the snapshots were taken under: fall 2026's, which
+ * `generateSchedule` reads from the term. Pinned here so a tuning table stays
+ * reproducible whatever term the app is in when it is re-run.
  */
-const TUNING_NOW = new Date(Date.UTC(2026, 7, 19));
+const TUNING_NEW_HIRE_CUTOFF = "2026-06-01";
 
 type Bias = "none" | "evening" | "morning";
 
@@ -124,6 +123,8 @@ interface Population {
   students: ScheduleStudent[];
   positions: Position[];
   blocks: ShiftBlock[];
+  /** The position whose holders pick weekend closes; "" when there is none. */
+  leadPositionId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +198,9 @@ function snapshotPopulation(path: string): Population {
 
   const positionRows: PositionRow[] = t.positions.map((r) => ({
     id: str(r.id),
+    // A snapshot is one term's config; older exports predate both columns.
+    termId: strOrNull(r.term_id) ?? "snapshot",
+    picksCloses: r.picks_closes === undefined ? str(r.id) === "shift-lead" : bool(r.picks_closes),
     name: str(r.name),
     minHours: num(r.min_hours),
     minDays: num(r.min_days),
@@ -211,6 +215,7 @@ function snapshotPopulation(path: string): Population {
     .filter((r) => strOrNull(r.retired_at) === null)
     .map((r) => ({
       id: str(r.id),
+      termId: strOrNull(r.term_id) ?? "snapshot",
       positionId: str(r.position_id),
       dayType: str(r.day_type) as ShiftBlockRow["dayType"],
       startMinutes: num(r.start_minutes),
@@ -275,7 +280,7 @@ function snapshotPopulation(path: string): Population {
         desiredHours: numOrNull(s.desired_hours),
         submittedAt: localDateTime(s.submitted_at),
         scheduled: bool(s.scheduled),
-        returner: isReturningStudent(localDate(student.hired_on), TUNING_NOW),
+        returner: isReturningStudent(localDate(student.hired_on), TUNING_NEW_HIRE_CUTOFF),
         selection: selectionByEmail.get(email) ?? [],
       } satisfies ScheduleStudent;
     }),
@@ -291,6 +296,7 @@ function snapshotPopulation(path: string): Population {
     students,
     positions: positionRows.map(toDomainPosition),
     blocks,
+    leadPositionId: positionRows.find((r) => r.picksCloses)?.id ?? "",
   };
 }
 
@@ -456,6 +462,8 @@ function syntheticPopulation(args: Args): Population {
     students,
     positions: [...POSITIONS],
     blocks,
+    // The fixture's own Shift Lead, which is what the seed marks as picking closes.
+    leadPositionId: "shift-lead",
   };
 }
 
@@ -464,10 +472,8 @@ function syntheticPopulation(args: Args): Population {
 // ---------------------------------------------------------------------------
 
 /** Shift Lead weekend closes come last, exactly as `generateSchedule` passes them. */
-function deferredBlockIds(blocks: readonly ShiftBlock[]): string[] {
-  const weekend = blocks.filter(
-    (b) => b.positionId === SHIFT_LEAD_POSITION_ID && b.dayType === "weekend",
-  );
+function deferredBlockIds(blocks: readonly ShiftBlock[], leadPositionId: string): string[] {
+  const weekend = blocks.filter((b) => b.positionId === leadPositionId && b.dayType === "weekend");
   const { closeId } = deriveOpenClose(weekend);
   return closeId ? [closeId] : [];
 }
@@ -490,6 +496,9 @@ function runOnce(pop: Population, penalty: number, annealRounds: number): RunOut
     ...DEFAULT_SCHEDULING_PARAMS,
     repeatStartPenalty: penalty,
     annealIterations: annealRounds,
+    // The pool the fall snapshots and the fixture were measured with. The app
+    // has no default pool any more (ids belong to a term), so name it here.
+    coveragePoolPositionIds: ["culinary-assistant", "cashier"],
   };
   const started = performance.now();
   const result = generateAssignments({
@@ -498,7 +507,7 @@ function runOnce(pop: Population, penalty: number, annealRounds: number): RunOut
     blocks: pop.blocks,
     previous: [],
     params,
-    deferredBlockIds: deferredBlockIds(pop.blocks),
+    deferredBlockIds: deferredBlockIds(pop.blocks, pop.leadPositionId),
   });
   const ms = performance.now() - started;
 
@@ -516,7 +525,7 @@ function runOnce(pop: Population, penalty: number, annealRounds: number): RunOut
       frozen: frozenEmails.has(s.email),
     })),
     poolPositionIds: params.coveragePoolPositionIds,
-    leadPositionId: SHIFT_LEAD_POSITION_ID,
+    leadPositionId: pop.leadPositionId,
     maxConsecutiveDays: params.maxConsecutiveDays,
   });
 

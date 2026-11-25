@@ -10,6 +10,7 @@ import "server-only";
 import { OAuth2Client } from "google-auth-library";
 import { env } from "@/lib/env";
 import { WISC_DOMAIN } from "@/lib/auth/policy";
+import { DRIVE_TIMEOUT_MS } from "./api";
 
 const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GRANT_SCOPES = ["openid", "email", DRIVE_FILE_SCOPE];
@@ -27,6 +28,7 @@ function oauthClient(): OAuth2Client {
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
     redirectUri: driveRedirectUri(),
+    transporterOptions: { timeout: DRIVE_TIMEOUT_MS },
   });
 }
 

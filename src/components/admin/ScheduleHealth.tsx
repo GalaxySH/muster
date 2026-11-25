@@ -23,6 +23,9 @@ import type { RunStats } from "@/lib/domain/scheduling/stats";
  * findings in the run panel above are the live check on the rows as they stand
  * now. Server-rendered, no client state: the pure view builder decides all of
  * it (lib/admin/schedule-health-view.ts).
+ *
+ * A native <details> that starts closed on every load, so the figures stay out
+ * of the way until the admin opens them.
  */
 export function ScheduleHealth({
   stats,
@@ -34,9 +37,9 @@ export function ScheduleHealth({
   const view = buildScheduleHealthView(stats, positionNames);
 
   return (
-    <section style={{ ...panelStyle, marginTop: 14 }}>
-      <SectionLabel>Schedule health</SectionLabel>
-      <p style={footnoteStyle}>Computed when this run was generated.</p>
+    <details style={{ ...panelStyle, marginTop: 14 }}>
+      <summary style={summaryStyle}>Schedule health</summary>
+      <p style={{ ...footnoteStyle, marginTop: 10 }}>Computed when this run was generated.</p>
 
       {view.people === 0 ? (
         <p style={{ ...footnoteStyle, marginTop: 8 }}>
@@ -226,7 +229,7 @@ export function ScheduleHealth({
           </div>
         </>
       )}
-    </section>
+    </details>
   );
 }
 
@@ -234,6 +237,14 @@ const pillStyle = (tone: HealthTone): React.CSSProperties =>
   tone === "danger" ? dangerPillStyle : tone === "warning" ? warningPillStyle : successPillStyle;
 
 // --- styles ---
+
+/** The heading that stays visible when closed, sized like a SectionLabel. */
+const summaryStyle: React.CSSProperties = {
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 700,
+  color: "var(--color-text-primary)",
+};
 
 /**
  * The stretch and hours bar columns. Auto-fit, so the three drop to two and then

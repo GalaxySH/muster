@@ -8,7 +8,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
-vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: vi.fn() }));
+vi.mock("@/lib/auth/session", () => ({ getAppSession: vi.fn() }));
+vi.mock("@/lib/auth/require-admin", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/auth/require-admin")>();
+  const requireAdmin = vi.fn();
+  // The admin check is stubbed, the semester check is the real one, against
+  // the "test-term" vitest.setup.ts answers as the working term.
+  const requireAdminIn = async (termId: string) => {
+    const gate = await requireAdmin();
+    if (!gate.ok || (await real.isWorkingTerm(termId))) return gate;
+    return { ok: false, error: real.STALE_TERM_MESSAGE };
+  };
+  return { ...real, requireAdmin, requireAdminIn };
+});
 vi.mock("@/lib/settings", () => ({
   getSchedulingParams: vi.fn(),
   setSetting: vi.fn(),
@@ -24,8 +36,10 @@ vi.mock("@/lib/admin/sheet-sync", () => ({
 import { getTableName, type Table } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth/require-admin";
-import { clearScheduleRun } from "./actions";
+import { requireAdmin, STALE_TERM_MESSAGE } from "@/lib/auth/require-admin";
+import { setSetting } from "@/lib/settings";
+import { DEFAULT_SCHEDULING_PARAMS } from "@/lib/domain/scheduling/params";
+import { clearScheduleRun, saveScheduleParams, saveScheduleRunSnapshot } from "./actions";
 import { listScheduleRuns } from "./data";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
@@ -111,7 +125,7 @@ describe("clearScheduleRun", () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
 
-    expect(await clearScheduleRun(true)).toEqual({ ok: false, error: "Admins only." });
+    expect(await clearScheduleRun("test-term", true)).toEqual({ ok: false, error: "Admins only." });
     expect(writes).toEqual([]);
   });
 
@@ -119,7 +133,7 @@ describe("clearScheduleRun", () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
 
-    expect(await clearScheduleRun(false)).toMatchObject({ ok: true });
+    expect(await clearScheduleRun("test-term", false)).toMatchObject({ ok: true });
 
     // The flip comes first, then the new row: no window with two current runs.
     const [flip] = writesTo(writes, "schedule_runs", "update");
@@ -135,7 +149,7 @@ describe("clearScheduleRun", () => {
   it("stamps the run as a snapshot over the whole roster", async () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
-    await clearScheduleRun(false);
+    await clearScheduleRun("test-term", false);
 
     // Not "generated": the scope ledger counts a generated run as a re-solve of
     // the slice it names, and a cleared run solved nothing.
@@ -146,7 +160,7 @@ describe("clearScheduleRun", () => {
   it("stores a report the run history can read back", async () => {
     const { handle, writes } = fakeDb();
     vi.mocked(getDb).mockReturnValue(handle as never);
-    await clearScheduleRun(false);
+    await clearScheduleRun("test-term", false);
     const [inserted] = writesTo(writes, "schedule_runs", "insert");
 
     // The stored JSON goes back through listScheduleRuns, which parses it
@@ -176,7 +190,7 @@ describe("clearScheduleRun", () => {
   it("clears the scheduled marks only when asked", async () => {
     const withFlag = fakeDb({}, 4);
     vi.mocked(getDb).mockReturnValue(withFlag.handle as never);
-    const res = await clearScheduleRun(true);
+    const res = await clearScheduleRun("test-term", true);
     expect(res).toEqual({ ok: true, unmarked: 4 });
     expect(writesTo(withFlag.writes, "submissions", "update")[0]?.values).toEqual({
       scheduled: false,
@@ -186,8 +200,41 @@ describe("clearScheduleRun", () => {
     vi.mocked(revalidatePath).mockClear();
     const without = fakeDb({}, 4);
     vi.mocked(getDb).mockReturnValue(without.handle as never);
-    expect(await clearScheduleRun(false)).toEqual({ ok: true, unmarked: 0 });
+    expect(await clearScheduleRun("test-term", false)).toEqual({ ok: true, unmarked: 0 });
     expect(writesTo(without.writes, "submissions", "update")).toEqual([]);
     expect(vi.mocked(revalidatePath).mock.calls.flat()).not.toContain("/admin/responses");
+  });
+});
+
+// A tab still showing another semester must not write to the one being worked in.
+describe("a page rendered for another semester", () => {
+  beforeEach(() => {
+    vi.mocked(requireAdmin).mockResolvedValue({ ok: true, email: "boss@wisc.edu" });
+    vi.mocked(setSetting).mockClear();
+  });
+
+  it("cannot save a run snapshot", async () => {
+    const current = { id: "run-1", termId: "test-term", scopeJson: null, summaryJson: "{}" };
+    const { handle, writes } = fakeDb({ schedule_runs: [current] });
+    vi.mocked(getDb).mockReturnValue(handle as never);
+
+    expect(await saveScheduleRunSnapshot("2026-fall")).toEqual({
+      ok: false,
+      error: STALE_TERM_MESSAGE,
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it("cannot save the engine settings", async () => {
+    expect(await saveScheduleParams("2026-fall", DEFAULT_SCHEDULING_PARAMS)).toEqual({
+      ok: false,
+      error: STALE_TERM_MESSAGE,
+    });
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+
+  it("still lets the page that is current save its settings to its own term", async () => {
+    expect(await saveScheduleParams("test-term", DEFAULT_SCHEDULING_PARAMS)).toEqual({ ok: true });
+    expect(setSetting).toHaveBeenCalledWith("schedule_params:test-term", expect.any(String));
   });
 });

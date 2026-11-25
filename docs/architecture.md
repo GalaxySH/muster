@@ -5,6 +5,190 @@ of every session. Read the relevant section before editing a subsystem, and **up
 it alongside code changes** (same rule as PLAN.md). PLAN.md remains the authoritative
 spec; these notes describe how the implementation is layered.
 
+## Terms: the semester the app runs in (PLAN 1.48, `docs/semester-domains-plan.md`)
+
+Every per-semester table carries a `term_id`, and exactly one term is current: the
+`current_term_id` row in `app_settings`. Students only ever see the current term.
+An admin can select another term and work in it (1.55, below).
+
+**The roster is per term (1.51).** `students` is the person: email, name,
+international, hire date, last seen. `term_members` is their place in one term: the
+position they hold, whether they are on the roster, the tracker title they came in
+under, and their group. **A query on `students` alone can no longer say who is on the
+roster or what job anyone has.** It joins `term_members` through `memberOf(termId)`,
+or filters with `onRosterStudent(termId)` when it has no other reason to join.
+The old columns on `students` were dropped in 1.57. Two things the type checker cannot see, so check them by hand: a query
+that selects `termMembers.*` must actually join it (a predicate held in a variable is
+the easy one to miss), and a list of a term's people wants an **inner** join, because
+someone with no row was never part of that term.
+
+- **`src/lib/terms/` is a shared root**, like `lib/db`: the form core, the generator,
+  W2W and the console all import it, and it imports none of them (`eslint.config.mjs`
+  says so).
+  - `term-id.ts`: `getCurrentTermId(db)`, plain and CLI-safe. It **throws** when the
+    pointer is missing. Nothing may ever fall back to reading every term.
+  - `working.ts` (1.55; it was `current.ts`): the term a request works in.
+    `currentTermId()` is the pointer read. Both it and `workingTermId()` are
+    memoized with React `cache`, which holds only during a render: a page that
+    calls several loaders resolves the term once, but inside a server action or a
+    route handler every call reads the pointer again (see "Who resolves the
+    term").
+    `workingTermId()` is what every loader and action calls: the current term,
+    unless the request carries the selection cookie (`TERM_COOKIE`), the session is
+    an admin's and the cookie names a term that exists, in which case it is that
+    term. The decision itself is the pure `chooseWorkingTerm` in `domain/terms.ts`.
+    The cookie is read before the pointer on purpose: reading it is what tells Next
+    the page belongs to a request, and the image is built with no database.
+    The session is only looked at when a cookie is present, so a student's request
+    costs nothing extra, and it is imported lazily because `auth/session` reads the
+    roster, which reads this file. `cookies()` throws where there is no request (the
+    digest scheduler, a script); that falls back to the current term, and Next's own
+    control-flow errors are passed on with `unstable_rethrow`. `selectTerm`
+    (`select-action.ts`) is the only writer of the cookie. `workingTerm()`
+    is the row itself, for the code that needs the term's dates and rules: the travel
+    cutoff and late-travel switch (through `getTravelCutoff` / `getLateTravelPolicy`
+    in `lib/settings.ts`), the new-hire cutoff (`isReturningStudent`), the start date
+    (the generator's late-start threshold and, with the end date, the close inventory
+    default) and the exit page's schedule note. None of these is derived from the
+    clock any more.
+  - `scope.ts`: the predicates. `submissionOf(email, termId)`,
+    `submissionOfStudent(termId)` and `submissionInTerm(termId)` are the whole of how a
+    submissions query stays inside a term; `currentRunOf`, `currentPlanOf` and
+    `closeClaimInTerm` do the same for runs, plans and close claims (a claim has no
+    term column, it is scoped through its slot). The roster predicates sit beside
+    them: `memberOf(termId)` (ON clause for `students JOIN term_members`),
+    `memberOfSubmission()` (the same from a submission, following the submission's
+    own term), `rosterOf(termId)` (WHERE for a query that starts from `term_members`)
+    and `onRosterStudent(termId)` (an EXISTS test for a `students` query).
+  - `members.ts`: the one writer of a person's roster place (`enrollMember`,
+    `setMemberPosition`, `takeOffRoster`). Plain and CLI-safe, because the importer and the dev scripts use it. The
+    group on the same row is written by `groups/membership.ts`.
+- **The Semester page (`/admin/terms`, 1.49).** `TermDetailsForm` edits the current
+  term's name, dates, new-hire date and schedule note through `saveTermDetails`
+  (`lib/admin/term-actions.ts`); the rules are pure, in `domain/terms.ts`
+  (`validateTermDetails`, `termYearFor`, `termNamesIn`). Saving the details never
+  moves the travel cutoff, even when the first day changes. The page
+  also holds `TravelCutoffPanel` and warns when the saved schedule email names
+  another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
+  and the hub nav is grouped into "This semester" and "All semesters".
+- **Who resolves the term.** Request-side loaders call `workingTermId()`
+  themselves: they are defined as "the working term's" data. **A server action or
+  route handler resolves the term once, at the top, and passes it down (1.58).**
+  Calling it again later in the same action reads the pointer again, so an action
+  in flight while a semester starts could gate in one term and write in the other.
+  Never call it inside a transaction: it takes a second pooled connection while the
+  transaction holds the first, and enough of those at once starve the pool
+  (`persistAvailability` and `positions/actions.ts` show the shape). Call `currentTermId()`
+  only for something that must follow the term students are filling in whatever an
+  admin has selected, and say why at the call (today: the header's banner,
+  `selectTerm`, and the roster import's `updatePeople`). Anything that takes a
+  database handle or a transaction (`importRoster`, `applyPositionChange`,
+  `resolveDeferredCarryOver`, `releaseDepartedSchedules`, `writeRunAsCurrent`,
+  `pruneStaleRuns`, `lib/groups/membership.ts`) takes `termId` as an argument, so its
+  transaction body gains no read. **No server action takes its term from the
+  client.** An action may receive the term id its page was rendered for, but only
+  to compare it with the working term (`requireAdminIn`, below), and it acts in the
+  working term. Where a client sends a row id (a group, a position, a block, a close
+  slot, a run, a W2W mapping), the lookup also tests the term, so another term's row
+  reads as not found. The three change-request row actions also take the page's term
+  and gate with `requireAdminIn`, so a stale tab is told to reload instead (1.60).
+  Hand edits to a schedule only accept shift blocks of the run's
+  term (`schedule/manual.ts`). An admin reaches another term only by selecting it, which changes the working
+  term for the whole request.
+- **Actions that name no row (1.55).** The selection belongs to the browser, not
+  the tab, so a tab still showing fall can submit after another tab moved to spring.
+  An action that acts on a whole term takes the term id its page was rendered for
+  and gates with `requireAdminIn(termId)` (`auth/require-admin.ts`), which refuses
+  anything but the working term. The id comes from `useRenderedTermId()`
+  (`components/RenderedTerm.tsx`), provided once by `app/admin/layout.tsx`; a
+  layout is not re-rendered on navigation, so it stays what the tab is showing.
+  When adding an admin action that takes no term-scoped row id, use this gate.
+  Since 1.58 that covers the actions that create something in the term and name no
+  row: `createPosition`, `createPositionForTitle`, `createGroup`,
+  `runDefaultAssignmentSweep`, `saveScheduleParams`, `saveScheduleRunSnapshot` and
+  `deleteW2wMapping` (a W2W id is the same in every term). What still gates with
+  `requireAdmin()` alone acts on something that is not one term's rows: the three
+  sheet rebuilds (`rebuildResponsesSheet`, `rebuildClosesSheet`,
+  `rebuildScheduleSheet`) rewrite the working term's sheet from that term's own
+  data; `setDefaultAutoAssign`, the email and change-request switches and the
+  schedule email template are settings shared by every term;
+  `importW2wEmployeesFromUpload` writes `w2w_employees`, which has no term; and
+  `setPlanRotationWeek` names a plan, looked up as the working term's current plan.
+  The gate also covers any action that names a **person by email**: the same person
+  is in every term. Actions shared with the student's own form go through
+  `requireEditableStudent(onBehalfOf, renderedTermId)` (`groups/gate.ts`), which
+  checks the term only on the on-behalf branch and refuses when none was sent. The
+  on-behalf pages on student routes wrap their form in `<WorkingTerm>`
+  (`components/WorkingTerm.tsx`), the same provider the admin layout uses.
+  `TermSwitcher` also keeps one browser's tabs together (a tab reloads when another
+  changes the selection), which is a convenience, not the guard.
+- **Person facts follow the current term (1.55).** `importRoster` takes
+  `updatePeople`: false for an earlier term, where it leaves names, the
+  international flag, hire dates and `admin_users` alone.
+- **Starting a term (1.56).** `lib/admin/start-term.ts`, console code and plain
+  (it takes a database handle): `startNewTerm` creates the term, copies the
+  configuration and the roster with new ids, and moves the pointer, in one
+  transaction that first locks the pointer row and refuses when it no longer names
+  the term the caller saw. `makeTermCurrent` moves the pointer back. The pure parts (`termSlug`,
+  `newTermDefaults`, `validateNewTerm`) are in `domain/terms.ts`. Both actions use
+  the *current* term, never the working one. The engine params are stored per term
+  (`getSchedulingParams(termId)` in `lib/settings.ts`); the copy remaps their position
+  ids as plain JSON so the console does not import the generator's parser.
+- **Client state and the term.** Selecting a term reloads the page
+  (`TermSwitcher`), because a form that seeded `useState` from its props would
+  otherwise keep the other term's values. Where a page changes term without a
+  reload (the Semester page after a start), key its forms by the term id.
+- **Drive per term (1.55).** `drive/relay.ts` resolves a term's folder
+  (`termFolder`): the Drive root for the term named by `drive_root_term` (fall 2026),
+  otherwise a folder named after the term, created under the root on first use and
+  cached (1.58). It is never looked up by name: `drive.file` shows the app only its
+  own folders, so a name match could only be another term's folder, one renamed and
+  then reused. Concurrent first writes for the same key share one in-flight creation
+  (`singleFlight`, which holds because the app is one Node process). Sheets are
+  still found by cached id, then by name inside the term's folder, then created.
+  A sheet's id is cached inside that shared resolution, before the first write
+  to it, so a later sync never searches Drive for a sheet that was only just
+  made. A sheet found deleted (404) is replaced in its own in-flight step per
+  dead id, shared only with other syncs replacing that id (never with a plain
+  lookup, which may still hand out the dead id): it returns the replacement
+  another sync already cached instead of making a second, and never searches
+  by name (1.59, 1.60). Every call to Google has a time limit
+  (`driveFetch` in `drive/api.ts`: 30 s, 120 s for a call carrying file bytes;
+  the token refresh through `transporterOptions`), so a hung call fails its
+  request instead of holding it, and everyone sharing its result, open.
+  Proofs and the three sheets live in it, and every cached id and sync stamp
+  is stored under `termSettingKey(base, termId)`. `admin/sheet-sync.ts` acts on the
+  working term.
+- **`students LEFT JOIN submissions` puts the term in the ON clause**
+  (`submissionOfStudent`), never the WHERE: a WHERE on the right side of a left join
+  drops everyone who has not responded, and without the term the join returns one row
+  per term a student ever submitted in. This is the roster-read path of the v0.96
+  outage, so treat it with the same care.
+- **The guard.** A missing filter is silent and no mocked-database test can see it.
+  `terms/scope-usage.test.ts` reads the source instead: every statement that selects
+  from, joins, updates or deletes `submissions` must use a scope predicate or address
+  the row by id, with a short allowlist of statements that are right to read every
+  term (each entry says why, and the list may only shrink).
+- **Tests.** `vitest.setup.ts` mocks `@/lib/terms/working` for every test file, so the
+  per-file database fakes never have to queue the pointer read. `term-id.test.ts`
+  tests the real pointer read and `working.test.ts` the real resolver.
+- **What is deliberately not term-scoped:** `students` (the person, in no term),
+  `position_changes`, `admin_users`, `w2w_employees`, the Drive grant and magic
+  links. The admin change-request queue, its counts and row actions follow the
+  working term. The change-request digest runs with no admin and no selection,
+  so it reads the current term itself (`getCurrentTermId`, once per run, before
+  it stamps anything) and reports only that term's requests (1.61).
+- **Expand, then contract: done.** The 1.48 migrations added every `term_id` with a
+  database default and kept the pre-term columns and settings written in step, so the
+  release before could still run. 1.56 dropped the defaults (0049, 0050) and 1.57
+  dropped the old `students` columns and the pre-term settings (0051, 0052). Nothing
+  is written twice any more, and an insert with no term is refused by the database as
+  well as by TypeScript.
+- **Verifying a change here.** Unit tests cannot see a term leak. Run the loaders
+  against a real MariaDB holding two terms (a throwaway container, never the shared
+  dev database) and compare what each term shows; `docs/semester-domains-plan.md` §8
+  describes the method.
+
 ## Module boundaries (PLAN 1.21)
 
 Muster is **three peer modules with an admin console composing them**. This is the
@@ -66,7 +250,13 @@ backlog behind the allowlist entries above.
 
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
 Coming into `students.hiredOn`, driving a **welcome-back** greeting on `/me` for
-returners (hired before June of the current cycle; pure `flow/returner.ts`); (2)
+returners (hired before the term's new-hire date; pure `flow/returner.ts`). The
+hire date is a calendar day end to end: `parseHireDate` builds local midnight, the
+`calendarDay` column type in `db/schema.ts` writes and reads it as local midnight
+(Drizzle's own `date` column reads midnight UTC, which came back a day early west
+of UTC until 1.59; the travel dates use the same type), and every reader takes the
+day off `localDay` (`domain/calendar-day.ts`), never off a UTC instant or a timezone
+conversion (PLAN 1.50); (2)
 **URL-driven group + position + flag filters** on `/admin/responses` that follow you
 into the per-student view (pure `admin/response-filters.ts`; `listResponses(filters)`
 is the single source for the list AND the prev/next walk; the per-student name is a
@@ -75,7 +265,13 @@ filter (`positionId`, `NO_POSITION` sentinel) mirrors the group filter's "none"
 handling; a later **show-off-roster switch**, `roster=all` in the same seam, reveals
 badged off-roster submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
-Sunday-week, now through +3 weeks). Each entry carries a **resolved** marker
+Sunday-week, now through +3 weeks). Each entry is `components/admin/UpcomingTravelRow.tsx`
+(1.61): the note clamped by CSS to two lines with the full text in `title` on the left,
+and on the right the proof as an `EvidenceThumb` (none for a trip an admin recorded
+without one), then the dates and the resolved checkbox. `EvidenceThumb`'s small image is
+Drive's preview (`?size=thumb`, see the evidence relay section), `loading="lazy"` inside
+its fixed-size box, so a long list only pulls the previews scrolled into view and never
+an original. Each entry carries a **resolved** marker
 (`travel_requests.resolved`, migration `0020`): the admin-only `TravelResolvedCheckbox`
 island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, revalidates
 the travel list + the student page + the hub), and a resolved row green-tints on both
@@ -108,12 +304,38 @@ scheduler context there. The toggle is `PopularShiftsPanel` on `/admin/groups`, 
 
 ## SL weekend-close picking (roadmap 3.2, PLAN §18a, v0.46)
 
-A claim/inventory subsystem for Shift Leads, who must each claim **exactly 3** Fri/Sat
-close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory,
-unique date, per-slot capacity) + `close_claims` (composite PK `(closeSlotId,
+**Per term since 1.48.** A close slot belongs to a term and claims are scoped through
+their slot (`closeClaimInTerm`), so only this term's closes count toward a lead's
+limit and a slot id from another term reads as gone. "Shift Lead" is whichever
+position has `picks_closes` set (`positionPicksCloses` in `closes/data.ts`); there is
+no fixed position id.
+
+**A number per lead since 1.53.** The fixed 3 is gone. `terms.close_requirement` is the
+term's default and `close_requirements` holds one row per lead per term.
+`closes/requirements.ts` (plain, CLI-safe) owns both seams: `ensureCloseRequirements(db,
+termId)` gives a row at the current default to everyone in the term who holds a closes
+position and has none, and `closeRequirementOf(db, termId, email)` reads one person's
+number, falling back to the term default (`assigned: false`) when they have no row.
+`ensureCloseRequirements` fills every gap instead of adding one person, so a missed
+call site is healed by the next; it runs at the end of a roster import, in
+`applyPositionChange` on a move into a closes position, on test account creation and
+when the inventory is generated. Request-side code asks `loadCloseRequirement(email,
+positionId)` in `closes/data.ts`, which is null when closes have nothing to do with
+the person (not a closes position, or no inventory) and otherwise their number, 0
+included; the pure `closeStepApplies` decides whether a student sees the step. The
+pure rules (`closeClaimsComplete` is "at least", `canClaimAnotherClose`,
+`closeLeadStatus` short/done/over, feasibility over the sum of numbers) are in
+`domain/close-claims.ts`. The admin write is `setCloseRequirements(emails, n)` in
+`closes/admin-actions.ts`; it only accepts people holding a closes position in the
+current term and releases nothing.
+
+A claim/inventory subsystem for Shift Leads, who must each claim their number of Fri/Sat
+close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory, a
+date unique within its term via `close_slots_term_date_unique` since 1.58, per-slot
+capacity) + `close_claims` (composite PK `(closeSlotId,
 studentEmail)`, cascading deletes); pure rules in `domain/close-claims.ts` (default
 range = first September weekend → second December weekend, slot generation, remaining
-capacity, feasibility, `REQUIRED_CLOSE_CLAIMS`); server layer in `src/lib/closes/`
+capacity, feasibility, and the per-lead rules above); server layer in `src/lib/closes/`
 (`data.ts` loaders; `claim-write.ts` the **shared atomic claim insert** — student-row →
 slot-row lock order inside one transaction, PK backstop, returns a code the caller maps
 to its own message; `actions.ts` student claims, losers get "just filled" + the
@@ -123,7 +345,10 @@ place or pull leads directly, through the same locking insert, and `removeCloseS
 (v0.57) which deletes one shift outright — claims cascade after a client confirm).
 The **roster import** also releases claims (v1.36): someone it takes off the roster loses
 their closes after their People Leaving resignation date, or, with no date, from today
-on if the admin says so (see the roster import section). It deletes `close_claims` rows
+on if the admin says so (see the roster import section). A **position change** releases
+them too (v1.52): `applyPositionChange` deletes the claims from today on when someone
+moves from a position that picks closes to one that does not, whatever caused the move.
+The import deletes `close_claims` rows
 directly inside its own transaction rather than calling `admin-actions.ts`, which is
 console code the form core can't import; so the closes backup sheet only catches up on
 the next claim change or a manual Rebuild.
@@ -133,16 +358,21 @@ dormant until an admin generates slots). Capacity and claim counts are **admin-o
 the student board's `CloseSlotView` carries a server-computed `full` boolean instead of
 `capacity`/`claimedCount`, so SLs only ever see whether a slot is still open (v0.52); the step list is **position-aware** (`wizardSteps` /
 `loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
-`finalizeSubmission` refuses an SL with ≠ 3 claims; `/me` shows a red warning card +
-a closes review link. Admin surface **`/admin/closes`**: inventory editor, per-lead
-progress, per-slot claimants with **assign/remove controls**
-(`components/admin/CloseClaimsTable.tsx`, v0.53 — the picker only offers active leads
-with open picks, the server actions re-check everything; v0.97 — `Page width="full"`
-(was the 1000px-capped `wide`) plus rendering as a `.stack-table` so the growing
-"Claimed by" column never forces a page-level horizontal scrollbar and the table
-stacks into cards under 720px; per-claimant name+remove-button spans stay
-`white-space: nowrap` but the `", "` separator between claimants sits outside that
-span so the browser has an actual line-break point between names), feasibility
+`finalizeSubmission` refuses an SL holding fewer than their number; `/me` shows a red
+warning card + a closes review link. Admin surface **`/admin/closes`** (rebuilt in
+1.54 from `docs/wireframes/admin_closes_v2.html`): `CloseLeadProgress` is a collapsible
+table of active leads with required, picked and status, a number box per lead that
+saves on blur, row checkboxes with a batch "Set closes to", and All / Short / Over
+filters, all through `setCloseRequirements`; it opens expanded when anyone is short or
+over. `CloseWeekendBoard` lays the closes out by weekend under a month heading
+(`groupCloseWeekends`, pure): one chip per assigned lead with its own remove control,
+a dashed placeholder per open spot, the first of which is the "Add a lead" picker
+(only leads who can still take a close, assigned on select), a fill pill from
+`closeSlotFill` (open, full, over), and "Remove this close" behind a row menu and the
+same confirmation as before. The grid is `auto-fit`, so Friday and Saturday stack on a
+phone without a media query. The inventory editor and the sheet controls sit behind an
+"Inventory and Google Sheet" disclosure once an inventory exists. The server actions
+re-check everything. Also a feasibility
 warning, and a second backup Drive sheet
 (`Muster SL Closes`) — `sheet-sync.ts` + `drive/relay.ts` are now **parametrized by
 sheet target** (`RESPONSES_SHEET` / `CLOSES_SHEET`, `syncSheet`/`trySyncSheet`/
@@ -191,8 +421,11 @@ follows whoever the form targets (admin-gated `adminListChangeRequests` in
 request (students still only their own). The per-student admin page header carries a
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
-the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`. It is one card among the others in
+the per-student page renders **all** of a student's requests in the working term,
+independent of the submission, each anchored as `#change-request-<id>`. A link to one
+(`changeRequestAdminPath`) also carries `?request=<id>`, so when it names this student's
+request in another semester the card says which, with a switch button, instead of
+silently missing (`requestInOtherTerm` in `data.ts`). It is one card among the others in
 that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
 slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
 a long history never stretches the page below the other cards. Three cards buck the
@@ -206,11 +439,11 @@ the next column, with course schedule right after it). Nothing else in the flow 
 ordered. That means the dashboard
 container renders unconditionally and the submission-dependent cards are conditional
 children of it, not the other way around. The queue at
-`/admin/change-requests` lists open requests oldest first (name + email +
+`/admin/change-requests` lists the working term's open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
 (`ShowResolvedToggle`, state in `?resolved=1` so the server page drives the query)
-mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withdrawn
+mixes resolved rows back in via `listChangeRequestQueue(termId, includeResolved)` (withdrawn
 never appears). A settings card at the top of that page (v1.12,
 `ChangeRequestsEnabledToggle` + `setChangeRequestsEnabled`, setting
 `change_requests_enabled` in `lib/settings.ts`, on by default) is a student-facing
@@ -219,7 +452,7 @@ from the `/change-requests` link to "send us an email" (same swap on `/intro`, f
 "submit a change request" to "send us an email"). The `/change-requests` route and
 this admin queue stay reachable either way, so an admin can still log a request on a
 student's behalf or a direct link still works. Proof files render only on the per-student page, as inline
-`EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches bytes through
+`EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches a preview through
 the Drive proxy, so only the newest `CHANGE_PREVIEW_ROWS` (3) file-bearing requests get
 thumbnails and older ones fall back to plain proof links. Every request row is an
 outline box; resolved requests read as done everywhere: green-tinted row + the
@@ -228,11 +461,20 @@ shared `ChangeStatusBadge` (check icon). Both surfaces use the
 shows no control), and the per-student header email is a `SelectableEmail` island
 (click selects the address for copying). The **daily digest email** carries an inline deep link on every
 request line and goes ONLY to the v0.47 admin-configured recipients
-and honors the digest toggle plus the master email switch; `runChangeDigest` is
-idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
-rows unstamped so requests are never silently lost; since 1.47 a message that was only
-logged or blocked by the test-recipient guard is not a send, and the run returns
-`not-delivered`) and is triggered by the **in-app
+and honors the digest toggle plus the master email switch. It reports the **current
+semester's** open, unreported requests only (1.61): `runChangeDigest` reads the pointer
+once, before stamping anything (a broken pointer throws, so nothing is stamped or sent),
+and passes it to `loadPendingDigestRequests`. An earlier semester's requests it never
+reported are not emailed; they stay in that semester's queue. Because a digest link can
+still be followed while an earlier semester is selected, the per-student page keeps
+saying which semester the request is from. `runChangeDigest` is
+idempotent via `digestSentAt` (stamped once at least one recipient was sent it; since
+1.60 every recipient is still tried when one throws, and the rows are stamped even then,
+so a recipient whose send threw misses that digest while the requests stay in the admin
+queue, rather than everyone else getting the growing batch every day; a run that reached
+nobody, by a skip or every send throwing, leaves rows unstamped and the next run sends the
+batch again; since 1.47 a message that was only logged or blocked by the test-recipient
+guard is not a send) and is triggered by the **in-app
 scheduler** in `changes/scheduler.ts`: started once per server process from
 `src/instrumentation.ts` (Node runtime only; production always, dev only behind
 `DIGEST_SCHEDULER_DEV` so local servers and Playwright runs never send spontaneously),
@@ -297,9 +539,10 @@ ingest** — written by the admin (picker / pasted emails) or the dormant
 `groups` + the two student columns; `0006` drops the old unused `form_windows` table
 (superseded); `0007` adds `groups.lockAfterSubmit`. The seed inserts the "New Student"
 group only if absent (default-flagged only when no group holds the flag). The
-**travel-excusal cutoff** (default 9/1) lives in `app_settings` (`getTravelCutoff` in
-`settings.ts`), editable on `/admin/groups` (`TravelCutoffPanel`), which also carries
-the **"Accept late travel" toggle** (`SETTING_LATE_TRAVEL_ACCEPT`, read via
+**travel-excusal cutoff** (default: the day before the term starts) lives on the term
+(`getTravelCutoff` in `settings.ts`), editable on the Semester page, `/admin/terms`
+(`TravelCutoffPanel`, moved there from `/admin/groups` in 1.49), which also carries
+the **"Accept late travel" toggle** (`terms.late_travel_accept`, read via
 `getLateTravelPolicy`, written by `setLateTravelAccepted`). Off (default), on/after the
 cutoff the travel step **refuses** new entries and locks existing ones; on, entries
 keep flowing but store `excused: false` (late) and finalize raises `travel_late`. The
@@ -312,10 +555,14 @@ per-student card.
 
 ## Drive folder layout (PLAN §12)
 
-The configured root (`DRIVE_FOLDER_ID`) holds the running
-`Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**
-(named `{email}__{kind}__{timestamp}.{ext}`). Both the proofs-folder id and the sheet id
-are discovered/created lazily and cached in `app_settings` via `src/lib/settings.ts`. The
+Each term has its own folder under the configured root (`DRIVE_FOLDER_ID`); fall 2026
+uses the root itself (`drive_root_term`). The term's folder holds its running
+`Muster Responses` spreadsheet and the other sheets; **all of a term's proof files live
+in a single `proofs/` subfolder** (named `{email}__{kind}__{timestamp}.{ext}`). Folders
+are created on first use and their ids cached in `app_settings` under per-term keys
+(`src/lib/settings.ts`); they are never looked up by name (1.58). A sheet is found by its
+cached id, then by name in the term's folder, then created. Concurrent first writes
+share one in-flight creation. See "Drive per term" under Terms. The
 sheet is written via the **Google Sheets API v4** (`drive/api.ts` `createSpreadsheet`
 [empty native sheet via Drive] + `writeSheetValues` [read title → clear → RAW values →
 freeze/bold header]) — within the `drive.file` grant (the Sheets API is now enabled on the
@@ -340,7 +587,7 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 `loadStudentDetail` (student + position + blocks + submission + selection/auto split +
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
-count from one grouped query over `change_requests.status = "open"`, the student's
+count from one grouped query over the term's `change_requests.status = "open"`, the student's
 `groupName` from a left join on `groups`, and `scheduledMinutes`),
 `getResponseNeighbors(email, filters, sort)` (prev/next + the
 filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
@@ -444,8 +691,9 @@ null, which labelled an edit time as a submit time; the stamps are now distinct 
 and never substitute for each other. `fmtStamp` is the page's one timestamp format
 (US Central, seconds dropped; the change-request rows use it too since 1.33). The client
 islands are `MarkScheduledButton`, `NotesCard`, `EvidenceThumb` (one
-thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
-both through the `/api/evidence/[fileId]` proxy), `PrefGridCalculator`, and `JumpMenu`
+thumbnail+lightbox for all three evidence kinds, from `components/evidence/`; the course
+schedule fills its card with the larger `?size=preview`, so a PDF shows its first page),
+`PrefGridCalculator`, and `JumpMenu`
 (the header name → responder-list disclosure; a client wrapper around the native
 `<details>` so a click outside or Escape closes it, not just a second click on the name).
 `PrefGridCalculator` **is** the availability card: the admin clicks grid cells to try a
@@ -695,7 +943,7 @@ pure seam rather than re-deriving:
 - **Nudge lists are scoped to open windows**: reminding a student whose window has not
   opened (cannot start) or has closed (locked out) points the admin at people they cannot
   help.
-- **The test-accounts group (`TEST_GROUP_ID`, "Test accounts") never appears in the
+- **The test-accounts group (the term's group of `kind` `test`, "Test accounts") never appears in the
   Response progress table.** It is not a real cohort to track, so `buildDashboardView`
   filters it out of `groups` before returning (`dashboard-view.ts`); it still appears
   and is manageable on `/admin/groups`.
@@ -772,19 +1020,27 @@ nobody's to review, so it matches neither side.
 ## Sign-in tracking & analytics (PLAN §10, §11, v1.06)
 
 "Has this person logged in?" is separate from "did they submit the form?", and the app
-tracks it in one nullable column, **`students.last_seen_at`**. The write happens at the
+tracks it in one nullable column, **`students.last_seen_at`**, and the same stamp
+goes on the person's place in the current term, **`term_members.last_seen_at`**
+(1.60), which is what `/admin/analytics` reads: a term's stamp only moves while it
+is the current one, so an earlier semester's numbers do not count later visits.
+The per-student Last seen card still shows the person's own stamp. The write happens at the
 **single session seam** every authenticated request passes through, `getAppSession`
 (`lib/auth/session.ts`) — method-agnostic across Google, magic-link, and dev-login — so
 adding it there covers every path without touching the NextAuth callbacks. A null stamp
 therefore means the person has genuinely never signed in.
 
 The write is deliberately cheap. `lib/auth/last-seen.ts` (server-only) holds an
-in-process `Map<email, lastWriteMs>` throttle and does a single primary-key UPDATE at
-most once per person per 10 minutes; the pure decision (`shouldRecord`) is split into
+in-process `Map<email, lastWriteMs>` throttle and stamps at most once per person per
+10 minutes; the pure decision (`shouldRecord`) is split into
 `last-seen-throttle.ts` so it is testable without dragging in `getDb` (which is
-server-only). The UPDATE is guarded on the email PK, so a signed-in address with no
-roster row (e.g. an env-allowlist admin) simply updates 0 rows, and any failure is
-swallowed — telemetry must never break auth. A single container fronts prod, so the
+server-only). A stamp is an UPDATE of `students` by email, a plain read of the
+current term id (`getCurrentTermId`), and an UPDATE of `term_members` by email and
+that id passed as a value. It is not named by a subquery inside the UPDATE, because
+InnoDB would then lock the pointer row, which starting a semester holds FOR UPDATE.
+A signed-in address with no roster row (e.g. an env-allowlist admin) simply updates
+0 rows, and any failure, a missing term pointer included, is swallowed and retried
+on a later request: telemetry must never break auth. A single container fronts prod, so the
 in-memory throttle is enough; a restart just means the next request writes.
 
 Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
@@ -804,18 +1060,59 @@ The admin grants
 `drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,
 distinct from student sign-in); the refresh token is stored **AES-256-GCM encrypted**
 (`crypto/secretbox.ts`) in `admin_google_grants` — never in a cookie. `drive/relay.ts` is
-the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST + a
+the only seam that touches Drive (upload/download/thumbnail/delete via `drive/api.ts` REST + a
 `google-auth-library` token from `drive/oauth.ts`). Delete means **move to the Drive
 trash** (`trashed: true`, 1.42), never a permanent delete; a file restored from the trash
 does not come back into the app. Student uploads go through
 `evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
 the app**. `drive.file` files aren't browsable, so they're served back through an
 authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`
-`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`. The
-student UI is split into two client forms — `components/evidence/CourseScheduleForm.tsx`
-(course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
-`components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
-styles). They render on the `/course-schedule` and `/travel` server pages.
+`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`.
+
+**Thumbnails are Drive's previews (1.61).** `?size=thumb` on the proxy (same session and
+ownership check as the file itself) serves Drive's own preview image instead of the
+original, and `?size=preview` a larger one; any other value is a 400. `relayThumbnail` →
+`downloadThumbnail` (`drive/api.ts`) makes one metadata call for `hasThumbnail` +
+`thumbnailLink` with the Bearer token, then fetches that short-lived link through
+`driveFetch` **without** it: the link is itself the capability, so the token never
+leaves `www.googleapis.com` on this path. The original (`alt=media`) is never downloaded on this path, and neither
+the link nor the bytes are kept. No preview (no link, `hasThumbnail` false, the link
+answering 401/403/404/410, a redirect to a Location that won't parse, a body that is not
+JPEG/PNG/WebP/GIF) is a `404 No preview` with `no-store`, not logged; with no token sent,
+a 401 from the preview host means no more than a 403. Any other answer (a 429 or 5xx
+too) is a Drive failure: it throws with the status only, never the link or
+the body (an error page can echo the link), logs and answers as the full path does, and
+the larger size is not retried after it. Bodies that are not read are cancelled. On the
+student pages a missing or failed preview loads the original in the small image, as
+before 1.61, so a file just uploaded shows while Drive is still making its preview; the
+admin views never load the original for a thumbnail.
+The link came from an API response, so `isGoogleHttpsUrl` only lets it go to
+`*.googleusercontent.com` (a suffix match, since Google may use other `lhN` hosts) over
+https on the default port with no userinfo, and redirects are followed by hand (at most
+2) with every hop passing the same check. The larger size rewrites a trailing
+`=s<digits>` to `=s1200` (`LARGE_PREVIEW_PX`); that suffix is not a documented contract,
+so a link without it is used as given, and a refused rewrite falls back to the link as
+given. Drive's preview of a PDF is its first page, so a PDF thumbnails like an image.
+A read-only check against the real Drive on 2026-11-25 (8 files, jpeg, png and pdf, all
+with previews) found every link on `lh3.googleusercontent.com` ending `=s220`, answering
+200 with no redirects and without an Authorization header, PDFs previewing as PNG, a PNG
+original previewing as JPEG at 220 and PNG at 1200, and the largest 1200 preview at
+460 KB.
+
+The one thumbnail is `components/evidence/EvidenceThumb.tsx`, form-core so the student
+pages can use it and the admin views import it from there. Its small image lazy loads in
+a fixed box and becomes a plain file box on error (on the student pages, only after the
+original also fails), also when it had already failed before hydration: an effect checks
+`complete && naturalWidth === 0` and moves on to the next source. `opens` picks the
+click: `"lightbox"` (every admin view) mounts the original only when opened, as an
+`<img>` that switches to the `<iframe>` PDF viewer if it won't load, since a preview
+can't say which the file is; `"tab"` (the student pages, in their own look) links the
+original in a new tab. The student UI is split into two client forms —
+`components/evidence/CourseScheduleForm.tsx` (course schedule + extracurriculars) and
+`TravelForm.tsx` (travel) — sharing `components/evidence/shared.tsx` (the
+`useEvidenceRunner` action hook, `Thumb` (the shared thumbnail plus the student's Remove
+button), `Section`, styles). They render on the `/course-schedule` and `/travel` server
+pages.
 **Admin on-behalf entry:** both pages take `?student=<email>` (linked from the evidence
 cards on `/admin/students/[email]`) and, for an admin session, render the target's
 evidence with an `OnBehalfBanner` and no wizard breadcrumb. All six evidence actions
@@ -1070,6 +1367,15 @@ optional; its target comes from the position-aware `nextHref`).
 
 ## Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`)
 
+**Groups and membership are per term (1.48).** A group row belongs to one term, and a
+student's group lives on their `term_members` row (one row per person per term), not
+on the student. `groups/membership.ts` is the only reader and writer of the group on
+that row: `groupOf(db, email, termId)`, the WHERE predicates (`inGroup`, `inNoGroup`,
+`inTestGroup`; the join itself is `memberOf` in `lib/terms/scope.ts`), and
+`assignMembers` / `unassignMembers` /
+`listUnsweptEmails`. The
+test-accounts group is recognized by `groups.kind = 'test'`, never by its id.
+
 The pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both
 TDD-tested). `groups/data.ts` (server-only) has `resolveStudentAccess(email)` (the two-gate
@@ -1114,7 +1420,10 @@ cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redee
 outbound email flows through one choke point, `sendEmail`, which obeys a **master switch**
 (`app_settings.email_sending_enabled`, `getEmailSendingEnabled`; enabled by default):
 when off it suppresses+logs every message, so sign-in links and the change digest both
-stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
+stop. It also gives every send an `Idempotency-Key` hashed from the message as sent
+(recipient, sender, subject, text, html, cc, reply-to), so Resend treats an identical
+message within 24 hours as one email; a caller passes `sendId` to send the same message
+again on purpose (1.60). Admins flip the switch on **`/admin/email-settings`** (`setEmailSendingEnabled` +
 `EmailSettingsPanel`). The same page also holds the **schedule-change digest settings** (roadmap 3.1
 prep, v0.47; `DigestSettingsPanel`): a digest on/off toggle + the admin-configured
 recipient list, stored in `app_settings` (`change_digest_enabled`,
@@ -1201,8 +1510,9 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   `sendScheduleEmail` takes the dialog's subject and text and checks them with
   `validateScheduleTemplate` (the same lengths and render checks as a save) before
   rendering them with the saved font, cc and sender. A send
-  refuses when the master switch is off, passes an `Idempotency-Key` minted when the
-  dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
+  refuses when the master switch is off, passes the request id minted when the dialog
+  opens as `sendEmail`'s `sendId` (the test send passes a fresh one each press), and
+  only after a successful send stamps `schedule_email_sent_at` (plus
   `scheduled` when `marksScheduled` is on; since 1.47 that means a `sent` outcome, so a
   message only logged for lack of a Resend key records nothing, and a test account is
   refused before sending) through `updateSubmission`, which lives in
@@ -1246,22 +1556,37 @@ keeping their own session. The minted URL carries `&email=` which `/magic/redeem
 uses only as a form prefill (emailed links never include it; redemption stays bound
 to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
-(never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
-test-group membership AND the synthetic domain);
-delete only ever removes test-group members. **Shifts (1.47):** the per-student grid
+(never upserts); sign-in-as, get-link and delete share one gate (`requireTestAccount`:
+test-group membership AND the synthetic domain). **Delete needs a synthetic address
+(1.58):** it deletes the person in every term, so a real student moved into the test
+group can never be deleted from here, and the page offers it only where
+`canManage` is true. **Shifts (1.47):** the per-student grid
 refuses to add shifts for off-roster students except synthetic-domain test accounts,
 which may be placed on purpose; the on-roster filter keeps their rows off every
 schedule surface, generation drops them from the previous run's rows, and deleting
-such an account lets its rows cascade. Any other test-group member (a legacy
-`@wisc.edu` account) is refused while it still holds shifts in the **current** run
-(`schedule_assignments` cascades off `students`). That guard is scoped to the current run deliberately: the grid edits only that
-run, so guarding over superseded runs too would leave such an account permanently
-undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
+such an account lets its rows cascade. (The per-term schedule check that used to
+guard deleting a non-synthetic member is gone with that case.) Starting a semester
+carries only synthetic addresses into the new term's test group. Delete also cleans up relayed Drive proofs (shared
 `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
 be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
 (and before that, `/admin/preview`).
 
 ## Roster import (`src/lib/roster/`)
+
+**How the file is read is the term's own (1.48).** `roster/config.ts` is the pure
+shape and parser of `terms.roster_config` (sheets tried, the leavers sheet, admin
+titles, excluded titles, column names; each field falls back to its built-in default
+on its own) and `roster/config-data.ts` reads and writes it through a database handle,
+so the CLI shares it. Since 1.49 all of it is edited on `/admin/roster`: the excluded
+titles in `ExcludedTitlesPanel` as before, the rest in `RosterReadingPanel`
+(`setRosterReading` in `admin/actions.ts`, cleaned and checked by
+`cleanRosterReading` / `validateRosterReading`). **Column names** are for a tracker
+whose headers were reworded past the built-in matching: `extractRosterRows(grid,
+columns)` matches a named header exactly (normalized like titles) and requires it,
+and finds a blank one the built-in way. The People Leaving sheet always uses the
+built-in matching. `importRoster` takes `termId` from its caller, loads that config, and reads
+this term's title mappings and positions only. Excluded titles fall back to the
+pre-term `excluded_roster_titles` setting until the term saves its own list.
 
 Parses one sheet of the **PC & Training Tracker** (v0.86; one sheet per dining unit,
 default **Gordon**) → upserts `students` (minimized fields only — name, position,
@@ -1275,9 +1600,9 @@ makes the format differences cheap:
   the grid is a plain `string[][]`. It sniffs xlsx (a zip, so `PK`) vs CSV rather than
   trusting the extension, decodes CSV as **CP1252** when the bytes aren't valid UTF-8
   (Excel's export; without this "Retail and Café Team Member" became an unmapped ghost),
-  renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by
-  `ROSTER_SHEET_CANDIDATES` (`Gordon`, then `People Coming`, so old PCPL workbooks
-  still import). It knows nothing about which columns matter. The grid build must
+  renders Date cells as `yyyy-mm-dd`, and picks the worksheet by name or by the
+  term's sheet candidates (`roster/config.ts`; by default `Gordon`, then `People
+  Coming`, so old PCPL workbooks still import). It knows nothing about which columns matter. The grid build must
   stay **linear in populated rows** (`eachRow` + per-row `cellCount`): ExcelJS's
   `ws.rowCount`/`ws.columnCount` are O(rows) getters and `getRow` materializes every
   index it touches, so looping to them made the read quadratic on a sheet whose used
@@ -1357,7 +1682,10 @@ non-empty and `releaseUndatedCloses` is unset, it throws `RosterClosesPrompt` **
 the transaction**, exactly like the guard: nothing is written, `actions.ts` returns
 `closesPrompt`, and the panel asks "Take them off" / "Keep them on", re-sending the
 same file with the answer (CLI: `--release-closes` / `--keep-closes`). Released
-claims are deleted in the import transaction (summary `closesReleased`).
+claims are deleted in the import transaction (summary `closesReleased`). A lead the
+sheet moves to a position that picks no closes is not part of this plan or its
+question: the position-change routine releases their closes from today on, and the
+import adds them to the same summary list.
 
 Because a departure is *inferred* from an absence rather than stated anywhere, the
 **absence guard** (`evaluateAbsenceGuard`, pure) is **all-or-nothing**: if more than
@@ -1378,14 +1706,20 @@ Pure seams (all TDD, `src/lib/domain/`): `carry-over.ts` (`carryOverSelections` 
 time-matched keep/drop rule, generic over the row type so DB rows pass through),
 `config-validation.ts` (`validateBlockTimes`, `blockSetWarnings` — empty weekend set,
 unreachable min hours via `capacity.ts`), `position-alias.ts` (`resolveAlias`,
-`canAliasTo`), `time.ts` (`minutesToHHMM`/`hhmmToMinutes`), plus
-`positions/slug.ts` (`slugifyPositionId`). Reads live in `positions/data.ts`
+`canAliasTo`), `time.ts` (`minutesToHHMM`/`hhmmToMinutes`). A new position gets a
+random id (1.58; it used to be a slug of the name, which had to be unique across every
+term), so its name is only compared within its term; `positions/slug.ts` keeps only
+`POSITION_NAME_MAX`. Reads live in `positions/data.ts`
 (server-only): `listPositions`/`positionOptions` (the picker seam every former
 `config/positions.ts` consumer now uses), `listPositionsAdmin` (blocks + reference
 counts), `listGhostTitles` (shared with `roster/status.ts`). The write-side heart is
 `positions/apply-change.ts` (plain server module, CLI-safe): `applyPositionChange(tx,
 {email, from, to, source, changedBy})` runs inside the caller's transaction and does
-four things, of which **the first two do not need a submission** (v1.29):
+four things, of which **the first two do not need a submission** (v1.29). It also
+opens up weekend closes (v1.52, no submission needed): when the old position has
+`picks_closes` and the new one does not (or there is none yet), the person's claims on
+this term's closes dated today or later are deleted (`releaseUpcomingCloses`) and the
+dates come back as `releasedCloses`. Earlier closes stay as the record.
 
 1. Inserts a `position_changes` row. Keyed by email and accumulating, it is the
    permanent record; the `position_change` flag beside it is the transient marker,
@@ -1427,8 +1761,8 @@ position history the same card now lists. Mutations are `positions/actions.ts` (
 `ActionResult`): position create/deactivate/delete with reference guards (see
 **Position delete and its foreign keys** below),
 `setAlias`/`clearAlias` (write-time canonicalization: students re-pointed, then
-`mergedIntoId` set; Shift Lead is delete- and alias-protected via
-`SHIFT_LEAD_POSITION_ID`), **`savePosition`** (0.99 — one batched save per position:
+`mergedIntoId` set; the position whose holders pick closes is delete- and
+alias-protected by its `picksCloses` flag), **`savePosition`** (0.99 — one batched save per position:
 the details fields plus every dirty block edit, validated up front, written in a
 single transaction with a single revalidate; it replaced the per-row
 `updateBlock`/`updatePosition`, and time edits that touch picked shifts confirm once,
@@ -1480,7 +1814,7 @@ Seeding is insert-only-when-empty
 Four tables point at a position or its blocks, and each needs a different answer,
 because the FK behavior differs and so does what the row means:
 
-- `students.position_id` and the two selection tables (through `shift_blocks`) —
+- `term_members.position_id` and the two selection tables (through `shift_blocks`) —
   **refuse**. These are real student data; the admin is told to deactivate instead.
 - `schedule_assignments.shift_block_id` — **refuse**. This one is easy to miss: it
   cascades off `shift_blocks`, so deleting the position's blocks would strip shifts out
@@ -1654,7 +1988,7 @@ coverage view, no generator yet. Standard layering:
   since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,
   `RestoreRunButton`, `PinRunButton`, `SaveRunButton`, `ScheduleHealth`) — see the
   Phase C and 1.19 sections below.
-- **Roster membership (1.26).** `onRosterStudent()` in `lib/roster/lookup.ts` is the one
+- **Roster membership (1.26).** `onRosterStudent(termId)` in `lib/terms/scope.ts` (1.51; it was in `lib/roster/lookup.ts`) is the one
   definition of "still on the roster", and `eligibleSubmittedFilter()` composes from it
   rather than repeating the clause (first slice of module item A1). The supply side was
   always filtered; 1.26 filtered the assignment side too, which is where a departed
@@ -2115,7 +2449,9 @@ deliberately includes frozen students, since a hand edit to a kept row is the
 likeliest way somebody passes their hour cap; `data.ts` `loadScheduleForRun` runs
 the validator against the run's snapshotted params and extends
 `ScheduleStudentRow` with `belowMinHours`, `overMaxHours` and `lateStart`;
-`components/admin/ScheduleHealth.tsx` renders the view model.
+`components/admin/ScheduleHealth.tsx` renders the view model, as a native `<details>`
+panel that starts closed on every load (no saved state) with "Schedule health" as its
+`<summary>` (1.61).
 Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
 ### The annealing pass (docs/generator-anneal-plan.md, v1.20)
@@ -2288,7 +2624,9 @@ plan never uses. Dangers mean shifts export nameless and reach the hub as one
 The **alias** case is the sharp one. `setAlias` moves students to the target but the
 source keeps its blocks, so plan rows go on matching them and the plan report still
 counts them as *matched* while nobody can ever be assigned there. v1.11 fixes the cause
-(`repointW2wMappings` follows the students inside the same transaction) and keeps the
+(`repointW2wMappings` follows the students inside the same transaction; since 1.58 it
+matches the source position as well as the W2W id, because every term holds the same
+W2W ids) and keeps the
 check for maps that drifted before it, or via a route that does not go through
 `setAlias`. Aliases are never offered in the target picker and are refused server-side.
 

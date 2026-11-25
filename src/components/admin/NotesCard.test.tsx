@@ -49,7 +49,7 @@ describe("NotesCard", () => {
     fireEvent.change(box, { target: { value: "Evenings only" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(save).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only"));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only", ""));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -87,7 +87,7 @@ describe("NotesCard", () => {
     fireEvent.change(box, { target: { value: "Evenings only" } });
     fireEvent.keyDown(box, { key: "Enter", ...modifier });
 
-    await waitFor(() => expect(saveStudent).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only"));
+    await waitFor(() => expect(saveStudent).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only", ""));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 

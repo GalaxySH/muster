@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // sheet-sync.ts is a `server-only` module. The marker package throws on import
 // outside an RSC bundle, and its transitive imports (settings → db, drive/relay
@@ -23,10 +23,21 @@ vi.mock("@/lib/schedule/export", () => ({ buildScheduleMatrix: vi.fn() }));
 vi.mock("./export-data", () => ({ loadExportData: vi.fn() }));
 vi.mock("./export", () => ({ buildExportMatrix: vi.fn() }));
 
+import { getSetting, setSetting } from "@/lib/settings";
+import { upsertManagedSheet } from "@/lib/drive/relay";
+import { loadCloseAdmin } from "@/lib/closes/data";
+import { loadCurrentSchedule } from "@/lib/schedule/data";
+import { workingTermId } from "@/lib/terms/working";
+import { loadExportData } from "./export-data";
+import { buildExportMatrix } from "./export";
 import {
+  CLOSES_SHEET,
   cooldownRemainingMs,
+  RESPONSES_SHEET,
+  SCHEDULE_SHEET,
   SHEET_AUTO_COOLDOWN_MS,
   SHEET_MANUAL_COOLDOWN_MS,
+  syncSheet,
 } from "./sheet-sync";
 
 describe("cooldownRemainingMs", () => {
@@ -60,5 +71,45 @@ describe("cooldownRemainingMs", () => {
     expect(SHEET_MANUAL_COOLDOWN_MS).toBeLessThan(SHEET_AUTO_COOLDOWN_MS);
     expect(SHEET_AUTO_COOLDOWN_MS).toBe(10 * 60 * 1000);
     expect(SHEET_MANUAL_COOLDOWN_MS).toBe(30 * 1000);
+  });
+});
+
+describe("syncSheet", () => {
+  const now = new Date("2026-06-21T12:00:00.000Z");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Were anything here to look the term up, it would get "B": a semester
+    // started after the caller resolved "A".
+    vi.mocked(workingTermId).mockImplementation(async () => "B");
+    vi.mocked(getSetting).mockResolvedValue(null);
+    vi.mocked(upsertManagedSheet).mockResolvedValue({ spreadsheetId: "s1", url: "https://sheet" });
+    vi.mocked(loadExportData).mockResolvedValue([]);
+    vi.mocked(buildExportMatrix).mockReturnValue([["header"]]);
+    vi.mocked(loadCloseAdmin).mockResolvedValue({ slots: [], leads: [] } as never);
+    vi.mocked(loadCurrentSchedule).mockResolvedValue(null);
+  });
+
+  it("reads the stamp, builds the rows and writes the sheet in the caller's term only", async () => {
+    const res = await syncSheet(RESPONSES_SHEET, "A", { cooldownMs: 0, now });
+
+    expect(res.synced).toBe(true);
+    expect(workingTermId).not.toHaveBeenCalled();
+    expect(getSetting).toHaveBeenCalledWith("responses_sheet_synced_at:A");
+    expect(loadExportData).toHaveBeenCalledWith("A");
+    expect(upsertManagedSheet).toHaveBeenCalledWith(
+      expect.objectContaining({ idSettingKey: "responses_sheet_id", termId: "A" }),
+      [["header"]],
+    );
+    expect(setSetting).toHaveBeenCalledWith("responses_sheet_synced_at:A", now.toISOString());
+  });
+
+  it("hands the caller's term to the closes and schedule builders too", async () => {
+    await syncSheet(CLOSES_SHEET, "A", { cooldownMs: 0, now });
+    await syncSheet(SCHEDULE_SHEET, "A", { cooldownMs: 0, now });
+
+    expect(loadCloseAdmin).toHaveBeenCalledWith("A");
+    expect(loadCurrentSchedule).toHaveBeenCalledWith("A");
+    expect(workingTermId).not.toHaveBeenCalled();
   });
 });

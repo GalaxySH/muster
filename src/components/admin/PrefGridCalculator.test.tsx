@@ -572,7 +572,7 @@ describe("PrefGridCalculator", () => {
         ]),
         everyWeekendOptIn: true,
         overrideInvalid: false,
-      });
+      }, "");
       expect(vi.mocked(saveAvailabilityFor).mock.calls[0]![1].selection).toHaveLength(4);
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
@@ -658,7 +658,7 @@ describe("PrefGridCalculator", () => {
         await user.click(screen.getByRole("button", { name: "Save anyway" }));
         expect(saveAvailabilityFor).toHaveBeenCalledWith(
           "stu@wisc.edu",
-          expect.objectContaining({ overrideInvalid: true }),
+          expect.objectContaining({ overrideInvalid: true }), "",
         );
         await waitFor(() => expect(refresh).toHaveBeenCalled());
       });
@@ -753,7 +753,7 @@ describe("PrefGridCalculator", () => {
         [{ blockId: "wd-a", day: "mon" }],
         [{ blockId: "wd-b", day: "wed" }],
         // No rotation named: the admin left that control alone.
-        undefined,
+        undefined, "",
       );
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
@@ -1083,7 +1083,7 @@ describe("PrefGridCalculator", () => {
         expect(pill().style.border).toContain("dashed");
         await user.click(save()!);
 
-        expect(applyScheduleEdits).toHaveBeenCalledWith("stu@wisc.edu", [], [], "b");
+        expect(applyScheduleEdits).toHaveBeenCalledWith("stu@wisc.edu", [], [], "b", "");
         await waitFor(() => expect(refresh).toHaveBeenCalled());
       });
 
@@ -1099,7 +1099,7 @@ describe("PrefGridCalculator", () => {
           "stu@wisc.edu",
           [],
           [{ blockId: "we-a", day: "sun" }],
-          "every",
+          "every", "",
         );
       });
 
@@ -1226,7 +1226,7 @@ describe("PrefGridCalculator", () => {
 
       await user.click(orphanCell("Wed"));
       await waitFor(() =>
-        expect(removeOrphanedSelection).toHaveBeenCalledWith("stu@wisc.edu", "gone", "wed"),
+        expect(removeOrphanedSelection).toHaveBeenCalledWith("stu@wisc.edu", "gone", "wed", ""),
       );
       // The server owns the outcome, so the page re-reads rather than guessing.
       await waitFor(() => expect(refresh).toHaveBeenCalled());

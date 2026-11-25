@@ -47,9 +47,12 @@ export interface ActionResult {
  */
 async function requireStudent(
   onBehalfOf = "",
-): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
-  const gate = await requireEditableStudent(onBehalfOf);
-  return gate.ok ? { email: gate.email, onBehalf: gate.onBehalf } : { error: gate.error };
+  renderedTermId = "",
+): Promise<{ email: string; onBehalf: boolean; termId: string } | { error: string }> {
+  const gate = await requireEditableStudent(onBehalfOf, renderedTermId);
+  return gate.ok
+    ? { email: gate.email, onBehalf: gate.onBehalf, termId: gate.termId }
+    : { error: gate.error };
 }
 
 /** The student page the entry lives on, plus the admin's view of it when they added it. */
@@ -78,6 +81,8 @@ async function touchSubmission(submissionId: string, who: { onBehalf: boolean })
 
 /** The admin-only "act for this student" field the response-page modal submits. */
 const onBehalfOf = (formData: FormData) => String(formData.get("student") ?? "").trim();
+/** The semester that modal was showing, sent beside it (see `requireEditableStudent`). */
+const termOf = (formData: FormData) => String(formData.get("termId") ?? "");
 
 /** Pull a File out of FormData and read it into a Buffer after validation. */
 async function readUpload(
@@ -100,15 +105,20 @@ function relayError(e: unknown): string {
 // types (PNG/JPEG); PDFs can't be shown as a glanceable thumbnail beside the
 // preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
 
   try {
-    const fileId = await relayUpload({ studentEmail: who.email, kind: "course", ...upload });
+    const fileId = await relayUpload({
+      studentEmail: who.email,
+      termId: who.termId,
+      kind: "course",
+      ...upload,
+    });
     const db = getDb();
-    const submissionId = await ensureSubmissionId(who.email);
+    const submissionId = await ensureSubmissionId(who.email, who.termId);
     const [prev] = await db
       .select({ courseScheduleFileId: submissions.courseScheduleFileId })
       .from(submissions)
@@ -131,13 +141,16 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
  * offers Replace and never an empty slot; clearing one (say, a schedule filed
  * under the wrong person) is the scheduler's call on the response page.
  */
-export async function removeCourseSchedule(onBehalfOf?: string): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+export async function removeCourseSchedule(
+  onBehalfOf?: string,
+  termId?: string,
+): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
   if (!who.onBehalf) return { ok: false, error: "Only an admin can remove a course schedule." };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ courseScheduleFileId: submissions.courseScheduleFileId })
     .from(submissions)
@@ -155,14 +168,14 @@ export async function removeCourseSchedule(onBehalfOf?: string): Promise<ActionR
 }
 
 export async function addExtracurricularFile(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
 
   // Cap before relaying so a rejected upload never orphans a Drive file.
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const ecCount = await db
     .select({ n: sql<number>`count(*)` })
     .from(extracurricularFiles)
@@ -177,6 +190,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
   try {
     const fileId = await relayUpload({
       studentEmail: who.email,
+      termId: who.termId,
       kind: "extracurricular",
       ...upload,
     });
@@ -192,12 +206,13 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
 export async function removeExtracurricularFile(
   rowId: string,
   onBehalfOf?: string,
+  termId?: string,
 ): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ fileId: extracurricularFiles.fileId })
     .from(extracurricularFiles)
@@ -214,12 +229,16 @@ export async function removeExtracurricularFile(
   return { ok: true };
 }
 
-export async function saveExtracurricularNotes(notes: string, student = ""): Promise<ActionResult> {
-  const who = await requireStudent(student);
+export async function saveExtracurricularNotes(
+  notes: string,
+  student = "",
+  termId = "",
+): Promise<ActionResult> {
+  const who = await requireStudent(student, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   await db
     .update(submissions)
     .set({ extracurricularNotes: notes.slice(0, 2000), ...editStamp(who) })
@@ -229,7 +248,7 @@ export async function saveExtracurricularNotes(notes: string, student = ""): Pro
 }
 
 export async function addTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
   // The cutoff (PLAN §8) binds students under the admin-set late policy:
@@ -240,7 +259,10 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   // says otherwise with `excused=0` (the Google Form import does that for a
   // range that came with no proof, docs/form-paste.md).
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([
+    getTravelCutoff(who.termId),
+    getLateTravelPolicy(who.termId),
+  ]);
   const decision = decideTravelSubmission(now, cutoff, policy);
   if (!decision.allowed && !who.onBehalf) {
     return {
@@ -268,7 +290,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 
   // Cap before relaying so a rejected upload never orphans a Drive file.
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const travelCount = await db
     .select({ n: sql<number>`count(*)` })
     .from(travelRequests)
@@ -282,7 +304,12 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 
   try {
     const proofFileId = upload
-      ? await relayUpload({ studentEmail: who.email, kind: "travel", ...upload })
+      ? await relayUpload({
+          studentEmail: who.email,
+          termId: who.termId,
+          kind: "travel",
+          ...upload,
+        })
       : null;
     await db.insert(travelRequests).values({
       id: randomUUID(),
@@ -309,7 +336,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
  * adding it again.
  */
 export async function updateTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
   // Same cutoff rule as adding: it binds the student, and an admin correcting an
@@ -326,7 +353,7 @@ export async function updateTravelRequest(formData: FormData): Promise<ActionRes
   if (endDate < startDate) return { ok: false, error: "End date can't be before the start date." };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   // Existence is checked directly rather than through affectedRows, which counts
   // CHANGED rows: saving the box without touching a field would otherwise come
   // back as "Entry not found". Both statements are scoped to this student's
@@ -355,15 +382,22 @@ export async function updateTravelRequest(formData: FormData): Promise<ActionRes
  * An admin acting on behalf is never locked out: the deadline is a rule for
  * students, and fixing what a student handed in is the admin's job after it.
  */
-async function travelUnlocked(who: { onBehalf: boolean }): Promise<boolean> {
+async function travelUnlocked(who: { onBehalf: boolean; termId: string }): Promise<boolean> {
   if (who.onBehalf) return true;
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(now), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([
+    getTravelCutoff(who.termId),
+    getLateTravelPolicy(who.termId),
+  ]);
   return decideTravelSubmission(now, cutoff, policy).allowed;
 }
 
-export async function removeTravelRequest(id: string, onBehalfOf?: string): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+export async function removeTravelRequest(
+  id: string,
+  onBehalfOf?: string,
+  termId?: string,
+): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   if (!(await travelUnlocked(who))) {
@@ -371,7 +405,7 @@ export async function removeTravelRequest(id: string, onBehalfOf?: string): Prom
   }
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ proofFileId: travelRequests.proofFileId })
     .from(travelRequests)

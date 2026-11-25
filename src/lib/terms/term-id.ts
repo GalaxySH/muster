@@ -1,0 +1,53 @@
+/**
+ * Which term (semester) the app is running in (docs/semester-domains-plan.md).
+ *
+ * One pointer, the `current_term_id` row in app_settings, names it. This module
+ * is a shared root like lib/db: the form core, the generator, W2W and the
+ * console all read it, and it imports none of them. It is plain (no
+ * `server-only`) because the roster import and the dev scripts run from the CLI.
+ *
+ * The request-side wrappers are `currentTermId()` and `workingTermId()` in ./working.
+ */
+import { eq } from "drizzle-orm";
+import type { Database } from "@/lib/db/client";
+import { appSettings, terms } from "@/lib/db/schema";
+
+export const SETTING_CURRENT_TERM_ID = "current_term_id";
+
+/** A database handle or an open transaction on one. */
+export type DbOrTx = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * The current term's id. There is no default term anywhere in the code: this
+ * throws when the pointer is missing, blank, or names a term that does not
+ * exist, so a broken install fails closed. Nothing may ever fall back to
+ * another term or to reading every term.
+ *
+ * The join is what catches a dangling pointer. Without it the id would come
+ * back fine and every list would simply read empty.
+ */
+export async function getCurrentTermId(db: DbOrTx): Promise<string> {
+  const [row] = await db
+    .select({ id: terms.id })
+    .from(appSettings)
+    .innerJoin(terms, eq(terms.id, appSettings.value))
+    .where(eq(appSettings.key, SETTING_CURRENT_TERM_ID))
+    .limit(1);
+  if (!row?.id) {
+    throw new Error(
+      "No current term: app_settings.current_term_id is missing or names a term that does not exist.",
+    );
+  }
+  return row.id;
+}
+
+/**
+ * One term's row: its name, dates, travel cutoff and the rest. Throws when no
+ * such term exists. A request reads the working term's through `workingTerm()`;
+ * an action that already holds its term id reads it here.
+ */
+export async function getTerm(db: DbOrTx, termId: string): Promise<typeof terms.$inferSelect> {
+  const [term] = await db.select().from(terms).where(eq(terms.id, termId)).limit(1);
+  if (!term) throw new Error(`The term "${termId}" does not exist.`);
+  return term;
+}

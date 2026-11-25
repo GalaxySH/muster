@@ -60,8 +60,10 @@ describe("buildChangeDigestEmail", () => {
       ],
       "https://muster.test",
     );
-    const ada = "https://muster.test/admin/students/ada%40wisc.edu#change-request-req-1";
-    const grace = "https://muster.test/admin/students/grace%40wisc.edu#change-request-req-2";
+    const ada =
+      "https://muster.test/admin/students/ada%40wisc.edu?request=req-1#change-request-req-1";
+    const grace =
+      "https://muster.test/admin/students/grace%40wisc.edu?request=req-2#change-request-req-2";
     expect(text).toContain(ada);
     expect(text).toContain(grace);
     expect(html).toContain(`href="${ada}"`);

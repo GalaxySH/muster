@@ -6,6 +6,7 @@
  * own page now (TravelForm).
  */
 import { useState } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   uploadCourseSchedule,
   addExtracurricularFile,
@@ -45,6 +46,7 @@ export function CourseScheduleForm({
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   // Uploads need both an active Drive grant and an open form window.
   const canUpload = driveConnected && editable;
+  const termId = useRenderedTermId();
   const [notes, setNotes] = useState(initial.extracurricularNotes);
 
   return (
@@ -114,7 +116,7 @@ export function CourseScheduleForm({
             pending={busy("ecnotes")}
             pendingLabel="Saving…"
             disabled={pending || !editable}
-            onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes, onBehalfOf))}
+            onClick={() => run("ecnotes", () => saveExtracurricularNotes(notes, onBehalfOf, termId))}
           >
             Save notes
           </ActionButton>
@@ -128,7 +130,7 @@ export function CourseScheduleForm({
                 key={f.id}
                 fileId={f.fileId}
                 label="Extracurricular proof"
-                onRemove={() => run("ec", () => removeExtracurricularFile(f.id, onBehalfOf))}
+                onRemove={() => run("ec", () => removeExtracurricularFile(f.id, onBehalfOf, termId))}
                 removeDisabled={pending || !editable}
               />
             ))}

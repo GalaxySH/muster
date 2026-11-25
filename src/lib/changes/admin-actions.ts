@@ -10,7 +10,8 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { changeRequestFiles, changeRequests } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
+import { currentTermId } from "@/lib/terms/working";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
 import { findStudentByEmail } from "@/lib/roster/lookup";
@@ -19,23 +20,43 @@ import { validateChangeRequest, type ShiftTimeBlock } from "@/lib/domain/change-
 import { listChangeRequests, type ChangeRequestRow } from "./data";
 
 /**
- * One employee's requests, for the form panel when an admin picks an employee
- * to act for (the panel's list follows whoever the form targets).
+ * Whose requests the form panel shows, and from which semester. The same rule
+ * as filing one (changes/actions.ts): with nobody picked (null) it is the
+ * signed-in admin's own, in the current semester. Anyone picked, the admin
+ * included, is read in the semester the page was rendered for.
  */
-export async function adminListChangeRequests(email: string): Promise<ChangeRequestRow[]> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return [];
-  return listChangeRequests(normalizeEmail(email));
+async function panelTarget(
+  email: string | null,
+  termId: string,
+): Promise<{ email: string; termId: string } | null> {
+  if (!email) {
+    const gate = await requireAdmin();
+    return gate.ok ? { email: gate.email, termId: await currentTermId() } : null;
+  }
+  const gate = await requireAdminIn(termId);
+  return gate.ok ? { email: normalizeEmail(email), termId: gate.termId } : null;
+}
+
+/** The requests of whoever the form panel acts for (the list follows the form). */
+export async function adminListChangeRequests(
+  email: string | null,
+  termId: string,
+): Promise<ChangeRequestRow[]> {
+  const target = await panelTarget(email, termId);
+  return target ? listChangeRequests(target.email, target.termId) : [];
 }
 
 /**
- * The live blocks of an employee's position, for the form's quick-insert shift
- * times when an admin picks someone to act for. Empty without a position.
+ * The live blocks of the position of whoever the form panel acts for, for the
+ * quick-insert shift times. Empty without a position.
  */
-export async function adminShiftTimeBlocks(email: string): Promise<ShiftTimeBlock[]> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return [];
-  const student = await findStudentByEmail(email);
+export async function adminShiftTimeBlocks(
+  email: string | null,
+  termId: string,
+): Promise<ShiftTimeBlock[]> {
+  const target = await panelTarget(email, termId);
+  if (!target) return [];
+  const student = await findStudentByEmail(target.email, target.termId);
   if (!student?.positionId) return [];
   const loaded = await loadPositionWithBlocks(student.positionId);
   return (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));
@@ -48,11 +69,16 @@ export interface AdminChangeRequestResult {
 
 const GONE = "This request no longer exists.";
 
-async function requestOwner(id: string): Promise<string | null> {
+/**
+ * Who filed the request, when it is one of this term's. The row actions pass
+ * the term their gate proved is the page's, so a page left open on another
+ * semester is told so before this runs.
+ */
+async function requestOwner(id: string, termId: string): Promise<string | null> {
   const [row] = await getDb()
     .select({ studentEmail: changeRequests.studentEmail })
     .from(changeRequests)
-    .where(eq(changeRequests.id, id))
+    .where(and(eq(changeRequests.id, id), eq(changeRequests.termId, termId)))
     .limit(1);
   return row?.studentEmail ?? null;
 }
@@ -66,11 +92,12 @@ function revalidateRequestViews(studentEmail: string) {
 export async function setChangeRequestResolved(
   id: string,
   resolved: boolean,
+  termId: string,
 ): Promise<AdminChangeRequestResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const owner = await requestOwner(id);
+  const owner = await requestOwner(id, gate.termId);
   if (!owner) return { ok: false, error: GONE };
 
   await getDb()
@@ -89,14 +116,15 @@ export async function setChangeRequestResolved(
 export async function updateChangeRequest(
   id: string,
   input: { day: string; shiftText: string; comment: string; permanent: boolean },
+  termId: string,
 ): Promise<AdminChangeRequestResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const checked = validateChangeRequest({ ...input, permanent: input.permanent === true });
   if (!checked.ok) return { ok: false, error: checked.error };
 
-  const owner = await requestOwner(id);
+  const owner = await requestOwner(id, gate.termId);
   if (!owner) return { ok: false, error: GONE };
 
   await getDb().update(changeRequests).set(checked.value).where(eq(changeRequests.id, id));
@@ -110,11 +138,14 @@ export async function updateChangeRequest(
  * are gathered first and cleaned up after the row is gone (best effort, the
  * same order removing a travel entry uses).
  */
-export async function deleteChangeRequest(id: string): Promise<AdminChangeRequestResult> {
-  const gate = await requireAdmin();
+export async function deleteChangeRequest(
+  id: string,
+  termId: string,
+): Promise<AdminChangeRequestResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const owner = await requestOwner(id);
+  const owner = await requestOwner(id, gate.termId);
   if (!owner) return { ok: false, error: GONE };
 
   const db = getDb();

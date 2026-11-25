@@ -29,10 +29,13 @@ import {
 
 export function ScheduleEmailSettingsPanel({
   config,
+  termName,
   domain,
   adminEmail,
 }: {
   config: ScheduleEmailConfig;
+  /** The working term's name, which the preview shows for `{{term}}`. */
+  termName: string;
   /** EMAIL_FROM's domain, which the sender address always uses. */
   domain: string;
   adminEmail: string;
@@ -56,11 +59,14 @@ export function ScheduleEmailSettingsPanel({
 
   const preview = useMemo(() => {
     try {
-      return { ok: true as const, email: renderScheduleEmail(draft, SAMPLE_VARS, SAMPLE_SHIFTS) };
+      return {
+        ok: true as const,
+        email: renderScheduleEmail(draft, { ...SAMPLE_VARS, term: termName }, SAMPLE_SHIFTS),
+      };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
-  }, [draft]);
+  }, [draft, termName]);
 
   function save() {
     setMsg(null);

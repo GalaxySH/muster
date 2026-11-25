@@ -25,7 +25,7 @@ import {
 } from "@/lib/availability/effective";
 import { hourCap } from "@/lib/domain/caps";
 import { validateAvailability } from "@/lib/domain/validation";
-import { REQUIRED_CLOSE_CLAIMS, formatCloseSlot } from "@/lib/domain/close-claims";
+import { formatCloseSlot } from "@/lib/domain/close-claims";
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import { weekendCohortOf } from "@/lib/domain/scheduling/types";
 import { formatTime } from "@/lib/domain/time";
@@ -37,7 +37,7 @@ import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
 import { FormPasteButton } from "@/components/admin/FormPasteButton";
 import { NotesCard } from "@/components/admin/NotesCard";
-import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
+import { EvidenceThumb } from "@/components/evidence/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { RemoveEvidenceButton } from "@/components/admin/RemoveEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
@@ -56,7 +56,12 @@ import { RequestedHoursEditor } from "@/components/admin/RequestedHoursEditor";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
-import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
+import {
+  listChangeRequests,
+  changeRequestFilesByRequest,
+  requestInOtherTerm,
+} from "@/lib/changes/data";
+import { SelectTermButton } from "@/components/TermSwitcher";
 import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
@@ -75,6 +80,7 @@ import {
   successPillStyle,
   dangerPillStyle,
 } from "@/components/admin/ui";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -111,18 +117,27 @@ const fmtStamp = (d: Date): string => {
   return `${get("day")} ${get("month")} ${get("year")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
 };
 
-/** Date only (no time), US Central, e.g. "26 Jul 2026", for the hire date. */
-const fmtDay = (d: Date | null): string | null => {
-  if (!d) return null;
+/** Date only (no time), e.g. "26 Jul 2026". No zone reads the local frame. */
+const formatDay = (d: Date, timeZone?: string): string => {
   const parts = new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    timeZone: "America/Chicago",
+    timeZone,
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("day")} ${get("month")} ${get("year")}`;
 };
+
+/** The day a moment fell on in US Central. */
+const fmtDay = (d: Date): string => formatDay(d, "America/Chicago");
+
+/**
+ * The hire date. It is a calendar day, not a moment: the driver hands a `date`
+ * column back as local midnight, so it is read in the local frame. Converting
+ * it to Central showed the day before on a server running in UTC.
+ */
+const fmtHireDay = (d: Date | null): string | null => (d ? formatDay(d) : null);
 
 function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   const block = blocks.find((b) => b.id === cell.blockId);
@@ -160,6 +175,8 @@ export default async function StudentDetailPage({
     /** Sort order carried from the response list (see admin/response-sort.ts). */
     sort?: string;
     dir?: string;
+    /** A linked change request (lib/changes/links.ts), named when it is another semester's. */
+    request?: string;
   }>;
 }) {
   const session = await getAppSession();
@@ -192,7 +209,13 @@ export default async function StudentDetailPage({
   }
 
   const nav = await getResponseNeighbors(email, filters, sort);
-  const changeRequests = await listChangeRequests(detail.email);
+  // The working term's, the same ones the queue lists.
+  const changeRequests = await listChangeRequests(detail.email, await workingTermId());
+  // A link to one of this student's requests from another semester says which.
+  const otherTermRequest =
+    typeof sp.request === "string"
+      ? await requestInOtherTerm(detail.email, sp.request, await workingTermId())
+      : null;
   const changeFiles = await changeRequestFilesByRequest(detail.email);
   // Thumbnails fetch bytes through the Drive proxy, so only the newest few
   // file-bearing requests get previews; older ones fall back to plain links.
@@ -228,12 +251,15 @@ export default async function StudentDetailPage({
       })
     : null;
 
-  const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
+  const highDemand = position
+    ? await loadHighDemandCells(position.id, await workingTermId())
+    : new Set<string>();
   // Every assignable position, for the change-position control in the details
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.
-  const allPositions = await positionOptions();
-  const [scheduleEmail, emailEnabled] = await Promise.all([
+  const allPositions = await positionOptions(await workingTermId());
+  const [term, scheduleEmail, emailEnabled] = await Promise.all([
+    workingTerm(),
     getScheduleEmailConfig(),
     getEmailSendingEnabled(),
   ]);
@@ -241,7 +267,9 @@ export default async function StudentDetailPage({
   const allGroups = (await listGroups()).map((g) => ({ id: g.id, name: g.name }));
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
-  const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
+  const schedule = position
+    ? await loadStudentCurrentAssignments(detail.email, await workingTermId())
+    : null;
   // The same coverage grid /admin/schedule shows, narrowed to this student's
   // position: how staffed each of their shifts is. Only once a run exists, since
   // the numbers on it are that run's seats.
@@ -334,12 +362,13 @@ export default async function StudentDetailPage({
           )}
           <Link
             href={`/change-requests?student=${encodeURIComponent(detail.email)}`}
-            style={newChangeRequestLink}
+            style={smallAction}
           >
             New change request
           </Link>
           <FormPasteButton
             studentEmail={detail.email}
+            termStartsOn={term.startsOn}
             onFile={{
               positionName: position?.name ?? null,
               desiredHours: submission?.desiredHours ?? null,
@@ -365,6 +394,7 @@ export default async function StudentDetailPage({
               studentEmail: detail.email,
               displayName: detail.displayName,
               positionName: position?.name ?? "your position",
+              termName: term.name,
               template: {
                 subject: scheduleEmail.subject,
                 body: scheduleEmail.body,
@@ -609,11 +639,13 @@ export default async function StudentDetailPage({
                   }}
                 >
                   {t.proofFileId ? (
-                    <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                    <div style={{ flexShrink: 0 }}>
+                      <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                    </div>
                   ) : (
                     <span style={noProofThumb}>No proof</span>
                   )}
-                  <div style={{ fontSize: 13, flex: 1 }}>
+                  <div style={{ fontSize: 13, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                     <div>
                       {t.startDate} → {t.endDate}{" "}
                       <span style={t.excused ? successPillStyle : dangerPillStyle}>
@@ -713,9 +745,19 @@ export default async function StudentDetailPage({
             so they render even for students without one. Kept near the end of DOM
             order so a long history packs into a late column slot (only Student
             details and coverage follow). */}
-        {changeRequests.length > 0 && (
+        {(changeRequests.length > 0 || otherTermRequest) && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
+            {otherTermRequest && (
+              <p id={changeRequestAnchor(sp.request!)} style={otherTermNote}>
+                <span>This request is from {otherTermRequest.name}.</span>
+                <SelectTermButton
+                  termId={otherTermRequest.id}
+                  label={`Switch to ${otherTermRequest.name}`}
+                  style={smallAction}
+                />
+              </p>
+            )}
             <div style={changeList}>
               {changeRequests.map((r) => {
                 const files = changeFiles.get(r.id) ?? [];
@@ -807,7 +849,7 @@ export default async function StudentDetailPage({
                     : "var(--color-text-secondary)",
                 }}
               >
-                {fmtDay(detail.hiredOn) ?? "Unknown"}
+                {fmtHireDay(detail.hiredOn) ?? "Unknown"}
               </div>
             </div>
             {submission?.scheduleEmailSentAt && (
@@ -895,6 +937,17 @@ const changeList: React.CSSProperties = {
   overflowY: "auto",
   // Keeps the scrollbar clear of the resolved checkbox at each row's right edge.
   paddingRight: 4,
+};
+
+/** The line naming the semester of a linked request this page does not list. */
+const otherTermNote: React.CSSProperties = {
+  scrollMarginTop: 20,
+  margin: "0 0 10px",
+  fontSize: 13,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "6px 10px",
 };
 
 /** Unresolved (and withdrawn) requests: an untinted outline box, aligned with resolved rows. */
@@ -1032,7 +1085,7 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
         <SectionLabel>Weekend closes</SectionLabel>
         <span style={closes.complete ? successPillStyle : dangerPillStyle}>
           {closes.complete ? "✓ " : ""}
-          {closes.claims.length} of {REQUIRED_CLOSE_CLAIMS}
+          {closes.claims.length} of {closes.required}
         </span>
       </div>
       {closes.claims.length > 0 ? (
@@ -1145,8 +1198,11 @@ function NavArrow({ href, dir }: { href: string | null; dir: "prev" | "next" }) 
 
 // --- styles ---
 
-/** Quick link to the change-request form, pre-seeded with this student. */
-const newChangeRequestLink: React.CSSProperties = {
+/**
+ * The page's small secondary action: the quick link to the change-request form
+ * (pre-seeded with this student) and the switch to another semester's request.
+ */
+const smallAction: React.CSSProperties = {
   fontSize: 13,
   padding: "5px 12px",
   borderRadius: "var(--border-radius-md)",
@@ -1154,6 +1210,10 @@ const newChangeRequestLink: React.CSSProperties = {
   background: "var(--color-background-primary)",
   color: "var(--color-text-primary)",
   textDecoration: "none",
+  cursor: "pointer",
+  // A button does not inherit these, so without them it renders in Arial and shorter than the link.
+  fontFamily: "inherit",
+  lineHeight: "inherit",
 };
 
 /**

@@ -15,6 +15,7 @@ import { EmailSettingsPanel } from "@/components/admin/EmailSettingsPanel";
 import { DigestSettingsPanel } from "@/components/admin/DigestSettingsPanel";
 import { ScheduleEmailSettingsPanel } from "@/components/admin/ScheduleEmailSettingsPanel";
 import { Page } from "@/components/ui";
+import { workingTerm } from "@/lib/terms/working";
 
 /**
  * Email settings: the master switch for all outbound email (honored by
@@ -28,8 +29,9 @@ export default async function EmailSettingsPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/email-settings");
   if (!session.isAdmin) redirect("/me");
 
-  const [enabled, digestEnabled, digestRecipients, digestLastRun, scheduleEmail] =
+  const [term, enabled, digestEnabled, digestRecipients, digestLastRun, scheduleEmail] =
     await Promise.all([
+      workingTerm(),
       getEmailSendingEnabled(),
       getChangeDigestEnabled(),
       getChangeDigestRecipients(),
@@ -66,6 +68,7 @@ export default async function EmailSettingsPage() {
       <h2 style={{ fontSize: 17, margin: "24px 0 6px" }}>Schedule email</h2>
       <ScheduleEmailSettingsPanel
         config={scheduleEmail}
+        termName={term.name}
         domain={fromDomain(env.EMAIL_FROM)}
         adminEmail={session.email}
       />

@@ -1,18 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { setTravelCutoff, setLateTravelAccepted } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
 
 /**
- * Admin editor for the travel-excusal cutoff (PLAN §8). One global instant,
+ * Admin editor for the term's travel-excusal cutoff (PLAN §8). One instant,
  * independent of the per-group form windows: students can add travel entries
  * until the cutoff; what happens after it is the late-policy toggle below the
  * date. Off (default), the travel step refuses new entries and locks the
  * existing ones ("refuse" in domain/travel.ts); on, entries stay accepted but
- * are stored late/unexcused ("accept-and-flag"). Clearing the date reverts to
- * the 9/1 default.
+ * are stored late/unexcused ("accept-and-flag"). Reset puts the date back to
+ * the term's default, the day before the semester starts. Nothing else moves
+ * the cutoff: changing the semester's first day leaves it where it was set.
  */
 export function TravelCutoffPanel({
   cutoffMs,
@@ -23,6 +25,7 @@ export function TravelCutoffPanel({
   isCustom: boolean;
   lateAccepted: boolean;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [date, setDate] = useState(toLocalInput(cutoffMs));
   const [pending, startTransition] = useTransition();
@@ -31,7 +34,7 @@ export function TravelCutoffPanel({
   function act(iso: string | null, okText: string) {
     setMsg(null);
     startTransition(async () => {
-      const res = await setTravelCutoff(iso);
+      const res = await setTravelCutoff(termId, iso);
       setMsg({ ok: res.ok, text: res.ok ? okText : (res.error ?? "Failed.") });
       if (res.ok) router.refresh();
     });
@@ -40,7 +43,7 @@ export function TravelCutoffPanel({
   function toggleLate(accepted: boolean) {
     setMsg(null);
     startTransition(async () => {
-      const res = await setLateTravelAccepted(accepted);
+      const res = await setLateTravelAccepted(termId, accepted);
       setMsg({
         ok: res.ok,
         text: res.ok
@@ -56,7 +59,7 @@ export function TravelCutoffPanel({
   function save() {
     const iso = localInputToIso(date);
     if (!iso) {
-      setMsg({ ok: false, text: "Pick a date (or use Reset to restore the 9/1 default)." });
+      setMsg({ ok: false, text: "Pick a date, or use Reset to restore the default." });
       return;
     }
     act(iso, "Cutoff saved.");
@@ -68,7 +71,7 @@ export function TravelCutoffPanel({
       <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
         Students can add travel entries until <strong>00:00 (midnight)</strong> on this date. This
         date affects all groups.
-        {!isCustom && " Currently the September 1 default."}
+        {!isCustom && " Currently the default, the day before the semester starts."}
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
@@ -79,7 +82,7 @@ export function TravelCutoffPanel({
           <button
             type="button"
             disabled={pending}
-            onClick={() => act(null, "Reset to the September 1 default.")}
+            onClick={() => act(null, "Reset to the default.")}
           >
             Reset to default
           </button>

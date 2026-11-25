@@ -7,20 +7,26 @@
 import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { students, submissions } from "@/lib/db/schema";
+import { students, submissions, termMembers } from "@/lib/db/schema";
 import type { AnalyticsStudent } from "./analytics-view";
+import { workingTermId } from "@/lib/terms/working";
+import { memberOf, submissionOfStudent } from "@/lib/terms/scope";
 
 export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
+  // "Signed in" means in this semester: the stamp on the person's place in the
+  // term, which only moves while the term is the current one.
+  const termId = await workingTermId();
   const rows = await getDb()
     .select({
       email: students.email,
       displayName: students.displayName,
-      lastSeenAt: students.lastSeenAt,
+      lastSeenAt: termMembers.lastSeenAt,
       status: submissions.status,
     })
     .from(students)
-    .leftJoin(submissions, eq(submissions.studentEmail, students.email))
-    .where(eq(students.onRoster, true))
+    .innerJoin(termMembers, memberOf(termId))
+    .leftJoin(submissions, submissionOfStudent(termId))
+    .where(eq(termMembers.onRoster, true))
     .orderBy(asc(students.displayName), asc(students.email));
 
   return rows.map((r) => ({

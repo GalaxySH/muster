@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { currentTermId } from "@/lib/terms/working";
 import { getHighDemandMarksEnabled } from "@/lib/settings";
 import { loadWizardNav } from "@/lib/flow/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
@@ -16,7 +17,8 @@ export default async function AvailabilityPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/availability");
 
-  const form = await loadStudentForm(session.email);
+  const termId = await currentTermId();
+  const form = await loadStudentForm(session.email, termId);
 
   if (!form) {
     return (
@@ -30,7 +32,7 @@ export default async function AvailabilityPage() {
   }
 
   // Membership gate (PLAN §13): no group ⇒ no access at all.
-  const access = await resolveStudentAccess(form.student.email);
+  const access = await resolveStudentAccess(form.student.email, termId);
   if (access.access === "no-group") {
     return (
       <Page>
@@ -62,10 +64,10 @@ export default async function AvailabilityPage() {
   // The busiest-shift marks are admin-switchable (/admin/groups). Off, the set
   // is empty, which drops the red bars and their legend from the grid.
   const [nav, marksEnabled] = await Promise.all([
-    loadWizardNav(form.student.email),
+    loadWizardNav(form.student.email, termId),
     getHighDemandMarksEnabled(),
   ]);
-  const highDemand = marksEnabled ? await loadHighDemandCells(form.position.id) : new Set<string>();
+  const highDemand = marksEnabled ? await loadHighDemandCells(form.position.id, termId) : new Set<string>();
 
   return (
     <Page width="wide">

@@ -10,7 +10,7 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { scheduleAssignments, students, w2wEmployees } from "@/lib/db/schema";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
 import { matchPlan } from "@/lib/domain/w2w-plan/match";
 import { deriveW2wName } from "@/lib/domain/w2w-plan/identity";
@@ -54,15 +54,15 @@ export interface ExportModel {
 export type ExportUnavailable = { reason: "no-plan" } | { reason: "no-run" };
 
 /** Everything the export needs, or why it cannot run yet. */
-export async function buildExportModel(): Promise<ExportModel | ExportUnavailable> {
-  const plan = await getCurrentPlan();
+export async function buildExportModel(termId: string): Promise<ExportModel | ExportUnavailable> {
+  const plan = await getCurrentPlan(termId);
   if (!plan) return { reason: "no-plan" };
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { reason: "no-run" };
 
   const db = getDb();
   const [inputs, assignmentRows] = await Promise.all([
-    loadPlanMatchInputs(),
+    loadPlanMatchInputs(termId),
     // On-roster only. This is the file the scheduler uploads into W2W, so a
     // student who left after the run was generated must not be given a shift in
     // it. The identity reads below all hang off these emails.
@@ -75,7 +75,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
       })
       .from(scheduleAssignments)
       .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-      .where(and(onRosterStudent(), eq(scheduleAssignments.runId, run.id))),
+      .where(and(onRosterStudent(termId), eq(scheduleAssignments.runId, run.id))),
   ]);
 
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
@@ -162,7 +162,7 @@ export async function buildExportModel(): Promise<ExportModel | ExportUnavailabl
         db
           .select({ email: students.email, displayName: students.displayName })
           .from(students)
-          .where(onRosterStudent()),
+          .where(onRosterStudent(termId)),
       ])
     : [[], []];
   const nameIndex = buildNameIndex(

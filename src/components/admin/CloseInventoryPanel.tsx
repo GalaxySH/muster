@@ -7,6 +7,7 @@
  * hold claims are reported, not removed).
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { generateCloseInventory } from "@/lib/closes/admin-actions";
 import { ActionButton } from "@/components/ui";
@@ -18,6 +19,7 @@ export function CloseInventoryPanel({
   defaults: { start: string; end: string; capacity: number };
   hasSlots: boolean;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [start, setStart] = useState(defaults.start);
   const [end, setEnd] = useState(defaults.end);
@@ -28,7 +30,7 @@ export function CloseInventoryPanel({
   function run() {
     setMsg(null);
     startTransition(async () => {
-      const res = await generateCloseInventory({ start, end, capacity: Number(capacity) });
+      const res = await generateCloseInventory(termId, { start, end, capacity: Number(capacity) });
       if (!res.ok || !res.summary) {
         setMsg({ ok: false, text: res.error ?? "Something went wrong." });
         return;

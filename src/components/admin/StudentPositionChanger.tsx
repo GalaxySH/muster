@@ -10,6 +10,7 @@
  * is the part an admin would otherwise have to discover.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { changeStudentPosition } from "@/lib/positions/actions";
 
@@ -24,6 +25,7 @@ export function StudentPositionChanger({
   currentPositionId,
   options,
 }: StudentPositionChangerProps) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState("");
@@ -43,7 +45,7 @@ export function StudentPositionChanger({
     if (!ok) return;
 
     startTransition(async () => {
-      const res = await changeStudentPosition(studentEmail, chosen.id);
+      const res = await changeStudentPosition(studentEmail, chosen.id, termId);
       if (!res.ok) {
         setMsg({ ok: false, text: res.error ?? "That did not work." });
         return;
@@ -53,6 +55,11 @@ export function StudentPositionChanger({
       if (res.removedShifts > 0) {
         parts.push(
           `${res.removedShifts} scheduled shift${res.removedShifts === 1 ? "" : "s"} removed.`,
+        );
+      }
+      if (res.releasedCloses > 0) {
+        parts.push(
+          `${res.releasedCloses} weekend close${res.releasedCloses === 1 ? "" : "s"} opened up.`,
         );
       }
       setMsg({ ok: true, text: parts.join(" ") });

@@ -11,7 +11,6 @@
  * wrong. An empty list is the good day, not a broken page.
  */
 import { windowState, type WindowState } from "@/lib/domain/window";
-import { REQUIRED_CLOSE_CLAIMS } from "@/lib/domain/close-claims";
 import { blockSetWarnings, positionCapacityCheck } from "@/lib/domain/config-validation";
 import { stalenessMessage } from "@/lib/domain/scheduling/diff";
 import type { MapIssue } from "@/lib/domain/w2w-plan/map-health";
@@ -19,7 +18,6 @@ import type { Position, ShiftBlock } from "@/lib/domain/types";
 import { digestRunHealth } from "@/lib/changes/digest-health";
 import { FLAG_LABELS } from "./response-filters";
 import type { DbFlagType } from "@/lib/db/schema";
-import { TEST_GROUP_ID } from "@/lib/test-accounts/constants";
 
 /** A draft nobody has touched in this long is stalled, not in progress. */
 export const STALLED_DRAFT_DAYS = 3;
@@ -69,6 +67,8 @@ export interface DashboardGroup {
   name: string;
   opensAt: Date | null;
   closesAt: Date | null;
+  /** Set on the term's test-accounts group, which is never a cohort to track. */
+  isTest?: boolean;
 }
 
 /** One (block, day) cell and how many students picked it themselves. */
@@ -158,7 +158,7 @@ export interface DashboardSnapshot {
   config: {
     /** DRIVE_FOLDER_ID is set; when false, uploads land in a personal Drive. */
     driveFolderConfigured: boolean;
-    /** Effective travel-excusal cutoff (admin value or the 9/1 default). */
+    /** Effective travel-excusal cutoff (the term's own). */
     travelCutoff: Date;
     /** The admin's late policy: true = travel past the cutoff is accepted as late (PLAN §8). */
     lateTravelAccepted: boolean;
@@ -262,6 +262,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     percent: onRoster === 0 ? 0 : Math.round((submitted.length / onRoster) * 100),
   };
 
+  const testGroupIds = new Set(groups.filter((g) => g.isTest).map((g) => g.id));
   const groupProgress: GroupProgress[] = groups.map((g) => {
     const members = students.filter((s) => s.groupId === g.id);
     return {
@@ -315,7 +316,7 @@ export function buildDashboardView(snapshot: DashboardSnapshot, now: Date): Dash
     totals,
     // Never a real cohort to track progress on; keep it out of the response-progress
     // table (it still shows on /admin/groups, where its window is managed).
-    groups: groupProgress.filter((g) => g.id !== TEST_GROUP_ID),
+    groups: groupProgress.filter((g) => !testGroupIds.has(g.id)),
     ungrouped,
     w2wMapProblems: snapshot.w2wMapIssues.filter((i) => i.severity === "danger").length,
     alerts: buildAlerts(snapshot, now, { ungrouped, groupProgress }),
@@ -564,7 +565,7 @@ function buildAlerts(
     warning.push({
       id: "closes-short",
       severity: "warning",
-      title: `${s.closes.leadsShort} shift ${plural(s.closes.leadsShort, "lead is", "leads are")} short of ${REQUIRED_CLOSE_CLAIMS} weekend closes.`,
+      title: `${s.closes.leadsShort} shift ${plural(s.closes.leadsShort, "lead is", "leads are")} short on weekend closes.`,
       href: "/admin/closes",
       linkLabel: "Closes",
     });
@@ -674,8 +675,8 @@ function buildAlerts(
       severity: "warning",
       title: "The travel cutoff has passed, so students can no longer add travel.",
       detail: "A form window is still open. Move the cutoff later if this is too early.",
-      href: "/admin/groups",
-      linkLabel: "Groups",
+      href: "/admin/terms",
+      linkLabel: "Semester",
     });
   }
 

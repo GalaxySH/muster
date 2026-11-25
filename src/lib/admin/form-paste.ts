@@ -1,3 +1,4 @@
+import { termYearFor } from "@/lib/domain/terms";
 /**
  * The Google Form paste import (docs/form-paste.md): pure parsing and planning.
  *
@@ -171,15 +172,15 @@ function isRealDate(y: number, m: number, d: number): boolean {
 
 /**
  * The form's travel dates: `MM/DD-MM/DD` ranges separated by commas, the space
- * after a comma optional. The form has no year, so it comes from the response:
- * a start in August through December is in the year the form was answered,
- * January through July in the year after, and an end before its start rolls
- * into the following year (`12/18-01/18`). Exact duplicates are dropped; pieces
+ * after a comma optional. The form has no year, so it comes from the term the
+ * response is for (`termYearFor`): for a September start, August through
+ * December is that year and January through July the year after. An end
+ * before its start rolls into the following year (`12/18-01/18`). Exact duplicates are dropped; pieces
  * that don't read as a range come back in `unread`.
  */
 export function parseTravelDates(
   text: string,
-  baseYear: number,
+  termStartsOn: string,
 ): { ranges: TravelRange[]; unread: string[] } {
   const ranges: TravelRange[] = [];
   const unread: string[] = [];
@@ -194,7 +195,7 @@ export function parseTravelDates(
       continue;
     }
     const [sm = 0, sd = 0, em = 0, ed = 0] = m.slice(1).map(Number);
-    const sy = sm >= 8 ? baseYear : baseYear + 1;
+    const sy = termYearFor(sm, sd, termStartsOn);
     let ey = sy;
     if (em * 100 + ed < sm * 100 + sd) ey += 1;
     if (!isRealDate(sy, sm, sd) || !isRealDate(ey, em, ed)) {
@@ -334,7 +335,7 @@ export function formDate(iso: string | null): string {
  * the scheduler can compare, and starts unchecked when it would change nothing
  * (or would undo something more authoritative, like an in-app submission).
  */
-export function buildPlan(paste: FormPaste, onFile: OnFile, now: Date): Plan {
+export function buildPlan(paste: FormPaste, onFile: OnFile, termStartsOn: string): Plan {
   const steps: Step[] = [];
   const warnings: string[] = [];
   const lines: string[] = [];
@@ -481,8 +482,7 @@ export function buildPlan(paste: FormPaste, onFile: OnFile, now: Date): Plan {
   // past the last range ride as links in the last entry's note.
   const travelText = value("travelDates");
   const proofs = paste.files.travelProof ?? [];
-  const baseYear = Number(paste.submittedAt?.slice(0, 4)) || now.getFullYear();
-  const { ranges, unread } = parseTravelDates(travelText, baseYear);
+  const { ranges, unread } = parseTravelDates(travelText, termStartsOn);
   if (unread.length) lines.push(`Travel dates not read: ${unread.join(", ")}`);
   const proofLinks = (fs: PasteFile[]) => fs.map((f) => f.sourceUrl).join(" ");
   ranges.forEach((r, i) => {

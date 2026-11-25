@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createW2wMapping, deleteW2wMapping, updateW2wMapping } from "@/lib/w2w/map-actions";
 import type { MapPositionOption, W2wMapRow } from "@/lib/w2w/map-data";
 import type { PlanPosition } from "@/lib/domain/w2w-plan/map-health";
@@ -46,6 +47,7 @@ export function W2wPositionMapPanel({
   hasPlan: boolean;
 }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -130,7 +132,7 @@ export function W2wPositionMapPanel({
         : "";
     if (!confirm(`Remove the mapping for ${row.w2wPositionName}?${rows}`)) return;
     act(
-      () => deleteW2wMapping(row.w2wPositionId),
+      () => deleteW2wMapping(row.w2wPositionId, termId),
       "Mapping removed.",
       () => forgetDraft(row.w2wPositionId),
     );

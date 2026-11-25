@@ -21,7 +21,7 @@ vi.mock("@/lib/schedule/data", () => ({
 import { getTableName, type SQL, type Table } from "drizzle-orm";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { onRosterStudent } from "@/lib/roster/lookup";
+import { onRosterStudent } from "@/lib/terms/scope";
 import type { W2wPlanRow } from "@/lib/domain/w2w-plan/types";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
 import { buildExportModel } from "./export-data";
@@ -29,7 +29,7 @@ import { loadRepairSeeds } from "./repair";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 const render = (clause: unknown) => new MySqlDialect().sqlToQuery(clause as SQL).sql;
-const ROSTER_FILTER = render(onRosterStudent());
+const ROSTER_FILTER = render(onRosterStudent("t1"));
 
 interface Read {
   table: string;
@@ -124,7 +124,9 @@ describe("buildExportModel", () => {
       w2w_employees: [],
     });
 
-    await buildExportModel();
+    await buildExportModel("t1");
+    expect(getCurrentPlan).toHaveBeenCalledWith("t1");
+    expect(loadPlanMatchInputs).toHaveBeenCalledWith("t1");
 
     // The assignment read is what decides who gets a shift in the uploaded file.
     const assignments = reads.find((r) => r.table === "schedule_assignments");
@@ -146,7 +148,9 @@ describe("loadRepairSeeds", () => {
   it("resolves plan names against the current roster only", async () => {
     const reads = fakeDb({ students: [], w2w_employees: [] });
 
-    await loadRepairSeeds(new Map(), 8 * 60);
+    await loadRepairSeeds(new Map(), 8 * 60, "t1");
+    expect(getCurrentPlan).toHaveBeenCalledWith("t1");
+    expect(loadPlanMatchInputs).toHaveBeenCalledWith("t1");
 
     const roster = studentReads(reads);
     expect(roster.map((r) => r.wheres)).toEqual([[ROSTER_FILTER]]);

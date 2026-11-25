@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { InfoCard } from "@/components/ui";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createPositionForTitle, mapTitleToPosition } from "@/lib/positions/actions";
 import type { GhostTitle } from "@/lib/positions/data";
 
@@ -62,6 +63,7 @@ function GhostTitleCard({
   onResolved: (text: string) => void;
 }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [pending, startTransition] = useTransition();
   const [targetId, setTargetId] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +110,7 @@ function GhostTitleCard({
                     "To change that later, edit Roster titles on its card.",
                 )
               ) {
-                resolve(() => createPositionForTitle(title), title);
+                resolve(() => createPositionForTitle(termId, title), title);
               }
             }}
           >

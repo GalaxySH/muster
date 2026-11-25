@@ -11,6 +11,7 @@
  * afterwards so the grid calculator, which reads the same number, follows.
  */
 import { useRef, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { saveDesiredHoursFor } from "@/lib/availability/actions";
 
@@ -24,6 +25,7 @@ export function RequestedHoursEditor({
   /** The position floor, the same `min` the student form's input carries. */
   minHours: number;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   // Shown straight away on a save, so the old figure never flashes back while
   // the refresh is in flight. The page keys this on the stored value, so a
@@ -64,7 +66,7 @@ export function RequestedHoursEditor({
     busy.current = true;
     setError(null);
     startTransition(async () => {
-      const res = await saveDesiredHoursFor(studentEmail, hours);
+      const res = await saveDesiredHoursFor(studentEmail, hours, termId);
       busy.current = false;
       if (!res.ok) {
         setError(res.error ?? "Could not save.");

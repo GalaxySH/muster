@@ -16,10 +16,9 @@
  */
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { shiftPlans, shiftPlanRows, w2wPositionMap } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { DESIRED_CAPACITY_MAX } from "@/lib/domain/config-validation";
 import { CapacityRefused, setBlockCapacities } from "@/lib/positions/capacity";
 import { EPSILON_MINUTES, formatSpan } from "@/lib/domain/time";
@@ -31,6 +30,7 @@ import { writeRunAsCurrent } from "@/lib/schedule/run-write";
 import { analyzePlanUpload, type PlanAnalysis, type PlanStudentFacts } from "@/lib/w2w/plan-import";
 import { validateW2wCsvUpload } from "@/lib/w2w/upload-validation";
 import { SCHEDULE_SHEET, trySyncSheet } from "./sheet-sync";
+import { currentPlanOf } from "@/lib/terms/scope";
 
 /** A list the screen shows the head of, with the count it was cut from. */
 export interface CappedList {
@@ -84,7 +84,8 @@ const ROW_CHUNK = 200;
 const LIST_CAP = 20;
 
 export async function importShiftPlanFromUpload(formData: FormData): Promise<PlanImportResult> {
-  const gate = await requireAdmin();
+  const termId = String(formData.get("termId") ?? "");
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const file = formData.get("file");
@@ -99,7 +100,11 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   const applyCapacity = formData.get("applyCapacity") === "1";
   const createRun = formData.get("createRun") === "1";
 
-  const analyzed = await analyzePlanUpload(new Uint8Array(await file.arrayBuffer()), rotationRaw);
+  const analyzed = await analyzePlanUpload(
+    new Uint8Array(await file.arrayBuffer()),
+    rotationRaw,
+    termId,
+  );
   if (!analyzed.ok) return { ok: false, error: analyzed.error };
   const analysis = analyzed.analysis;
   const preview = toPreview(analysis, createRun);
@@ -111,14 +116,15 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   try {
     await getDb().transaction(async (tx) => {
       if (analysis.mapSeed.length > 0) {
-        await tx.insert(w2wPositionMap).values(analysis.mapSeed);
+        await tx.insert(w2wPositionMap).values(analysis.mapSeed.map((m) => ({ ...m, termId })));
       }
       await tx
         .update(shiftPlans)
         .set({ status: "superseded" })
-        .where(eq(shiftPlans.status, "current"));
+        .where(currentPlanOf(termId));
       await tx.insert(shiftPlans).values({
         id: planId,
+        termId,
         importedBy: gate.email,
         sourceFilename: file.name,
         rowCount: analysis.rows.length,
@@ -157,6 +163,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
       }
       if (createRun) {
         await writeRunAsCurrent(tx, {
+          termId,
           assignments: analysis.run.assignments,
           report: planRunReport(analysis.run, analysis.studentFacts, analysis.blockSpans),
           generatedBy: gate.email,
@@ -186,7 +193,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   if (capacityUpdated > 0 || createRun) revalidatePath("/admin/schedule");
   if (createRun) {
     revalidatePath("/admin");
-    await trySyncSheet(SCHEDULE_SHEET, 0);
+    await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   }
 
   return {

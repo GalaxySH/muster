@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { changeRequestFiles, changeRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
+import { STALE_TERM_MESSAGE } from "@/lib/auth/require-admin";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import {
   changeRequestRate,
@@ -23,6 +24,7 @@ import {
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { listChangeRequests, recentChangeRequestTimes, type ChangeRequestRow } from "./data";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 
 export interface ChangeRequestActionResult {
   ok: boolean;
@@ -33,43 +35,55 @@ export interface ChangeRequestActionResult {
 
 /**
  * Whose request is this? Normally the signed-in student's own; an admin may
- * instead name an employee (any known student) to act for.
+ * instead name an employee (any known student) to act for. Resolves the working
+ * term once and returns it, so the whole action stays in that term.
  */
 async function resolveTargetStudent(
   onBehalfOf: string,
+  renderedTermId: string,
 ): Promise<
-  { ok: true; email: string; onBehalf: boolean; isAdmin: boolean } | { ok: false; error: string }
+  | { ok: true; email: string; onBehalf: boolean; isAdmin: boolean; termId: string }
+  | { ok: false; error: string }
 > {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
+  // Their own request goes in the current semester, whatever an admin has selected.
+  const termId = onBehalfOf ? await workingTermId() : await currentTermId();
 
   if (onBehalfOf) {
     if (!session.isAdmin) {
       return { ok: false, error: "Only admins can send a request for someone else." };
     }
-    const employee = await findStudentByEmail(onBehalfOf);
+    // The same person is in every semester, so the page says which one it shows.
+    if (!renderedTermId || renderedTermId !== termId) {
+      return { ok: false, error: STALE_TERM_MESSAGE };
+    }
+    const employee = await findStudentByEmail(onBehalfOf, termId);
     if (!employee) return { ok: false, error: "That employee is not a known student." };
-    return { ok: true, email: employee.email, onBehalf: true, isAdmin: true };
+    return { ok: true, email: employee.email, onBehalf: true, isAdmin: true, termId };
   }
 
-  const student = await findStudentByEmail(session.email);
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) {
     return {
       ok: false,
       error: session.isAdmin ? "Pick an employee for this request." : "You are not a known student.",
     };
   }
-  return { ok: true, email: student.email, onBehalf: false, isAdmin: session.isAdmin };
+  return { ok: true, email: student.email, onBehalf: false, isAdmin: session.isAdmin, termId };
 }
 
 export async function createChangeRequest(formData: FormData): Promise<ChangeRequestActionResult> {
-  const gate = await resolveTargetStudent(String(formData.get("employee") ?? "").trim());
+  const gate = await resolveTargetStudent(
+    String(formData.get("employee") ?? "").trim(),
+    String(formData.get("termId") ?? ""),
+  );
   if (!gate.ok) return { ok: false, error: gate.error, requests: null };
-  const email = gate.email;
+  const { email, termId } = gate;
   const fail = async (error: string): Promise<ChangeRequestActionResult> => ({
     ok: false,
     error,
-    requests: await listChangeRequests(email),
+    requests: await listChangeRequests(email, termId),
   });
 
   const checked = validateChangeRequest({
@@ -112,6 +126,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
       fileIds.push(
         await relayUpload({
           studentEmail: email,
+          termId,
           kind: "change-request",
           mimeType: file.type,
           bytes: Buffer.from(await file.arrayBuffer()),
@@ -129,6 +144,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
   const requestId = randomUUID();
   await db.insert(changeRequests).values({
     id: requestId,
+    termId,
     studentEmail: email,
     day: checked.value.day,
     shiftText: checked.value.shiftText,
@@ -143,7 +159,7 @@ export async function createChangeRequest(formData: FormData): Promise<ChangeReq
   }
   revalidatePath("/change-requests");
   if (gate.onBehalf) revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
-  return { ok: true, requests: await listChangeRequests(email) };
+  return { ok: true, requests: await listChangeRequests(email, termId) };
 }
 
 /**
@@ -156,7 +172,7 @@ export async function withdrawChangeRequest(id: string): Promise<ChangeRequestAc
 
   const db = getDb();
   const [row] = await db
-    .select({ studentEmail: changeRequests.studentEmail })
+    .select({ studentEmail: changeRequests.studentEmail, termId: changeRequests.termId })
     .from(changeRequests)
     .where(eq(changeRequests.id, id))
     .limit(1);
@@ -169,5 +185,8 @@ export async function withdrawChangeRequest(id: string): Promise<ChangeRequestAc
     .set({ status: "withdrawn" })
     .where(and(eq(changeRequests.id, id), eq(changeRequests.status, "open")));
   revalidatePath("/change-requests");
-  return { ok: true, requests: await listChangeRequests(row.studentEmail) };
+  return {
+    ok: true,
+    requests: await listChangeRequests(row.studentEmail, row.termId),
+  };
 }

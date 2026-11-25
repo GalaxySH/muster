@@ -6,8 +6,9 @@
  * Every send is one button push on the per-student page; nothing here runs on
  * a schedule or in bulk.
  */
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { env } from "@/lib/env";
 import { sendEmail, type EmailOutcome } from "@/lib/email/resend";
@@ -38,6 +39,9 @@ import {
 } from "@/lib/settings";
 import type { AdminActionResult } from "./actions";
 import { updateSubmission } from "./update-submission";
+import { getDb } from "@/lib/db";
+import { workingTerm } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 
 export interface ScheduleEmailSendResult extends AdminActionResult {
   /** What to tell the admin on success. */
@@ -94,7 +98,7 @@ async function deliver(
   vars: ScheduleEmailVars,
   shifts: readonly ShiftSpan[],
   includeCc: boolean,
-  idempotencyKey?: string,
+  sendId: string,
 ): Promise<{ outcome: EmailOutcome; cc: string | null } | { error: string }> {
   if (!(await getEmailSendingEnabled())) {
     return { error: "Email sending is turned off. Turn it on in Email settings first." };
@@ -113,7 +117,7 @@ async function deliver(
       cc: includeCc && cc ? [cc] : [],
       replyTo: cc || undefined,
       from: buildFromAddress(config, env.EMAIL_FROM),
-      idempotencyKey,
+      sendId,
     });
     if (outcome === "blocked") {
       return {
@@ -142,7 +146,9 @@ export async function sendScheduleEmailTest(): Promise<ScheduleEmailSendResult> 
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const config = await getScheduleEmailConfig();
-  const res = await deliver(gate.email, config, SAMPLE_VARS, SAMPLE_SHIFTS, false);
+  const vars = { ...SAMPLE_VARS, term: (await workingTerm()).name };
+  // A new id each press, so an unchanged test still goes out every time.
+  const res = await deliver(gate.email, config, vars, SAMPLE_SHIFTS, false, randomUUID());
   if ("error" in res) return { ok: false, error: res.error };
   return { ok: true, message: sentMessage(res.outcome, gate.email, res.cc) };
 }
@@ -162,8 +168,9 @@ export async function sendScheduleEmail(
     includeCc: boolean;
     requestId: string;
   },
+  termId: string,
 ): Promise<ScheduleEmailSendResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const fields: ScheduleEmailInput = {
@@ -186,23 +193,22 @@ export async function sendScheduleEmail(
       error: "Test accounts can't get email. Use Send a test to me in Email settings instead.",
     };
   }
-  const student = await findStudentByEmail(email);
+  // The gate proved termId is the working term, so nothing below looks it up again.
+  const student = await findStudentByEmail(email, termId);
   if (!student) return { ok: false, error: "That employee is not a known student." };
   const position =
-    (await positionOptions()).find((p) => p.id === student.positionId)?.name ?? "your position";
+    (await positionOptions(termId)).find((p) => p.id === student.positionId)?.name ??
+    "your position";
 
   const config = { ...(await getScheduleEmailConfig()), ...template };
-  const vars = buildScheduleEmailVars({ displayName: student.displayName, position }, fields);
-  // The shifts the current run gives them: what the dialog previewed.
-  const shifts = (await loadStudentCurrentAssignments(email))?.cells ?? [];
-  const res = await deliver(
-    email,
-    config,
-    vars,
-    shifts,
-    input.includeCc === true,
-    `schedule-email-${input.requestId}`,
+  const vars = buildScheduleEmailVars(
+    { displayName: student.displayName, position },
+    fields,
+    (await getTerm(getDb(), termId)).name,
   );
+  // The shifts the current run gives them: what the dialog previewed.
+  const shifts = (await loadStudentCurrentAssignments(email, termId))?.cells ?? [];
+  const res = await deliver(email, config, vars, shifts, input.includeCc === true, input.requestId);
   if ("error" in res) return { ok: false, error: res.error };
   // Only a message that actually went out is recorded. A logged one (no email
   // service here) reached nobody, so the sent date and the scheduled mark stay
@@ -214,7 +220,7 @@ export async function sendScheduleEmail(
     };
   }
 
-  const stamped = await updateSubmission(email, {
+  const stamped = await updateSubmission(gate, email, {
     scheduleEmailSentAt: new Date(),
     ...(config.marksScheduled ? { scheduled: true } : {}),
   });

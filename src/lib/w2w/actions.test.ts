@@ -6,13 +6,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // from "the write was rolled back" by whether the DB was reached at all.
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: vi.fn() }));
+vi.mock("@/lib/auth/session", () => ({ getAppSession: vi.fn() }));
+vi.mock("@/lib/auth/require-admin", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/auth/require-admin")>();
+  const requireAdmin = vi.fn();
+  // The admin check is stubbed, the semester check is the real one, against
+  // the "test-term" vitest.setup.ts answers as the working term.
+  const requireAdminIn = async (termId: string) => {
+    const gate = await requireAdmin();
+    if (!gate.ok || (await real.isWorkingTerm(termId))) return gate;
+    return { ok: false, error: real.STALE_TERM_MESSAGE };
+  };
+  return { ...real, requireAdmin, requireAdminIn };
+});
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
 
 import { getTableName, type Table } from "drizzle-orm";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, STALE_TERM_MESSAGE } from "@/lib/auth/require-admin";
 import { getDb } from "@/lib/db";
 import { importW2wEmployeesFromUpload, setPlanRotationWeek } from "./actions";
+import { deleteW2wMapping } from "./map-actions";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
 
@@ -162,5 +175,23 @@ describe("importW2wEmployeesFromUpload", () => {
       summary: { total: 1, added: 1, updated: 0, removed: 0, skipped: 0 },
     });
     expect(log.writes).toEqual(["delete:w2w_employees", "insert:w2w_employees"]);
+  });
+});
+
+describe("deleteW2wMapping", () => {
+  // The W2W id is the same in every semester, so a tab still showing another
+  // one must not remove the mapping of the semester being worked in.
+  it("refuses a page rendered for another semester without touching the database", async () => {
+    expect(await deleteW2wMapping("pos-1", "2026-fall")).toEqual({
+      ok: false,
+      error: STALE_TERM_MESSAGE,
+    });
+    expect(getDb).not.toHaveBeenCalled();
+  });
+
+  it("removes the mapping for the page's own semester", async () => {
+    const log = useDb();
+    expect(await deleteW2wMapping("pos-1", "test-term")).toEqual({ ok: true });
+    expect(log.writes).toEqual(["delete:w2w_position_map"]);
   });
 });

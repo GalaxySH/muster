@@ -16,7 +16,7 @@ import {
   submissions,
   travelRequests,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { updateSubmission } from "./update-submission";
 import { syncRevalidationFlag } from "@/lib/positions/apply-change";
 import { loadOrphanedCells, syncOrphanedSelectionFlag } from "@/lib/positions/orphans";
@@ -30,8 +30,6 @@ import { relayDelete } from "@/lib/drive/relay";
 import {
   setSetting,
   deleteSetting,
-  SETTING_TRAVEL_CUTOFF,
-  SETTING_LATE_TRAVEL_ACCEPT,
   SETTING_EMAIL_SENDING_ENABLED,
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
@@ -40,7 +38,7 @@ import {
 } from "@/lib/settings";
 import { parseEmailList } from "@/lib/groups/parse-emails";
 import { isEmailShaped } from "@/lib/auth/policy";
-import { normalizeTitleList, SETTING_EXCLUDED_ROSTER_TITLES } from "@/lib/roster/position-mapping";
+import { normalizeTitleList } from "@/lib/roster/position-mapping";
 import {
   syncSheet,
   trySyncSheet,
@@ -48,6 +46,17 @@ import {
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
 } from "./sheet-sync";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
+import { defaultTravelCutoff } from "@/lib/domain/travel";
+import { terms } from "@/lib/db/schema";
+import { submissionInTerm, submissionOf } from "@/lib/terms/scope";
+import { saveExcludedTitles, saveRosterReading } from "@/lib/roster/config-data";
+import {
+  cleanRosterReading,
+  validateRosterReading,
+  type RosterReadingInput,
+} from "@/lib/roster/config";
 
 export interface AdminActionResult {
   ok: boolean;
@@ -58,17 +67,25 @@ export interface AdminActionResult {
 export async function setScheduled(
   studentEmail: string,
   scheduled: boolean,
+  termId: string,
 ): Promise<AdminActionResult> {
-  return updateSubmission(studentEmail, { scheduled });
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  return updateSubmission(gate, studentEmail, { scheduled });
 }
 
 /** Save the scheduler's free-text notes for a student (PLAN §10a). */
 export async function saveSchedulerNotes(
   studentEmail: string,
   notes: string,
+  termId: string,
 ): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
   const trimmed = notes.trim();
-  return updateSubmission(studentEmail, { schedulerNotes: trimmed.length ? trimmed : null });
+  return updateSubmission(gate, studentEmail, {
+    schedulerNotes: trimmed.length ? trimmed : null,
+  });
 }
 
 export interface GenerateMagicLinkResult extends AdminActionResult {
@@ -95,7 +112,7 @@ export async function generateStudentMagicLink(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const email = normalizeEmail(studentEmail);
-  const student = await findStudentByEmail(email);
+  const student = await findStudentByEmail(email, await workingTermId());
   if (!student) return { ok: false, error: "That employee is not a known student." };
 
   const token = await issueMagicLink(email);
@@ -112,8 +129,11 @@ export async function generateStudentMagicLink(
  * bytes are left behind, and rebuilds the running sheet so the row drops out.
  * The student record itself stays on the roster; only their submission is gone.
  */
-export async function deleteResponse(studentEmail: string): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function deleteResponse(
+  studentEmail: string,
+  termId: string,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
@@ -121,7 +141,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
   const [sub] = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
   if (!sub) return { ok: false, error: "No submission exists for this student." };
 
@@ -132,7 +152,7 @@ export async function deleteResponse(studentEmail: string): Promise<AdminActionR
 
   // Best-effort Drive cleanup (relayDelete never throws) and sheet rebuild.
   for (const fileId of fileIds) await relayDelete(fileId);
-  await trySyncSheet(RESPONSES_SHEET, 0);
+  await trySyncSheet(RESPONSES_SHEET, termId, 0);
 
   revalidatePath("/admin/responses");
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
@@ -157,10 +177,12 @@ export async function dismissFlag(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  // Only a submission of the term being worked in: a page left open on another
+  // semester names one that is not found here.
   const [sub] = await db
     .select({ email: submissions.studentEmail })
     .from(submissions)
-    .where(eq(submissions.id, submissionId))
+    .where(and(eq(submissions.id, submissionId), submissionInTerm(await workingTermId())))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -184,8 +206,9 @@ export async function removeOrphanedSelection(
   studentEmail: string,
   blockId: string,
   day: Day,
+  termId: string,
 ): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   const email = normalizeEmail(studentEmail);
 
@@ -193,7 +216,7 @@ export async function removeOrphanedSelection(
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(eq(submissions.studentEmail, email))
+    .where(submissionOf(email, termId))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -216,7 +239,7 @@ export async function removeOrphanedSelection(
   });
   if (refused) return { ok: false, error: "That pick is not on a removed shift." };
 
-  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET, termId);
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
   revalidatePath("/admin/responses");
   revalidatePath("/admin");
@@ -238,7 +261,7 @@ export async function setTravelResolved(id: string, resolved: boolean): Promise<
     .select({ email: submissions.studentEmail })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
-    .where(eq(travelRequests.id, id))
+    .where(and(eq(travelRequests.id, id), submissionInTerm(await workingTermId())))
     .limit(1);
   if (!row) return { ok: false, error: "That travel entry no longer exists." };
 
@@ -251,38 +274,41 @@ export async function setTravelResolved(id: string, resolved: boolean): Promise<
 }
 
 /**
- * Set (an ISO instant) or clear (null ⇒ revert to the 9/1 default) the
- * travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
+ * Set (an ISO instant) or clear (null ⇒ back to the term's default, the day
+ * before it starts) the working term's travel-excusal cutoff (PLAN §8). After the cutoff the travel step refuses
  * new entries under the active late-travel policy (domain/travel.ts).
  */
-export async function setTravelCutoff(iso: string | null): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function setTravelCutoff(
+  termId: string,
+  iso: string | null,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  if (iso === null) {
-    await deleteSetting(SETTING_TRAVEL_CUTOFF);
-  } else {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return { ok: false, error: "Invalid date." };
-    await setSetting(SETTING_TRAVEL_CUTOFF, d.toISOString());
-  }
-  revalidatePath("/admin/groups");
+  const term = await getTerm(getDb(), termId);
+  const cutoff = iso === null ? defaultTravelCutoff(term.startsOn) : new Date(iso);
+  if (Number.isNaN(cutoff.getTime())) return { ok: false, error: "Invalid date." };
+  await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, termId));
+  revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/intro");
   return { ok: true };
 }
 
 /**
- * Toggle the late-travel policy (PLAN §8; /admin/groups, beside the cutoff).
+ * Toggle the late-travel policy (PLAN §8; /admin/terms, beside the cutoff).
  * On, the travel step keeps accepting entries after the cutoff but stores them
  * unexcused ("accept-and-flag"); off restores the default "refuse". The hub's
  * cutoff-past alert reads this too.
  */
-export async function setLateTravelAccepted(accepted: boolean): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function setLateTravelAccepted(
+  termId: string,
+  accepted: boolean,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
-  await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
-  revalidatePath("/admin/groups");
+  await getDb().update(terms).set({ lateTravelAccept: accepted }).where(eq(terms.id, termId));
+  revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/admin");
   return { ok: true };
@@ -379,14 +405,50 @@ export interface SaveExcludedTitlesResult extends AdminActionResult {
  * the hardcoded SKIP_TITLES fixture applies only while the setting was
  * never saved.
  */
-export async function setExcludedRosterTitles(raw: string): Promise<SaveExcludedTitlesResult> {
-  const gate = await requireAdmin();
+export async function setExcludedRosterTitles(
+  termId: string,
+  raw: string,
+): Promise<SaveExcludedTitlesResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const titles = normalizeTitleList(raw);
-  await setSetting(SETTING_EXCLUDED_ROSTER_TITLES, titles.join("\n"));
+  await saveExcludedTitles(getDb(), termId, titles);
   revalidatePath("/admin/roster");
   return { ok: true, saved: titles };
+}
+
+/**
+ * Save how the working term's roster tracker is read (edited on
+ * /admin/roster): the sheets to look for, the titles that mean admin, and the
+ * header names of columns the built-in matching can't find.
+ */
+export async function setRosterReading(
+  termId: string,
+  input: RosterReadingInput,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const columns = input?.columns ?? {};
+  const reading = cleanRosterReading({
+    sheetCandidates: String(input?.sheetCandidates ?? ""),
+    leavingSheet: String(input?.leavingSheet ?? ""),
+    adminTitles: String(input?.adminTitles ?? ""),
+    columns: {
+      name: String(columns.name ?? ""),
+      email: String(columns.email ?? ""),
+      title: String(columns.title ?? ""),
+      international: String(columns.international ?? ""),
+      startDate: String(columns.startDate ?? ""),
+    },
+  });
+  const error = validateRosterReading(reading);
+  if (error) return { ok: false, error };
+
+  await saveRosterReading(getDb(), termId, reading);
+  revalidatePath("/admin/roster");
+  return { ok: true };
 }
 
 export interface RebuildSheetResult extends AdminActionResult {
@@ -402,7 +464,9 @@ export async function rebuildResponsesSheet(): Promise<RebuildSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(RESPONSES_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(RESPONSES_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/responses");
     return { ok: true, sync };
   } catch (e) {

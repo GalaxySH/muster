@@ -35,7 +35,7 @@ const TITLE_MAP: ReadonlyMap<string, string> = new Map([
 ]);
 
 // Injected excluded-title set mirroring the SKIP_TITLES fixture (the importer
-// builds the real one from app_settings via effectiveExcludedTitles).
+// builds the real one from the term's saved list in loadRosterConfig).
 const EXCLUDED: ReadonlySet<string> = new Set(["dining advisor board member (dab)"]);
 
 describe("extractRosterRows", () => {
@@ -61,6 +61,64 @@ describe("extractRosterRows", () => {
         hireDate: "",
       },
     ]);
+  });
+
+  describe("with column names set on the term", () => {
+    const RENAMED = [
+      ["Employee", "Job", "UW Address", "Intl Student", "First Shift", "Email"],
+      ["Ann A", "Dishwasher", "ann@wisc.edu", "Yes", "2026-08-20", "personal@example.com"],
+    ];
+    const columns = {
+      name: "Employee",
+      email: "UW Address",
+      title: "job",
+      international: " Intl  Student ",
+      startDate: "First Shift",
+    };
+
+    it("reads the named headers, whatever their capitals and spacing", () => {
+      expect(extractRosterRows(RENAMED, columns)).toEqual([
+        {
+          name: "Ann A",
+          positionTitle: "Dishwasher",
+          email: "ann@wisc.edu",
+          international: "Yes",
+          hireDate: "2026-08-20",
+        },
+      ]);
+    });
+
+    it("can't read a reworded sheet without them", () => {
+      expect(() => extractRosterRows(RENAMED)).toThrow(/header row/);
+    });
+
+    // A named column replaces the built-in guess, so the other "Email" column is not used.
+    it("uses the named column even when a built-in match also exists", () => {
+      expect(extractRosterRows(RENAMED, columns)[0]!.email).toBe("ann@wisc.edu");
+    });
+
+    it("names the missing column when a named header isn't in the sheet", () => {
+      expect(() => extractRosterRows(RENAMED, { ...columns, title: "Role" })).toThrow(
+        /Could not find the Role column/,
+      );
+      expect(() => extractRosterRows(RENAMED, { ...columns, startDate: "Hired" })).toThrow(
+        /Could not find the Hired column/,
+      );
+      expect(() => extractRosterRows(RENAMED, { ...columns, name: "Person" })).toThrow(
+        /a row with Person and UW Address columns/,
+      );
+    });
+
+    it("finds a blank one the built-in way", () => {
+      const rows = extractRosterRows(
+        [
+          ["Employee", "Title", "Email", "International"],
+          ["Ann A", "Dishwasher", "ann@wisc.edu", "No"],
+        ],
+        { name: "Employee", email: "", title: "", international: "", startDate: "" },
+      );
+      expect(rows[0]).toMatchObject({ name: "Ann A", positionTitle: "Dishwasher", hireDate: "" });
+    });
   });
 
   it("reads an older single-header sheet with a Position Title column", () => {
@@ -250,7 +308,7 @@ describe("parseRoster", () => {
 
   it("carries a parsed start date onto the student", () => {
     const { students } = parseRoster([row({ hireDate: "2023/09/07" })], TITLE_MAP, EXCLUDED);
-    expect(students[0]?.hiredOn?.toISOString()).toBe("2023-09-07T00:00:00.000Z");
+    expect(students[0]?.hiredOn).toEqual(new Date(2023, 8, 7));
   });
 
   it("puts everyone the sheet lists on the roster, whatever the sheet says elsewhere", () => {
@@ -267,18 +325,18 @@ describe("parseRoster", () => {
 });
 
 describe("parseHireDate", () => {
-  it("parses a yyyy-mm-dd string to UTC midnight", () => {
-    expect(parseHireDate("2025-08-20")?.toISOString()).toBe("2025-08-20T00:00:00.000Z");
+  // Local midnight is the frame a `date` column is written in, so the stored
+  // day is the sheet's day whatever timezone the import runs in.
+  it("parses a yyyy-mm-dd string to local midnight on that day", () => {
+    expect(parseHireDate("2025-08-20")).toEqual(new Date(2025, 7, 20));
   });
 
   it("parses the tracker's yyyy/mm/dd start dates", () => {
-    expect(parseHireDate("2023/09/07")?.toISOString()).toBe("2023-09-07T00:00:00.000Z");
+    expect(parseHireDate("2023/09/07")).toEqual(new Date(2023, 8, 7));
   });
 
   it("accepts an ISO datetime prefix", () => {
-    expect(parseHireDate("2025-08-20T00:00:00.000Z")?.toISOString()).toBe(
-      "2025-08-20T00:00:00.000Z",
-    );
+    expect(parseHireDate("2025-08-20T00:00:00.000Z")).toEqual(new Date(2025, 7, 20));
   });
 
   it("returns null for blank or unrecognized values", () => {
