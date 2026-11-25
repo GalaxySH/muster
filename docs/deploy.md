@@ -230,7 +230,7 @@ If it cannot be fixed soon, go back to v1.47 (below). If the failed migration is
 0048 or earlier, v1.47 runs against the database as it is. If it is 0049 or
 later, run rollback step 1 first.
 
-### The semester release (1.48 to 1.60, migrations 0037 to 0054)
+### The semester release (1.48 to 1.61, migrations 0037 to 0054)
 
 Production runs v1.47. No release between 1.47 and this one is tagged, so this
 deploy applies 0037 to 0054 in one `migrate`. On a copy of production they took

@@ -41,6 +41,7 @@ vi.mock("@/lib/db", () => {
 vi.mock("./api", () => ({
   uploadFile: vi.fn(async () => "file-1"),
   downloadFile: vi.fn(),
+  downloadThumbnail: vi.fn(async () => null),
   deleteFile: vi.fn(),
   findChildByName: vi.fn(async () => null),
   createFolder: vi.fn(),
@@ -55,13 +56,22 @@ vi.mock("./api", () => ({
 import {
   createFolder,
   createSpreadsheet,
+  downloadFile,
+  downloadThumbnail,
   findChildByName,
   SheetWriteError,
   uploadFile,
   writeSheetValues,
 } from "./api";
 import { getSetting } from "@/lib/settings";
-import { relayUpload, upsertManagedSheet } from "./relay";
+import { getActiveDriveGrant } from "./grants";
+import {
+  NoDriveGrantError,
+  relayDownload,
+  relayThumbnail,
+  relayUpload,
+  upsertManagedSheet,
+} from "./relay";
 
 const upload = () =>
   relayUpload({
@@ -307,5 +317,26 @@ describe("upsertManagedSheet", () => {
       await expect(upsertManagedSheet(sheet, [["h"]])).rejects.toThrow("gone");
       expect(createSpreadsheet).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("relayThumbnail", () => {
+  it("asks for the preview with the grant's token and never downloads the file", async () => {
+    const preview = { bytes: Buffer.from("p"), mimeType: "image/png" };
+    vi.mocked(downloadThumbnail).mockResolvedValueOnce(preview);
+    await expect(relayThumbnail("file-1", "preview")).resolves.toBe(preview);
+    expect(downloadThumbnail).toHaveBeenCalledWith("tok", "file-1", "preview");
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it("passes on a file with no preview", async () => {
+    await expect(relayThumbnail("file-1", "thumb")).resolves.toBeNull();
+  });
+
+  it("needs a connected Drive, like a download", async () => {
+    vi.mocked(getActiveDriveGrant).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    await expect(relayThumbnail("file-1", "thumb")).rejects.toBeInstanceOf(NoDriveGrantError);
+    await expect(relayDownload("file-1")).rejects.toBeInstanceOf(NoDriveGrantError);
+    expect(downloadThumbnail).not.toHaveBeenCalled();
   });
 });

@@ -125,14 +125,14 @@ export function TravelForm({
               ) : (
                 <span style={noProof}>No proof</span>
               )}
-              <div style={{ flex: 1, fontSize: 14 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
                 <div>
                   {t.startDate} → {t.endDate}{" "}
                   <span style={t.excused ? excusedBadge : lateBadge}>
                     {TRAVEL_STANDING_LABEL[travelStanding(t)]}
                   </span>
                 </div>
-                {t.note && <div style={{ color: "#666" }}>{t.note}</div>}
+                {t.note && <div style={{ color: "#666", overflowWrap: "anywhere" }}>{t.note}</div>}
               </div>
               {canAddTravel && (
                 <button

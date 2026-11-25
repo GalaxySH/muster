@@ -1,8 +1,8 @@
 /**
  * Thin Google Drive v3 + Sheets v4 REST calls over fetch (PLAN.md §12).
  *
- * What the relay needs: multipart create (upload) and media get (download) for
- * proof files, plus native-Sheet create + cell writes for the running responses
+ * What the relay needs: multipart create (upload), media get (download) and
+ * Drive's preview image (thumbnail) for proof files, plus native-Sheet create + cell writes for the running responses
  * spreadsheet. `supportsAllDrives` is set so a Shared Drive folder works as the
  * destination. Bytes are passed through in memory; nothing is written to disk.
  */
@@ -274,6 +274,134 @@ export async function downloadFile(accessToken: string, fileId: string): Promise
   }
   const bytes = Buffer.from(await mediaRes.arrayBuffer());
   return { bytes, mimeType: meta.mimeType ?? "application/octet-stream" };
+}
+
+/** "thumb" is Drive's preview as it comes; "preview" asks for a larger one. */
+export type ThumbnailSize = "thumb" | "preview";
+
+/** The long side, in px, asked of Drive for a "preview". */
+export const LARGE_PREVIEW_PX = 1200;
+const PREVIEW_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_PREVIEW_REDIRECTS = 2;
+
+/**
+ * Drive's preview image of a file (a PDF's is its first page), or null when it
+ * has none. One metadata call for the short-lived `thumbnailLink`, then that
+ * link is fetched with the same token. The original is never downloaded here.
+ */
+export async function downloadThumbnail(
+  accessToken: string,
+  fileId: string,
+  size: ThumbnailSize,
+): Promise<DownloadResult | null> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const metaRes = await driveFetch(
+    `${FILES_URL}/${encodeURIComponent(fileId)}?fields=hasThumbnail,thumbnailLink&supportsAllDrives=true`,
+    { headers },
+  );
+  if (!metaRes.ok) {
+    throw new Error(`Drive metadata fetch failed (${metaRes.status}): ${await safeText(metaRes)}`);
+  }
+  const meta = (await metaRes.json()) as { hasThumbnail?: boolean; thumbnailLink?: string };
+  if (!meta.hasThumbnail || !meta.thumbnailLink) return null;
+
+  const link = meta.thumbnailLink;
+  const sized = size === "preview" ? largerPreviewLink(link) : link;
+  const found = await fetchPreview(sized, headers);
+  // The size suffix is not a documented contract, so a larger preview that is not there falls
+  // back to the link as given. A failure throws instead, and is not retried.
+  return found ?? (sized !== link ? fetchPreview(link, headers) : null);
+}
+
+/**
+ * Swap a trailing `=s<digits>` size for LARGE_PREVIEW_PX. A link without that
+ * suffix comes back unchanged.
+ */
+export function largerPreviewLink(link: string): string {
+  return link.replace(/=s\d+$/, `=s${LARGE_PREVIEW_PX}`);
+}
+
+/**
+ * The link came from an API response and carries our token, so it is only ever
+ * fetched from a Google host over https on the default port.
+ */
+export function isGoogleHttpsUrl(link: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    url.port === "" &&
+    !url.username &&
+    !url.password &&
+    (url.hostname.endsWith(".googleusercontent.com") || url.hostname.endsWith(".google.com"))
+  );
+}
+
+/** The preview host's answers that mean the preview is not there. */
+const NO_PREVIEW_STATUSES = new Set([403, 404, 410]);
+
+/**
+ * Fetch a preview link: null when it is not there (403/404/410), for a
+ * non-Google or unparseable hop, too many redirects, or a body that is not a
+ * plain image type. Any other failure throws with the status only: the link is
+ * a capability and an error page can echo it, so neither goes in the message.
+ * Redirects are followed by hand so every hop passes the host check before the
+ * token goes out.
+ */
+async function fetchPreview(
+  link: string,
+  headers: Record<string, string>,
+): Promise<DownloadResult | null> {
+  let url = link;
+  for (let hop = 0; hop <= MAX_PREVIEW_REDIRECTS; hop++) {
+    if (!isGoogleHttpsUrl(url)) return null;
+    const res = await driveFetch(url, { headers, redirect: "manual" });
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (next) {
+      await discardBody(res);
+      const resolved = resolveHop(next, url);
+      if (!resolved) return null;
+      url = resolved;
+      continue;
+    }
+    if (NO_PREVIEW_STATUSES.has(res.status)) {
+      await discardBody(res);
+      return null;
+    }
+    if (!res.ok) {
+      await discardBody(res);
+      throw new Error(`Drive preview fetch failed (${res.status})`);
+    }
+    const mimeType = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    if (!PREVIEW_TYPES.has(mimeType)) {
+      await discardBody(res);
+      return null;
+    }
+    return { bytes: Buffer.from(await res.arrayBuffer()), mimeType };
+  }
+  return null;
+}
+
+/** A redirect target against its hop, or null. URL's own error carries both, so it never escapes. */
+function resolveHop(location: string, base: string): string | null {
+  try {
+    return new URL(location, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/** Release a body that will not be read, so its socket is not held. */
+async function discardBody(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // Nothing more to release.
+  }
 }
 
 /**

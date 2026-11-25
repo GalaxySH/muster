@@ -264,7 +264,13 @@ filter (`positionId`, `NO_POSITION` sentinel) mirrors the group filter's "none"
 handling; a later **show-off-roster switch**, `roster=all` in the same seam, reveals
 badged off-roster submissions); (3) an
 **upcoming-travel** tab `/admin/travel` (pure `admin/upcoming-travel.ts`, grouped by
-Sunday-week, now through +3 weeks). Each entry carries a **resolved** marker
+Sunday-week, now through +3 weeks). Each entry is `components/admin/UpcomingTravelRow.tsx`
+(1.61): the note clamped by CSS to two lines with the full text in `title` on the left,
+and on the right the proof as an `EvidenceThumb` (none for a trip an admin recorded
+without one), then the dates and the resolved checkbox. `EvidenceThumb`'s small image is
+Drive's preview (`?size=thumb`, see the evidence relay section), `loading="lazy"` inside
+its fixed-size box, so a long list only pulls the previews scrolled into view and never
+an original. Each entry carries a **resolved** marker
 (`travel_requests.resolved`, migration `0020`): the admin-only `TravelResolvedCheckbox`
 island calls `setTravelResolved` (`admin/actions.ts`, `requireAdmin`-gated, revalidates
 the travel list + the student page + the hub), and a resolved row green-tints on both
@@ -445,7 +451,7 @@ from the `/change-requests` link to "send us an email" (same swap on `/intro`, f
 "submit a change request" to "send us an email"). The `/change-requests` route and
 this admin queue stay reachable either way, so an admin can still log a request on a
 student's behalf or a direct link still works. Proof files render only on the per-student page, as inline
-`EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches bytes through
+`EvidenceThumb`s (thumbnail → lightbox, like travel); each thumb fetches a preview through
 the Drive proxy, so only the newest `CHANGE_PREVIEW_ROWS` (3) file-bearing requests get
 thumbnails and older ones fall back to plain proof links. Every request row is an
 outline box; resolved requests read as done everywhere: green-tinted row + the
@@ -678,8 +684,9 @@ null, which labelled an edit time as a submit time; the stamps are now distinct 
 and never substitute for each other. `fmtStamp` is the page's one timestamp format
 (US Central, seconds dropped; the change-request rows use it too since 1.33). The client
 islands are `MarkScheduledButton`, `NotesCard`, `EvidenceThumb` (one
-thumbnail+lightbox for all three evidence kinds — images inline, PDFs via `<iframe>`,
-both through the `/api/evidence/[fileId]` proxy), `PrefGridCalculator`, and `JumpMenu`
+thumbnail+lightbox for all three evidence kinds, from `components/evidence/`; the course
+schedule fills its card with the larger `?size=preview`, so a PDF shows its first page),
+`PrefGridCalculator`, and `JumpMenu`
 (the header name → responder-list disclosure; a client wrapper around the native
 `<details>` so a click outside or Escape closes it, not just a second click on the name).
 `PrefGridCalculator` **is** the availability card: the admin clicks grid cells to try a
@@ -1046,18 +1053,52 @@ The admin grants
 `drive.file` once via a **separate OAuth flow** (`/api/drive/connect` → `/api/drive/callback`,
 distinct from student sign-in); the refresh token is stored **AES-256-GCM encrypted**
 (`crypto/secretbox.ts`) in `admin_google_grants` — never in a cookie. `drive/relay.ts` is
-the only seam that touches Drive (upload/download/delete via `drive/api.ts` REST + a
+the only seam that touches Drive (upload/download/thumbnail/delete via `drive/api.ts` REST + a
 `google-auth-library` token from `drive/oauth.ts`). Delete means **move to the Drive
 trash** (`trashed: true`, 1.42), never a permanent delete; a file restored from the trash
 does not come back into the app. Student uploads go through
 `evidence/actions.ts` → relay → DB stores only the `fileId`; **no image bytes ever touch
 the app**. `drive.file` files aren't browsable, so they're served back through an
 authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data.ts`
-`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`. The
-student UI is split into two client forms — `components/evidence/CourseScheduleForm.tsx`
-(course schedule + extracurriculars) and `TravelForm.tsx` (travel) — sharing
-`components/evidence/shared.tsx` (the `useEvidenceRunner` action hook, `Thumb`, `Section`,
-styles). They render on the `/course-schedule` and `/travel` server pages.
+`studentOwnsFile`). Pure pre-relay validation lives in `drive/upload-validation.ts`.
+
+**Thumbnails are Drive's previews (1.61).** `?size=thumb` on the proxy (same session and
+ownership check as the file itself) serves Drive's own preview image instead of the
+original, and `?size=preview` a larger one; any other value is a 400. `relayThumbnail` →
+`downloadThumbnail` (`drive/api.ts`) makes one metadata call for `hasThumbnail` +
+`thumbnailLink`, then fetches that short-lived link with the same Bearer token through
+`driveFetch`. The original (`alt=media`) is never downloaded on this path, and neither
+the link nor the bytes are kept. No preview (no link, `hasThumbnail` false, the link
+answering 403/404/410, a redirect to a Location that won't parse, a body that is not
+JPEG/PNG/WebP/GIF) is a `404 No preview` with `no-store`, not logged. Any other answer
+(a 429 or 401 too) is a Drive failure: it throws with the status only, never the link or
+the body (an error page can echo the link), logs and answers as the full path does, and
+the larger size is not retried after it. Bodies that are not read are cancelled. On the
+student pages a missing or failed preview loads the original in the small image, as
+before 1.61, so a file just uploaded shows while Drive is still making its preview; the
+admin views never load the original for a thumbnail.
+The link came from an API response and carries the token, so `isGoogleHttpsUrl` only lets
+it go to `*.googleusercontent.com` / `*.google.com` over https on the default port, and
+redirects are followed by hand (at most 2) with every hop passing the same check. The
+larger size rewrites a trailing `=s<digits>` to `=s1200` (`LARGE_PREVIEW_PX`); that
+suffix is not a documented contract, so a link without it is used as given, and a refused
+rewrite falls back to the link as given. Drive's preview of a PDF is its first page, so a
+PDF thumbnails like an image.
+
+The one thumbnail is `components/evidence/EvidenceThumb.tsx`, form-core so the student
+pages can use it and the admin views import it from there. Its small image lazy loads in
+a fixed box and becomes a plain file box on error (on the student pages, only after the
+original also fails), also when it had already failed before hydration: an effect checks
+`complete && naturalWidth === 0` and moves on to the next source. `opens` picks the
+click: `"lightbox"` (every admin view) mounts the original only when opened, as an
+`<img>` that switches to the `<iframe>` PDF viewer if it won't load, since a preview
+can't say which the file is; `"tab"` (the student pages, in their own look) links the
+original in a new tab. The student UI is split into two client forms —
+`components/evidence/CourseScheduleForm.tsx` (course schedule + extracurriculars) and
+`TravelForm.tsx` (travel) — sharing `components/evidence/shared.tsx` (the
+`useEvidenceRunner` action hook, `Thumb` (the shared thumbnail plus the student's Remove
+button), `Section`, styles). They render on the `/course-schedule` and `/travel` server
+pages.
 **Admin on-behalf entry:** both pages take `?student=<email>` (linked from the evidence
 cards on `/admin/students/[email]`) and, for an admin session, render the target's
 evidence with an `OnBehalfBanner` and no wizard breadcrumb. All six evidence actions
@@ -2394,7 +2435,9 @@ deliberately includes frozen students, since a hand edit to a kept row is the
 likeliest way somebody passes their hour cap; `data.ts` `loadScheduleForRun` runs
 the validator against the run's snapshotted params and extends
 `ScheduleStudentRow` with `belowMinHours`, `overMaxHours` and `lateStart`;
-`components/admin/ScheduleHealth.tsx` renders the view model.
+`components/admin/ScheduleHealth.tsx` renders the view model, as a native `<details>`
+panel that starts closed on every load (no saved state) with "Schedule health" as its
+`<summary>` (1.61).
 Every new stored-report field is optional so pre-overhaul runs keep parsing.
 
 ### The annealing pass (docs/generator-anneal-plan.md, v1.20)

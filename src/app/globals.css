@@ -663,3 +663,22 @@ body {
     gap: 6px;
   }
 }
+
+/* Upcoming-travel row (components/admin/UpcomingTravelRow.tsx). On a wide screen
+   the dates column keeps one width (enough for a pill and the longest range), so
+   the thumbnails beside it line up from row to row. On a phone that width goes
+   to the name column instead, and the position gets its own line and drops the
+   separator rather than leaving it dangling after the name. */
+@media (min-width: 720px) {
+  .travel-row-right {
+    min-width: 190px;
+  }
+}
+@media (max-width: 719.98px) {
+  .travel-row-position {
+    display: block;
+  }
+  .travel-row-sep {
+    display: none;
+  }
+}

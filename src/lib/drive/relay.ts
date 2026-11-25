@@ -29,6 +29,7 @@ import { getAccessToken } from "./oauth";
 import {
   uploadFile,
   downloadFile,
+  downloadThumbnail,
   deleteFile,
   findChildByName,
   createFolder,
@@ -37,6 +38,7 @@ import {
   SheetWriteError,
   SPREADSHEET_MIME,
   type DownloadResult,
+  type ThumbnailSize,
 } from "./api";
 import { extensionForType } from "./upload-validation";
 
@@ -159,12 +161,24 @@ export async function relayUpload(input: RelayUploadInput): Promise<string> {
   }
 }
 
-/** Fetch a previously relayed file's bytes (for the authenticated proxy route). */
-export async function relayDownload(fileId: string): Promise<DownloadResult> {
+/** A token from the admin grant, for reading a relayed file back. */
+async function readToken(): Promise<string> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
-  const accessToken = await getAccessToken(grant.refreshToken);
-  return downloadFile(accessToken, fileId);
+  return getAccessToken(grant.refreshToken);
+}
+
+/** Fetch a previously relayed file's bytes (for the authenticated proxy route). */
+export async function relayDownload(fileId: string): Promise<DownloadResult> {
+  return downloadFile(await readToken(), fileId);
+}
+
+/** Drive's preview image of a relayed file, or null when it has none (for the proxy route). */
+export async function relayThumbnail(
+  fileId: string,
+  size: ThumbnailSize,
+): Promise<DownloadResult | null> {
+  return downloadThumbnail(await readToken(), fileId, size);
 }
 
 /** Best-effort delete (to the Drive trash) of a relayed file a student replaced or removed. */

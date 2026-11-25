@@ -37,7 +37,7 @@ import { MarkScheduledButton } from "@/components/admin/MarkScheduledButton";
 import { GenerateMagicLinkButton } from "@/components/admin/GenerateMagicLinkButton";
 import { FormPasteButton } from "@/components/admin/FormPasteButton";
 import { NotesCard } from "@/components/admin/NotesCard";
-import { EvidenceThumb } from "@/components/admin/EvidenceThumb";
+import { EvidenceThumb } from "@/components/evidence/EvidenceThumb";
 import { AddEvidenceButton } from "@/components/admin/AddEvidenceButton";
 import { RemoveEvidenceButton } from "@/components/admin/RemoveEvidenceButton";
 import { DeleteResponseButton } from "@/components/admin/DeleteResponseButton";
@@ -639,11 +639,13 @@ export default async function StudentDetailPage({
                   }}
                 >
                   {t.proofFileId ? (
-                    <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                    <div style={{ flexShrink: 0 }}>
+                      <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
+                    </div>
                   ) : (
                     <span style={noProofThumb}>No proof</span>
                   )}
-                  <div style={{ fontSize: 13, flex: 1 }}>
+                  <div style={{ fontSize: 13, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                     <div>
                       {t.startDate} → {t.endDate}{" "}
                       <span style={t.excused ? successPillStyle : dangerPillStyle}>
@@ -1209,6 +1211,9 @@ const smallAction: React.CSSProperties = {
   color: "var(--color-text-primary)",
   textDecoration: "none",
   cursor: "pointer",
+  // A button does not inherit these, so without them it renders in Arial and shorter than the link.
+  fontFamily: "inherit",
+  lineHeight: "inherit",
 };
 
 /**

@@ -11,6 +11,7 @@ import { useRenderedTermId } from "@/components/RenderedTerm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/evidence/actions";
+import { EvidenceThumb } from "./EvidenceThumb";
 
 export const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 export const FORMAT_HINT = "PNG/JPEG/PDF only";
@@ -103,6 +104,7 @@ export function Section({
   );
 }
 
+/** A student's proof: the shared thumbnail, opening the file in a new tab, with an optional Remove under it. */
 export function Thumb({
   fileId,
   label,
@@ -116,45 +118,9 @@ export function Thumb({
   removeDisabled?: boolean;
   small?: boolean;
 }) {
-  const [broken, setBroken] = useState(false);
-  const size = small ? 56 : 120;
-  const url = `/api/evidence/${encodeURIComponent(fileId)}`;
   return (
     <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
-      <a href={url} target="_blank" rel="noreferrer" title={label}>
-        {broken ? (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: size,
-              height: size,
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              fontSize: 13,
-              color: "#555",
-            }}
-          >
-            📄 View file
-          </span>
-        ) : (
-          // Private, auth-proxied blob (not a static asset); next/image can't optimize it.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt={label}
-            onError={() => setBroken(true)}
-            style={{
-              width: size,
-              height: size,
-              objectFit: "cover",
-              border: "1px solid #ccc",
-              borderRadius: 6,
-            }}
-          />
-        )}
-      </a>
+      <EvidenceThumb fileId={fileId} label={label} opens="tab" size={small ? 56 : 120} />
       {onRemove && (
         <button
           type="button"

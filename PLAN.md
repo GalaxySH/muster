@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.60
+- **Version:** 1.61
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1045,9 +1045,12 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   proof image(s) + the optional **details text** (no structured parsing). Travel also
   shows each entry's inclusive date range + excused / "not excused (late)" state.
   - **PDF handling (decided — "option A"):** images get a real thumbnail + image
-    lightbox; **PDFs** show a generic placeholder card and open in the lightbox via an
-    `<iframe>` of the auth proxy (native browser PDF view) — no first-page thumbnail
-    render (a dependency we deferred). Served through `/api/evidence/[fileId]`.
+    lightbox; **PDFs** open in the lightbox via an `<iframe>` of the auth proxy (native
+    browser PDF view). Served through `/api/evidence/[fileId]`. Since 1.61 every
+    thumbnail is **Drive's own preview** (`?size=thumb`), which for a PDF is its first
+    page, so a PDF thumbnails like an image with no render dependency here; a file with
+    no preview shows a plain file box. The lightbox tries the original as an image and
+    switches to the `<iframe>` if it won't load.
   - Uploads are restricted to **PNG/JPEG/WebP/PDF** (HEIC dropped — won't render in
     `<img>`); the student hint says "PNG/JPEG images only". *Future:* may restrict the
     **course schedule** specifically to images so it always thumbnails beside the grid.
@@ -1269,7 +1272,10 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
   - **Folder layout (`DRIVE_FOLDER_ID` = root):** the **root holds the running
     responses spreadsheet** (below); **all proof files live in a single `proofs/`
     subfolder**, named `{studentEmail}__{kind}__{timestamp}.{ext}`. The app stores
-    only the `fileId`; the admin view renders inline via the same grant. (The
+    only the `fileId`; the admin view renders inline via the same grant, and
+    thumbnails on both sides are Drive's own preview images relayed the same way
+    (1.61), never cached or stored by the app (the viewer's browser keeps a served
+    thumbnail for 5 minutes, as it does an original). (The
     `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
     **Per term since 1.55:** that layout is fall 2026's, which keeps its files at
     the root. Every later term gets its own folder under the root, named after the
@@ -1668,6 +1674,39 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.61 (2026-11-25)** — **Two admin page changes, and preview thumbnails.** No
+  schema change.
+  - **Schedule health starts collapsed.** The Schedule health section on
+    `/admin/schedule` (`components/admin/ScheduleHealth.tsx`) is a native
+    `<details>` panel that is closed on every load and opens from its heading.
+    Nothing about what the page loads changed.
+  - **Upcoming travel shows the note and the proof.** Each entry on
+    `/admin/travel` (`components/admin/UpcomingTravelRow.tsx`) shows the trip's
+    note, clamped to two lines with the full text on hover, and its proof as the
+    same click-to-enlarge `EvidenceThumb` the per-student page uses, on the right
+    of the entry beside the dates and the resolved checkbox. An entry an admin
+    recorded with no proof shows no thumbnail.
+  - **Evidence thumbnails are Drive's previews and lazy load.** `?size=thumb` on
+    `/api/evidence/[fileId]` (same access check) relays Drive's own preview image
+    (`thumbnailLink`, fetched with the admin grant, never stored) instead of the
+    original, and `?size=preview` a larger one (1200px) for the course schedule on
+    the per-student page. The small image is `loading="lazy"`, so a long list only
+    fetches the previews scrolled into view, and never an original. A PDF's preview
+    is its first page, so the old "PDF" card is gone; the lightbox tries the
+    original as an image and opens the PDF viewer if that fails. A file with no
+    preview shows a plain file box. One `EvidenceThumb`
+    (`components/evidence/`) now serves every admin view and the student evidence
+    pages, which keep opening the file in a new tab; their only changes are the
+    preview image and the lazy load. A file with no preview there (one just
+    uploaded, before Drive has made it) loads the original as before, and shows the
+    file box only if that won't load as an image either, as a PDF did before.
+  - **A long travel note no longer overflows the per-student Travel card**, and its
+    proof thumbnail no longer shrinks.
+  - **Layout fixes found in the browser checks.** On `/admin/travel` the proof
+    thumbnails line up in one column (the dates column has a minimum width on
+    desktop), and at phone width the position drops to its own line under the
+    name. A long unbroken URL in a travel note now wraps on the student `/travel`
+    page instead of making the page scroll sideways.
 - **1.60 (2026-11-25)** — **The rest of the review's open items (issue #40).**
   Migration 0054, additive.
   - **Sign-ins are counted per semester.** `students.last_seen_at` is one stamp per
