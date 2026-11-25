@@ -1,0 +1,10 @@
+/* Student design system, page-specific rules (see student.css for the tokens
+   and primitives). Everything here stays under the .sf scope. */
+
+/* A text link on its own line (the dev-login link under the sign-in card):
+   padded out to a 44px tap target. */
+.sf .sf-inline-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}

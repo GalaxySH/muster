@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ActionButton, primaryButtonStyle } from "@/components/ui";
+import { StepActions } from "@/components/student/ui";
 
 /**
  * Travel-step gate (PLAN §4). Travel is optional, so we can't require an entry to
@@ -13,18 +12,16 @@ import { ActionButton, primaryButtonStyle } from "@/components/ui";
 export function TravelContinue({ nextHref }: { nextHref: string }) {
   const [ack, setAck] = useState(false);
   return (
-    <div style={{ marginTop: 20 }}>
-      <label style={{ display: "block", marginBottom: 10, fontSize: 14 }}>
-        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I&apos;ve
-        added all my travel, or I don&apos;t have any to add.
+    <>
+      <label className="sf-check sf-ack">
+        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+        <span>I&apos;ve added all my travel, or I don&apos;t have any to add.</span>
       </label>
-      {ack ? (
-        <Link href={nextHref} style={primaryButtonStyle}>
-          Continue
-        </Link>
-      ) : (
-        <ActionButton disabled>Continue</ActionButton>
-      )}
-    </div>
+      <StepActions
+        backHref="/availability"
+        nextHref={nextHref}
+        blockedReason={ack ? undefined : "Check the box above to continue."}
+      />
+    </>
   );
 }

@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { devLoginEnabled } from "@/lib/env";
 import { devSignInAction } from "@/lib/auth/actions";
-import { Page } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { Card, Notice } from "@/components/student/ui";
+import { FormSubmitButton } from "@/components/student/FormControls";
+
+export const metadata: Metadata = { title: "Dev login" };
 
 // Env-gated redirect; never statically prerender.
 export const dynamic = "force-dynamic";
@@ -15,28 +20,37 @@ export default function DevLoginPage() {
   if (!devLoginEnabled) redirect("/signin");
 
   return (
-    <Page>
+    <StudentPage width="narrow" home="none">
       <h1>Dev login</h1>
-      <p style={banner}>
-        <strong>Local testing only.</strong> This bypasses Google OAuth and is disabled in
-        production. Enter any <code>@wisc.edu</code> email to sign in as that identity.
+      <Notice tone="warning" role="note" title="Local testing only.">
+        <p>
+          This bypasses Google OAuth and is disabled in production. Enter any{" "}
+          <code>@wisc.edu</code> email to sign in as that identity.
+        </p>
+      </Notice>
+      <Card>
+        <form action={devSignInAction} className="sf-stack">
+          <div className="sf-field">
+            <label htmlFor="dev-email" className="sf-label">
+              Email
+            </label>
+            <input
+              id="dev-email"
+              type="email"
+              name="email"
+              defaultValue="stu@wisc.edu"
+              required
+              className="sf-input"
+            />
+          </div>
+          <FormSubmitButton block pendingLabel="Signing you in…">
+            Sign in
+          </FormSubmitButton>
+        </form>
+      </Card>
+      <p className="sf-muted sf-small">
+        Test accounts are managed at <code>/admin/test-users</code> (sign in as an admin first).
       </p>
-      <form action={devSignInAction} style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <input type="email" name="email" defaultValue="stu@wisc.edu" required style={{ flex: 1, padding: 8 }} />
-        <button type="submit">Sign in</button>
-      </form>
-      <p style={{ color: "#555", fontSize: 14, marginTop: "1.2rem" }}>
-        Test accounts are managed at <code>/admin/test-users</code> (sign in as an admin
-        first).
-      </p>
-    </Page>
+    </StudentPage>
   );
 }
-
-const banner: React.CSSProperties = {
-  background: "#fff4d6",
-  border: "1px solid #e0c060",
-  borderRadius: 6,
-  padding: "0.6rem 0.9rem",
-  fontSize: 14,
-};

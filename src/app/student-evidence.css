@@ -1,0 +1,129 @@
+/* Student design system, page-specific rules (see student.css for the tokens
+   and primitives). Everything here stays under the .sf scope.
+
+   The evidence pages: /course-schedule and /travel (components/evidence/*). */
+
+/* ---- Thumbnails -------------------------------------------------------- */
+/* One proof: the thumbnail (EvidenceThumb sets its own size) with an optional
+   Remove under it. */
+.sf .sf-thumb {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex: none;
+}
+.sf .sf-thumb > a {
+  display: block;
+  align-self: flex-start;
+  border-radius: 6px;
+  line-height: 0;
+}
+.sf .sf-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Saved trips (/travel) -------------------------------------------- */
+.sf .sf-trips {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+/* Thumbnail beside the details; Remove sits under the details on a phone and
+   moves to the end of the row when there is room. */
+.sf .sf-trip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem;
+  background: var(--sf-surface);
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-lg);
+}
+/* A late trip: a heavier danger edge. Its pill says so in words, with an icon. */
+.sf .sf-trip--late {
+  border: 1.5px solid var(--sf-danger);
+  border-left-width: 6px;
+}
+.sf .sf-trip-body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.sf .sf-trip-body p {
+  margin: 0;
+}
+.sf .sf-trip-body .sf-pill {
+  white-space: normal;
+}
+.sf .sf-trip-dates {
+  font-weight: 650;
+}
+.sf .sf-trip-note {
+  color: var(--sf-text-2);
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.sf .sf-trip-noproof {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1.5px dashed var(--sf-border-strong);
+  border-radius: 6px;
+  color: var(--sf-text-2);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  text-align: center;
+}
+.sf .sf-trip-actions {
+  grid-column: 2;
+}
+@media (min-width: 30rem) {
+  .sf .sf-trip {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .sf .sf-trip-actions {
+    grid-column: 3;
+    align-self: center;
+  }
+}
+
+/* ---- Add a trip -------------------------------------------------------- */
+/* Start and End side by side while both fit, one above the other on a very
+   narrow screen or at large text. iOS gives a date input a width of its own,
+   so it is told to stay inside its column. */
+.sf .sf-dates {
+  grid-template-columns: repeat(auto-fit, minmax(min(8.5rem, 100%), 1fr));
+}
+.sf .sf-dates input[type="date"] {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* With the native look off, iOS centres the value and lets an empty field
+   collapse. Keep it left aligned and full height. */
+.sf .sf-dates input[type="date"]::-webkit-date-and-time-value {
+  min-height: 1.5em;
+  text-align: left;
+}
+
+/* The "I've added all my travel" row above the action bar. */
+.sf .sf-ack {
+  margin: 0.5rem 0 1rem;
+}

@@ -1,0 +1,212 @@
+/* Student design system, page-specific rules (see student.css for the tokens
+   and primitives). Everything here stays under the .sf scope. */
+
+/* ---- Weekend closes (components/closes/CloseClaimBoard.tsx) ------------- */
+.sf .sf-close-summary {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid var(--sf-border-strong);
+  border-radius: var(--sf-radius-lg);
+  background: var(--sf-surface);
+}
+.sf .sf-close-summary--done {
+  border-color: var(--sf-success);
+  background: var(--sf-success-tint);
+}
+.sf .sf-close-summary > p {
+  margin: 0;
+}
+.sf .sf-close-summary > p + p {
+  margin-top: 0.35rem;
+}
+.sf .sf-close-count {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.sf .sf-close-count svg {
+  flex: none;
+  margin-top: 0.2rem;
+  color: var(--sf-success);
+}
+.sf .sf-close-weekend {
+  margin: 0 0 0.35rem;
+  color: var(--sf-text-2);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+.sf .sf-close-rows {
+  margin-bottom: 1rem;
+}
+.sf .sf-close-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  min-height: 3.75rem;
+  padding: 0.5rem 1rem;
+}
+/* A claimed row also carries the "Yours" pill, so the tint is not the only cue. */
+.sf .sf-close-row--mine {
+  background: var(--sf-success-tint);
+  box-shadow: inset 4px 0 0 var(--sf-success);
+}
+.sf .sf-close-when {
+  flex: 1 1 7.5rem;
+  min-width: 0;
+  display: grid;
+}
+.sf .sf-close-date {
+  font-weight: 650;
+}
+.sf .sf-close-time {
+  color: var(--sf-text-2);
+  font-size: 0.9375rem;
+}
+/* The pill and its button. They drop under the date, and then under each
+   other, when the text is too large for one row. */
+.sf .sf-close-state {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-width: 0;
+  max-width: 100%;
+}
+/* Claim and Release share a width, so the pills line up down the list. */
+.sf .sf-close-state .sf-btn {
+  min-width: min(6.25rem, 100%);
+}
+
+/* ---- Change requests (app/change-requests, components/changes) ---------- */
+.sf .sf-excuse-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.sf .sf-request-when {
+  display: grid;
+  gap: 1rem;
+}
+@media (min-width: 34rem) {
+  .sf .sf-request-when {
+    grid-template-columns: 11rem 1fr;
+    gap: 0.75rem;
+  }
+}
+.sf .sf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sf .sf-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0.25rem 0.9rem;
+  border: 1.5px solid var(--sf-border-strong);
+  border-radius: 999px;
+  background: var(--sf-surface);
+  color: var(--sf-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sf .sf-chip:hover {
+  background: var(--sf-sunken);
+}
+.sf .sf-request-list-title {
+  margin-top: 0.5rem;
+}
+.sf .sf-request-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sf .sf-request-title {
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sf .sf-request-list .sf-card > p {
+  margin: 0 0 0.5rem;
+}
+.sf .sf-request-list .sf-card > p:last-child {
+  margin-bottom: 0;
+}
+.sf .sf-request-list .sf-card > .sf-btn {
+  margin-top: 0.25rem;
+}
+
+/* The admin-only employee search on the request form. */
+.sf .sf-employee {
+  position: relative;
+}
+.sf .sf-employee-chosen {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sf .sf-employee-chip {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--sf-radius);
+  background: var(--sf-info-tint);
+  overflow-wrap: anywhere;
+}
+.sf .sf-employee-clear {
+  flex: none;
+  min-width: 2.75rem;
+  padding: 0;
+  font-size: 1.25rem;
+}
+.sf .sf-employee-results {
+  position: absolute;
+  z-index: 45;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 17rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+  border: 1px solid var(--sf-border-strong);
+  border-radius: var(--sf-radius);
+  background: var(--sf-surface);
+  box-shadow: 0 6px 20px rgb(28 25 23 / 12%);
+}
+.sf .sf-employee-note {
+  padding: 0.6rem 0.5rem;
+  color: var(--sf-text-2);
+  font-size: 0.9375rem;
+}
+.sf .sf-employee-result {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--sf-ink);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.sf .sf-employee-result:hover {
+  background: var(--sf-sunken);
+}

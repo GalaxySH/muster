@@ -5,6 +5,8 @@ import {
   decideTravelSubmission,
   LATE_TRAVEL_POLICY,
   travelStanding,
+  formatCutoffDate,
+  formatTravelRange,
 } from "./travel";
 
 describe("travelStanding", () => {
@@ -83,5 +85,35 @@ describe("defaultTravelCutoff", () => {
     const cutoff = defaultTravelCutoff("2026-09-02");
     expect(isTravelExcused(new Date("2026-08-31T23:59:00Z"), cutoff)).toBe(true);
     expect(isTravelExcused(new Date("2026-10-01T00:00:00Z"), cutoff)).toBe(false);
+  });
+});
+
+describe("formatCutoffDate", () => {
+  it("writes the month, day and year", () => {
+    expect(formatCutoffDate(new Date("2027-01-15T18:00:00Z"))).toBe("Jan 15, 2027");
+  });
+
+  it("reads the day in Madison, not UTC", () => {
+    // 03:00 UTC on 9/2 is still the evening of 9/1 in Chicago.
+    expect(formatCutoffDate(new Date("2026-09-02T03:00:00Z"))).toBe("Sep 1, 2026");
+  });
+});
+
+describe("formatTravelRange", () => {
+  it("says the year once when both days share it", () => {
+    expect(formatTravelRange("2026-11-25", "2026-11-29")).toBe("Nov 25 to Nov 29, 2026");
+  });
+
+  it("says both years when the trip crosses one", () => {
+    expect(formatTravelRange("2026-12-30", "2027-01-02")).toBe("Dec 30, 2026 to Jan 2, 2027");
+  });
+
+  it("is a single date for a one-day trip", () => {
+    expect(formatTravelRange("2026-10-05", "2026-10-05")).toBe("Oct 5, 2026");
+  });
+
+  it("shows anything that isn't a stored day as it is", () => {
+    expect(formatTravelRange("soon", "2026-10-05")).toBe("soon to 2026-10-05");
+    expect(formatTravelRange("2026-13-01", "2026-13-02")).toBe("2026-13-01 to 2026-13-02");
   });
 });

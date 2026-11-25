@@ -1,25 +1,32 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { InfoCard, Page, PrimaryLink } from "@/components/ui";
-import { SubmitButton } from "@/components/SubmitButton";
-import { AppHeader } from "@/components/AppHeader";
+import { StudentPage } from "@/components/student/StudentPage";
+import { ButtonLink, Card } from "@/components/student/ui";
+import { FormSubmitButton } from "@/components/student/FormControls";
+
+export const metadata: Metadata = { title: "Welcome" };
 
 export default async function Home() {
   const session = await getAppSession();
 
   return (
-    <Page>
-      {/* Students see the landing page bare; admins get the header for its student finder. */}
-      {session?.isAdmin && <AppHeader />}
+    <StudentPage home="none">
       <h1>Welcome to Muster</h1>
-      <p>This is GDEC&apos;s scheduling application for the semester. You can use this site to manage your scheduling preferences and submit travel excusal requests.</p>
+      <p className="sf-muted">
+        This is GDEC&apos;s scheduling application for the semester. You can use this site to manage
+        your scheduling preferences and submit travel excusal requests.
+      </p>
       {session ? (
-        <InfoCard title="You're signed in">
-          <p style={{ marginTop: 0 }}>
+        <Card>
+          <h2>You&apos;re signed in</h2>
+          <p className="sf-email">
             Signed in as <strong>{session.email}</strong>.
           </p>
-          <PrimaryLink href="/me">Continue</PrimaryLink>
-        </InfoCard>
+          <ButtonLink href="/me" block>
+            Continue
+          </ButtonLink>
+        </Card>
       ) : (
         <form
           action={async () => {
@@ -27,9 +34,11 @@ export default async function Home() {
             redirect("/signin");
           }}
         >
-          <SubmitButton pendingLabel="Loading…">Sign in</SubmitButton>
+          <FormSubmitButton block pendingLabel="Loading…">
+            Sign in
+          </FormSubmitButton>
         </form>
       )}
-    </Page>
+    </StudentPage>
   );
 }

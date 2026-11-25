@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
@@ -18,12 +18,14 @@ import {
   NoGroupNotice,
   SubmittedLockBanner,
 } from "@/components/FormWindowBanner";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { StudentDeadEnd } from "@/components/student/StudentDeadEnd";
+import { Notice } from "@/components/student/ui";
 import { getTravelCutoff, getLateTravelPolicy } from "@/lib/settings";
 import { isTravelExcused } from "@/lib/domain/travel";
 import { getPositionReturnDate } from "@/lib/positions/data";
+
+export const metadata: Metadata = { title: "Travel" };
 
 /**
  * `isoDate` is the stored "YYYY-MM-DD"; formatted without a Date object so no
@@ -61,12 +63,11 @@ export default async function TravelPage({
   const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Travel excusals</h1>
-        <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
-        <Link href="/me">Back</Link>
-      </Page>
+      <StudentDeadEnd title="Travel">
+        <Notice tone="warning">
+          <p>You&apos;re not on the current roster, so there&apos;s nothing to upload yet.</p>
+        </Notice>
+      </StudentDeadEnd>
     );
   }
 
@@ -84,8 +85,8 @@ export default async function TravelPage({
 
   if (onBehalf) {
     return (
-      <Page>
-        <AppHeader />
+      <StudentPage>
+        <h1>Travel</h1>
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
         <WorkingTerm>
           <TravelForm
@@ -99,7 +100,7 @@ export default async function TravelPage({
             contactEmail={contactLabel}
           />
         </WorkingTerm>
-      </Page>
+      </StudentPage>
     );
   }
 
@@ -110,22 +111,16 @@ export default async function TravelPage({
 
   if (access.access === "no-group") {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Travel excusals</h1>
+      <StudentDeadEnd title="Travel">
         <NoGroupNotice />
-        <Link href="/me">Back</Link>
-      </Page>
+      </StudentDeadEnd>
     );
   }
 
   const editable = access.canEdit;
 
   return (
-    <Page>
-      <AppHeader>
-        <WizardSteps steps={nav.steps} current="travel" reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage nav={nav} current="travel">
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
@@ -135,6 +130,7 @@ export default async function TravelPage({
           closesAt={access.closesAt}
         />
       )}
+      <h1>Travel</h1>
       <TravelForm
         initial={evidence}
         driveConnected={drive.connected}
@@ -148,6 +144,6 @@ export default async function TravelPage({
       {editable && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />
       )}
-    </Page>
+    </StudentPage>
   );
 }

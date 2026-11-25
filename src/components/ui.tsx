@@ -1,18 +1,17 @@
 /**
- * Shared UI primitives for the form-flow and admin surfaces: one vocabulary for
- * the blue-primary / grey-secondary buttons that were previously copy-pasted as
- * inline style objects across pages. No `"use client"` / hooks, so both server
+ * Shared UI primitives for the admin console: the page shell, the tinted card
+ * and the blue-primary / grey-secondary buttons. The student pages have their
+ * own set in components/student. No `"use client"` / hooks, so both server
  * pages and client components can import these.
  */
-import Link from "next/link";
 
 /**
  * The standard page shell: a left-aligned `<main>` with one of three comfortable,
  * mobile-aware content widths (see `.page` in globals.css). Use this for every
  * top-level page so width, alignment, and padding stay consistent.
- *   - `narrow` (480): auth / single-form pages
- *   - `default` (720): reading + the student form flow
- *   - `wide` (1000): admin tables and the availability grid
+ *   - `narrow` (480): single-form pages
+ *   - `default` (720): reading
+ *   - `wide` (1000): admin tables
  *   - `full`: full-bleed (the response-review dashboard, groups & form windows)
  */
 export function Page({
@@ -39,10 +38,9 @@ const CARD_TONES = {
 } as const;
 
 /**
- * The tinted notice/call-to-action card (the /me hub boxes, the / greeting, the
- * /signin banners). `info` (blue) is the default; `success` (green) confirms;
- * `warning` (amber) cautions; `danger` (red) warns. `title` renders the
- * standard card heading.
+ * The tinted notice/call-to-action card. `info` (blue) is the default;
+ * `success` (green) confirms; `warning` (amber) cautions; `danger` (red) warns.
+ * `title` renders the standard card heading.
  */
 export function InfoCard({
   tone = "info",
@@ -75,9 +73,9 @@ export function InfoCard({
 }
 
 /**
- * A term's system message as students see it at the top of /me: an untitled
- * card in the admin's chosen colour, line breaks kept. The Semester page shows
- * the same card as its preview.
+ * The Semester page's preview of a term's system message: an untitled card in
+ * the admin's chosen colour, line breaks kept. /me shows the same text and
+ * colour in the student design (a Notice), not this card.
  */
 export function SystemMessage({ text, tone }: { text: string; tone: keyof typeof CARD_TONES }) {
   return (
@@ -122,8 +120,7 @@ export const disabledButtonStyle: React.CSSProperties = {
  * The standard action button: primary/secondary look, one disabled style, and a
  * uniform pending state (disabled + label swap) so slow server actions always
  * give feedback. Presentational only (no hooks); pass `pending` from
- * useTransition, or use `<SubmitButton>` (components/SubmitButton.tsx) inside a
- * `<form action>` to get it from useFormStatus.
+ * useTransition.
  */
 export function ActionButton({
   variant = "primary",
@@ -166,21 +163,4 @@ export function submitOnCtrlEnter(e: React.KeyboardEvent<HTMLTextAreaElement>) {
   if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
   e.currentTarget.form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
-}
-
-/** `next/link` styled as the primary button, for forward navigation on server pages. */
-export function PrimaryLink({
-  href,
-  children,
-  style,
-}: {
-  href: string;
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <Link href={href} style={{ ...primaryButtonStyle, ...style }}>
-      {children}
-    </Link>
-  );
 }

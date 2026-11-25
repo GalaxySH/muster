@@ -1,0 +1,1127 @@
+/* The student form's design system (components/student/*). Every rule is
+   `sf-` prefixed, and only StudentPage renders those classes, so the admin
+   console keeps its own look. Mobile first: the base rules are the phone
+   layout, and the few min-width queries only add room.
+
+   Colour is used in tested pairs (WCAG 2.2 AA). Text tokens are 4.5:1 or better
+   on every surface they are used on, and control borders and state marks are
+   3:1 or better against what they sit on:
+     ink        #1c1917 on page 16.1, on surface 17.5
+     on-ink     #ffffff on ink 17.5, on ink-hover #44403c 10.3
+     text-2     #57534e on page 7.0, on surface 7.6, on sunken 6.4,
+                on disabled #e7e2da 5.9
+     text-3     #6b655f on page 5.3, on sunken 4.8
+     border-strong #8a8279 on surface 3.8, on page 3.5
+     on-ink on accent #c5050c 6.2, on accent-strong #a30409 8.1
+     success #166534 on its tint 6.4; warning #7a4a00 on its tint 6.8;
+     danger #b42318 on its tint 5.8; info #1d4e89 on its tint 7.4;
+     auto #5b3fa8 on its tint 6.6; hot #b45309 on surface 5.0 */
+.sf {
+  --sf-page: #f7f5f2;
+  --sf-surface: #ffffff;
+  --sf-sunken: #efebe5;
+  --sf-ink: #1c1917;
+  --sf-ink-hover: #44403c;
+  /* Text and marks on an ink or accent fill. */
+  --sf-on-ink: #ffffff;
+  --sf-text-2: #57534e;
+  --sf-text-3: #6b655f;
+  --sf-border: #ddd6cc;
+  --sf-border-strong: #8a8279;
+  --sf-disabled: #e7e2da;
+  --sf-accent: #c5050c;
+  --sf-accent-strong: #a30409;
+  --sf-success: #166534;
+  --sf-success-tint: #eaf6ee;
+  --sf-warning: #7a4a00;
+  --sf-warning-tint: #fff4d6;
+  --sf-danger: #b42318;
+  --sf-danger-tint: #fdecea;
+  --sf-info: #1d4e89;
+  --sf-info-tint: #eaf1fa;
+  --sf-auto: #5b3fa8;
+  --sf-auto-tint: #efeafb;
+  --sf-hot: #b45309;
+  --sf-radius: 10px;
+  --sf-radius-lg: 14px;
+  --sf-gutter: 1rem;
+  --sf-topbar-h: 3.25rem;
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sf-page);
+  color: var(--sf-ink);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The only two rules outside the `sf-` prefix. A focused control scrolls
+   into view clear of the sticky top bar and, on pages that have one, the
+   sticky action bar (WCAG 2.4.11). Scroll padding only works on the scroller,
+   which is the document. */
+html:has(.sf) {
+  scroll-padding-top: 4.5rem;
+}
+html:has(.sf-actionbar) {
+  scroll-padding-bottom: 8rem;
+}
+
+/* One focus ring for every control: a dark ring with a white halo, so it holds
+   3:1 on the page, on tints and on the red button. Listed by region, not as
+   `.sf :focus-visible`, so the admin header inside .sf-admin-tools keeps the
+   console's own focus style. */
+.sf-skip:focus-visible,
+.sf-topbar :focus-visible,
+.sf-progress :focus-visible,
+.sf-main :focus-visible {
+  outline: 3px solid var(--sf-ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--sf-surface);
+}
+/* The file tile takes the same ring for the invisible input inside it. Its own
+   rule, so a browser without :has() still gets the rule above. */
+.sf-file:has(input:focus-visible) {
+  outline: 3px solid var(--sf-ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--sf-surface);
+}
+
+.sf-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* A target of an in-page link or a moved focus: a little air above it. The
+   scroll padding on the document already clears the top bar. */
+.sf-anchor {
+  scroll-margin-top: 0.75rem;
+}
+
+.sf-skip {
+  position: absolute;
+  left: 0.5rem;
+  top: -4rem;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  border-radius: var(--sf-radius);
+  background: var(--sf-ink);
+  color: var(--sf-on-ink);
+  font-weight: 600;
+}
+.sf-skip:focus {
+  top: 0.5rem;
+}
+
+/* ---- Shell ------------------------------------------------------------- */
+.sf-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--sf-surface);
+  border-bottom: 1px solid var(--sf-border);
+}
+.sf-topbar-inner,
+.sf-progress-inner,
+.sf-admin-tools,
+.sf-main {
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-left: var(--sf-gutter);
+  padding-right: var(--sf-gutter);
+}
+.sf--wide .sf-topbar-inner,
+.sf--wide .sf-progress-inner,
+.sf--wide .sf-admin-tools,
+.sf--wide .sf-main {
+  max-width: 60rem;
+}
+.sf--narrow .sf-main {
+  max-width: 28rem;
+}
+.sf-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: var(--sf-topbar-h);
+}
+.sf-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--sf-ink);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.sf-brand span {
+  border-bottom: 3px solid var(--sf-accent);
+  line-height: 1.2;
+}
+.sf-topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
+  margin-right: -0.5rem;
+  border-radius: var(--sf-radius);
+  color: var(--sf-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.sf-topbar-link:hover {
+  background: var(--sf-sunken);
+}
+/* The console's own header (AppHeader), shown to an admin. It keeps the look
+   it has on admin pages: the student text styles are reset here, and the
+   student focus ring above leaves it out. It sits above the action bar so the
+   student finder's dropdown is not covered. */
+.sf-admin-tools {
+  position: relative;
+  z-index: 45;
+  padding-top: 0.75rem;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  line-height: normal;
+}
+.sf-admin-tools .app-header {
+  margin: 0;
+}
+/* The header's Home breadcrumb repeats the top bar's Home link. The nav sets
+   its display inline, hence !important. */
+.sf-admin-tools .app-header > nav {
+  display: none !important;
+}
+.sf-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 1.25rem;
+  padding-bottom: 2rem;
+}
+.sf-main > * {
+  flex: none;
+}
+.sf-main:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ---- Step progress ----------------------------------------------------- */
+.sf-progress {
+  background: var(--sf-surface);
+  border-bottom: 1px solid var(--sf-border);
+}
+.sf-progress-inner {
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+.sf-progress-label {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--sf-text-2);
+}
+.sf-progress-label strong {
+  color: var(--sf-ink);
+}
+.sf-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sf-step {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.sf-step:last-child {
+  flex: 0 0 auto;
+}
+/* The connector from this step to the next. */
+.sf-step:not(:last-child)::after {
+  content: "";
+  flex: 1;
+  min-width: 0.25rem;
+  height: 2px;
+  background: var(--sf-border-strong);
+}
+.sf-step--done:not(:last-child)::after {
+  background: var(--sf-ink);
+}
+.sf-step-target {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  /* A 44px target that does not grow with the text size, so four steps still
+     fit across a phone at 200% text. */
+  min-width: min(2.75rem, 44px);
+  justify-content: center;
+  color: var(--sf-text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--sf-radius);
+}
+.sf-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid var(--sf-border-strong);
+  border-radius: 999px;
+  background: var(--sf-surface);
+  color: var(--sf-text-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sf-step--reached .sf-step-dot {
+  border-color: var(--sf-ink);
+  color: var(--sf-ink);
+}
+.sf-step--current .sf-step-dot {
+  border-color: var(--sf-ink);
+  background: var(--sf-ink);
+  color: var(--sf-on-ink);
+}
+a.sf-step-target:hover .sf-step-dot {
+  background: var(--sf-sunken);
+}
+/* Step names sit beside the dots only when there is room for all of them.
+   Each step's full name is always in the tree for screen readers. */
+.sf-step-name {
+  display: none;
+}
+@media (min-width: 40rem) {
+  .sf-step-name {
+    display: inline;
+  }
+  .sf-step--current .sf-step-name {
+    color: var(--sf-ink);
+  }
+  .sf-step:not(:last-child)::after {
+    display: none;
+  }
+  .sf-steps {
+    gap: 1.25rem;
+  }
+  .sf-step {
+    flex: 0 0 auto;
+  }
+}
+
+/* ---- Type -------------------------------------------------------------- */
+.sf h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.625rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.sf h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 650;
+}
+.sf h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.sf-main :where(p) {
+  margin: 0 0 0.75rem;
+}
+.sf-main :where(a) {
+  color: var(--sf-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sf-muted {
+  color: var(--sf-text-2);
+}
+.sf-small {
+  font-size: 0.875rem;
+}
+/* A subheading inside a card, set off from what is above it. */
+.sf .sf-subhead {
+  margin: 1.25rem 0 0.5rem;
+}
+/* Text that keeps the line breaks it was typed with. */
+.sf-prewrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A line that carries an email address: long addresses wrap at 320px. */
+.sf-email {
+  overflow-wrap: anywhere;
+}
+/* The mark on a link that opens in a new tab. */
+.sf-ext-icon {
+  margin-left: 0.3em;
+  font-size: 0.75em;
+}
+/* A block that follows other content in a card: an upload form, a button on
+   its own row, a closing line. */
+.sf-gap-top {
+  margin-top: 0.75rem;
+}
+.sf-num {
+  font-variant-numeric: tabular-nums;
+}
+.sf-stack {
+  display: grid;
+  gap: 1rem;
+}
+.sf-stack > * {
+  margin: 0;
+  min-width: 0;
+}
+.sf-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* A heading beside a pill: the row's gap spaces it. */
+.sf-cluster > :is(h1, h2) {
+  margin: 0;
+}
+.sf-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.sf-list--tight {
+  gap: 0.25rem;
+}
+
+/* ---- Card, notice, pill ------------------------------------------------ */
+.sf-card {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  background: var(--sf-surface);
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-lg);
+}
+.sf-card > :last-child {
+  margin-bottom: 0;
+}
+.sf-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.sf-card-head > :is(h2, h3) {
+  margin: 0;
+}
+.sf-notice {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--sf-notice-fg);
+  border-radius: 4px var(--sf-radius) var(--sf-radius) 4px;
+  background: var(--sf-notice-bg);
+  color: var(--sf-ink);
+  font-size: 0.9375rem;
+}
+.sf-notice-icon {
+  flex: none;
+  margin-top: 0.2rem;
+  color: var(--sf-notice-fg);
+}
+.sf-notice-body {
+  flex: 1;
+  min-width: 0;
+}
+.sf-notice-body > :last-child {
+  margin-bottom: 0;
+}
+.sf-notice-title {
+  display: block;
+  margin: 0 0 0.15rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.sf-notice--info {
+  --sf-notice-fg: var(--sf-info);
+  --sf-notice-bg: var(--sf-info-tint);
+}
+.sf-notice--success {
+  --sf-notice-fg: var(--sf-success);
+  --sf-notice-bg: var(--sf-success-tint);
+}
+.sf-notice--warning {
+  --sf-notice-fg: var(--sf-warning);
+  --sf-notice-bg: var(--sf-warning-tint);
+}
+.sf-notice--danger {
+  --sf-notice-fg: var(--sf-danger);
+  --sf-notice-bg: var(--sf-danger-tint);
+}
+.sf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--sf-sunken);
+  color: var(--sf-text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.sf-pill--success {
+  background: var(--sf-success-tint);
+  color: var(--sf-success);
+}
+.sf-pill--warning {
+  background: var(--sf-warning-tint);
+  color: var(--sf-warning);
+}
+.sf-pill--danger {
+  background: var(--sf-danger-tint);
+  color: var(--sf-danger);
+}
+
+/* ---- Disclosure (a native <details>) ------------------------------------ */
+.sf-disclosure {
+  margin-top: 1rem;
+  border-top: 1px solid var(--sf-border);
+}
+.sf-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0;
+  border-radius: var(--sf-radius);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.sf-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+/* The open/closed mark: a chevron drawn from two borders. */
+.sf-disclosure > summary::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: 0 0.25rem 0 0.15rem;
+  border-right: 2px solid var(--sf-ink);
+  border-bottom: 2px solid var(--sf-ink);
+  transform: rotate(-45deg);
+}
+.sf-disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+.sf-disclosure > summary:hover {
+  background: var(--sf-sunken);
+}
+.sf-disclosure-body {
+  padding: 0.25rem 0 0;
+  color: var(--sf-text-2);
+  font-size: 0.9375rem;
+}
+.sf-disclosure-body > :last-child {
+  margin-bottom: 0;
+}
+.sf-disclosure-body strong {
+  color: var(--sf-ink);
+}
+
+/* ---- Buttons ----------------------------------------------------------- */
+.sf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.5rem 1.25rem;
+  border: 1.5px solid transparent;
+  border-radius: var(--sf-radius);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.12s ease;
+}
+.sf-btn--primary,
+.sf-main a.sf-btn--primary {
+  background: var(--sf-accent);
+  color: var(--sf-on-ink);
+}
+.sf-btn--primary:hover {
+  background: var(--sf-accent-strong);
+}
+.sf-btn--secondary,
+.sf-main a.sf-btn--secondary {
+  background: var(--sf-surface);
+  border-color: var(--sf-border-strong);
+  color: var(--sf-ink);
+}
+.sf-btn--secondary:hover {
+  background: var(--sf-sunken);
+}
+.sf-btn--danger {
+  background: var(--sf-surface);
+  border-color: var(--sf-danger);
+  color: var(--sf-danger);
+}
+.sf-btn--danger:hover {
+  background: var(--sf-danger-tint);
+}
+.sf-btn--quiet,
+.sf-main a.sf-btn--quiet {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  background: none;
+  color: var(--sf-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sf-btn--quiet:hover {
+  background: var(--sf-sunken);
+}
+.sf-btn--small {
+  min-height: 2.75rem;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9375rem;
+}
+.sf-btn--block {
+  display: flex;
+  width: 100%;
+}
+.sf-btn:disabled,
+.sf-btn[aria-disabled="true"] {
+  background: var(--sf-disabled);
+  border-color: transparent;
+  color: var(--sf-text-2);
+  cursor: default;
+  text-decoration: none;
+}
+/* Still operable: pressing it says what is missing. The border keeps it
+   reading as a button. */
+.sf-btn[aria-disabled="true"] {
+  border-color: var(--sf-border-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-btn {
+    transition: none;
+  }
+}
+
+/* ---- Fields ------------------------------------------------------------ */
+.sf-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sf-label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.sf-optional {
+  color: var(--sf-text-2);
+  font-weight: 400;
+}
+.sf-hint {
+  margin: 0;
+  color: var(--sf-text-2);
+  font-size: 0.875rem;
+}
+.sf-input,
+.sf-textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.6rem 0.75rem;
+  border: 1.5px solid var(--sf-border-strong);
+  border-radius: var(--sf-radius);
+  background: var(--sf-surface);
+  color: var(--sf-ink);
+  /* 16px stops iOS from zooming the page when the field takes focus. */
+  font: inherit;
+  font-size: 1rem;
+}
+.sf-textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+.sf-input::placeholder,
+.sf-textarea::placeholder {
+  color: var(--sf-text-3);
+  opacity: 1;
+}
+.sf-input:disabled,
+.sf-textarea:disabled,
+.sf-input[readonly],
+.sf-textarea[readonly] {
+  background: var(--sf-sunken);
+  color: var(--sf-text-2);
+}
+.sf-input[aria-invalid="true"] {
+  border-color: var(--sf-danger);
+}
+.sf-fields-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+/* A checkbox with its label, as one full-width tap row. */
+.sf-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.7rem 0.75rem;
+  border: 1.5px solid var(--sf-border-strong);
+  border-radius: var(--sf-radius);
+  background: var(--sf-surface);
+  cursor: pointer;
+}
+.sf-check input {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin: 0.05rem 0 0;
+  accent-color: var(--sf-ink);
+}
+.sf-check:has(input:disabled) {
+  background: var(--sf-sunken);
+  cursor: default;
+}
+/* The file picker: the native input stays in the tree (and keeps its keyboard
+   and screen-reader behaviour); the tile around it is the visible control. */
+.sf-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4rem;
+  padding: 0.75rem 1rem;
+  border: 1.5px dashed var(--sf-border-strong);
+  border-radius: var(--sf-radius-lg);
+  background: var(--sf-surface);
+  cursor: pointer;
+}
+.sf-file:hover {
+  background: var(--sf-sunken);
+}
+.sf-file input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.sf-file-icon {
+  flex: none;
+  color: var(--sf-text-2);
+  font-size: 1.25rem;
+}
+.sf-file-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.sf-file-text > * {
+  overflow-wrap: anywhere;
+}
+.sf-file-title {
+  font-weight: 600;
+}
+.sf-file--disabled {
+  border-style: solid;
+  border-color: var(--sf-border);
+  background: var(--sf-sunken);
+  color: var(--sf-text-2);
+  cursor: default;
+}
+.sf-file--disabled input {
+  cursor: default;
+}
+
+/* ---- Row lists (the hub's step list) ----------------------------------- */
+.sf-rows {
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-lg);
+  background: var(--sf-surface);
+  overflow: hidden;
+}
+.sf-rows li + li {
+  border-top: 1px solid var(--sf-border);
+}
+.sf-row,
+.sf-main a.sf-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 1rem;
+  color: var(--sf-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+a.sf-row:hover {
+  background: var(--sf-sunken);
+}
+.sf-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.sf-row-chevron {
+  flex: none;
+  color: var(--sf-text-3);
+}
+.sf-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+}
+.sf-dl dt {
+  color: var(--sf-text-2);
+}
+.sf-dl dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Sticky action bar ------------------------------------------------- */
+/* Sticks to the bottom of the screen while its page is in view, and settles
+   into place at the end of the page. Being in the flow, it never covers the
+   last of the content. */
+.sf-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  margin: auto calc(-1 * var(--sf-gutter)) -2rem;
+  padding: 0.75rem var(--sf-gutter) calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: var(--sf-surface);
+  border-top: 1px solid var(--sf-border);
+  box-shadow: 0 -6px 20px rgb(28 25 23 / 6%);
+}
+.sf-actionbar-status {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--sf-text-2);
+}
+.sf-actionbar-status .sf-status {
+  margin: 0;
+}
+/* A link in the status line ("3 requirements left"): a 44px tap target. */
+.sf-actionbar-status > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+/* The buttons share one row, and go one above the other when the text is too
+   large for that. */
+.sf-actionbar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sf-actionbar-buttons > .sf-btn {
+  min-width: 0;
+}
+.sf-actionbar-buttons > .sf-btn--primary {
+  flex: 1;
+}
+.sf-actionbar-buttons > .sf-btn--secondary,
+.sf-actionbar-buttons > .sf-btn--quiet {
+  flex: 0 1 auto;
+}
+@media (min-width: 40rem) {
+  .sf-actionbar {
+    margin-left: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--sf-border);
+    border-radius: var(--sf-radius-lg) var(--sf-radius-lg) 0 0;
+  }
+  .sf-actionbar-buttons {
+    justify-content: flex-end;
+  }
+  .sf-actionbar-buttons > .sf-btn--primary {
+    flex: 0 1 auto;
+    min-width: 12rem;
+  }
+}
+
+/* ---- Status text ------------------------------------------------------- */
+.sf-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.sf-status--ok {
+  color: var(--sf-success);
+}
+.sf-status--error {
+  color: var(--sf-danger);
+}
+.sf-status svg {
+  flex: none;
+  margin-top: 0.25rem;
+}
+
+/* ---- Availability grid (components/AvailabilityForm.tsx) ---------------- */
+.sf-avail-grids {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.sf-avail-grids .sf-card {
+  margin: 0;
+  /* A little less padding than other cards: on a phone the cells need the width. */
+  padding: 0.75rem;
+}
+@media (min-width: 56rem) {
+  .sf-avail-grids--two {
+    grid-template-columns: 5fr 3fr;
+    align-items: start;
+  }
+}
+/* On a phone the gaps and the label column are kept tight, so each cell is as
+   close to 44px wide as the screen allows. The table is widened by its outer
+   spacing so the cells line up with the card's content edge. */
+.sf-grid {
+  --sf-grid-gap: 3px;
+  border-collapse: separate;
+  border-spacing: var(--sf-grid-gap);
+  margin: 0 calc(-1 * var(--sf-grid-gap));
+  width: calc(100% + 2 * var(--sf-grid-gap));
+  table-layout: fixed;
+}
+.sf-grid caption {
+  text-align: left;
+}
+.sf-grid thead th {
+  padding: 0 0 0.15rem;
+  color: var(--sf-text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+/* The label column. Capped as a share of the table, so large text can't
+   crush the cells. */
+.sf-grid thead td {
+  width: min(4.75rem, 32%);
+}
+@media (min-width: 30rem) {
+  .sf-grid {
+    --sf-grid-gap: 4px;
+  }
+  .sf-grid thead td {
+    width: min(5.75rem, 32%);
+  }
+}
+.sf-grid td {
+  padding: 0;
+}
+.sf-grid-rowlabel {
+  padding: 0 0.125rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.sf-grid-tag {
+  display: block;
+  color: var(--sf-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.sf-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 3rem;
+  padding: 0;
+  border: 1.5px solid var(--sf-border-strong);
+  border-radius: 8px;
+  background: var(--sf-surface);
+  color: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sf-cell:hover {
+  background: var(--sf-sunken);
+}
+.sf-cell--on {
+  border-color: var(--sf-ink);
+  background: var(--sf-ink);
+  color: var(--sf-on-ink);
+}
+.sf-cell--on:hover {
+  background: var(--sf-ink-hover);
+}
+/* A dark ring would merge with selected neighbours. A selected cell gets a
+   light ring inside it and a haloed ring outside, raised over the cells
+   around it. */
+.sf-cell--on:focus-visible {
+  z-index: 1;
+  outline-color: var(--sf-on-ink);
+  outline-offset: -5px;
+  box-shadow:
+    0 0 0 2px var(--sf-surface),
+    0 0 0 4px var(--sf-ink);
+}
+.sf-cell--auto {
+  border: 2px dashed var(--sf-auto);
+  background: var(--sf-auto-tint);
+  color: var(--sf-auto);
+}
+.sf-cell--covered {
+  border-style: dotted;
+  background: var(--sf-sunken);
+  color: var(--sf-text-2);
+}
+.sf-grid--locked .sf-cell {
+  cursor: default;
+}
+.sf-grid--locked .sf-cell--off {
+  border-color: var(--sf-border);
+  background: var(--sf-sunken);
+}
+/* A busy shift: a flame in the corner, on its own backing so it shows on
+   every cell state. */
+.sf-cell-hot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--sf-surface);
+  color: var(--sf-hot);
+  font-size: 0.625rem;
+  pointer-events: none;
+}
+/* Sunday opens the scheduling week and Saturday closes it, so the weekend's
+   two columns are set apart by a rule (PLAN §7). Positional, like the admin
+   grid's split. */
+.sf-grid--weekend th:last-child,
+.sf-grid--weekend td:last-child {
+  border-left: 1px solid var(--sf-border-strong);
+  padding-left: 6px;
+}
+.sf-grid--weekend th:nth-last-child(2),
+.sf-grid--weekend td:nth-last-child(2) {
+  padding-right: 2px;
+}
+.sf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  color: var(--sf-text-2);
+  font-size: 0.875rem;
+}
+.sf-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sf-legend .sf-cell {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  cursor: default;
+}
+.sf-legend .sf-cell-hot {
+  position: static;
+  border: 1px solid var(--sf-border);
+}
+.sf-hours {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sf-hours .sf-input {
+  width: 6rem;
+}
+.sf-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+.sf-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  color: var(--sf-ink);
+}
+.sf-checklist svg {
+  flex: none;
+  margin-top: 0.25rem;
+  color: var(--sf-text-3);
+}
+.sf-checklist .sf-check--passed svg {
+  color: var(--sf-success);
+}
+.sf-checklist .sf-check--soft svg {
+  color: var(--sf-warning);
+}
+.sf-checklist--flagged .sf-check--todo {
+  color: var(--sf-danger);
+}
+.sf-checklist--flagged .sf-check--todo svg {
+  color: var(--sf-danger);
+}

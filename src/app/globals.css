@@ -462,12 +462,10 @@ body {
   cursor: pointer;
 }
 
-/* Student availability grid (src/components/AvailabilityForm.tsx). Compact
-   checkboxes on a mouse-driven desktop; on touch devices and narrow viewports
-   every cell becomes a real 44x44 tap target (Apple HIG / Material), because a
-   mis-tap silently flips a shift preference. The row label then drops its
-   open/close tag onto a second line and may wrap, so the wider cells never push
-   the table into horizontal overflow. */
+/* The read-only schedule grid in the admin student popup
+   (src/components/admin/StudentSchedulePopup.tsx). The student availability
+   form has its own grid in student.css (.sf-grid). On touch devices and narrow
+   viewports the row label may wrap, so the table never overflows sideways. */
 .avail-grid {
   border-collapse: collapse;
   font-size: 13px;
@@ -485,43 +483,6 @@ body {
   text-align: right;
   white-space: nowrap;
 }
-.avail-tag {
-  color: var(--color-text-info);
-}
-.avail-tag::before {
-  content: " · ";
-}
-
-.avail-cell {
-  position: relative;
-  width: 30px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  /* The off state keeps a transparent ✓ so every cell renders identically. */
-  color: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.avail-cell--on {
-  background: #1a66cc;
-  color: #fff;
-}
-.avail-cell--auto {
-  border-color: #9575cd;
-  background: #ede7f6;
-  color: #5e35b1;
-}
-.avail-cell--covered {
-  border-color: #d8c97a;
-  background: #f0e6ad;
-  color: #8a7400;
-}
-.avail-grid--locked .avail-cell {
-  cursor: default;
-}
 /* The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
    rather than the two forming one contiguous weekend (PLAN §7). The weekend grid
    splits its two day columns (Sun first, then Sat) with a wider gap plus a thin
@@ -537,40 +498,14 @@ body {
 .avail-grid--weekend td:nth-last-child(2) {
   padding-right: 10px;
 }
-/* High-demand mark (roadmap 2.5): advisory, never blocks a pick. A full-height bar
-   down the right edge of the cell, so it reads at a glance without hiding the glyph. */
-.avail-hot {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: #d33;
-  pointer-events: none;
-}
 
 @media (pointer: coarse), (max-width: 640px) {
-  .avail-cell {
-    width: 44px;
-    height: 44px;
-    font-size: 16px;
-  }
   .avail-grid td {
     padding: 2px 1px;
   }
   .avail-grid .avail-rowlabel {
     padding: 2px 6px;
     white-space: normal;
-  }
-  .avail-tag {
-    display: block;
-  }
-  .avail-tag::before {
-    content: none;
-  }
-  .avail-hot {
-    width: 6px;
   }
 }
 

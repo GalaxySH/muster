@@ -1,13 +1,16 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronRight } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import { getAppSession } from "@/lib/auth/session";
+import { signOutAction } from "@/lib/auth/actions";
 import { loadFlowState } from "@/lib/flow/data";
 import { confirmRosterInfo } from "@/lib/flow/actions";
-import { SignOutButton } from "@/components/SignOutButton";
-import { AppHeader } from "@/components/AppHeader";
 import { AdminHomeRedirect } from "@/components/AdminHomeRedirect";
-import { InfoCard, Page, PrimaryLink, SystemMessage } from "@/components/ui";
-import { SubmitButton } from "@/components/SubmitButton";
+import { StudentPage } from "@/components/student/StudentPage";
+import { ButtonLink, Card, Notice, Pill } from "@/components/student/ui";
+import { FormSubmitButton } from "@/components/student/FormControls";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled } from "@/lib/settings";
@@ -15,6 +18,19 @@ import { currentTermId } from "@/lib/terms/working";
 import { getTerm } from "@/lib/terms/term-id";
 import { getDb } from "@/lib/db";
 import { systemMessageTone } from "@/lib/domain/terms";
+import { APP_TIME_ZONE } from "@/lib/domain/time";
+
+export const metadata: Metadata = { title: "Home" };
+
+/** "Fri, Dec 19", in the app's own time zone so the server's doesn't decide the day. */
+function dueLabel(closesAt: Date): string {
+  return closesAt.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: APP_TIME_ZONE,
+  });
+}
 
 export default async function MePage() {
   const session = await getAppSession();
@@ -31,128 +47,162 @@ export default async function MePage() {
   // after a moment, since it is the only place this page leads.
   const adminHome = !flow.onRoster && session.isAdmin;
 
+  const reviewSteps = [
+    { href: "/intro", label: "Introduction" },
+    { href: "/course-schedule", label: "Course schedule and activities" },
+    { href: "/availability", label: "Availability" },
+    { href: "/travel", label: "Travel excusals" },
+    ...(flow.onRoster && flow.closes.required
+      ? [{ href: "/closes", label: "Weekend closes" }]
+      : []),
+  ];
+  // The roster may list a name as "Last, First".
+  const fullName = flow.onRoster ? flow.displayName : (session.name ?? "");
+  const firstName = (fullName.includes(",") ? fullName.split(",")[1]! : fullName)
+    .trim()
+    .split(/\s+/)[0];
+
   return (
-    <Page>
-      <AppHeader isHome />
-      <p style={{ color: "#555" }}>
-        {session.name ? `${session.name} · ` : ""}
-        {session.email}
-      </p>
+    <StudentPage home="none">
+      <h1>{firstName ? `Hi, ${firstName}` : "Welcome"}</h1>
+      <p className="sf-muted sf-small">Signed in as {session.email}</p>
 
       {flow.onRoster && term.systemMessage && (
-        <SystemMessage
-          text={term.systemMessage}
-          tone={systemMessageTone(term.systemMessageTone)}
-        />
+        <Notice tone={systemMessageTone(term.systemMessageTone)} role="note">
+          <p className="sf-prewrap">{term.systemMessage}</p>
+        </Notice>
       )}
 
       {adminHome ? (
-        <InfoCard title="You're signed in as an admin">
+        <Card>
+          <h2>You&apos;re signed in as an admin</h2>
           <AdminHomeRedirect href="/admin" />
-        </InfoCard>
+        </Card>
       ) : !flow.onRoster ? (
-        <InfoCard title="We don't recognize this account">
-          <p style={{ margin: 0 }}>
+        <Notice tone="warning" title="We don't recognize this account">
+          <p>
             You&apos;re signed in but are not a known employee. If this is a mistake, contact{" "}
             <strong>{contactLabel}</strong>.
           </p>
-        </InfoCard>
+        </Notice>
       ) : flow.access.kind === "no-group" ? (
         <NoGroupNotice />
       ) : (
-        <div>
+        <>
           <FormWindowBanner
             state={flow.access.state}
             opensAt={flow.access.opensAt}
             closesAt={flow.access.closesAt}
           />
 
-          {(flow.status.kind === "done" || flow.status.kind === "continue") && flow.closes.required && flow.closes.count < flow.closes.needed && (
-            <InfoCard tone="danger" title="Weekend closes still needed">
-              <p style={{ marginTop: 0 }}>
-                You are required to work {flow.closes.needed} weekend{" "}
-                {flow.closes.needed === 1 ? "close" : "closes"} this semester.
-                You have picked {flow.closes.count}. Spots are first come first served.
-              </p>
-              {flow.access.canEdit &&
-                (flow.status.kind === "done" ||
-                (flow.status.kind === "continue" &&
-                  (flow.status.href === "/travel" || flow.status.href === "/closes")) ? (
-                  <PrimaryLink href="/closes">Pick your closes</PrimaryLink>
-                ) : (
-                  <p style={{ margin: 0, fontSize: 14 }}>
-                    Finish the earlier form steps first.
-                  </p>
-                ))}
-            </InfoCard>
-          )}
+          {(flow.status.kind === "done" || flow.status.kind === "continue") &&
+            flow.closes.required &&
+            flow.closes.count < flow.closes.needed && (
+              <Notice tone="danger" title="Weekend closes still needed">
+                <p>
+                  You are required to work {flow.closes.needed} weekend{" "}
+                  {flow.closes.needed === 1 ? "close" : "closes"} this semester. You have picked{" "}
+                  {flow.closes.count}. Spots are first come first served.
+                </p>
+                {flow.access.canEdit &&
+                  (flow.status.kind === "done" ||
+                  (flow.status.kind === "continue" &&
+                    (flow.status.href === "/travel" || flow.status.href === "/closes")) ? (
+                    <p>
+                      <ButtonLink href="/closes" small>
+                        Pick your closes
+                      </ButtonLink>
+                    </p>
+                  ) : (
+                    <p className="sf-small">Finish the earlier form steps first.</p>
+                  ))}
+              </Notice>
+            )}
 
           {flow.status.kind === "done" ? (
-            <section>
-              <p style={{ color: "#196127" }}>
-                ✓ You&apos;ve submitted your preferences
-                {flow.access.canEdit
-                  ? ""
-                  : flow.access.kind === "windowed" && flow.access.lockedAfterSubmit
-                    ? ", they're now locked. Contact the scheduler directly to make changes going forward."
-                    : "."}
-              </p>
-              <p style={{ marginBottom: 6 }}>
-                {flow.access.canEdit ? "Review or update your responses:" : "Review your responses:"}
-              </p>
-              <ul style={reviewList}>
-                <li>
-                  <Link href="/intro">Introduction</Link>
-                </li>
-                <li>
-                  <Link href="/course-schedule">Course schedule &amp; activities</Link>
-                </li>
-                <li>
-                  <Link href="/availability">Availability</Link>
-                </li>
-                <li>
-                  <Link href="/travel">Travel excusals</Link>
-                </li>
-                {flow.closes.required && (
-                  <li>
-                    <Link href="/closes">Weekend closes</Link>
+            <>
+              <Card>
+                <div className="sf-card-head">
+                  <h2>Your availability form</h2>
+                  <Pill tone="success">Submitted</Pill>
+                </div>
+                <p>
+                  {flow.access.canEdit
+                    ? "You've submitted your preferences. You can still review or update them."
+                    : flow.access.lockedAfterSubmit
+                      ? "You've submitted your preferences and they're now locked. Contact the scheduler directly to make changes going forward."
+                      : "You've submitted your preferences."}
+                </p>
+              </Card>
+              <h2>
+                {flow.access.canEdit ? "Review or update your responses" : "Review your responses"}
+              </h2>
+              <ul className="sf-rows">
+                {reviewSteps.map((s) => (
+                  <li key={s.href}>
+                    <Link href={s.href} className="sf-row">
+                      <span className="sf-row-main">{s.label}</span>
+                      <FontAwesomeIcon
+                        icon={faChevronRight}
+                        className="sf-row-chevron"
+                        aria-hidden
+                      />
+                    </Link>
                   </li>
-                )}
+                ))}
               </ul>
-            </section>
+            </>
           ) : !flow.access.canEdit ? (
             <ReadOnlyNotice state={flow.access.state} />
           ) : flow.status.kind === "not-started" ? (
-            <InfoCard title="First, confirm your info">
-              <p style={{ marginTop: 0 }}>Here&apos;s what we have:</p>
-              <ul style={{ margin: "0 0 10px", paddingLeft: "1.2rem", display: "grid", gap: 4 }}>
-                <li>Name: <strong>{flow.displayName}</strong></li>
-                <li>Position: <strong>{flow.positionName ?? "not set yet"}</strong></li>
-                <li>{flow.international ? "International" : "Domestic"} student</li>
-              </ul>
+            <Card>
+              <div className="sf-card-head">
+                <h2>First, confirm your info</h2>
+                {flow.access.closesAt && <Pill>Due {dueLabel(flow.access.closesAt)}</Pill>}
+              </div>
+              <dl className="sf-dl">
+                <dt>Name</dt>
+                <dd>{flow.displayName}</dd>
+                <dt>Position</dt>
+                <dd>{flow.positionName ?? "Not set yet"}</dd>
+                <dt>Student type</dt>
+                <dd>{flow.international ? "International" : "Domestic"}</dd>
+              </dl>
               <form action={confirmRosterInfo}>
-                <SubmitButton pendingLabel="One moment…" style={{ marginBottom: 10 }}>
+                <FormSubmitButton block pendingLabel="One moment…">
                   Yes, that&apos;s me
-                </SubmitButton>
+                </FormSubmitButton>
               </form>
-              <p style={{ fontSize: 13, color: "#666", marginBottom: 0 }}>
+              <p className="sf-small sf-muted sf-gap-top">
                 Something look wrong? Email <strong>{contactLabel}</strong> before continuing.
               </p>
-            </InfoCard>
+            </Card>
           ) : (
-            <InfoCard title="Pick up where you left off">
-              <p style={{ marginTop: 0 }}>
-                You&apos;ve started but haven&apos;t submitted yet. Next up: {flow.status.stepLabel}.
+            <Card>
+              <div className="sf-card-head">
+                <h2>Pick up where you left off</h2>
+                {flow.access.closesAt ? (
+                  <Pill tone="warning">Due {dueLabel(flow.access.closesAt)}</Pill>
+                ) : (
+                  <Pill tone="warning">Not submitted</Pill>
+                )}
+              </div>
+              <p>
+                You&apos;ve started but haven&apos;t submitted yet. Next up: {flow.status.stepLabel}
+                .
               </p>
-              <PrimaryLink href={flow.status.href}>Continue</PrimaryLink>
-            </InfoCard>
+              <ButtonLink href={flow.status.href} block>
+                Continue
+              </ButtonLink>
+            </Card>
           )}
-        </div>
+        </>
       )}
 
       {flow.onRoster && (
-        <InfoCard title="Schedule changes" style={{ marginTop: 20 }}>
-          <p style={{ margin: 0 }}>
+        <Card>
+          <h2>Schedule changes</h2>
+          <p>
             {changeRequestsEnabled ? (
               <>
                 Need a change to your work schedule during the semester?{" "}
@@ -162,30 +212,29 @@ export default async function MePage() {
               <>Need a change to your work schedule during the semester? Send us an email.</>
             )}
           </p>
-        </InfoCard>
+        </Card>
+      )}
+
+      {flow.onRoster && session.isAdmin && (
+        <Card>
+          <h2>Admin access</h2>
+          <p>
+            You have admin access. <Link href="/admin">Open the admin dashboard</Link>.
+          </p>
+        </Card>
       )}
 
       {!adminHome && (
-        <p style={{ marginTop: 20 }}>
+        <p className="sf-muted">
           For any questions, contact <strong>{contactLabel}</strong> or come into the office.
         </p>
       )}
 
-      {flow.onRoster && session.isAdmin && (
-        <InfoCard title="Admin access" style={{ marginTop: 20 }}>
-          <p style={{ margin: 0 }}>
-            You have admin access. <Link href="/admin">Open the admin dashboard</Link>.
-          </p>
-        </InfoCard>
-      )}
-      <SignOutButton />
-    </Page>
+      <form action={signOutAction}>
+        <FormSubmitButton variant="secondary" pendingLabel="Signing out…">
+          Sign out
+        </FormSubmitButton>
+      </form>
+    </StudentPage>
   );
 }
-
-const reviewList: React.CSSProperties = {
-  margin: 0,
-  paddingLeft: "1.2rem",
-  display: "grid",
-  gap: 6,
-};

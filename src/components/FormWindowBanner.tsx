@@ -11,31 +11,23 @@ import {
   NO_GROUP_MESSAGE,
   SUBMITTED_LOCK_MESSAGE,
 } from "@/lib/groups/window-message";
-
-const panel = {
-  border: "1px solid #e0c060",
-  background: "#fff4d6",
-  borderRadius: 8,
-  padding: "0.8rem 1rem",
-  fontSize: 14,
-  margin: "0 0 1.2rem",
-} as const;
+import { Notice } from "@/components/student/ui";
 
 /** Shown when the student isn't in any group (membership gate). */
 export function NoGroupNotice() {
   return (
-    <div role="status" style={panel}>
-      <strong>No form access yet.</strong> {NO_GROUP_MESSAGE}
-    </div>
+    <Notice tone="warning" role="status" title="No form access yet">
+      <p>{NO_GROUP_MESSAGE}</p>
+    </Notice>
   );
 }
 
 /** Shown when the student has submitted and their group locks editing afterward. */
 export function SubmittedLockBanner() {
   return (
-    <div role="status" style={panel}>
-      <strong>Your responses are locked.</strong> {SUBMITTED_LOCK_MESSAGE}
-    </div>
+    <Notice tone="warning" role="status" title="Your responses are locked">
+      <p>{SUBMITTED_LOCK_MESSAGE}</p>
+    </Notice>
   );
 }
 
@@ -52,10 +44,9 @@ export function FormWindowBanner({
   if (state === "open") return null;
   const { title, detail } = lockedMessage(state, opensAt, closesAt);
   return (
-    <div role="status" style={panel}>
-      <strong>{title}</strong>
-      {detail ? ` ${detail}` : ""}
-    </div>
+    <Notice tone="warning" role="status" title={title}>
+      {detail && <p>{detail}</p>}
+    </Notice>
   );
 }
 
@@ -66,5 +57,5 @@ export function FormWindowBanner({
 export function ReadOnlyNotice({ state }: { state: WindowState }) {
   const notice = readOnlyNotice(state);
   if (!notice) return null;
-  return <p style={{ color: "#555" }}>{notice}</p>;
+  return <p className="sf-muted">{notice}</p>;
 }

@@ -156,7 +156,10 @@ export async function loadFlowState(email: string, termId: string): Promise<Flow
     positionId: form.student.positionId,
     positionName: form.position?.name ?? null,
     international: form.student.international,
-    returning: isReturningStudent(form.student.hiredOn, (await getTerm(getDb(), termId)).newHireCutoff),
+    returning: isReturningStudent(
+      form.student.hiredOn,
+      (await getTerm(getDb(), termId)).newHireCutoff,
+    ),
     access,
     status: flowStatus(inputs),
     closes,
@@ -166,12 +169,12 @@ export async function loadFlowState(email: string, termId: string): Promise<Flow
 export interface WizardNav {
   /** The data steps this student walks (SLs get the closes step, §18a). */
   steps: WizardStep[];
-  /** Which of those steps the breadcrumb may link to right now. */
+  /** Which of those steps the step indicator may link to right now. */
   reachable: WizardStepKey[];
 }
 
 /**
- * The wizard breadcrumb state (PLAN §4): the student's step list plus the
+ * The step indicator's state (PLAN §4): the student's step list plus the
  * forward gate, mirroring the per-step "Next" gates. Off-roster/no-form
  * students see the base steps with only the first reachable.
  */

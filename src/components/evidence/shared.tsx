@@ -3,14 +3,16 @@
 /**
  * Shared client-side primitives for the split evidence pages (course schedule +
  * activities, and travel). The two forms, CourseScheduleForm and TravelForm,
- * share the same upload/runner plumbing, thumbnails, and styling, kept here so
- * neither page duplicates it.
+ * share the same upload/runner plumbing, thumbnails and notices, kept here so
+ * neither page duplicates it. The look comes from the student design system
+ * (app/student.css, app/student-evidence.css).
  */
 import { useState, useTransition, type FormEvent } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/evidence/actions";
+import { Button, Notice, StatusLine, VisuallyHidden } from "@/components/student/ui";
 import { EvidenceThumb } from "./EvidenceThumb";
 
 export const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
@@ -58,53 +60,29 @@ export function useEvidenceRunner() {
 
   const note = (where: string) =>
     msg && msg.where === where ? (
-      <p
-        role="status"
-        style={{ color: msg.ok ? "#196127" : "#b00", fontSize: 13, margin: "6px 0 0" }}
-      >
-        {msg.ok ? "✓ " : "✗ "}
+      <StatusLine ok={msg.ok} role={msg.ok ? "status" : "alert"}>
         {msg.text}
-      </p>
+      </StatusLine>
     ) : null;
 
   return { pending, busy, run, onUpload, note };
 }
 
-export function Section({
-  id,
-  title,
-  required,
-  hint,
-  children,
-}: {
-  /** Anchor for deep links (the admin page links straight to #extracurriculars). */
-  id?: string;
-  title: string;
-  required?: boolean;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      style={{
-        scrollMarginTop: 20,
-        border: "1px solid #e2e2e2",
-        borderRadius: 8,
-        padding: "1rem 1.2rem",
-        marginTop: "1.2rem",
-      }}
-    >
-      <h2 style={{ fontSize: 16, marginTop: 0 }}>
-        {title} {required && <span style={{ color: "#b00", fontSize: 13 }}>(required)</span>}
-      </h2>
-      {hint && <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>{hint}</p>}
-      {children}
-    </section>
-  );
+/**
+ * Why an upload control is off, for FilePicker's `disabledReason`. Undefined
+ * when uploads are available.
+ */
+export function uploadDisabledReason(driveConnected: boolean, editable: boolean) {
+  if (!editable) return "Uploads are closed right now.";
+  if (!driveConnected) return "Uploads aren't available yet.";
+  return undefined;
 }
 
-/** A student's proof: the shared thumbnail, opening the file in a new tab, with an optional Remove under it. */
+/**
+ * A student's proof: the shared thumbnail, opening the file in a new tab, with
+ * an optional Remove under it. `label` names the file, and the Remove button's
+ * accessible name carries it too.
+ */
 export function Thumb({
   fileId,
   label,
@@ -119,73 +97,24 @@ export function Thumb({
   small?: boolean;
 }) {
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
+    <div className="sf-thumb">
       <EvidenceThumb fileId={fileId} label={label} opens="tab" size={small ? 56 : 120} />
       {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={removeDisabled}
-          style={{ fontSize: 12, color: "#b00" }}
-        >
-          Remove
-        </button>
+        <Button variant="danger" small onClick={onRemove} disabled={removeDisabled}>
+          Remove<VisuallyHidden> {label}</VisuallyHidden>
+        </Button>
       )}
     </div>
   );
 }
 
-export function banner(bg: string, color: string): React.CSSProperties {
-  return { background: bg, color, padding: "0.6rem 0.9rem", borderRadius: 6, fontSize: 14 };
-}
-
-export const uploadRow: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  marginTop: 10,
-  flexWrap: "wrap",
-};
-export const fmtHint: React.CSSProperties = { fontSize: 12, color: "#777" };
-export const thumbGrid: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  margin: "10px 0",
-};
-export const travelRow: React.CSSProperties = {
-  display: "flex",
-  gap: 12,
-  alignItems: "center",
-  border: "1px solid #eee",
-  borderRadius: 6,
-  padding: 8,
-};
-/** Late (unexcused) entries read as needing attention: red outline, faint red fill. */
-export const travelRowLate: React.CSSProperties = {
-  borderColor: "#e0847c",
-  background: "#fdf4f3",
-};
-export const excusedBadge: React.CSSProperties = {
-  background: "#e6f4ea",
-  color: "#196127",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-};
-export const lateBadge: React.CSSProperties = {
-  background: "#fce8e6",
-  color: "#b00",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-};
-
-const sharedBanner = banner("#fff4d6", "#946c00");
-
 /** Shown on any upload page when the admin hasn't connected Drive yet. */
 export function DriveDisconnectedBanner({ children }: { children: React.ReactNode }) {
-  return <p style={sharedBanner}>{children}</p>;
+  return (
+    <Notice tone="warning">
+      <p>{children}</p>
+    </Notice>
+  );
 }
 
 /**
@@ -195,22 +124,14 @@ export function DriveDisconnectedBanner({ children }: { children: React.ReactNod
  */
 export function OnBehalfBanner({ displayName, email }: { displayName: string; email: string }) {
   return (
-    <p
-      style={{
-        ...banner("#e7f0fb", "#1a66cc"),
-        display: "flex",
-        gap: 12,
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-      }}
-    >
-      <span>
+    <Notice tone="info">
+      <p>
         You are adding details for <strong>{displayName}</strong> ({email}).
-      </span>
-      <Link href={`/admin/students/${encodeURIComponent(email)}`} style={{ color: "#1a66cc" }}>
-        Back to their page
-      </Link>
-    </p>
+      </p>
+      <p>
+        <Link href={`/admin/students/${encodeURIComponent(email)}`}>Back to their page</Link>
+      </p>
+    </Notice>
   );
 }
 

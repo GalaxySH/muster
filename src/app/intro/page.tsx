@@ -1,18 +1,21 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadWizardNav } from "@/lib/flow/data";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page, PrimaryLink } from "@/components/ui";
+import { StudentPage } from "@/components/student/StudentPage";
+import { Card, Notice, StepActions } from "@/components/student/ui";
 import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled, getTravelCutoff } from "@/lib/settings";
 import { currentTermId } from "@/lib/terms/working";
-import Link from "next/link";
+import { formatCutoffDate } from "@/lib/domain/travel";
+
+export const metadata: Metadata = { title: "Before you start" };
 
 /**
  * Orientation step (PLAN §4). Concise scheduling-policy reminders + what the
- * student is about to fill out, then "Next" into the first data step. Reached
+ * student is about to fill out, then "Continue" into the first data step. Reached
  * from the /me confirm-your-info button.
  */
 export default async function IntroPage() {
@@ -26,76 +29,98 @@ export default async function IntroPage() {
     getTravelCutoff(termId),
     getChangeRequestsEnabled(),
   ]);
+  const travelBy = formatCutoffDate(cutoff);
 
   return (
-    <Page>
-      <AppHeader>
-        <WizardSteps steps={nav.steps} reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage nav={nav} progressLabel="Before you start">
       <h1>Before you start</h1>
-      <p style={{ color: "#555" }}>
-        This form collects your <strong>availability and preferences</strong>. We use them to create your schedule. You are <strong>not</strong> scheduling yourself.
+      <p className="sf-muted">
+        This form collects your <strong>availability and preferences</strong>. We use them to create
+        your schedule. You are <strong>not</strong> scheduling yourself.
       </p>
 
-      <section style={card}>
-        <h2 style={h2}>A few things to know</h2>
-        <ul style={list}>
+      <Card>
+        <h2>What we need from you</h2>
+        <ol className="sf-list">
           <li>
-            Scheduling is based primarily on your course schedule, operational needs, and availability, in that order. We do our best to accommodate your preferences, but we cannot guarantee them.
+            Upload proof of your course schedule (required) and any mandatory regularly occurring
+            academic activities.
           </li>
           <li>
-            You do <strong>not</strong> need to fill out availability preferences in
-            WhenToWork. This form replaces that step.
+            Set your recurring weekly availability and desired hours. This applies to every week in
+            the semester.
           </li>
-          <li>
-            Mark <strong>every</strong> shift you&apos;d be willing to work. These preferences decide your availability,
-            not your final schedule.
-          </li>
-          <li>
-            Increase your chances of getting the shifts you want by selecting more in the form.
-          </li>
-          <li>
-          You are required to work a weekend shift. Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend), unless you opt into working every weekend. You pick the shift time, we pick which of A/B based on operational needs.
-          </li>
-          <li>
-            Travel during the semester is only excused if you submit it via this form <strong>before {cutoff.toLocaleDateString()}</strong>. We will not excuse any travel requested after this date.
-          </li>
-          <li>
-            {changeRequestsEnabled ? (
-              <>If your availability changes during the semester, <Link href="/change-requests">submit a change request</Link>.</>
-            ) : (
-              "If your availability changes during the semester, send us an email."
-            )}{" "}
-            We will prioritize requests for academic conflicts, and we will review requests for extenuating circumstances on a case by case basis. We will always accept <strong>excusal requests</strong> for exams.
-          </li>
-          <li>
-            If you have questions, contact <strong>{contactLabel}</strong>.
-          </li>
-        </ul>
-      </section>
-
-      <section style={card}>
-        <h2 style={h2}>What we need from you</h2>
-        <ol style={list}>
-          <li>Upload proof of your course schedule (required) and any mandatory regularly occurring academic activities.</li>
-          <li>Set your recurring weekly availability and desired hours (this will apply to every week in the semester).</li>
           <li>Submit any planned travel to be excused.</li>
           <li>Review and submit.</li>
         </ol>
-      </section>
+      </Card>
 
-      <p style={{ marginTop: 20 }}>
-        <PrimaryLink href="/course-schedule">Continue</PrimaryLink>
+      <Card>
+        <h2>How scheduling works</h2>
+        <ul className="sf-list">
+          <li>
+            Scheduling is based primarily on your course schedule, operational needs, and
+            availability, in that order.
+          </li>
+          <li>We do our best to accommodate your preferences, but we cannot guarantee them.</li>
+          <li>
+            Mark <strong>every</strong> shift you&apos;d be willing to work. These preferences
+            decide your availability, not your final schedule.
+          </li>
+          <li>Selecting more shifts increases your chances of getting the ones you want.</li>
+          <li>
+            You do <strong>not</strong> need to fill out availability preferences in WhenToWork.
+            This form replaces that step.
+          </li>
+        </ul>
+      </Card>
+
+      <Card>
+        <h2>Weekends</h2>
+        <ul className="sf-list">
+          <li>You are required to work a weekend shift.</li>
+          <li>
+            Weekends run on an <strong>A/B rotation</strong> (a weekend shift every other weekend),
+            unless you opt into working every weekend.
+          </li>
+          <li>You pick the shift time. We pick which of A/B based on operational needs.</li>
+        </ul>
+      </Card>
+
+      <Notice tone="warning" role="note" title={`Travel deadline: ${travelBy}`}>
+        <p>
+          Travel during the semester is only excused if you submit it in this form{" "}
+          <strong>before {travelBy}</strong>. We will not excuse any travel requested after this
+          date.
+        </p>
+      </Notice>
+
+      <Card>
+        <h2>If your availability changes</h2>
+        <ul className="sf-list">
+          <li>
+            {changeRequestsEnabled ? (
+              <>
+                If your availability changes during the semester,{" "}
+                <Link href="/change-requests">submit a change request</Link>.
+              </>
+            ) : (
+              "If your availability changes during the semester, send us an email."
+            )}
+          </li>
+          <li>We will prioritize requests for academic conflicts.</li>
+          <li>We will review requests for extenuating circumstances on a case by case basis.</li>
+          <li>
+            We will always accept <strong>excusal requests</strong> for exams.
+          </li>
+        </ul>
+      </Card>
+
+      <p className="sf-muted">
+        If you have questions, contact <strong>{contactLabel}</strong>.
       </p>
-    </Page>
+
+      <StepActions backHref="/me" nextHref="/course-schedule" />
+    </StudentPage>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-  marginTop: "1.2rem",
-};
-const h2: React.CSSProperties = { fontSize: 16, marginTop: 0 };
-const list: React.CSSProperties = { margin: 0, paddingLeft: "1.2rem", display: "grid", gap: 6, fontSize: 15 };

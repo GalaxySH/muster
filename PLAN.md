@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.63
+- **Version:** 1.64
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1678,6 +1678,31 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.64 (2026-11-25)** — **The student form has a new look, built for phones.**
+  Presentation only: no rule, route, step order, server action or stored data
+  changed. Every student page (`/`, `/signin`, `/me`, `/intro`, `/course-schedule`,
+  `/availability`, `/travel`, `/closes`, `/exit`, `/change-requests`, `/dev-login`,
+  the magic-link page and the 404) renders in a new shell, `components/student/StudentPage.tsx`: a
+  top bar, a numbered step indicator (`StepProgress`, replacing the `WizardSteps`
+  breadcrumb, same unlock gate), and each step's main action in a bar that stays at
+  the bottom of the screen. The styles live in `app/student.css` and three per-area
+  files, all scoped under `.sf`, so **the admin console is unchanged**; admins see
+  the new look only on the student pages they open on a student's behalf.
+  Accessibility is WCAG 2.2 AA by construction (tested colour pairs, one focus ring,
+  44px controls, a label on every field, state never by colour alone, a title and one
+  heading per page, errors announced). What a student will notice beyond the styling:
+  `/availability` has a legend, each cell state has its own mark, and pressing
+  Continue with requirements unmet takes them to the Requirements list instead of
+  being a dead button (the server still refuses an invalid save); the upload fields
+  are large tap tiles; `/closes` is a list grouped by weekend instead of a two-column
+  table; `/intro` and the change-request policy are split into short headed cards with
+  the same content; the travel deadline, trips and close slots are written with the
+  month ("Jan 15, 2027"), while the return date keeps its short form ("8/17"). The
+  system message on `/me` is in the new look; its preview on the Semester page keeps
+  the console's card style. Some headings
+  and button labels were shortened ("Course schedule", "Travel", "Add trip", "Add
+  proof", "Mandatory activities"). See "Student design system" in
+  `docs/architecture.md`.
 - **1.63 (2026-11-25)** — **Google Form responses skip the availability checks.** The
   form paste import (`docs/form-paste.md`) never brings shift picks over, so a response
   counted as `submitted_via = google_form` was always raising `revalidation_failed`

@@ -1,5 +1,5 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
 import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
@@ -8,10 +8,16 @@ import { currentTermId } from "@/lib/terms/working";
 import { getHighDemandMarksEnabled } from "@/lib/settings";
 import { loadWizardNav } from "@/lib/flow/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
-import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/components/FormWindowBanner";
-import { AppHeader } from "@/components/AppHeader";
-import { WizardSteps } from "@/components/WizardSteps";
-import { Page } from "@/components/ui";
+import {
+  FormWindowBanner,
+  NoGroupNotice,
+  SubmittedLockBanner,
+} from "@/components/FormWindowBanner";
+import { StudentPage } from "@/components/student/StudentPage";
+import { StudentDeadEnd } from "@/components/student/StudentDeadEnd";
+import { Notice } from "@/components/student/ui";
+
+export const metadata: Metadata = { title: "Availability" };
 
 export default async function AvailabilityPage() {
   const session = await getAppSession();
@@ -22,12 +28,11 @@ export default async function AvailabilityPage() {
 
   if (!form) {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Availability</h1>
-        <p>You&apos;re not on the current roster, so there&apos;s no form to fill out yet.</p>
-        <Link href="/me">Back</Link>
-      </Page>
+      <StudentDeadEnd title="Availability">
+        <Notice tone="warning">
+          <p>You&apos;re not on the current roster, so there&apos;s no form to fill out yet.</p>
+        </Notice>
+      </StudentDeadEnd>
     );
   }
 
@@ -35,26 +40,22 @@ export default async function AvailabilityPage() {
   const access = await resolveStudentAccess(form.student.email, termId);
   if (access.access === "no-group") {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Availability</h1>
+      <StudentDeadEnd title="Availability">
         <NoGroupNotice />
-        <Link href="/me">Back</Link>
-      </Page>
+      </StudentDeadEnd>
     );
   }
 
   if (!form.position) {
     return (
-      <Page>
-        <AppHeader />
-        <h1>Availability</h1>
-        <p>
-          Your position isn&apos;t set yet. Choosing your position during onboarding is coming soon;
-          ask your supervisor if this looks wrong.
-        </p>
-        <Link href="/me">Back</Link>
-      </Page>
+      <StudentDeadEnd title="Availability">
+        <Notice tone="warning">
+          <p>
+            Your position isn&apos;t set yet. Choosing your position during onboarding is coming
+            soon; ask your supervisor if this looks wrong.
+          </p>
+        </Notice>
+      </StudentDeadEnd>
     );
   }
 
@@ -62,22 +63,25 @@ export default async function AvailabilityPage() {
   // locks after submit, an already-submitted student is read-only too.
   const editable = access.canEdit;
   // The busiest-shift marks are admin-switchable (/admin/groups). Off, the set
-  // is empty, which drops the red bars and their legend from the grid.
+  // is empty, which drops the flame marks and their legend from the grid.
   const [nav, marksEnabled] = await Promise.all([
     loadWizardNav(form.student.email, termId),
     getHighDemandMarksEnabled(),
   ]);
-  const highDemand = marksEnabled ? await loadHighDemandCells(form.position.id, termId) : new Set<string>();
+  const highDemand = marksEnabled
+    ? await loadHighDemandCells(form.position.id, termId)
+    : new Set<string>();
 
   return (
-    <Page width="wide">
-      <AppHeader>
-        <WizardSteps steps={nav.steps} current="availability" reachable={nav.reachable} />
-      </AppHeader>
+    <StudentPage width="wide" nav={nav} current="availability">
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
       ) : (
-        <FormWindowBanner state={access.state} opensAt={access.opensAt} closesAt={access.closesAt} />
+        <FormWindowBanner
+          state={access.state}
+          opensAt={access.opensAt}
+          closesAt={access.closesAt}
+        />
       )}
       <AvailabilityForm
         key={form.position.id}
@@ -93,6 +97,6 @@ export default async function AvailabilityPage() {
         initialStatus={form.submission?.status ?? null}
         editable={editable}
       />
-    </Page>
+    </StudentPage>
   );
 }

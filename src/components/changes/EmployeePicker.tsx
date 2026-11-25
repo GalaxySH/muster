@@ -57,20 +57,25 @@ export function EmployeePicker({
 
   if (value) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={selectedChip}>
-          {value.displayName}
-          <span style={{ fontWeight: 400, color: "#777" }}> · {value.email}</span>
+      <div className="sf-employee-chosen">
+        <span className="sf-employee-chip">
+          <strong>{value.displayName}</strong>
+          <span className="sf-muted"> · {value.email}</span>
         </span>
-        <button type="button" onClick={() => onChange(null)} aria-label="Clear employee" style={clearButton}>
-          ×
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          aria-label="Clear employee"
+          className="sf-btn sf-btn--secondary sf-btn--small sf-employee-clear"
+        >
+          <span aria-hidden>×</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="sf-employee">
       <input
         type="text"
         value={query}
@@ -89,12 +94,14 @@ export function EmployeePicker({
         }}
         placeholder="Type a name or email"
         aria-label="Search for an employee"
-        style={input}
+        className="sf-input"
       />
       {open && query.trim().length >= MIN_QUERY_LENGTH && (
-        <div style={dropdown}>
+        <div className="sf-employee-results">
           {results.length === 0 ? (
-            <div style={dropdownNote}>{searching ? "Searching…" : "No matching employees."}</div>
+            <div className="sf-employee-note">
+              {searching ? "Searching…" : "No matching employees."}
+            </div>
           ) : (
             results.map((r) => (
               <button
@@ -103,10 +110,10 @@ export function EmployeePicker({
                 // Keep the input from blurring before the click lands.
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => select(r)}
-                style={resultItem}
+                className="sf-employee-result"
               >
                 {r.displayName}
-                <span style={{ color: "#777" }}> · {r.email}</span>
+                <span className="sf-muted"> · {r.email}</span>
               </button>
             ))
           )}
@@ -115,64 +122,3 @@ export function EmployeePicker({
     </div>
   );
 }
-
-const input: React.CSSProperties = {
-  padding: "6px 8px",
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  fontSize: 14,
-  width: "100%",
-  boxSizing: "border-box",
-};
-const selectedChip: React.CSSProperties = {
-  background: "#e7f0fb",
-  color: "#1a66cc",
-  borderRadius: 6,
-  padding: "4px 10px",
-  fontSize: 14,
-  fontWeight: 600,
-};
-const clearButton: React.CSSProperties = {
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  background: "#fff",
-  width: 26,
-  height: 26,
-  fontSize: 15,
-  lineHeight: 1,
-  cursor: "pointer",
-  color: "#555",
-};
-const dropdown: React.CSSProperties = {
-  position: "absolute",
-  zIndex: 10,
-  top: "100%",
-  left: 0,
-  right: 0,
-  marginTop: 4,
-  background: "#fff",
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-  maxHeight: 260,
-  overflowY: "auto",
-  padding: 4,
-};
-const dropdownNote: React.CSSProperties = {
-  padding: "6px 8px",
-  fontSize: 13,
-  fontWeight: 400,
-  color: "#777",
-};
-const resultItem: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  border: "none",
-  background: "none",
-  borderRadius: 4,
-  padding: "6px 8px",
-  fontSize: 14,
-  fontWeight: 400,
-  cursor: "pointer",
-};

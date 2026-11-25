@@ -7,28 +7,36 @@
  * is replaced by a "too late" notice once the cutoff passes, and entries lock.
  * With the admin's accept-late toggle on ("accept-and-flag"), the form keeps
  * working past the cutoff but new entries store unexcused and render the red
- * late badge and outline.
+ * late badge and outline. The page renders the heading; this is everything
+ * under it.
  */
+import { useId } from "react";
 import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
 import { useRenderedTermId } from "@/components/RenderedTerm";
-import { TRAVEL_STANDING_LABEL, travelStanding } from "@/lib/domain/travel";
+import {
+  TRAVEL_STANDING_LABEL,
+  formatCutoffDate,
+  formatTravelRange,
+  travelStanding,
+} from "@/lib/domain/travel";
 import {
   Thumb,
   DriveDisconnectedBanner,
   OnBehalfField,
   useEvidenceRunner,
+  uploadDisabledReason,
   ACCEPT,
   FORMAT_HINT,
-  uploadRow,
-  fmtHint,
-  travelRow,
-  travelRowLate,
-  excusedBadge,
-  lateBadge,
 } from "./shared";
 import { TravelDateRange } from "./TravelDateRange";
-import { ActionButton, InfoCard } from "@/components/ui";
+import { Button, Card, Notice, Pill, VisuallyHidden } from "@/components/student/ui";
+import { FilePicker } from "@/components/student/FormControls";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCircleCheck,
+  faTriangleExclamation,
+} from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 
 export function TravelForm({
   initial,
@@ -60,53 +68,61 @@ export function TravelForm({
 }) {
   const termId = useRenderedTermId();
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
+  const noteId = useId();
   const canAddTravel = !pastCutoff || lateAccepted;
   const lateNow = pastCutoff && lateAccepted;
   const canUpload = driveConnected && editable && canAddTravel;
-  const cutoffLabel = new Date(cutoffMs).toLocaleDateString();
+  const cutoffLabel = formatCutoffDate(new Date(cutoffMs));
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <h1>Travel excusals</h1>
-      {returnDate && (
-        <InfoCard title="Return date">
-          <p style={{ margin: 0 }}>
-            Your return date is {returnDate}, you are expected to be able to begin work on this
-            date. If you will not be back by then and you have not otherwise communicated it, submit
-            an excusal for that travel here.
-          </p>
-        </InfoCard>
-      )}
-      <p style={{ color: "#555" }}>
+    <>
+      <p className="sf-muted">
         Add any planned travel during the semester. Upload proof and a date range for each trip,
-        these will be manually reviewed for eligibility.{" "}
-        <strong>Travel is only excused if submitted here before {cutoffLabel}.</strong>{" "}
-        {lateAccepted
-          ? "Travel added after that date is marked late and is not excused."
-          : "After that date, the form no longer accepts travel entries."}{" "}
-        We will not accept emails requesting excusal, unless for extenuating circumstances.
+        these will be manually reviewed for eligibility. We will not accept emails requesting
+        excusal, unless for extenuating circumstances.
       </p>
 
+      {returnDate && (
+        <Notice tone="info" title={`Your return date is ${returnDate}`}>
+          <p>
+            You are expected to be able to begin work on this date. Requests for late travel must
+            be submitted in the form emailed separately, and will not be accepted here.
+          </p>
+        </Notice>
+      )}
+
+      {!pastCutoff && (
+        <Notice tone="warning" title={`Add your travel before ${cutoffLabel}`}>
+          <p>
+            Travel is only excused if submitted here before <strong>{cutoffLabel}</strong>.{" "}
+            {lateAccepted
+              ? "Travel added after that date is marked late and is not excused."
+              : "After that date, the form no longer accepts travel entries."}
+          </p>
+        </Notice>
+      )}
+
       {!canAddTravel && (
-        <InfoCard title="The travel deadline has passed">
-          <p style={{ margin: 0 }}>
+        <Notice tone="warning" title="The travel deadline has passed">
+          <p>
             Travel could be excused only if added before <strong>{cutoffLabel}</strong>, so entries
             can no longer be added or removed.
             {initial.travel.length > 0 && " Anything you already added is shown below."} For
             extenuating circumstances, contact <strong>{contactEmail}</strong> or come into the
             office.
           </p>
-        </InfoCard>
+        </Notice>
       )}
 
       {lateNow && (
-        <InfoCard title="The travel deadline has passed">
-          <p style={{ margin: 0 }}>
-            You can still add travel, but anything added now is marked <strong>late</strong> and is
-            not excused. If you think a trip should be excused anyway, contact{" "}
+        <Notice tone="warning" title="The travel deadline has passed">
+          <p>
+            Travel could be excused only if added before <strong>{cutoffLabel}</strong>. You can
+            still add travel, but anything added now is marked <strong>late</strong> and is not
+            excused. If you think a trip should be excused anyway, contact{" "}
             <strong>{contactEmail}</strong> or come into the office.
           </p>
-        </InfoCard>
+        </Notice>
       )}
 
       {canAddTravel && !driveConnected && (
@@ -117,79 +133,92 @@ export function TravelForm({
       )}
 
       {initial.travel.length > 0 && (
-        <div style={{ display: "grid", gap: 10, margin: "12px 0" }}>
-          {initial.travel.map((t) => (
-            <div key={t.id} style={t.excused ? travelRow : { ...travelRow, ...travelRowLate }}>
-              {t.proofFileId ? (
-                <Thumb fileId={t.proofFileId} label="Travel proof" small />
-              ) : (
-                <span style={noProof}>No proof</span>
-              )}
-              <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
-                <div>
-                  {t.startDate} → {t.endDate}{" "}
-                  <span style={t.excused ? excusedBadge : lateBadge}>
-                    {TRAVEL_STANDING_LABEL[travelStanding(t)]}
-                  </span>
-                </div>
-                {t.note && <div style={{ color: "#666", overflowWrap: "anywhere" }}>{t.note}</div>}
-              </div>
-              {canAddTravel && (
-                <button
-                  type="button"
-                  disabled={pending || !editable}
-                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf, termId))}
-                  style={{ color: "#b00" }}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+        <>
+          <h2>Your trips</h2>
+          <ul className="sf-trips">
+            {initial.travel.map((t) => {
+              const range = formatTravelRange(t.startDate, t.endDate);
+              return (
+                <li key={t.id} className={t.excused ? "sf-trip" : "sf-trip sf-trip--late"}>
+                  {t.proofFileId ? (
+                    <Thumb fileId={t.proofFileId} label={`Proof for ${range}`} small />
+                  ) : (
+                    // Stands in for a thumbnail on an entry an admin added, keeping the rows aligned.
+                    <span className="sf-trip-noproof">No proof</span>
+                  )}
+                  <div className="sf-trip-body">
+                    <p className="sf-trip-dates sf-num">{range}</p>
+                    <p>
+                      <Pill tone={t.excused ? "success" : "danger"}>
+                        <FontAwesomeIcon
+                          icon={t.excused ? faCircleCheck : faTriangleExclamation}
+                          aria-hidden
+                        />
+                        {TRAVEL_STANDING_LABEL[travelStanding(t)]}
+                      </Pill>
+                    </p>
+                    {t.note && <p className="sf-trip-note">{t.note}</p>}
+                  </div>
+                  {canAddTravel && (
+                    <div className="sf-trip-actions">
+                      <Button
+                        variant="danger"
+                        small
+                        disabled={pending || !editable}
+                        onClick={() =>
+                          run("travel", () => removeTravelRequest(t.id, onBehalfOf, termId))
+                        }
+                      >
+                        Remove<VisuallyHidden> trip, {range}</VisuallyHidden>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
 
       {canAddTravel && (
-        <form onSubmit={onUpload("travel", addTravelRequest)} style={{ display: "grid", gap: 8 }}>
-          <OnBehalfField onBehalfOf={onBehalfOf} />
-          <TravelDateRange layout="inline" disabled={!editable} />
-          <input
-            type="text"
-            name="note"
-            placeholder="Optional note"
-            style={{ padding: 6 }}
-            disabled={!editable}
-          />
-          <div style={uploadRow}>
-            <input type="file" name="file" accept={ACCEPT} required disabled={!canUpload} />
-            <ActionButton
+        <Card>
+          <h2>Add a trip</h2>
+          <form onSubmit={onUpload("travel", addTravelRequest)} className="sf-stack">
+            <OnBehalfField onBehalfOf={onBehalfOf} />
+            <TravelDateRange layout="field" disabled={!editable} />
+            <div className="sf-field">
+              <label className="sf-label" htmlFor={noteId}>
+                Note <span className="sf-optional">(optional)</span>
+              </label>
+              <input
+                id={noteId}
+                type="text"
+                name="note"
+                className="sf-input"
+                disabled={!editable}
+              />
+            </div>
+            <FilePicker
+              label="Choose proof of travel"
+              hint={FORMAT_HINT}
+              accept={ACCEPT}
+              required
+              disabled={!canUpload}
+              disabledReason={uploadDisabledReason(driveConnected, editable)}
+            />
+            <Button
               type="submit"
+              block
               pending={busy("travel")}
               pendingLabel="Uploading…"
               disabled={pending || !canUpload}
             >
-              Add travel entry
-            </ActionButton>
-            <span style={fmtHint}>{FORMAT_HINT}</span>
-          </div>
-        </form>
+              Add trip
+            </Button>
+          </form>
+          {note("travel")}
+        </Card>
       )}
-      {note("travel")}
-    </div>
+    </>
   );
 }
-
-/** Stands in for a thumbnail on an entry an admin added, keeping the rows aligned. */
-const noProof: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flex: "0 0 auto",
-  width: 56,
-  height: 56,
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  fontSize: 11,
-  color: "#777",
-  textAlign: "center",
-};

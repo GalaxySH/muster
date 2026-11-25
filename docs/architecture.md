@@ -68,8 +68,9 @@ someone with no row was never part of that term.
   `saveTermDetails` (`lib/admin/term-actions.ts`); the rules are pure, in
   `domain/terms.ts` (`validateTermDetails`, `termYearFor`, `termNamesIn`). The
   system message (1.62) is the term's `systemMessage` and `systemMessageTone`:
-  `/me` reads the current term's and shows it first, to people on the roster, as
-  `SystemMessage` (`components/ui.tsx`), the same card the form previews. Empty
+  `/me` reads the current term's and shows it first, to people on the roster, as a
+  student-design `Notice` in that colour. The form's preview is `SystemMessage`
+  (`components/ui.tsx`), the same text and colour in the console's card style. Empty
   means none, and a new term starts with none. Saving the details never
   moves the travel cutoff, even when the first day changes. The travel cutoff
   and the late-travel toggle sit in the same details card (1.63) and save with
@@ -289,7 +290,7 @@ split of `email/resend.ts` into a generic `sendEmail` core + template callers, w
 the magic-link mail and the change digest still sit on (its
 `submissions.scheduleEmailSentAt` column is reused by the per-student schedule email,
 1.34; see that section); (5) **computed
-high-demand** — the red bar
+high-demand** — the busy-shift mark
 derives from live selection counts (pure `domain/demand.ts`): each (block × day) cell
 is gated on its own block target (at least `desiredCapacity` takers) plus an absolute
 floor (`DEMAND_MIN_CELL_COUNT`), with **no cohort-size floor**, then the busiest
@@ -299,11 +300,11 @@ targets + per-cell distinct-submission counts) as a set of `demandCellKey(blockI
 cells. Retired the manual `shift_blocks.high_demand` column + the `ShiftBlock.highDemand`
 field. The mark renders **per (block × day) cell** (`grid.ts` `BlockRow.highDemandDays[]`,
 one flag per day) on both the student grid (`AvailabilityForm`, with a steering hint;
-the bar is a full-height rule down the cell's right edge, `.avail-hot`) and the admin
+the mark is a flame icon in the cell's corner, `.sf-cell-hot`) and the admin
 per-student grid (`PrefGridCalculator`, its own inline `hotTick`). The two share the
-loader and cell set but not the bar styling. **The student half is switchable** (v1.25):
+loader and cell set but not the mark's styling. **The student half is switchable** (v1.25):
 `getHighDemandMarksEnabled` (`app_settings.high_demand_marks`, on when absent) gates the
-loader call in `app/availability/page.tsx`, so off means an empty cell set, no bars, no
+loader call in `app/availability/page.tsx`, so off means an empty cell set, no marks, no
 legend, and no demand queries. The admin grids never consult it, since the signal is
 scheduler context there. The toggle is `PopularShiftsPanel` on `/admin/groups`, over
 `setHighDemandMarksEnabled` in `admin/actions.ts`.
@@ -363,7 +364,7 @@ board via `components/closes/CloseClaimBoard.tsx`, open/full status polled every
 dormant until an admin generates slots). Capacity and claim counts are **admin-only**:
 the student board's `CloseSlotView` carries a server-computed `full` boolean instead of
 `capacity`/`claimedCount`, so SLs only ever see whether a slot is still open (v0.52); the step list is **position-aware** (`wizardSteps` /
-`loadWizardNav` replace the static list; `WizardSteps` takes `steps`);
+`loadWizardNav` replace the static list; the step indicator takes `steps`);
 `finalizeSubmission` refuses an SL holding fewer than their number; `/me` shows a red
 warning card + a closes review link. Admin surface **`/admin/closes`** (rebuilt in
 1.54 from `docs/wireframes/admin_closes_v2.html`): `CloseLeadProgress` is a collapsible
@@ -1127,7 +1128,7 @@ button), `Section`, styles). They render on the `/course-schedule` and `/travel`
 pages.
 **Admin on-behalf entry:** both pages take `?student=<email>` (linked from the evidence
 cards on `/admin/students/[email]`) and, for an admin session, render the target's
-evidence with an `OnBehalfBanner` and no wizard breadcrumb. All six evidence actions
+evidence with an `OnBehalfBanner` and no step indicator. All six evidence actions
 thread the target into `requireEditableStudent(onBehalfOf)` (`groups/gate.ts`), via the
 `OnBehalfField` hidden FormData `student` field for the upload actions and an optional
 second argument for the rest; the gate admin-gates the path and skips the
@@ -1302,10 +1303,9 @@ student shift_selections → internal_availability/internal_selections → gener
 (`components/AvailabilityForm.tsx`) runs the
 same validator live; in the wizard (unsubmitted) it shows **Save draft** + **Save and
 continue** (the latter routes to `/travel` on success), and for an already-submitted form
-it shows **Save changes** (edit-in-place, no downgrade). The bottom buttons share the
-centralized button styles in `components/ui.tsx` (`primaryButtonStyle`/
-`secondaryButtonStyle`/`disabledButtonStyle`, also reused by `FinishButton`,
-`TravelContinue`, and the `PrimaryLink` forward-nav on the server pages). It renders the
+it shows **Save changes** (edit-in-place, no downgrade). The buttons sit in the student
+design system's `ActionBar` (`components/student/ui.tsx`), as do `FinishButton`'s and the
+Back and Continue pair (`StepActions`) on the other steps. It renders the
 server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and takes an
 `editable` prop (read-only when the window isn't open). Unsaved edits arm
 `components/useUnsavedChangesWarning.ts` (a `beforeunload` prompt + a capture-phase
@@ -1336,7 +1336,7 @@ opens once submitted).
 inputs (`submitted`, `hasConfirmed`, `hasCourseSchedule`, `availabilityComplete` via
 `validateAvailability`, plus the closes state); `loadWizardNav(email)` reuses the same
 input computation (shared `computeFlowInputs`) and returns the position-aware step list +
-unlocked step keys for the breadcrumb.
+unlocked step keys for the step progress.
 `actions.ts` `confirmRosterInfo()` stamps `submissions.confirmed_at` on the student's
 (draft) row so `/me` resumes, then redirects to `/intro`. **"Started" means confirmed, not
 "a submission row exists"**: an admin can start a submission on a student's behalf (draft
@@ -1347,7 +1347,7 @@ path leave it NULL. Migration `0015` backfills `confirmed_at = created_at` for e
 pre-existing submission, since those students already confirmed.
 `app/me/page.tsx` renders one extra branch on top of that flow state: an admin with no
 roster row (`session.isAdmin && !flow.onRoster`, the normal case for staff) gets a
-greeting + an "open the admin dashboard" `InfoCard` instead of the off-roster notice,
+greeting + an "open the admin dashboard" card instead of the off-roster notice,
 and the bottom "Admin access" card is then reserved for admins who are also students.
 This is a render-time branch only: it adds no query, so `loadFlowState` stays the single
 source of hub state. Since 1.37 that card's button is `components/AdminHomeRedirect.tsx`,
@@ -1361,21 +1361,74 @@ so the `animationend` still arrives. Admins who are also students are not redire
 
 ## Unified navigation
 
-Every page renders `components/AppHeader.tsx` — an always-present
-**🏠 Home** element (plain text on `/me`, a link elsewhere; admins point it at `/me` and
-add an `Admin` `Crumb`). On the flow pages it wraps `components/WizardSteps.tsx`, which
-**is** the navigation: a clickable breadcrumb (no separate per-page backlinks) where the
-current step is bold, **unlocked** steps (from `loadWizardNav`) are links, and locked
-steps are muted/non-clickable — so the breadcrumb can't jump ahead of the data, mirroring
-the per-step "Next" gates. Pages: `/me` (hub: confirm-info box / continue / review links),
-`/intro`, the data steps (`/course-schedule`, `/availability`, `/travel`, SL-only
-`/closes`), and
-`/exit` (`components/FinishButton.tsx` → `finalizeSubmission`). The forward button is a
-shared `PrimaryLink`/styled button, hidden once `status = submitted` on the auto-saving
-pages (`/course-schedule`, `/travel` read `EvidenceView.submitted`) since the breadcrumb
-then handles review navigation. The travel→next gate is
-`components/evidence/TravelContinue.tsx` (an acknowledgement checkbox, since travel is
-optional; its target comes from the position-aware `nextHref`).
+Student pages render in `components/student/StudentPage.tsx` (1.64): a sticky top bar
+with the Muster wordmark (to `/me`) and a Home link, a skip link, and `<main>`. On the
+flow pages it is passed `nav` (from `loadWizardNav`) and renders
+`components/student/StepProgress.tsx`, which **is** the flow's navigation: "Step 2 of 3"
+plus a row of numbered dots, where the current step is filled, **unlocked** steps are
+links (a check once a later step is unlocked) and locked steps show a lock and are not
+links, so it can't jump ahead of the data, mirroring the per-step "Next" gates. The
+introduction and the final review are not numbered steps; they pass `progressLabel`
+(and `/exit` passes `stepsDone`). For an admin, `StudentPage` also renders the console's
+`components/AppHeader.tsx` under the top bar (semester switcher, student finder, the
+other-semester banner), since admins reach `/course-schedule` and `/travel` on a
+student's behalf. Admin pages keep rendering `AppHeader` directly (Home plus an `Admin`
+`Crumb`).
+
+Pages: `/me` (hub: confirm-info card / continue / review rows), `/intro`, the data steps
+(`/course-schedule`, `/availability`, `/travel`, SL-only `/closes`), and `/exit`
+(`components/FinishButton.tsx` → `finalizeSubmission`). Each step's forward control sits
+in an `ActionBar` (sticky at the bottom of the screen); it is hidden once
+`status = submitted` on the auto-saving pages (`/course-schedule`, `/travel` read
+`EvidenceView.submitted`) since the step progress then handles review navigation. The
+travel→next gate is `components/evidence/TravelContinue.tsx` (an acknowledgement
+checkbox, since travel is optional; its target comes from the position-aware
+`nextHref`).
+
+## Student design system (1.64)
+
+The student pages have their own look, separate from the admin console's.
+
+- **Scope.** `StudentPage` renders a root `.sf` element, which sets the `--sf-*`
+  custom properties. Every rule in `app/student.css` (tokens, shell, primitives, the
+  availability grid) is on an `sf-` prefixed class, and only `StudentPage` and the
+  components inside it render those classes; that is the isolation, since most of the
+  rules do not also nest under `.sf`. The three per-area files beside it
+  (`student-pages.css`, `student-evidence.css`, `student-requests.css`) additionally
+  nest every rule under `.sf`. The two exceptions are the `html:has(.sf)` and
+  `html:has(.sf-actionbar)` scroll-padding rules, which keep a focused control clear of
+  the sticky bars. So nothing there reaches an admin page, and the admin's `globals.css`
+  tokens, `.page` shell and `components/ui.tsx` primitives are untouched. The reverse
+  case is the console's `AppHeader`, which `StudentPage` renders for an admin inside
+  `.sf-admin-tools`: those rules reset the inherited text styles, the student focus ring
+  is listed by region so it leaves the header out, and the header's own Home breadcrumb
+  is hidden there because the top bar already has Home. A component both sides render
+  (`EvidenceThumb`, `TravelDateRange`'s stacked layout, `Modal`) keeps its admin look.
+- **Primitives.** `components/student/ui.tsx` (no hooks, usable from server pages):
+  `Button`, `ButtonLink`, `Card`, `Notice`, `Pill`, `ActionBar`, `StepActions` (the
+  Back and gated Continue bar every step shares), `StatusLine`, `VisuallyHidden`.
+  `components/student/StudentDeadEnd.tsx` is the page a student gets when there is
+  nothing for them to do (not on the roster, no group, no position): the title, the
+  reason, and a way back to `/me`. `components/student/FormControls.tsx` (client): `FormSubmitButton`
+  (pending state from `useFormStatus`) and `FilePicker` (a tap tile over a native file
+  input, so keyboard use, `required` and `form.reset()` stay the browser's own).
+- **Mobile first.** The base rules are the phone layout; the few `min-width` queries
+  only add room (step names beside the dots, the two availability grids side by side).
+  Sizes are in rem, inputs are 16px so iOS does not zoom on focus, and every page holds
+  at 320px without sideways scroll.
+- **Accessibility (WCAG 2.2 AA) by construction.** Colours are used in the tested pairs
+  listed at the top of `student.css` (text 4.5:1 or better, control borders and state
+  marks 3:1 or better). One `:focus-visible` ring for every control (a selected
+  availability cell has its own, so it stands apart from selected neighbours). Controls
+  are at least 44px tall. State never rests on colour alone: notices and status lines carry an
+  icon, pills carry text, and each availability cell state has its own glyph, a legend
+  entry and a suffix on the cell's accessible name. Every page sets its own `<title>`
+  (the layout's `%s | Muster` template) and has one `<h1>`.
+- **Announcements.** Errors from an action render with `role="alert"`, successes with
+  `role="status"`. `/availability` keeps one always-mounted polite region that speaks
+  how many requirements are left, debounced so a run of taps is announced once. Its
+  Continue button is never a dead control: pressed with requirements unmet
+  (`aria-disabled`), it saves nothing and moves focus to the Requirements card.
 
 ## Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`)
 

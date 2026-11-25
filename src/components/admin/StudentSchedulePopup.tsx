@@ -266,7 +266,7 @@ function SubGridTable({ sub }: { sub: StudentGridSub }) {
   if (sub.rows.length === 0) return null;
   const weekend = sub.dayType === "weekend";
   return (
-    <table className={`avail-grid avail-grid--locked${weekend ? " avail-grid--weekend" : ""}`}>
+    <table className={`avail-grid${weekend ? " avail-grid--weekend" : ""}`}>
       <thead>
         <tr>
           <th />
