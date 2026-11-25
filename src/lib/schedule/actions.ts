@@ -56,7 +56,7 @@ import type {
   StoredRunReport,
 } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
-import { getSchedulingParams, setSetting, SETTING_SCHEDULE_PARAMS } from "@/lib/settings";
+import { getSchedulingParams, schedulingParamsKey, setSetting } from "@/lib/settings";
 import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
 import {
   eligibleSubmittedFilter,
@@ -740,7 +740,7 @@ export async function saveScheduleParams(params: SchedulingParams): Promise<Save
   const error = validateSchedulingParams(params);
   if (error) return { ok: false, error };
 
-  await setSetting(SETTING_SCHEDULE_PARAMS, JSON.stringify(params));
+  await setSetting(await schedulingParamsKey(), JSON.stringify(params));
   revalidatePath("/admin/schedule");
   return { ok: true };
 }

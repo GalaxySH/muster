@@ -33,7 +33,7 @@ import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { relayDelete } from "@/lib/drive/relay";
 import { positionOptions } from "@/lib/positions/data";
 import {
-  TEST_GROUP_ID,
+  testGroupIdFor,
   TEST_GROUP_NAME,
   TEST_GROUP_OPENS_AT,
   TEST_GROUP_CLOSES_AT,
@@ -116,11 +116,12 @@ async function ensureTestGroup(termId: string): Promise<string> {
       .limit(1);
   const [existing] = await find();
   if (existing) return existing.id;
-  // Race-safe insert-if-absent on the fixed id; a second caller's insert is a no-op.
+  // Race-safe insert-if-absent on an id fixed per term; a second caller's insert
+  // is a no-op.
   await db
     .insert(groups)
     .values({
-      id: TEST_GROUP_ID,
+      id: testGroupIdFor(termId),
       termId,
       name: TEST_GROUP_NAME,
       kind: "test",

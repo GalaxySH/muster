@@ -200,6 +200,37 @@ check that `responses_sheet_id:2026-fall` equals `responses_sheet_id` in
 `app_settings`; if the copy is missing, the next sync finds the sheet by name at the
 Drive root instead of making a new one.
 
+**1.56 (semester domains, Phase 6).** Three more migrations, none of which rebuilds a
+table or changes a row of student data:
+
+- 0047, data only: copies the saved engine params to `schedule_params:<term>`. The
+  old key is left in place; a change saved after the deploy is not written back to it.
+- 0048, data only: clears `terms.activated_at` on the first term.
+- 0049: drops the `'2026-fall'` default from the eleven `term_id` columns that had
+  one. Metadata only.
+
+**What 0049 means for the deploy.** Production runs an image from before 1.48 until
+this release's container starts. `migrate` finishes first, and for the few seconds
+between it and the new container the old image is still serving. In that window its
+inserts into the term-scoped tables are refused (a student's very first save, a new
+change request, a new group or position; MariaDB is in strict mode, so the row is
+refused, not stored blank). Reads and edits to existing rows are unaffected, and the
+person can simply try again. Deploy at a quiet hour.
+
+**Rolling back past 1.48 after this release.** The old image cannot insert into those
+tables until the defaults are back. Run this as the migrate user first, once per
+table (`submissions`, `change_requests`, `close_slots`, `schedule_runs`,
+`shift_plans`, `groups`, `positions`, `shift_blocks`, `roster_imports`,
+`roster_title_mappings`, `w2w_position_map`):
+
+```sql
+ALTER TABLE `submissions` ALTER COLUMN `term_id` SET DEFAULT '2026-fall';
+```
+
+Only do that while there is one semester. **Once a second semester exists, do not
+roll back past 1.48 at all**: an older image reads every term at once. Starting a
+semester is not part of a deploy (`docs/semester-rollover.md`).
+
 Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
 Don't push a new tag at an older commit: a tag push runs that commit's workflow,
 and one from before the forced command is refused. Migrations aren't reversed, so

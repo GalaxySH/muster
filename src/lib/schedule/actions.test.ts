@@ -16,7 +16,7 @@ vi.mock("@/lib/auth/require-admin", () => {
 vi.mock("@/lib/settings", () => ({
   getSchedulingParams: vi.fn(),
   setSetting: vi.fn(),
-  SETTING_SCHEDULE_PARAMS: "schedule_params",
+  schedulingParamsKey: vi.fn(async () => "schedule_params:test-term"),
 }));
 vi.mock("@/lib/admin/sheet-sync", () => ({
   SCHEDULE_SHEET: "schedule",

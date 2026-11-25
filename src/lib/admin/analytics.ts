@@ -9,11 +9,14 @@ import { asc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { students, submissions } from "@/lib/db/schema";
 import type { AnalyticsStudent } from "./analytics-view";
-import { workingTermId } from "@/lib/terms/working";
+import { workingTerm } from "@/lib/terms/working";
 import { submissionOfStudent, onRosterStudent } from "@/lib/terms/scope";
 
 export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
-  const termId = await workingTermId();
+  // "Signed in" means in this semester: a visit from before it was started does
+  // not count. The first semester was never started, so it has no stamp and
+  // every visit counts.
+  const { id: termId, activatedAt: since } = await workingTerm();
   const rows = await getDb()
     .select({
       email: students.email,
@@ -29,7 +32,7 @@ export async function loadAnalyticsStudents(): Promise<AnalyticsStudent[]> {
   return rows.map((r) => ({
     email: r.email,
     displayName: r.displayName,
-    lastSeenAt: r.lastSeenAt,
+    lastSeenAt: since && r.lastSeenAt && r.lastSeenAt < since ? null : r.lastSeenAt,
     status: r.status ?? null,
   }));
 }

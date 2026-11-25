@@ -13,7 +13,7 @@
  * A shared root like lib/db: plain, no `server-only`, because the roster import
  * and the dev scripts run from the CLI.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { students, termMembers } from "@/lib/db/schema";
 import { isCurrentTermSql, type DbOrTx } from "./term-id";
 
@@ -21,6 +21,26 @@ export interface RosterPlace {
   positionId: string | null;
   onRoster: boolean;
   rosterTitle: string | null;
+}
+
+/**
+ * Point the retired `students` columns at a term: its position, roster flag,
+ * title and group for everyone in it, and "not on the roster, no group" for
+ * everyone else. Run when another term becomes current, which is the one moment
+ * the mirrors have to be rewritten wholesale.
+ */
+export async function syncRetiredRosterColumns(db: DbOrTx, termId: string): Promise<void> {
+  await db.execute(sql`
+    update ${students}
+    left join ${termMembers}
+      on ${termMembers.studentEmail} = ${students.email} and ${termMembers.termId} = ${termId}
+    set
+      ${students.legacyPositionId} = ${termMembers.positionId},
+      ${students.legacyOnRoster} = coalesce(${termMembers.onRoster}, false),
+      ${students.legacyRosterTitle} = ${termMembers.rosterTitle},
+      ${students.groupId} = ${termMembers.groupId},
+      ${students.groupAssignedAuto} = coalesce(${termMembers.assignedAuto}, false)
+  `);
 }
 
 /** Create or replace one person's roster place in the term. Their group is left alone. */

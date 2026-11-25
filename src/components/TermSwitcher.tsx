@@ -13,7 +13,6 @@
  * admin from meeting that refusal.
  */
 import { useEffect, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { selectTerm } from "@/lib/terms/select-action";
 
 const SHOWN_TERM_KEY = "muster-term";
@@ -52,12 +51,13 @@ function useTabsOnOneTerm(workingId: string) {
 }
 
 function useSelectTerm() {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const select = (termId: string) =>
     startTransition(async () => {
       const res = await selectTerm(termId);
-      if (res.ok) router.refresh();
+      // A full reload, not a refresh: a form on the page may be holding the
+      // other semester's values in its state, and a refresh would keep them.
+      if (res.ok) window.location.reload();
     });
   return { pending, select };
 }

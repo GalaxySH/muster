@@ -16,6 +16,7 @@ import {
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
 import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { termSettingKey } from "@/lib/domain/terms";
 import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/config-data";
 
 /**
@@ -167,7 +168,15 @@ export async function getRosterConfig(): Promise<EffectiveRosterConfig> {
  * (and whenever the stored value is unreadable).
  */
 export async function getSchedulingParams(): Promise<SchedulingParams> {
-  return parseSchedulingParams(await getSetting(SETTING_SCHEDULE_PARAMS));
+  return parseSchedulingParams(await getSetting(await schedulingParamsKey()));
+}
+
+/**
+ * Where the working term's engine params are stored. They are per term because
+ * they name positions (the coverage pool), and each term has its own.
+ */
+export async function schedulingParamsKey(): Promise<string> {
+  return termSettingKey(SETTING_SCHEDULE_PARAMS, await workingTermId());
 }
 
 /**

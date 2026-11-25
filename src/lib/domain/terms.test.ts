@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   chooseWorkingTerm,
+  newTermDefaults,
+  TERM_ID_MAX,
+  termSlug,
+  validateNewTerm,
   cleanTermDetails,
   termNamesIn,
   termYearFor,
@@ -117,5 +121,59 @@ describe("chooseWorkingTerm", () => {
 
   it("ignores a selection naming a term that does not exist", () => {
     expect(chooseWorkingTerm({ ...base, selectedExists: false })).toBe("2027-spring");
+  });
+});
+
+describe("termSlug", () => {
+  it("slugs the name", () => {
+    expect(termSlug("Spring 2027", [])).toBe("spring-2027");
+    expect(termSlug("  Été / Summer '27 ", [])).toBe("ete-summer-27");
+  });
+
+  it("adds a number when the id is taken", () => {
+    expect(termSlug("Spring 2027", ["spring-2027"])).toBe("spring-2027-2");
+    expect(termSlug("Spring 2027", ["spring-2027", "spring-2027-2"])).toBe("spring-2027-3");
+  });
+
+  it("fits the column, number included", () => {
+    const long = "A very long semester name that goes on and on";
+    const first = termSlug(long, []);
+    expect(first.length).toBeLessThanOrEqual(TERM_ID_MAX);
+    const second = termSlug(long, [first]);
+    expect(second.length).toBeLessThanOrEqual(TERM_ID_MAX);
+    expect(second).not.toBe(first);
+  });
+
+  it("still gives an id for a name with nothing usable in it", () => {
+    expect(termSlug("!!!", [])).toBe("term");
+  });
+});
+
+describe("newTermDefaults", () => {
+  it("counts new hires from three months before the first day", () => {
+    expect(newTermDefaults("2027-01-19").newHireCutoff).toBe("2026-10-19");
+    expect(newTermDefaults("2026-09-02").newHireCutoff).toBe("2026-06-02");
+  });
+
+  it("clamps to the end of a shorter month", () => {
+    expect(newTermDefaults("2027-05-31").newHireCutoff).toBe("2027-02-28");
+  });
+});
+
+describe("validateNewTerm", () => {
+  const ok = { name: "Spring 2027", startsOn: "2027-01-19", endsOn: "2027-05-08", confirmName: "Spring 2027" };
+
+  it("accepts a complete request", () => {
+    expect(validateNewTerm(ok)).toBeNull();
+  });
+
+  it("needs the name typed again", () => {
+    expect(validateNewTerm({ ...ok, confirmName: "Spring" })).toMatch(/to confirm/);
+    expect(validateNewTerm({ ...ok, confirmName: "  Spring   2027 " })).toBeNull();
+  });
+
+  it("needs dates in order", () => {
+    expect(validateNewTerm({ ...ok, endsOn: "2027-01-19" })).toMatch(/after the start/);
+    expect(validateNewTerm({ ...ok, startsOn: "" })).toMatch(/start date/);
   });
 });

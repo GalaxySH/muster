@@ -268,7 +268,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   `currentTermId()` is only for what must follow the term students are filling in.
   An admin action that acts on a whole term, or names a person by email, and names
   no row of the term gates with `requireAdminIn(termId)` (on-behalf actions shared
-  with students: `requireEditableStudent(onBehalfOf, termId)`).
+  with students: `requireEditableStudent(onBehalfOf, termId)`). A new semester is
+  started from the Semester page (`lib/admin/start-term.ts`; runbook
+  `docs/semester-rollover.md`).
   **`students` is only the person (1.51).** Their position, roster flag and group are
   per term, in `term_members`: join it with `memberOf(termId)` or filter with
   `onRosterStudent(termId)`, and write it through `lib/terms/members.ts`.

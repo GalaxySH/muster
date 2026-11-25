@@ -99,3 +99,76 @@ export function termNamesIn(text: string, otherTermNames: readonly string[]): st
   const haystack = text.toLowerCase();
   return otherTermNames.filter((name) => name.trim() && haystack.includes(name.toLowerCase()));
 }
+
+/** Terms' ids are slugs of at most this many characters (the column's width). */
+export const TERM_ID_MAX = 32;
+
+/**
+ * The id for a new term: a slug of its name ("Spring 2027" gives
+ * "spring-2027"), with a number added when another term already has it. The id
+ * is fixed from then on, so renaming a term never moves its rows.
+ */
+export function termSlug(name: string, taken: readonly string[]): string {
+  const base =
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "term";
+  const used = new Set(taken);
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? "" : `-${n}`;
+    const id = base.slice(0, TERM_ID_MAX - suffix.length).replace(/-+$/, "") + suffix;
+    if (!used.has(id)) return id;
+  }
+}
+
+/** "YYYY-MM-DD" moved by whole months, clamped to the last day of a shorter month. */
+function addMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, lastDay));
+  return first.toISOString().slice(0, 10);
+}
+
+/** How many months before the first day someone must be hired to count as returning. */
+const NEW_HIRE_MONTHS_BEFORE_START = 3;
+
+export const DEFAULT_SCHEDULE_NOTE =
+  "Expect to see your schedule a week before the semester starts.";
+
+/**
+ * What a new term starts with, worked out from its first day. Each is only a
+ * starting value the admin can change on the Semester page afterwards. The
+ * travel cutoff has its own rule in domain/travel.ts.
+ */
+export function newTermDefaults(startsOn: string): { newHireCutoff: string; scheduleNote: string } {
+  return {
+    newHireCutoff: addMonths(startsOn, -NEW_HIRE_MONTHS_BEFORE_START),
+    scheduleNote: DEFAULT_SCHEDULE_NOTE,
+  };
+}
+
+/** What an admin fills in to start a new semester. Dates are "YYYY-MM-DD". */
+export interface NewTermInput {
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  /** The name typed again, as the confirmation. */
+  confirmName: string;
+}
+
+/** Check a cleaned new-semester request. Returns the error to show, or null. */
+export function validateNewTerm(input: NewTermInput): string | null {
+  if (!input.name) return "Give the semester a name.";
+  if (input.name.length > TERM_NAME_MAX) return `Keep the name under ${TERM_NAME_MAX} characters.`;
+  if (!isIsoDate(input.startsOn)) return "Pick a start date.";
+  if (!isIsoDate(input.endsOn)) return "Pick an end date.";
+  if (input.endsOn <= input.startsOn) return "The end date must be after the start date.";
+  if (input.confirmName.trim().replace(/\s+/g, " ") !== input.name) {
+    return "Type the new semester's name to confirm.";
+  }
+  return null;
+}

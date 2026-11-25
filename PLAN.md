@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.55
+- **Version:** 1.56
 - **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1667,6 +1667,47 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.56 (2026-11-24)** — **Semester domains, Phase 6: starting a new semester
+  (issue #40; `docs/semester-domains-plan.md` §2.4, §2.5, §2.9, §16;
+  runbook `docs/semester-rollover.md`).** The Semester page gains **Start a new
+  semester**: a name, a first and last day, the name typed again, and one
+  action (`startSemester` over the plain `startNewTerm` in
+  `lib/admin/start-term.ts`). In one transaction it creates the term (id a slug
+  of the name, travel cutoff the day before the first day, new hire date three
+  months before it), copies the current term's configuration as new rows with
+  new ids (positions, live shift blocks, title mappings, how the tracker is
+  read, the W2W position map, the engine params), copies
+  everyone on the roster into it with their position and **no group**, creates
+  its Default and Test accounts groups and carries the test accounts over, gives
+  its Shift Leads a close requirement, and makes it current. **Nothing of the
+  earlier term changes.** Students move at once and their form is closed until
+  an admin opens a group. It always acts on the current term, whichever one the
+  admin is working in, and a second start from a stale page is refused.
+  - **Not copied:** responses, proofs, travel, groups and windows, closes,
+    schedules, plans, position return dates, retired blocks and aliases (what
+    pointed at an alias follows it to its target).
+  - **Making an earlier semester current again** (`makeSemesterCurrent`), shown on
+    the Semester page while working in a term that is not current. It undoes a
+    start made by mistake. Only the pointer moves. It asks first when the term
+    being left already has responses.
+  - **Engine params are per term** (migration **0047**, data only: the saved value
+    is copied to `schedule_params:<term>`; the old key is kept for a rollback).
+  - **Closes start at 3.** A new term's closes per Shift Lead is 3 and every
+    lead's own number in it is 3, whatever the closing term's default or a lead's
+    own number had become.
+  - **Analytics:** "signed in" counts visits since the term was started. The
+    first term was never started from the app, so migration **0048** clears the
+    start stamp 0037 gave it and every visit counts there, as before.
+  - **Switching semesters reloads the page**, so no form keeps the other
+    semester's values. (1.55 refreshed in place, which left the Semester page's
+    form showing the previous semester.)
+  - **Also in this release:** every admin write that names a person by email
+    carries the semester check from 1.55 (listed there).
+  - **The `term_id` column defaults are dropped** (migration **0049**, metadata
+    only). An insert that forgot its term now fails instead of being filed under
+    fall. From this release on, an image older than 1.48 cannot insert into the
+    term-scoped tables; `docs/deploy.md` has what that means for a deploy and a
+    rollback.
 - **1.55 (2026-11-24)** — **Semester domains, Phase 5: working in a selected semester
   (issue #40; `docs/semester-domains-plan.md` §2.6, §2.9, §15).** Until now every
   page and action read "the current term". Two terms are now named apart. The

@@ -106,6 +106,21 @@ someone with no row was never part of that term.
   `terms/members.ts` and `groups/membership.ts` carry `isCurrentTermSql(termId)` in
   their WHERE, so a write to an earlier term does not touch them and the transaction
   gains no read.
+- **Starting a term (1.56).** `lib/admin/start-term.ts`, console code and plain
+  (it takes a database handle): `startNewTerm` creates the term, copies the
+  configuration and the roster with new ids, and moves the pointer, in one
+  transaction that first locks the pointer row and refuses when it no longer names
+  the term the caller saw. `makeTermCurrent` moves the pointer back. Both end with
+  `syncRetiredRosterColumns` (`terms/members.ts`), the one place the retired
+  `students` mirrors are rewritten wholesale. The pure parts (`termSlug`,
+  `newTermDefaults`, `validateNewTerm`) are in `domain/terms.ts`. Both actions use
+  the *current* term, never the working one. The engine params are stored per term
+  (`schedulingParamsKey()` in `lib/settings.ts`); the copy remaps their position
+  ids as plain JSON so the console does not import the generator's parser.
+- **Client state and the term.** Selecting a term reloads the page
+  (`TermSwitcher`), because a form that seeded `useState` from its props would
+  otherwise keep the other term's values. Where a page changes term without a
+  reload (the Semester page after a start), key its forms by the term id.
 - **Drive per term (1.55).** `drive/relay.ts` resolves a term's folder
   (`termFolder`): the Drive root for the term named by `drive_root_term` (fall 2026),
   otherwise a folder named after the term, found or created under the root and
@@ -128,14 +143,13 @@ someone with no row was never part of that term.
 - **What is deliberately not term-scoped:** `students` (always the current term's
   roster), `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
   links, and the admin change-request queue.
-- **Expand, then contract.** The 1.48 migrations give every `term_id` a database
-  default (`2026-fall`) that the Drizzle schema does not declare. The default is what
-  lets the previous release keep writing during a deploy or after a rollback; the
-  missing declaration is what makes TypeScript require the term on every insert. The
-  contract migration drops the defaults along with `students.group_id`,
-  `students.group_assigned_auto` and the pre-term `excluded_roster_titles`,
-  `travel_cutoff` and `late_travel_accept` settings, all of which are still written
-  until then.
+- **Expand, then contract.** The 1.48 migrations gave every `term_id` a database
+  default (`2026-fall`) that the Drizzle schema never declared, which is what makes
+  TypeScript require the term on every insert. **1.56 drops the defaults**
+  (migration 0049), so the database refuses an insert with no term too. Still to be
+  contracted, and still written until then: `students.position_id`, `on_roster`,
+  `roster_title`, `group_id` and `group_assigned_auto`, and the pre-term
+  `excluded_roster_titles`, `travel_cutoff` and `late_travel_accept` settings.
 - **Verifying a change here.** Unit tests cannot see a term leak. Run the loaders
   against a real MariaDB holding two terms (a throwaway container, never the shared
   dev database) and compare what each term shows; `docs/semester-domains-plan.md` §8

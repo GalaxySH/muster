@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phases 1 to 5 are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54 and 1.55). Phases 6 and 7 are not.** Branch
+**Status: Phases 1 to 6 are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54, 1.55 and 1.56). Phase 7 is not.** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -1405,3 +1405,79 @@ a stale tab can do there is create something visible in the wrong term.
 grant, so the per-term folder and sheet paths are covered by reading the code
 and by the migration check only. A student's write with the selection cookie
 was not exercised (the read was; both use the same resolver).
+
+## 16. Phase 6 as built (PLAN 1.56)
+
+Built as §5 describes. `startNewTerm` (`lib/admin/start-term.ts`) is the whole
+operation in one transaction; the runbook is `docs/semester-rollover.md`.
+
+**Choices and differences.**
+
+- **The column defaults are dropped** (migration 0049), as §5 said, on the
+  owner's decision. `ALTER COLUMN ... DROP DEFAULT` is a metadata change: no
+  table is rebuilt and no row is touched. Two consequences, both written into
+  `docs/deploy.md`: for the few seconds of a deploy between `migrate` finishing
+  and the new container starting, the pre-1.48 image still serving cannot insert
+  into the term-scoped tables; and a rollback past 1.48 needs the defaults put
+  back first.
+- **A stale start is refused by the database, not only the page.** The
+  transaction locks the pointer row and compares it with the term the page
+  showed as current, so two tabs or a double click cannot start two semesters.
+- **Aliases are not copied.** A position merged into another is left behind, and
+  title mappings and W2W mappings that pointed at it are pointed at its target's
+  copy.
+- **Closes start at 3 in every new term** (§2.1). The term's default is 3 and
+  each lead's own number is made from it, so neither the closing term's default
+  nor a number an admin gave one lead carries over.
+- **Test accounts** are carried into the new term's test group whatever their
+  roster flag, with their position remapped.
+- **Engine params** were still one global setting. They are per term now
+  (migration 0047), which the copy needed in order to remap the coverage pool.
+- **The retired `students` columns** are rewritten to the new current term at
+  the start and again when an earlier term is made current.
+- **Analytics** counts sign-ins since `activated_at`, with no exception in the
+  code. The first term's stamp was the time migration 0037 ran, which would have
+  reset everyone to "never signed in" on deploy, so migration 0048 clears it:
+  that term was never started from the app, and a term with no stamp counts
+  every visit.
+- **Making an earlier term current** does not delete the term being left. It
+  stays in the menu until renamed.
+- **Found while testing:** switching semesters on the Semester page left the
+  previous semester's values in the details form (a Phase 5 defect). Switching
+  now reloads the page, and that page's forms are keyed by the term.
+
+**Verified.**
+
+- 1,832 unit tests, including the slug, the defaults and the request check.
+- On a throwaway MariaDB starting from one term, in the browser: the panel; the
+  start refused until the name is typed; "Spring 2027" started; the header
+  became a menu; all 18 admin pages in the new term with no error; a student
+  moved to it with no form access; a second start with the same name refused;
+  the earlier term made current again and back, with the warning when the term
+  being left has responses.
+- In the database after the start: 6 positions and 64 live blocks copied with
+  new ids, the alias and the retired block left behind, a mapping that pointed
+  at the alias now on its target, the W2W map and the coverage pool remapped,
+  82 members with no group, the test account in the new test group, 14 close
+  requirements, fall's rows unchanged, no `position_changes` rows, and the
+  retired columns equal to the new term's membership for every person.
+- **Rehearsal on production data (2026-11-24).** On a same-day read-only copy:
+  0037 to 0047 applied, then `startNewTerm` run from a script. It took under a
+  second: 6 positions, 65 blocks, 215 people on the roster, 6 test accounts, 34
+  leads. Every copied row points at a position of its own term, nobody on fall's
+  roster is missing from spring, the retired columns match for all 458 people,
+  and the checksums of `submissions`, `shift_selections`, `close_claims` and
+  `schedule_assignments` are the same before and after. A second start from the
+  same starting point was refused. The copy was deleted.
+- **Second rehearsal, with 0048 and 0049.** On a fresh same-day copy, 0037 to
+  0049 applied in about five seconds. No `term_id` column has a default
+  afterwards, an insert naming no term is refused, fall's `activated_at` is
+  null, and running 0048 and 0049 again changed nothing. With fall's default
+  set to 2 and one lead's number to 1 beforehand, the new term's default was 3
+  and all 34 of its leads were on 3. The copy was deleted.
+- The production build with no database reachable.
+
+**Not verified.** `startNewTerm` has no unit test of its own; it is checked on
+real databases only. Nothing was written to a real Drive, so a new term's
+folder and sheets have still never been created for real. The roster import
+into a freshly started term was not run.

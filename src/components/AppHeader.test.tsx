@@ -91,7 +91,11 @@ describe("AppHeader student finder", () => {
   });
 
   describe("with an earlier semester", () => {
+    const reload = vi.fn();
     beforeEach(() => {
+      // jsdom cannot navigate; the switch reloads the page so no form keeps
+      // the other semester's values.
+      vi.stubGlobal("location", { ...window.location, reload });
       vi.mocked(listTerms).mockResolvedValue([
         { id: "test-term", name: "Spring 2027" },
         { id: "fall", name: "Fall 2026" },
@@ -106,6 +110,7 @@ describe("AppHeader student finder", () => {
         .setup()
         .selectOptions(screen.getByRole("combobox", { name: "Semester" }), "Fall 2026");
       expect(selectTerm).toHaveBeenCalledWith("fall");
+      await vi.waitFor(() => expect(reload).toHaveBeenCalled());
     });
 
     it("says so on every page while it is selected, with a way back", async () => {
