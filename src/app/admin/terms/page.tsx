@@ -4,7 +4,6 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { InfoCard, Page } from "@/components/ui";
 import { TermDetailsForm } from "@/components/admin/TermDetailsForm";
-import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
 import { MakeCurrentPanel, StartSemesterPanel } from "@/components/admin/StartSemesterPanel";
 import { systemMessageTone, termNamesIn } from "@/lib/domain/terms";
 import { getLateTravelPolicy, getScheduleEmailConfig, getTravelCutoff } from "@/lib/settings";
@@ -78,12 +77,11 @@ export default async function AdminTermPage() {
           systemMessageTone: systemMessageTone(term.systemMessageTone),
           closeRequirement: term.closeRequirement,
         }}
-      />
-      <TravelCutoffPanel
-        key={`cutoff-${term.id}`}
-        cutoffMs={travelCutoff.cutoff.getTime()}
-        isCustom={travelCutoff.isCustom}
-        lateAccepted={lateTravelPolicy === "accept-and-flag"}
+        travel={{
+          cutoffMs: travelCutoff.cutoff.getTime(),
+          isCustom: travelCutoff.isCustom,
+          lateAccepted: lateTravelPolicy === "accept-and-flag",
+        }}
       />
       {!isCurrent && (
         <MakeCurrentPanel working={{ id: term.id, name: term.name }} current={current} />

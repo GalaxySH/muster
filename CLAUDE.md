@@ -236,8 +236,8 @@ These are non-obvious and pervade the data model — internalize them before edi
   scheduler-side, not modeled here.
 - **Hard rules block submission; soft rules allow + flag.** Hard: min reachable (§2),
   ≥1 open OR close selected (§6), spans ≥2 days (≥3 for SL) (§7). Soft: missing
-  weekend → auto-assign + flag (Barista exempt) (§5). Travel on/after the **global
-  cutoff** (default 9/1, admin-configurable) is **refused outright** by default (§8);
+  weekend → auto-assign + flag (Barista exempt) (§5). Travel on/after the **term's
+  cutoff** (default: the day before the term starts; set per term on `/admin/terms`) is **refused outright** by default (§8);
   the admin's "Accept late travel" toggle on `/admin/terms` switches to
   accept-and-flag (entries stored `excused: false`, red "not excused (late)" cues,
   `travel_late` flag) — `getLateTravelPolicy` in `lib/settings.ts` over the seam in
