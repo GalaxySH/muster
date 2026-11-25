@@ -36,8 +36,6 @@ import { EmployeePicker, type EmployeeOption } from "./EmployeePicker";
 export interface ChangeRequestsAdminProps {
   /** Pre-seeded from the per-student admin page's quick link (?student=). */
   initialEmployee: EmployeeOption | null;
-  /** The admin's own roster email, or null when they aren't a known student. */
-  selfEmail: string | null;
 }
 
 export function ChangeRequestsPanel({
@@ -71,18 +69,17 @@ export function ChangeRequestsPanel({
     setMsg(res.ok ? { ok: true, text: successText } : { ok: false, text: res.error ?? "Something went wrong." });
   }
 
-  // Admin only: swap the request list and shift times to whoever the form now acts for.
+  // Admin only: swap the request list and shift times to whoever the form now
+  // acts for. A cleared field sends null, which reads the admin's own.
   function selectEmployee(next: EmployeeOption | null) {
     setEmployee(next);
     setMsg(null);
-    const email = next?.email ?? admin?.selfEmail ?? null;
+    const email = next?.email ?? null;
     startListLoad(async () => {
-      const [list, nextBlocks] = email
-        ? await Promise.all([
-            adminListChangeRequests(email, termId),
-            adminShiftTimeBlocks(email, termId),
-          ])
-        : [[], []];
+      const [list, nextBlocks] = await Promise.all([
+        adminListChangeRequests(email, termId),
+        adminShiftTimeBlocks(email, termId),
+      ]);
       setRequests(list);
       setBlocks(nextBlocks);
     });

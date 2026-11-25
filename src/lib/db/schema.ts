@@ -558,9 +558,9 @@ export const changeRequestDayEnum = [...dayEnum, "multiple"] as const;
  */
 export const changeRequests = mysqlTable("change_requests", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  // The term it was filed in. The student's own list and the rate cap read the
-  // current term; the admin queue reads every term, so an open request is never
-  // lost when the semester changes.
+  // The term it was filed in. The student's own list reads the current term;
+  // the admin queue, its counts and the row actions read the term being worked
+  // in. The daily digest reads every term.
   termId: termIdColumn(),
   studentEmail: varchar("student_email", { length: 255 })
     .notNull()

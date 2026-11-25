@@ -11,18 +11,21 @@ const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 import { deleteChangeRequest, updateChangeRequest } from "@/lib/changes/admin-actions";
+import { RenderedTerm } from "@/components/RenderedTerm";
 import { ChangeRequestEntryActions } from "./ChangeRequestEntryActions";
 
 function renderActions(fileCount = 0) {
   render(
-    <ChangeRequestEntryActions
-      id="req-1"
-      day="multiple"
-      shiftText="4p to 8p"
-      comment="Lab moved."
-      permanent={false}
-      fileCount={fileCount}
-    />,
+    <RenderedTerm term={{ id: "fall-2026", name: "Fall 2026" }}>
+      <ChangeRequestEntryActions
+        id="req-1"
+        day="multiple"
+        shiftText="4p to 8p"
+        comment="Lab moved."
+        permanent={false}
+        fileCount={fileCount}
+      />
+    </RenderedTerm>,
   );
 }
 
@@ -46,12 +49,11 @@ describe("ChangeRequestEntryActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(updateChangeRequest).toHaveBeenCalledWith("req-1", {
-        day: "tue",
-        shiftText: "5p to 9p",
-        comment: "Lab moved.",
-        permanent: true,
-      }),
+      expect(updateChangeRequest).toHaveBeenCalledWith(
+        "req-1",
+        { day: "tue", shiftText: "5p to 9p", comment: "Lab moved.", permanent: true },
+        "fall-2026",
+      ),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(refresh).toHaveBeenCalled();
@@ -68,6 +70,7 @@ describe("ChangeRequestEntryActions", () => {
       expect(updateChangeRequest).toHaveBeenCalledWith(
         "req-1",
         expect.objectContaining({ comment: "Lab moved to Thursday." }),
+        "fall-2026",
       ),
     );
   });
@@ -92,7 +95,7 @@ describe("ChangeRequestEntryActions", () => {
     expect(screen.getByText(/proof files go too/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
-    await waitFor(() => expect(deleteChangeRequest).toHaveBeenCalledWith("req-1"));
+    await waitFor(() => expect(deleteChangeRequest).toHaveBeenCalledWith("req-1", "fall-2026"));
     expect(refresh).toHaveBeenCalled();
   });
 

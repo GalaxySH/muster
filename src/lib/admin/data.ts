@@ -402,15 +402,15 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     flagTypesBySub.set(f.submissionId, list);
   }
 
-  // Open change-request counts per student, one grouped query (same shape as
-  // the flags lookup above; the list badges the count next to the name).
+  // Open change-request counts per student in the term, one grouped query (same
+  // shape as the flags lookup above; the list badges the count next to the name).
   const openRequests = await db
     .select({
       email: changeRequests.studentEmail,
       count: sql<number>`count(*)`,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.status, "open"))
+    .where(and(eq(changeRequests.status, "open"), eq(changeRequests.termId, termId)))
     .groupBy(changeRequests.studentEmail);
   const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
 

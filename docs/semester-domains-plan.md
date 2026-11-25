@@ -93,7 +93,7 @@ plumbing and stay global.
 | `close_slots` | `term_id` NOT NULL | Claims scope through their slot. `date` is unique within a term (`close_slots_term_date_unique`, 1.58). This row first said it stays globally unique, which was wrong: a restarted or overlapping semester holds the same dates. |
 | `schedule_runs` | `term_id` NOT NULL | "Current run" and retention become per term. Assignments follow the run. |
 | `shift_plans` | `term_id` NOT NULL | "Current plan" becomes per term. |
-| `change_requests` | `term_id` NOT NULL | The student's list and the 3 per 24h cap show the current term. The admin queue stays unscoped so open requests are never lost at a flip. |
+| `change_requests` | `term_id` NOT NULL | The student's list and the 3 per 24h cap show the current term. The admin queue stays unscoped so open requests are never lost at a flip. (1.60: the queue now shows the selected term only, §6.) |
 | `positions` | `term_id` NOT NULL; new `picks_closes` boolean | Each term has its own positions (§2.4). |
 | `shift_blocks` | `term_id` NOT NULL | Follows its position (§2.4). |
 | `roster_title_mappings` | `term_id` NOT NULL; PK `(term_id, title)` | How a tracker title maps to a position is per term (§2.4). |
@@ -767,7 +767,11 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
   term of whoever filed it (§2.9). A student is always in the current term, so a
   request they file once the form has switched to spring is a spring request. A
   request an admin enters while working in fall is a fall request. The admin
-  queue lists every term, so nothing is lost at a flip.
+  queue lists every term, so nothing is lost at a flip. (1.60: no longer. The
+  queue, its counts and the per-student page show only the selected term, and
+  starting a term does not carry open requests into it. After a flip, fall's
+  open requests are in no default view; the admin sees them by selecting fall.
+  The runbook has the admin work through the queue before starting the term.)
 - The admin's internal copy belongs to a submission, so it stays with its term.
 - The generator's first run in a new term has no previous run and no scheduled
   marks, so nothing is frozen or carried forward.
@@ -776,7 +780,8 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 - W2W: the first plan import of a term has no prior plan. `w2w_employees` is
   shared and replaced wholesale on upload, as today.
 - Open change requests survive the flip in the admin queue, shown with their
-  term. The daily digest is unchanged.
+  term. The daily digest is unchanged. (1.60: they stay in the earlier term's
+  queue, reached by selecting that term; see above.)
 - A position renamed or removed for the new term: the old term keeps its own
   position row, so nothing about fall changes and the delete is not blocked by
   fall's picks.
@@ -838,7 +843,10 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 9. **The working term is ambient.** Nothing on a URL says which term a page is
    showing, so a bookmarked or emailed admin link opens in whatever term the
    admin has selected. The digest's deep links go to the change-request queue,
-   which lists every term, so they are unaffected.
+   which lists every term, so they are unaffected. (1.60: they go to the
+   student's admin page with `?request=<id>` (`changeRequestAdminPath`), which
+   lists only the selected term. When the request is in another term, the page
+   says which and offers to switch to it.)
 10. **Code that means "the current term" must say so.** After Phase 5 the
    resolver every loader calls returns the working term. The short list in §2.9
    that must keep reading the pointer is the place a wrong choice would be
@@ -971,7 +979,7 @@ row id is also tested against the current term).
    groups start being created.
 8. **Change requests.** The request form lists the current term. The rolling
    24-hour cap is not term-scoped (a day is a day). The admin queue and the
-   per-student page list every term.
+   per-student page list every term. (1.60: they list the selected term only.)
 9. **`domain/terms.ts` was not written.** Nothing in Phase 1 needs term math (slugs,
    default dates). It comes with the first code that does, in Phase 2.
 

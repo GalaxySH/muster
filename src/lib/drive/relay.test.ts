@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 // The Drive API, the grant and the settings store are all stubbed, so nothing
 // here ever reaches Google or a database. Every upload names the term
@@ -60,6 +60,7 @@ import {
   uploadFile,
   writeSheetValues,
 } from "./api";
+import { getSetting } from "@/lib/settings";
 import { relayUpload, upsertManagedSheet } from "./relay";
 
 const upload = () =>
@@ -237,19 +238,68 @@ describe("upsertManagedSheet", () => {
       expect(createSpreadsheet).not.toHaveBeenCalled();
     });
 
-    it("still replaces it after joining a lookup that began before it was known gone", async () => {
-      // The first sync finds it gone while a second is midway through reading
-      // the cached id, so the first joins that lookup and gets "old" back.
-      let late: Promise<unknown> | undefined;
+    it("replaces it once while another sync's lookup of the old id is still in flight", async () => {
+      // The second sync's read of the cached id is held open until the first
+      // sync has found the sheet gone and asked for a replacement, then answers
+      // "old", as a read that began before the replacement would.
+      const idKey = "responses_sheet_id:test-term";
+      let reached!: () => void;
+      const lookupStarted = new Promise<void>((r) => (reached = r));
+      let release!: (id: string) => void;
+      const heldRead = new Promise<string>((r) => (release = r));
+      const plainRead = vi.mocked(getSetting).getMockImplementation()!;
+      onTestFinished(() => void vi.mocked(getSetting).mockImplementation(plainRead));
+      let reads = 0;
+      vi.mocked(getSetting).mockImplementation(async (key) => {
+        if (key === idKey && ++reads === 2) {
+          reached();
+          return heldRead;
+        }
+        return plainRead(key);
+      });
+
+      let second: Promise<{ spreadsheetId: string }> | undefined;
       vi.mocked(writeSheetValues).mockImplementationOnce(async () => {
-        late = upsertManagedSheet(sheet, [["h"]]);
+        second = upsertManagedSheet(sheet, [["h"]]);
+        await lookupStarted;
+        // Timers run only after this sync has caught the 404 and asked for a
+        // replacement, so the held read is still open when it does.
+        setTimeout(() => release("old"), 0);
         throw gone();
       });
-      const result = await upsertManagedSheet(sheet, [["h"]]);
-      await late;
-      expect(result.spreadsheetId).toBe("new");
+
+      const first = await upsertManagedSheet(sheet, [["h"]]);
+      expect(second).toBeDefined();
+      const late = await second!;
+      expect(first.spreadsheetId).toBe("new");
+      expect(late.spreadsheetId).toBe("new");
       expect(createSpreadsheet).toHaveBeenCalledTimes(1);
-      expect(store.get("responses_sheet_id:test-term")).toBe("new");
+      expect(findChildByName).not.toHaveBeenCalled();
+      expect(store.get(idKey)).toBe("new");
+    });
+
+    it("caches the replacement's id before writing to it", async () => {
+      vi.mocked(writeSheetValues)
+        .mockImplementationOnce(async () => {
+          throw gone();
+        })
+        .mockImplementationOnce(async () => {
+          expect(store.get("responses_sheet_id:test-term")).toBe("new");
+        });
+      const result = await upsertManagedSheet(sheet, [["h"]]);
+      expect(result.spreadsheetId).toBe("new");
+      expect(writeSheetValues).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not cache a failed replacement, and the next sync tries again", async () => {
+      vi.mocked(createSpreadsheet).mockRejectedValueOnce(new Error("Drive down"));
+      await expect(upsertManagedSheet(sheet, [["h"]])).rejects.toThrow("Drive down");
+      expect(store.get("responses_sheet_id:test-term")).toBe("old");
+
+      const result = await upsertManagedSheet(sheet, [["h"]]);
+      expect(result.spreadsheetId).toBe("new");
+      expect(createSpreadsheet).toHaveBeenCalledTimes(2);
+      expect(findChildByName).not.toHaveBeenCalled();
     });
 
     it("gives up when the replacement cannot be written either", async () => {

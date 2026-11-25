@@ -104,11 +104,22 @@ export function TermSwitcher({
   );
 }
 
-/** The banner's way back to the semester students are filling in. */
-export function SelectTermButton({ termId, label }: { termId: string; label: string }) {
+/**
+ * A button that selects one semester: the banner's way back to the one students
+ * are filling in. The banner styles it; anywhere else passes a style.
+ */
+export function SelectTermButton({
+  termId,
+  label,
+  style,
+}: {
+  termId: string;
+  label: string;
+  style?: React.CSSProperties;
+}) {
   const { pending, select } = useSelectTerm();
   return (
-    <button type="button" disabled={pending} onClick={() => select(termId)}>
+    <button type="button" disabled={pending} onClick={() => select(termId)} style={style}>
       {label}
     </button>
   );

@@ -6,6 +6,7 @@
  * Every send is one button push on the per-student page; nothing here runs on
  * a schedule or in bulk.
  */
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
@@ -97,7 +98,7 @@ async function deliver(
   vars: ScheduleEmailVars,
   shifts: readonly ShiftSpan[],
   includeCc: boolean,
-  idempotencyKey?: string,
+  sendId: string,
 ): Promise<{ outcome: EmailOutcome; cc: string | null } | { error: string }> {
   if (!(await getEmailSendingEnabled())) {
     return { error: "Email sending is turned off. Turn it on in Email settings first." };
@@ -116,7 +117,7 @@ async function deliver(
       cc: includeCc && cc ? [cc] : [],
       replyTo: cc || undefined,
       from: buildFromAddress(config, env.EMAIL_FROM),
-      idempotencyKey,
+      sendId,
     });
     if (outcome === "blocked") {
       return {
@@ -146,7 +147,8 @@ export async function sendScheduleEmailTest(): Promise<ScheduleEmailSendResult> 
 
   const config = await getScheduleEmailConfig();
   const vars = { ...SAMPLE_VARS, term: (await workingTerm()).name };
-  const res = await deliver(gate.email, config, vars, SAMPLE_SHIFTS, false);
+  // A new id each press, so an unchanged test still goes out every time.
+  const res = await deliver(gate.email, config, vars, SAMPLE_SHIFTS, false, randomUUID());
   if ("error" in res) return { ok: false, error: res.error };
   return { ok: true, message: sentMessage(res.outcome, gate.email, res.cc) };
 }
@@ -206,14 +208,7 @@ export async function sendScheduleEmail(
   );
   // The shifts the current run gives them: what the dialog previewed.
   const shifts = (await loadStudentCurrentAssignments(email, termId))?.cells ?? [];
-  const res = await deliver(
-    email,
-    config,
-    vars,
-    shifts,
-    input.includeCc === true,
-    `schedule-email-${input.requestId}`,
-  );
+  const res = await deliver(email, config, vars, shifts, input.includeCc === true, input.requestId);
   if ("error" in res) return { ok: false, error: res.error };
   // Only a message that actually went out is recorded. A logged one (no email
   // service here) reached nobody, so the sent date and the scheduled mark stay

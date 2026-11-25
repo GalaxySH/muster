@@ -107,7 +107,7 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
       .from(groups)
       .where(eq(groups.termId, termId))
       .orderBy(asc(groups.name)),
-    loadChangeRequestCounts(now),
+    loadChangeRequestCounts(termId, now),
     loadFlagCounts(),
     loadTravel(now),
     loadCloses(termId),
@@ -299,7 +299,11 @@ async function loadNonAssignablePositions(): Promise<DashboardSnapshot["nonAssig
   };
 }
 
-async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["changeRequests"]> {
+/** The term's open requests: the hub card counts what the queue lists. */
+async function loadChangeRequestCounts(
+  termId: string,
+  now: Date,
+): Promise<DashboardSnapshot["changeRequests"]> {
   const cutoff = new Date(now.getTime() - DAY_MS);
   const [row] = await getDb()
     .select({
@@ -308,7 +312,7 @@ async function loadChangeRequestCounts(now: Date): Promise<DashboardSnapshot["ch
       recent: sql<number>`sum(case when ${changeRequests.createdAt} >= ${cutoff} then 1 else 0 end)`,
     })
     .from(changeRequests)
-    .where(eq(changeRequests.status, "open"));
+    .where(and(eq(changeRequests.status, "open"), eq(changeRequests.termId, termId)));
 
   return {
     open: Number(row?.open ?? 0),

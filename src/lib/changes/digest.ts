@@ -6,13 +6,15 @@
  * Recipients come ONLY from the admin-configured list on
  * /admin/email-settings (never ADMIN_EMAILS or admin_users). The run is
  * idempotent via `change_requests.digestSentAt`: only open, unstamped rows
- * are reported, and rows are stamped after a successful send. Every skip
- * leaves rows unstamped so no request is silently lost; a crash between send
- * and stamp re-sends rather than drops, under the same idempotency key, which
- * Resend treats as the same email for a day.
+ * are reported, and rows are stamped once the digest went out to at least one
+ * recipient, even if another recipient's send failed. That recipient misses
+ * this digest; the requests still show in the admin queue. A run that reached
+ * nobody (skipped, only logged, blocked or suppressed, or every send failed)
+ * leaves rows unstamped, so the next run sends the batch again. A send that
+ * timed out may have gone out anyway; if the retry is within about a day,
+ * `sendEmail` drops the identical message as a repeat.
  */
 import "server-only";
-import { createHash } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { changeRequests } from "@/lib/db/schema";
@@ -32,7 +34,11 @@ export interface ChangeDigestRunResult {
   /** How many requests were in the pending batch. */
   requestCount: number;
   recipientCount: number;
-  /** Why nothing was sent (absent on success). */
+  /**
+   * Why the requests were not marked reported (absent on success).
+   * `not-delivered` means no recipient got it: every message was only logged,
+   * blocked or suppressed, or every send failed.
+   */
   reason?: "no-requests" | "digest-off" | "no-recipients" | "email-off" | "not-delivered";
 }
 
@@ -54,36 +60,23 @@ export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDig
   if (!(await getEmailSendingEnabled())) return { ...base, reason: "email-off" };
 
   const email = buildChangeDigestEmail(pending, env.NEXTAUTH_URL);
-  // The key names this batch and this recipient. A send that timed out after
-  // Resend took it, then went out again with the same requests, is one email.
-  const batch = createHash("sha256")
-    .update(
-      pending
-        .map((p) => p.id)
-        .sort()
-        .join(","),
-    )
-    .digest("hex")
-    .slice(0, 32);
   let delivered = 0;
   for (const to of recipients) {
-    const recipient = createHash("sha256").update(to).digest("hex").slice(0, 16);
     try {
-      const { outcome } = await sendEmail({
-        to,
-        ...email,
-        idempotencyKey: `change-digest-${batch}-${recipient}`,
-      });
+      const { outcome } = await sendEmail({ to, ...email });
       if (outcome === "sent") delivered += 1;
     } catch (e) {
-      // One address failing must not undo the others: without this the rows
-      // stayed unstamped and everyone already reached got the digest again.
-      console.error("Change digest send failed for one recipient:", e);
+      // Keep going so one bad address does not stop the rest. If anyone else
+      // gets the digest, the rows are stamped and this recipient misses it.
+      console.error(
+        "Change digest send failed for one recipient; not retried if anyone else got it:",
+        e,
+      );
     }
   }
   // A message only logged (no Resend key) or blocked by the dev test-recipient
-  // guard reached nobody, so the rows stay unstamped for a later digest rather
-  // than reading as reported.
+  // guard reached nobody, so it does not count as delivered. With nobody
+  // reached the rows stay unstamped for a later digest.
   if (delivered === 0) {
     return { ...base, recipientCount: recipients.length, reason: "not-delivered" };
   }

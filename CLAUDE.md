@@ -276,7 +276,10 @@ These are non-obvious and pervade the data model — internalize them before edi
   **A request works in one term (1.55):** `workingTermId()` in `working.ts`, the
   current term for a student and the selected one for an admin. A person's own
   form (the student pages, and an action sent with no `onBehalfOf`) is always the
-  current term, also for an admin with another selected (1.60). Use it everywhere else;
+  current term, also for an admin with another selected (1.60). An admin who names
+  themselves as the person acted for is on behalf like anyone else, so that is the
+  working term (`?student=<own email>`, or picking yourself on the change-request
+  form). Use it everywhere else;
   `currentTermId()` is only for what must follow the term students are filling in.
   An admin action that acts on a whole term, or names a person by email, and names
   no row of the term gates with `requireAdminIn(termId)` (on-behalf actions shared

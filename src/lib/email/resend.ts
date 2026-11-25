@@ -9,6 +9,7 @@
  * (magic-link sign-in) so message copy lives in one place.
  */
 import "server-only";
+import { createHash } from "node:crypto";
 import { env } from "@/lib/env";
 import { getEmailSendingEnabled } from "@/lib/settings";
 import { guardRecipients, parseTestRecipients } from "./guard";
@@ -22,8 +23,11 @@ export interface EmailMessage {
   replyTo?: string;
   /** Overrides EMAIL_FROM. Must be on the verified sending domain. */
   from?: string;
-  /** Resend drops a repeat of the same key for 24 hours (double-click safety). */
-  idempotencyKey?: string;
+  /**
+   * An identical message sent again within 24 hours is dropped as a repeat.
+   * Pass a new id to send the same message again on purpose.
+   */
+  sendId?: string;
 }
 
 /**
@@ -54,7 +58,8 @@ const testRecipients =
 
 /** Send one transactional email via Resend, or log it in dev. Throws on send failure. */
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
-  const { subject, text, html, replyTo, from, idempotencyKey } = message;
+  const { subject, text, html, replyTo, sendId } = message;
+  const from = message.from ?? env.EMAIL_FROM;
   // Master switch (admin-set, /admin/email-settings): when off, nothing is sent.
   // This is the single choke point, so every sender obeys it.
   if (!(await getEmailSendingEnabled())) {
@@ -79,15 +84,20 @@ ${text}`);
     return { outcome: "logged", cc };
   }
 
+  // The key is the message itself, so a retry after a timeout or a double click
+  // is one email: Resend drops a repeat of a key for 24 hours.
+  const key = createHash("sha256")
+    .update(JSON.stringify([to, from, subject, text, html, cc, replyTo, sendId]))
+    .digest("hex");
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
-      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      "Idempotency-Key": `email-${key}`,
     },
     body: JSON.stringify({
-      from: from ?? env.EMAIL_FROM,
+      from,
       to: [to],
       subject,
       text,

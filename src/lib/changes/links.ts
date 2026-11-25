@@ -6,5 +6,10 @@
  */
 export const changeRequestAnchor = (id: string) => `change-request-${id}`;
 
+/**
+ * The request id also rides as `?request=`, since the anchor never reaches the
+ * server: the page uses it to say which semester a request is in when it is
+ * not the one selected.
+ */
 export const changeRequestAdminPath = (studentEmail: string, id: string) =>
-  `/admin/students/${encodeURIComponent(studentEmail)}#${changeRequestAnchor(id)}`;
+  `/admin/students/${encodeURIComponent(studentEmail)}?request=${encodeURIComponent(id)}#${changeRequestAnchor(id)}`;

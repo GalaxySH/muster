@@ -7,7 +7,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { changeRequestFiles, changeRequests, students } from "@/lib/db/schema";
+import { changeRequestFiles, changeRequests, students, terms } from "@/lib/db/schema";
 import { CHANGE_REQUEST_WINDOW_MS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 
 export type ChangeRequestStatus = "open" | "withdrawn" | "resolved";
@@ -23,14 +23,13 @@ export interface ChangeRequestRow {
 }
 
 /**
- * One student's requests, newest first. The request form lists the term it is
- * given, which is the current one. The admin's per-student page passes null to
- * list every term, so a request still open from an earlier semester is there
- * when the queue links to it.
+ * One student's requests in one term, newest first. The request form passes
+ * the term it files in; the admin's per-student page passes the term being
+ * worked in, the same one the queue lists.
  */
 export async function listChangeRequests(
   email: string,
-  termId: string | null,
+  termId: string,
 ): Promise<ChangeRequestRow[]> {
   const rows = await getDb()
     .select({
@@ -43,14 +42,28 @@ export async function listChangeRequests(
       createdAt: changeRequests.createdAt,
     })
     .from(changeRequests)
-    .where(
-      and(
-        eq(changeRequests.studentEmail, email),
-        termId === null ? undefined : eq(changeRequests.termId, termId),
-      ),
-    )
+    .where(and(eq(changeRequests.studentEmail, email), eq(changeRequests.termId, termId)))
     .orderBy(desc(changeRequests.createdAt));
   return rows;
+}
+
+/**
+ * The semester of a request linked to a student's admin page, when it is not
+ * the one being worked in (the page lists only that one). Null for a request
+ * in the working term, an unknown id, or another student's request.
+ */
+export async function requestInOtherTerm(
+  email: string,
+  requestId: string,
+  workingTermId: string,
+): Promise<{ id: string; name: string } | null> {
+  const [row] = await getDb()
+    .select({ id: terms.id, name: terms.name })
+    .from(changeRequests)
+    .innerJoin(terms, eq(changeRequests.termId, terms.id))
+    .where(and(eq(changeRequests.id, requestId), eq(changeRequests.studentEmail, email)))
+    .limit(1);
+  return row && row.id !== workingTermId ? row : null;
 }
 
 /**
@@ -124,11 +137,12 @@ const adminRequestColumns = () => ({
 });
 
 /**
- * The admin queue, oldest first: open requests, plus resolved ones when the
- * show-resolved toggle is on. Withdrawn requests never appear (the student
- * pulled them back).
+ * The admin queue for one term, oldest first: open requests, plus resolved
+ * ones when the show-resolved toggle is on. Withdrawn requests never appear
+ * (the student pulled them back).
  */
 export async function listChangeRequestQueue(
+  termId: string,
   includeResolved: boolean,
 ): Promise<AdminChangeRequest[]> {
   return getDb()
@@ -136,14 +150,20 @@ export async function listChangeRequestQueue(
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
     .where(
-      includeResolved
-        ? ne(changeRequests.status, "withdrawn")
-        : eq(changeRequests.status, "open"),
+      and(
+        eq(changeRequests.termId, termId),
+        includeResolved
+          ? ne(changeRequests.status, "withdrawn")
+          : eq(changeRequests.status, "open"),
+      ),
     )
     .orderBy(changeRequests.createdAt);
 }
 
-/** Open requests not yet reported in a digest, oldest first (§roadmap 3.1). */
+/**
+ * Open requests not yet reported in a digest, oldest first (§roadmap 3.1).
+ * Every term's: the digest runs with no admin and no selected term.
+ */
 export async function loadPendingDigestRequests(): Promise<AdminChangeRequest[]> {
   return getDb()
     .select(adminRequestColumns())

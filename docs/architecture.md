@@ -90,7 +90,9 @@ someone with no row was never part of that term.
   to compare it with the working term (`requireAdminIn`, below), and it acts in the
   working term. Where a client sends a row id (a group, a position, a block, a close
   slot, a run, a W2W mapping), the lookup also tests the term, so another term's row
-  reads as not found. Hand edits to a schedule only accept shift blocks of the run's
+  reads as not found. The three change-request row actions also take the page's term
+  and gate with `requireAdminIn`, so a stale tab is told to reload instead (1.60).
+  Hand edits to a schedule only accept shift blocks of the run's
   term (`schedule/manual.ts`). An admin reaches another term only by selecting it, which changes the working
   term for the whole request.
 - **Actions that name no row (1.55).** The selection belongs to the browser, not
@@ -146,9 +148,11 @@ someone with no row was never part of that term.
   still found by cached id, then by name inside the term's folder, then created.
   A sheet's id is cached inside that shared resolution, before the first write
   to it, so a later sync never searches Drive for a sheet that was only just
-  made; and a sheet found deleted (404) is replaced through the same shared
-  step, which returns the replacement another sync already made instead of
-  making a second (1.59). Every call to Google has a time limit
+  made. A sheet found deleted (404) is replaced in its own in-flight step per
+  dead id, shared only with other syncs replacing that id (never with a plain
+  lookup, which may still hand out the dead id): it returns the replacement
+  another sync already cached instead of making a second, and never searches
+  by name (1.59, 1.60). Every call to Google has a time limit
   (`driveFetch` in `drive/api.ts`: 30 s, 120 s for a call carrying file bytes;
   the token refresh through `transporterOptions`), so a hung call fails its
   request instead of holding it, and everyone sharing its result, open.
@@ -170,7 +174,9 @@ someone with no row was never part of that term.
   tests the real pointer read and `working.test.ts` the real resolver.
 - **What is deliberately not term-scoped:** `students` (the person, in no term),
   `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
-  links, and the admin change-request queue.
+  links, and the change-request digest (it runs with no admin and no selection).
+  The admin change-request queue, its counts and row actions follow the working
+  term.
 - **Expand, then contract: done.** The 1.48 migrations added every `term_id` with a
   database default and kept the pre-term columns and settings written in step, so the
   release before could still run. 1.56 dropped the defaults (0049, 0050) and 1.57
@@ -408,8 +414,11 @@ follows whoever the form targets (admin-gated `adminListChangeRequests` in
 request (students still only their own). The per-student admin page header carries a
 **New change request** quick link to `/change-requests?student=email`, which the page
 resolves server-side to pre-seed the picker. Admin surfaces (v0.49–0.51):
-the per-student page renders **all** of a student's requests independent of the
-submission, each anchored as `#change-request-<id>`. It is one card among the others in
+the per-student page renders **all** of a student's requests in the working term,
+independent of the submission, each anchored as `#change-request-<id>`. A link to one
+(`changeRequestAdminPath`) also carries `?request=<id>`, so when it names this student's
+request in another semester the card says which, with a switch button, instead of
+silently missing (`requestInOtherTerm` in `data.ts`). It is one card among the others in
 that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
 slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
 a long history never stretches the page below the other cards. Three cards buck the
@@ -423,11 +432,11 @@ the next column, with course schedule right after it). Nothing else in the flow 
 ordered. That means the dashboard
 container renders unconditionally and the submission-dependent cards are conditional
 children of it, not the other way around. The queue at
-`/admin/change-requests` lists open requests oldest first (name + email +
+`/admin/change-requests` lists the working term's open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
 (`ShowResolvedToggle`, state in `?resolved=1` so the server page drives the query)
-mixes resolved rows back in via `listChangeRequestQueue(includeResolved)` (withdrawn
+mixes resolved rows back in via `listChangeRequestQueue(termId, includeResolved)` (withdrawn
 never appears). A settings card at the top of that page (v1.12,
 `ChangeRequestsEnabledToggle` + `setChangeRequestsEnabled`, setting
 `change_requests_enabled` in `lib/settings.ts`, on by default) is a student-facing
@@ -446,10 +455,13 @@ shows no control), and the per-student header email is a `SelectableEmail` islan
 (click selects the address for copying). The **daily digest email** carries an inline deep link on every
 request line and goes ONLY to the v0.47 admin-configured recipients
 and honors the digest toggle plus the master email switch; `runChangeDigest` is
-idempotent via `digestSentAt` (stamped only after a successful send — every skip leaves
-rows unstamped so requests are never silently lost; since 1.47 a message that was only
-logged or blocked by the test-recipient guard is not a send, and the run returns
-`not-delivered`) and is triggered by the **in-app
+idempotent via `digestSentAt` (stamped once at least one recipient was sent it; since
+1.60 every recipient is still tried when one throws, and the rows are stamped even then,
+so a recipient whose send threw misses that digest while the requests stay in the admin
+queue, rather than everyone else getting the growing batch every day; a run that reached
+nobody, by a skip or every send throwing, leaves rows unstamped and the next run sends the
+batch again; since 1.47 a message that was only logged or blocked by the test-recipient
+guard is not a send) and is triggered by the **in-app
 scheduler** in `changes/scheduler.ts`: started once per server process from
 `src/instrumentation.ts` (Node runtime only; production always, dev only behind
 `DIGEST_SCHEDULER_DEV` so local servers and Playwright runs never send spontaneously),
@@ -562,7 +574,7 @@ on/auto/off, plus the computed high-demand set). `data.ts` (server-only) loads
 `loadStudentDetail` (student + position + blocks + submission + selection/auto split +
 flags + evidence via `evidence/data.ts`), `listResponses(filters)` (the canonical nav
 order, now filter-aware; each row also carries `hiredOn` plus an `openChangeRequests`
-count from one grouped query over `change_requests.status = "open"`, the student's
+count from one grouped query over the term's `change_requests.status = "open"`, the student's
 `groupName` from a left join on `groups`, and `scheduledMinutes`),
 `getResponseNeighbors(email, filters, sort)` (prev/next + the
 filtered short list for the header jump menu), and `loadUpcomingTravel` (2.3).
@@ -1005,12 +1017,16 @@ adding it there covers every path without touching the NextAuth callbacks. A nul
 therefore means the person has genuinely never signed in.
 
 The write is deliberately cheap. `lib/auth/last-seen.ts` (server-only) holds an
-in-process `Map<email, lastWriteMs>` throttle and does a single primary-key UPDATE at
-most once per person per 10 minutes; the pure decision (`shouldRecord`) is split into
+in-process `Map<email, lastWriteMs>` throttle and stamps at most once per person per
+10 minutes; the pure decision (`shouldRecord`) is split into
 `last-seen-throttle.ts` so it is testable without dragging in `getDb` (which is
-server-only). The UPDATE is guarded on the email PK, so a signed-in address with no
-roster row (e.g. an env-allowlist admin) simply updates 0 rows, and any failure is
-swallowed — telemetry must never break auth. A single container fronts prod, so the
+server-only). A stamp is an UPDATE of `students` by email, a plain read of the
+current term id (`getCurrentTermId`), and an UPDATE of `term_members` by email and
+that id passed as a value. It is not named by a subquery inside the UPDATE, because
+InnoDB would then lock the pointer row, which starting a semester holds FOR UPDATE.
+A signed-in address with no roster row (e.g. an env-allowlist admin) simply updates
+0 rows, and any failure, a missing term pointer included, is swallowed and retried
+on a later request: telemetry must never break auth. A single container fronts prod, so the
 in-memory throttle is enough; a restart just means the next request writes.
 
 Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
@@ -1349,7 +1365,10 @@ cooldown logic in `src/lib/auth/magic-link.ts` (TDD); server-only DB issue/redee
 outbound email flows through one choke point, `sendEmail`, which obeys a **master switch**
 (`app_settings.email_sending_enabled`, `getEmailSendingEnabled`; enabled by default):
 when off it suppresses+logs every message, so sign-in links and the change digest both
-stop. Admins flip it on **`/admin/email-settings`** (`setEmailSendingEnabled` +
+stop. It also gives every send an `Idempotency-Key` hashed from the message as sent
+(recipient, sender, subject, text, html, cc, reply-to), so Resend treats an identical
+message within 24 hours as one email; a caller passes `sendId` to send the same message
+again on purpose (1.60). Admins flip the switch on **`/admin/email-settings`** (`setEmailSendingEnabled` +
 `EmailSettingsPanel`). The same page also holds the **schedule-change digest settings** (roadmap 3.1
 prep, v0.47; `DigestSettingsPanel`): a digest on/off toggle + the admin-configured
 recipient list, stored in `app_settings` (`change_digest_enabled`,
@@ -1436,8 +1455,9 @@ schedule in W2W. Design notes and the owner's decisions: `docs/scheduler-automat
   `sendScheduleEmail` takes the dialog's subject and text and checks them with
   `validateScheduleTemplate` (the same lengths and render checks as a save) before
   rendering them with the saved font, cc and sender. A send
-  refuses when the master switch is off, passes an `Idempotency-Key` minted when the
-  dialog opens, and only after a successful send stamps `schedule_email_sent_at` (plus
+  refuses when the master switch is off, passes the request id minted when the dialog
+  opens as `sendEmail`'s `sendId` (the test send passes a fresh one each press), and
+  only after a successful send stamps `schedule_email_sent_at` (plus
   `scheduled` when `marksScheduled` is on; since 1.47 that means a `sent` outcome, so a
   message only logged for lack of a Resend key records nothing, and a test account is
   refused before sending) through `updateSubmission`, which lives in

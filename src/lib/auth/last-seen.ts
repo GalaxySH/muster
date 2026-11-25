@@ -10,18 +10,23 @@
  *
  * Two things keep this off the hot path:
  *   - An in-process throttle (`shouldRecord`) collapses the many `getAppSession`
- *     calls a single page render makes into at most one write per person per
+ *     calls a single page render makes into at most one stamp per person per
  *     window. A single container fronts prod, so an in-memory map is enough; a
  *     restart just means the next request writes, which is harmless.
- *   - Each write is a single primary-key UPDATE, guarded so a signed-in email
- *     with no roster row (e.g. an env-allowlist admin) simply updates 0 rows,
- *     and any failure is swallowed: telemetry must never break auth.
+ *   - A stamp is one plain read of the current term id and two UPDATEs keyed by
+ *     email (and that id). A signed-in email with no roster row (e.g. an
+ *     env-allowlist admin) simply updates 0 rows, and any failure is swallowed:
+ *     telemetry must never break auth.
+ *
+ * The term id is read first and passed as a value, not named by a subquery in
+ * the UPDATE: InnoDB would lock the pointer row the subquery reads, and starting
+ * a semester holds that row FOR UPDATE, so sign-ins would wait on it.
  */
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { appSettings, students, termMembers } from "@/lib/db/schema";
-import { SETTING_CURRENT_TERM_ID } from "@/lib/terms/term-id";
+import { students, termMembers } from "@/lib/db/schema";
+import { getCurrentTermId } from "@/lib/terms/term-id";
 import { shouldRecord } from "./last-seen-throttle";
 
 const lastWriteByEmail = new Map<string, number>();
@@ -39,20 +44,13 @@ export async function recordSeen(email: string): Promise<void> {
     const db = getDb();
     const lastSeenAt = new Date();
     await db.update(students).set({ lastSeenAt }).where(eq(students.email, email));
-    // The same visit, counted for the semester being collected. Named by a
-    // subquery so the stamp costs no extra read.
+    // The same visit, counted for the semester being collected. This throws
+    // when the pointer is missing, which the catch below swallows.
+    const termId = await getCurrentTermId(db);
     await db
       .update(termMembers)
       .set({ lastSeenAt })
-      .where(
-        and(
-          eq(termMembers.studentEmail, email),
-          eq(
-            termMembers.termId,
-            sql`(select ${appSettings.value} from ${appSettings} where ${appSettings.key} = ${SETTING_CURRENT_TERM_ID})`,
-          ),
-        ),
-      );
+      .where(and(eq(termMembers.studentEmail, email), eq(termMembers.termId, termId)));
   } catch {
     // Let a later request retry rather than sitting out the whole window.
     lastWriteByEmail.delete(email);

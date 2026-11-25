@@ -89,7 +89,7 @@ beforeEach(() => {
 });
 
 describe("sendScheduleEmail", () => {
-  it("sends with the cc, reply-to, sender and idempotency key, then stamps and marks scheduled", async () => {
+  it("sends with the cc, reply-to, sender and the dialog's send id, then stamps and marks scheduled", async () => {
     const res = await sendScheduleEmail("SFHauge@wisc.edu", input, "test-term");
     expect(res).toEqual({
       ok: true,
@@ -101,7 +101,7 @@ describe("sendScheduleEmail", () => {
       cc: ["gdec_h-o@g-groups.wisc.edu"],
       replyTo: "gdec_h-o@g-groups.wisc.edu",
       from: "GDEC Scheduling <no-reply@re.hauge.rocks>",
-      idempotencyKey: `schedule-email-${input.requestId}`,
+      sendId: input.requestId,
     });
     expect(msg.text).toContain("Sunday, October 4");
     expect(msg.text).toContain("Tuesday: 6:30 AM to 10:00 AM");
@@ -237,6 +237,14 @@ describe("sendScheduleEmailTest", () => {
     expect(res.ok).toBe(true);
     expect(sendEmail.mock.calls[0]![0]).toMatchObject({ to: "sfhauge@wisc.edu", cc: [] });
     expect(updateSubmission).not.toHaveBeenCalled();
+  });
+
+  it("uses a new send id each time, so an unchanged test still goes out", async () => {
+    await sendScheduleEmailTest();
+    await sendScheduleEmailTest();
+    const [first, second] = sendEmail.mock.calls.map(([m]) => (m as { sendId: string }).sendId);
+    expect(first).toEqual(expect.any(String));
+    expect(second).not.toBe(first);
   });
 
   it("refuses when email sending is off", async () => {

@@ -49,7 +49,6 @@ export default async function ChangeRequestsPage({
     target = studentParam ? await findStudentByEmail(studentParam, await workingTermId()) : null;
     admin = {
       initialEmployee: target ? { email: target.email, displayName: target.displayName } : null,
-      selfEmail: student?.email ?? null,
     };
   }
 

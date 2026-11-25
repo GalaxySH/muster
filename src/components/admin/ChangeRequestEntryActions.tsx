@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { deleteChangeRequest, updateChangeRequest } from "@/lib/changes/admin-actions";
 import { CHANGE_REQUEST_DAY_OPTIONS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 import { Modal } from "@/components/Modal";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
 
 export function ChangeRequestEntryActions({
@@ -31,6 +32,7 @@ export function ChangeRequestEntryActions({
   fileCount: number;
 }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [open, setOpen] = useState<"edit" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -46,12 +48,16 @@ export function ChangeRequestEntryActions({
     const form = new FormData(e.currentTarget);
     setError(null);
     startTransition(async () => {
-      const res = await updateChangeRequest(id, {
-        day: String(form.get("day") ?? ""),
-        shiftText: String(form.get("shiftText") ?? ""),
-        comment: String(form.get("comment") ?? ""),
-        permanent: form.get("permanent") === "1",
-      });
+      const res = await updateChangeRequest(
+        id,
+        {
+          day: String(form.get("day") ?? ""),
+          shiftText: String(form.get("shiftText") ?? ""),
+          comment: String(form.get("comment") ?? ""),
+          permanent: form.get("permanent") === "1",
+        },
+        termId,
+      );
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
         return;
@@ -64,7 +70,7 @@ export function ChangeRequestEntryActions({
   function remove() {
     setError(null);
     startTransition(async () => {
-      const res = await deleteChangeRequest(id);
+      const res = await deleteChangeRequest(id, termId);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
         return;

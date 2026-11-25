@@ -56,7 +56,12 @@ import { RequestedHoursEditor } from "@/components/admin/RequestedHoursEditor";
 import { ChangeStatusBadge } from "@/components/admin/ChangeStatusBadge";
 import { SelectableEmail } from "@/components/admin/SelectableEmail";
 import { JumpMenu } from "@/components/admin/JumpMenu";
-import { listChangeRequests, changeRequestFilesByRequest } from "@/lib/changes/data";
+import {
+  listChangeRequests,
+  changeRequestFilesByRequest,
+  requestInOtherTerm,
+} from "@/lib/changes/data";
+import { SelectTermButton } from "@/components/TermSwitcher";
 import type { StudentCloseClaims } from "@/lib/closes/data";
 import { changeRequestAnchor } from "@/lib/changes/links";
 import { Page } from "@/components/ui";
@@ -170,6 +175,8 @@ export default async function StudentDetailPage({
     /** Sort order carried from the response list (see admin/response-sort.ts). */
     sort?: string;
     dir?: string;
+    /** A linked change request (lib/changes/links.ts), named when it is another semester's. */
+    request?: string;
   }>;
 }) {
   const session = await getAppSession();
@@ -202,8 +209,13 @@ export default async function StudentDetailPage({
   }
 
   const nav = await getResponseNeighbors(email, filters, sort);
-  // Every term's, not just this one: the queue links here for any open request.
-  const changeRequests = await listChangeRequests(detail.email, null);
+  // The working term's, the same ones the queue lists.
+  const changeRequests = await listChangeRequests(detail.email, await workingTermId());
+  // A link to one of this student's requests from another semester says which.
+  const otherTermRequest =
+    typeof sp.request === "string"
+      ? await requestInOtherTerm(detail.email, sp.request, await workingTermId())
+      : null;
   const changeFiles = await changeRequestFilesByRequest(detail.email);
   // Thumbnails fetch bytes through the Drive proxy, so only the newest few
   // file-bearing requests get previews; older ones fall back to plain links.
@@ -350,7 +362,7 @@ export default async function StudentDetailPage({
           )}
           <Link
             href={`/change-requests?student=${encodeURIComponent(detail.email)}`}
-            style={newChangeRequestLink}
+            style={smallAction}
           >
             New change request
           </Link>
@@ -731,9 +743,19 @@ export default async function StudentDetailPage({
             so they render even for students without one. Kept near the end of DOM
             order so a long history packs into a late column slot (only Student
             details and coverage follow). */}
-        {changeRequests.length > 0 && (
+        {(changeRequests.length > 0 || otherTermRequest) && (
           <section style={panelStyle}>
             <SectionLabel>Schedule change requests</SectionLabel>
+            {otherTermRequest && (
+              <p id={changeRequestAnchor(sp.request!)} style={otherTermNote}>
+                <span>This request is from {otherTermRequest.name}.</span>
+                <SelectTermButton
+                  termId={otherTermRequest.id}
+                  label={`Switch to ${otherTermRequest.name}`}
+                  style={smallAction}
+                />
+              </p>
+            )}
             <div style={changeList}>
               {changeRequests.map((r) => {
                 const files = changeFiles.get(r.id) ?? [];
@@ -913,6 +935,17 @@ const changeList: React.CSSProperties = {
   overflowY: "auto",
   // Keeps the scrollbar clear of the resolved checkbox at each row's right edge.
   paddingRight: 4,
+};
+
+/** The line naming the semester of a linked request this page does not list. */
+const otherTermNote: React.CSSProperties = {
+  scrollMarginTop: 20,
+  margin: "0 0 10px",
+  fontSize: 13,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "6px 10px",
 };
 
 /** Unresolved (and withdrawn) requests: an untinted outline box, aligned with resolved rows. */
@@ -1163,8 +1196,11 @@ function NavArrow({ href, dir }: { href: string | null; dir: "prev" | "next" }) 
 
 // --- styles ---
 
-/** Quick link to the change-request form, pre-seeded with this student. */
-const newChangeRequestLink: React.CSSProperties = {
+/**
+ * The page's small secondary action: the quick link to the change-request form
+ * (pre-seeded with this student) and the switch to another semester's request.
+ */
+const smallAction: React.CSSProperties = {
   fontSize: 13,
   padding: "5px 12px",
   borderRadius: "var(--border-radius-md)",
@@ -1172,6 +1208,7 @@ const newChangeRequestLink: React.CSSProperties = {
   background: "var(--color-background-primary)",
   color: "var(--color-text-primary)",
   textDecoration: "none",
+  cursor: "pointer",
 };
 
 /**

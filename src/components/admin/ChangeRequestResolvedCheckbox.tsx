@@ -10,6 +10,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setChangeRequestResolved } from "@/lib/changes/admin-actions";
 import type { ChangeRequestStatus } from "@/lib/changes/data";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 
 export function ChangeRequestResolvedCheckbox({
   id,
@@ -20,11 +21,12 @@ export function ChangeRequestResolvedCheckbox({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const termId = useRenderedTermId();
   if (status === "withdrawn") return null;
 
   function toggle(checked: boolean) {
     startTransition(async () => {
-      const res = await setChangeRequestResolved(id, checked);
+      const res = await setChangeRequestResolved(id, checked, termId);
       if (res.ok) router.refresh();
       else alert(res.error ?? "Could not update.");
     });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // digest.ts is `server-only` and pulls settings, the pending-request read, the
 // email courier and the DB. Every seam is mocked so the stamping rule (rows are
-// marked reported only when a message actually went out) is testable alone.
+// marked reported once a message actually went out to someone) is testable alone.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/env", () => ({ env: { NEXTAUTH_URL: "https://muster.example.edu" } }));
 vi.mock("@/lib/settings", () => ({
@@ -29,6 +29,7 @@ import {
   markChangeDigestRun,
 } from "@/lib/settings";
 import { loadPendingDigestRequests } from "./data";
+import { buildChangeDigestEmail } from "./digest-email";
 import { runChangeDigest } from "./digest";
 
 const now = new Date("2026-07-15T12:00:00.000Z");
@@ -90,48 +91,109 @@ describe("runChangeDigest", () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 
-  it("sends each recipient the batch under its own repeatable key", async () => {
+  // No send id, so a re-send of the same batch is the identical message, which
+  // sendEmail drops as a repeat.
+  it("sends each recipient the digest as built, with no send id", async () => {
     vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
 
     await runChangeDigest(now);
-    const first = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
-    vi.mocked(sendEmail).mockClear();
-    // The same requests again, in another order: the same keys.
-    vi.mocked(loadPendingDigestRequests).mockResolvedValue([{ id: 2 }, { id: 1 }] as never);
-    await runChangeDigest(now);
-    const second = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
 
-    expect(first).toHaveLength(2);
-    expect(first[0]).toMatch(/^change-digest-[0-9a-f]{32}-[0-9a-f]{16}$/);
-    expect(first[0]).not.toBe(first[1]);
-    expect(second).toEqual(first);
+    expect(vi.mocked(sendEmail).mock.calls.map(([m]) => m)).toEqual([
+      { to: "a@wisc.edu", subject: "Digest", text: "body" },
+      { to: "b@wisc.edu", subject: "Digest", text: "body" },
+    ]);
   });
 
-  it("uses a new key once the batch has another request in it", async () => {
-    vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
-
-    await runChangeDigest(now);
-    vi.mocked(loadPendingDigestRequests).mockResolvedValue([
-      { id: 1 },
-      { id: 2 },
-      { id: 3 },
-    ] as never);
-    await runChangeDigest(now);
-
-    const keys = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
-    expect(keys[2]).not.toBe(keys[0]);
-  });
-
+  // Not stamping would send everyone else the whole growing list every day for
+  // as long as one address keeps failing. The failed recipient misses this one.
   it("stamps the requests when one recipient's send fails and another's goes out", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(sendEmail)
+      .mockResolvedValueOnce({ outcome: "sent", cc: [] })
+      .mockRejectedValueOnce(new Error("timed out"));
+
+    const res = await runChangeDigest(now);
+
+    expect(vi.mocked(sendEmail).mock.calls.map(([m]) => m.to)).toEqual([
+      "a@wisc.edu",
+      "b@wisc.edu",
+    ]);
+    expect(res).toEqual({ sent: true, requestCount: 2, recipientCount: 2 });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledTimes(1);
+  });
+
+  it("still tries the later recipients after an earlier send fails, and stamps", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(sendEmail)
       .mockRejectedValueOnce(new Error("timed out"))
       .mockResolvedValueOnce({ outcome: "sent", cc: [] });
 
     const res = await runChangeDigest(now);
 
-    expect(res.sent).toBe(true);
+    expect(vi.mocked(sendEmail).mock.calls.map(([m]) => m.to)).toEqual([
+      "a@wisc.edu",
+      "b@wisc.edu",
+    ]);
+    expect(res).toEqual({ sent: true, requestCount: 2, recipientCount: 2 });
     expect(update).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the requests unstamped when one message was only logged and the other send fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(sendEmail)
+      .mockResolvedValueOnce({ outcome: "logged", cc: [] })
+      .mockRejectedValueOnce(new Error("timed out"));
+
+    const res = await runChangeDigest(now);
+
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(res).toEqual({
+      sent: false,
+      requestCount: 2,
+      recipientCount: 2,
+      reason: "not-delivered",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  // sendEmail drops a repeat of an identical message, so a re-sent batch is one
+  // email only if nothing in it changes from run to run.
+  it("builds the same message for the same requests on different days", async () => {
+    const actual = await vi.importActual<typeof import("./digest-email")>("./digest-email");
+    vi.mocked(buildChangeDigestEmail)
+      .mockImplementationOnce(actual.buildChangeDigestEmail)
+      .mockImplementationOnce(actual.buildChangeDigestEmail);
+    vi.mocked(loadPendingDigestRequests).mockResolvedValue([
+      {
+        id: "req-1",
+        studentName: "Ada Lovelace",
+        studentEmail: "ada@wisc.edu",
+        day: "tue",
+        shiftText: "2p to 5p",
+        comment: "Lab moved.",
+        permanent: false,
+        status: "open",
+        createdAt: new Date("2026-07-14T15:00:00.000Z"),
+      },
+    ]);
+    vi.mocked(sendEmail).mockResolvedValue({ outcome: "logged", cc: [] });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-15T12:00:00.000Z"));
+      await runChangeDigest(new Date("2026-07-15T12:00:00.000Z"));
+      vi.setSystemTime(new Date("2026-07-16T12:00:07.123Z"));
+      await runChangeDigest(new Date("2026-07-16T12:00:07.123Z"));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const sent = vi.mocked(sendEmail).mock.calls.map(([m]) => JSON.stringify(m));
+    expect(sent).toHaveLength(4);
+    expect(sent[2]).toBe(sent[0]);
+    expect(sent[3]).toBe(sent[1]);
+    expect(sent[0]).toContain("Lab moved.");
   });
 
   it("leaves the requests unstamped when every send fails", async () => {

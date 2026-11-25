@@ -25,7 +25,8 @@ export async function requireAdmin(): Promise<AdminGate> {
  * refused (docs/semester-domains-plan.md §2.9). The same goes for an action
  * that names a person by email, because the same person is in both semesters.
  * Actions that name a row of the semester are already safe: the row is looked
- * up inside the working semester.
+ * up inside the working semester. Some use this gate anyway (the change-request
+ * row actions), so a stale tab hears that rather than that the row is gone.
  */
 export async function requireAdminIn(renderedTermId: string): Promise<AdminTermGate> {
   const gate = await requireAdmin();

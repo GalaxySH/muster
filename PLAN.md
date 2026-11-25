@@ -1682,27 +1682,58 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     target resolve `currentTermId()` when no one is named, the student pages pass
     the current term to their loaders (`loadStudentForm`, `loadEvidence`,
     `loadFlowState`, `loadWizardNav` and `loadHighDemandCells` now take the term),
-    and `?student=` on a student page keeps the selected one. Nothing changes for
-    a student, whose working term already was the current one.
-  - **The change digest cannot double-send.** Each send carries an idempotency key
-    made from the batch's request ids and the recipient, so a send that timed out
-    after Resend took it and is sent again is one email. One recipient failing no
-    longer leaves the batch unstamped for the others (`changes/digest.ts`). The
-    schedule email already had a key; a magic link is never retried with the same
-    token.
+    and `?student=` on a student page keeps the selected one. Naming yourself
+    (`?student=<own email>`, or picking yourself on the change-request form) is on
+    behalf like anyone else, so it is the selected one too. The change-request
+    panel's reads follow the same rule as its write: the panel sends no email when
+    nobody is picked, and the server then reads the session's own requests and
+    shift times in the current term. Nothing changes for a student, whose working
+    term already was the current one.
+  - **A retried send is one email.** `sendEmail` now gives every email an
+    `Idempotency-Key` made from the message itself (recipient, sender, subject,
+    text, html, cc and reply-to as sent), so a send that timed out after Resend took
+    it and is sent again within about a day (Resend keeps keys 24 hours) is one
+    email, for every feature. Past that it is a new email; nothing guarantees
+    against a duplicate beyond the key's lifetime. A caller
+    that means to send the same message again passes a `sendId`: the schedule email
+    passes the dialog's request id (a double click is one email, reopening the
+    dialog is a new one) and the test send a fresh one each press. The digest and
+    magic links pass none, so a retry of the identical digest batch within a day
+    is one email. The digest still tries every recipient when one fails, and
+    stamps the requests reported once at least one recipient was sent it, even if
+    another send failed: a recipient whose send failed misses that digest, and the
+    requests stay in the admin queue. Holding the batch back instead would send
+    everyone else the whole growing list every day for as long as one address
+    kept failing. Only a run that reached nobody leaves the batch for the next
+    run (`changes/digest.ts`).
   - **`updateSubmission` cannot be reached without the gate.** It takes the
     result of `requireAdminIn` (`AdminInTerm`, which only that gate makes) and
     works in the term it proved.
   - **`assignCloseClaim`** takes the page's term and gates with `requireAdminIn`,
-    as do the change-request panel's two reads by email.
+    as do the change-request panel's two reads when someone is picked.
   - **Row-id admin actions.** All of them in groups, positions, schedule, closes
     and W2W were checked and already look their row up inside the working term.
-    `dismissFlag` and `setTravelResolved` did not, and now do. The three
-    change-request row actions stay as they are on purpose: the admin queue shows
-    every semester's requests, and an admin resolves last semester's from it.
-  - **The last managed-sheet race.** A sync replacing a deleted sheet that joined
-    another sync's lookup got the dead id back and failed. It now asks once more,
-    which starts the replacement.
+    `dismissFlag` and `setTravelResolved` did not, and now do. So do the three
+    change-request row actions: the admin queue, its counts and the per-student
+    list show only the selected semester's requests, and starting a new semester
+    does not carry open requests into it, so they stay in the earlier semester's
+    queue. The row actions also take the page's term and gate with
+    `requireAdminIn`, so a tab left on another semester is told to reload rather
+    than that the request no longer exists. The daily digest still reports every
+    semester's.
+  - **A digest link to another semester's request says so.** `changeRequestAdminPath`
+    adds `?request=<id>` (the `#` anchor stays), and when it names one of the
+    student's requests from a semester other than the selected one, the per-student
+    page shows "This request is from <semester>." with a button to switch to it
+    (`requestInOtherTerm` in `changes/data.ts`, looked up within that student).
+  - **The last managed-sheet race.** A sync replacing a deleted sheet shared one
+    in-flight resolution with plain lookups, so it could join a lookup that had
+    already read the dead id, get it back and fail. Replacing now has its own
+    flight per dead id (`upsertManagedSheet` in `drive/relay.ts`), shared only with
+    other syncs replacing that same id: it re-reads the cached id, uses it if
+    another sync already replaced the sheet, and otherwise creates one and caches it
+    before writing. It never searches Drive by name, and a second 404 fails the sync
+    rather than looping. The retry that papered over this is gone.
 - **1.59 (2026-11-25)** — **What the 1.58 review left open (issue #40).** No schema
   change and no migration.
   - **Calls out of the app have a time limit.** No call to Drive, Sheets or Resend

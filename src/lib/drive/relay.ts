@@ -191,7 +191,7 @@ export interface ManagedSheetResult {
  * (PLAN §10, §12, §18a); `admin/sheet-sync.ts` defines the targets (responses,
  * SL closes). Written via the Sheets API (proper cell control, clear, RAW
  * values, frozen/bold header) within the `drive.file` grant. Recovers if the
- * cached sheet was deleted out from under us (404 → recreate + retry once).
+ * cached sheet was deleted out from under us (404 → replace it + write once more).
  */
 export async function upsertManagedSheet(
   sheet: { name: string; idSettingKey: string; termId: string },
@@ -205,39 +205,34 @@ export async function upsertManagedSheet(
     // The id is cached inside the shared resolution, before any write to the
     // sheet, so a caller arriving later reads it and never searches Drive for a
     // sheet that was only just created.
-    const lookUp = (replacing?: string) =>
-      singleFlight(idKey, async () => {
-        const cached = await getSetting(idKey);
-        if (cached && cached !== replacing) return cached;
-        const parentId = await termFolder(accessToken, sheet.termId);
-        const found = replacing
-          ? null
-          : await findChildByName({
-              accessToken,
-              parentId,
-              name: sheet.name,
-              mimeType: SPREADSHEET_MIME,
-            });
-        const id = found ?? (await createSpreadsheet({ accessToken, name: sheet.name, parentId }));
-        await setSetting(idKey, id);
-        return id;
-      });
-    // A caller replacing a deleted sheet may have joined a lookup another sync
-    // began before it knew the sheet was gone, and been handed the same dead
-    // id. That lookup is over by then, so asking again starts the replacement.
-    const resolveSheet = async (replacing?: string) => {
-      const id = await lookUp(replacing);
-      return replacing && id === replacing ? lookUp(replacing) : id;
+    const place = async (findByName: boolean) => {
+      const parentId = await termFolder(accessToken, sheet.termId);
+      const found = findByName
+        ? await findChildByName({
+            accessToken,
+            parentId,
+            name: sheet.name,
+            mimeType: SPREADSHEET_MIME,
+          })
+        : null;
+      const id = found ?? (await createSpreadsheet({ accessToken, name: sheet.name, parentId }));
+      await setSetting(idKey, id);
+      return id;
     };
 
-    let sheetId = await resolveSheet();
+    let sheetId = await singleFlight(idKey, async () => (await getSetting(idKey)) || place(true));
     try {
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     } catch (e) {
       // The sheet was deleted out from under us. Replace it once, unless another
-      // sync already has.
+      // sync already has. Replacing has its own flight per dead id, so it is
+      // never handed the dead id by a plain lookup that read it earlier.
       if (!(e instanceof SheetWriteError && e.status === 404)) throw e;
-      sheetId = await resolveSheet(sheetId);
+      const dead = sheetId;
+      sheetId = await singleFlight(`${idKey} replacing ${dead}`, async () => {
+        const cached = await getSetting(idKey);
+        return cached && cached !== dead ? cached : place(false);
+      });
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     }
 

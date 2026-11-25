@@ -1,21 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getTableName, type Table } from "drizzle-orm";
+import { getTableName, type SQL, type Table } from "drizzle-orm";
+import { MySqlDialect } from "drizzle-orm/mysql-core";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
+vi.mock("@/lib/terms/term-id", () => ({ getCurrentTermId: vi.fn() }));
 
 import { getDb } from "@/lib/db";
+import { getCurrentTermId } from "@/lib/terms/term-id";
 import { recordSeen } from "./last-seen";
 
-/** Logs each UPDATE's table and the stamp it set. */
+const dialect = new MySqlDialect();
+
+/** Logs each UPDATE's table, the stamp it set, and its WHERE as rendered SQL. */
 function fakeDb(fail = false) {
-  const updates: { table: string; lastSeenAt: Date }[] = [];
+  const updates: { table: string; lastSeenAt: Date; where: { sql: string; params: unknown[] } }[] =
+    [];
   const db = {
     update: (table: Table) => ({
       set: (values: { lastSeenAt: Date }) => ({
-        where: async () => {
+        where: async (condition: SQL) => {
           if (fail) throw new Error("db down");
-          updates.push({ table: getTableName(table), lastSeenAt: values.lastSeenAt });
+          updates.push({
+            table: getTableName(table),
+            lastSeenAt: values.lastSeenAt,
+            where: dialect.sqlToQuery(condition),
+          });
         },
       }),
     }),
@@ -28,7 +38,10 @@ function fakeDb(fail = false) {
 let n = 0;
 const someone = () => `seen-${++n}@wisc.edu`;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(getCurrentTermId).mockResolvedValue("2027-spring");
+});
 
 describe("recordSeen", () => {
   it("stamps the person and their place in the current term with one time", async () => {
@@ -36,6 +49,19 @@ describe("recordSeen", () => {
     await recordSeen(someone());
     expect(updates.map((u) => u.table)).toEqual(["students", "term_members"]);
     expect(updates[0]!.lastSeenAt).toBe(updates[1]!.lastSeenAt);
+  });
+
+  it("stamps only that person's row in the term it read, named by value", async () => {
+    const updates = fakeDb();
+    const email = someone();
+    await recordSeen(email);
+    expect(updates[0]!.where.params).toEqual([email]);
+    const member = updates[1]!.where;
+    expect(member.sql).toBe(
+      "(`term_members`.`student_email` = ? and `term_members`.`term_id` = ?)",
+    );
+    expect(member.params).toEqual([email, "2027-spring"]);
+    expect(member.sql).not.toMatch(/select/i);
   });
 
   it("writes once for many requests close together", async () => {
@@ -53,5 +79,17 @@ describe("recordSeen", () => {
     const updates = fakeDb();
     await recordSeen(email);
     expect(updates).toHaveLength(2);
+  });
+
+  it("never throws when the current term cannot be read, and tries again next time", async () => {
+    const email = someone();
+    const updates = fakeDb();
+    vi.mocked(getCurrentTermId).mockRejectedValueOnce(new Error("No current term"));
+    await expect(recordSeen(email)).resolves.toBeUndefined();
+    expect(updates.map((u) => u.table)).toEqual(["students"]);
+
+    await recordSeen(email);
+    expect(updates.map((u) => u.table)).toEqual(["students", "students", "term_members"]);
+    expect(updates[2]!.where.params).toEqual([email, "2027-spring"]);
   });
 });
