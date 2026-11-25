@@ -64,9 +64,13 @@ someone with no row was never part of that term.
     `setMemberPosition`, `takeOffRoster`). Plain and CLI-safe, because the importer and the dev scripts use it. The
     group on the same row is written by `groups/membership.ts`.
 - **The Semester page (`/admin/terms`, 1.49).** `TermDetailsForm` edits the current
-  term's name, dates, new-hire date and schedule note through `saveTermDetails`
-  (`lib/admin/term-actions.ts`); the rules are pure, in `domain/terms.ts`
-  (`validateTermDetails`, `termYearFor`, `termNamesIn`). Saving the details never
+  term's name, dates, new-hire date, schedule note and system message through
+  `saveTermDetails` (`lib/admin/term-actions.ts`); the rules are pure, in
+  `domain/terms.ts` (`validateTermDetails`, `termYearFor`, `termNamesIn`). The
+  system message (1.62) is the term's `systemMessage` and `systemMessageTone`:
+  `/me` reads the current term's and shows it first, to people on the roster, as
+  `SystemMessage` (`components/ui.tsx`), the same card the form previews. Empty
+  means none, and a new term starts with none. Saving the details never
   moves the travel cutoff, even when the first day changes. The page
   also holds `TravelCutoffPanel` and warns when the saved schedule email names
   another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,

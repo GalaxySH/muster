@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.61
+- **Version:** 1.62
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -676,7 +676,9 @@ Design and phases: `docs/semester-domains-plan.md`.
   range), `travelCutoff` (§8; defaults to midnight Central the day before `startsOn`),
   `lateTravelAccept: bool` (§8), `newHireCutoff` (hired on or after it counts as new,
   §13; `2026-06-01` for fall), `scheduleNote` (the exit page's sentence about when to
-  expect a schedule), `rosterConfig?` (JSON: how this term's tracker is read, see
+  expect a schedule), `systemMessage` (shown at the top of `/me`; empty means none),
+  `systemMessageTone` (`info` | `success` | `warning` | `danger`, the card's colour),
+  `rosterConfig?` (JSON: how this term's tracker is read, see
   RosterImport), `activatedAt?`, `createdAt`, `createdBy?`.
   The current term is the `current_term_id` row in `app_settings`. A missing pointer
   fails closed: every page errors instead of reading every term.
@@ -1675,6 +1677,16 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.62 (2026-11-25)** — **A system message on `/me`, set per semester.** The
+  Semester page (`/admin/terms`) has a System message field and a Message color
+  (blue, green, yellow or red) in its details form, saved with the rest by
+  `saveTermDetails`. When the current term has a message, students on its roster
+  see it as the first card on `/me`, in that colour, with line breaks kept
+  (`SystemMessage` in `components/ui.tsx`, which the form also shows as a live
+  preview). An empty message shows nothing, which is how it is turned off. A new
+  semester starts with no message; it is not copied from the one before.
+  Migration `0055` adds `terms.system_message` (varchar 1000, default empty) and
+  `terms.system_message_tone` (default `info`); additive, no data change.
 - **1.61 (2026-11-25)** — **Two admin page changes, and preview thumbnails.** No
   schema change.
   - **Schedule health starts collapsed.** The Schedule health section on

@@ -1,21 +1,31 @@
 "use client";
 
 /**
- * The Semester page's editor for the working term's name, dates, new hire date
- * and schedule note. The travel cutoff has its own panel below it.
+ * The Semester page's editor for the working term's name, dates, new hire date,
+ * schedule note and system message. The travel cutoff has its own panel below it.
  */
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
-import { ActionButton } from "@/components/ui";
+import { ActionButton, SystemMessage } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
 import { MAX_CLOSE_REQUIREMENT } from "@/lib/domain/close-claims";
 import {
   SCHEDULE_NOTE_MAX,
+  SYSTEM_MESSAGE_MAX,
+  SYSTEM_MESSAGE_TONES,
   TERM_NAME_MAX,
   cleanTermDetails,
+  type SystemMessageTone,
   type TermDetails,
 } from "@/lib/domain/terms";
+
+const TONE_LABELS: Record<SystemMessageTone, string> = {
+  info: "Blue",
+  success: "Green",
+  warning: "Yellow",
+  danger: "Red",
+};
 
 export function TermDetailsForm({ details }: { details: TermDetails }) {
   const termId = useRenderedTermId();
@@ -115,6 +125,36 @@ export function TermDetailsForm({ details }: { details: TermDetails }) {
         />
         <span style={hint}>Students see this when they finish the form.</span>
       </label>
+      <label style={{ ...field, marginTop: 14 }}>
+        <span style={labelText}>System message</span>
+        <textarea
+          value={draft.systemMessage}
+          maxLength={SYSTEM_MESSAGE_MAX}
+          rows={3}
+          onChange={(e) => set("systemMessage", e.target.value)}
+          style={{ ...input, fontFamily: "inherit", width: "100%" }}
+        />
+        <span style={hint}>
+          Students see this at the top of their home page. Leave it empty to show no message.
+        </span>
+      </label>
+      <label style={{ ...field, marginTop: 14, maxWidth: 190 }}>
+        <span style={labelText}>Message color</span>
+        <select
+          value={draft.systemMessageTone}
+          onChange={(e) => set("systemMessageTone", e.target.value as SystemMessageTone)}
+          style={input}
+        >
+          {SYSTEM_MESSAGE_TONES.map((tone) => (
+            <option key={tone} value={tone}>
+              {TONE_LABELS[tone]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.systemMessage.trim() && (
+        <SystemMessage text={draft.systemMessage.trim()} tone={draft.systemMessageTone} />
+      )}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
         <ActionButton onClick={save} pending={pending} pendingLabel="Saving…" disabled={!dirty}>
           Save details

@@ -74,6 +74,19 @@ export function InfoCard({
   );
 }
 
+/**
+ * A term's system message as students see it at the top of /me: an untitled
+ * card in the admin's chosen colour, line breaks kept. The Semester page shows
+ * the same card as its preview.
+ */
+export function SystemMessage({ text, tone }: { text: string; tone: keyof typeof CARD_TONES }) {
+  return (
+    <InfoCard tone={tone} role="note">
+      <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{text}</p>
+    </InfoCard>
+  );
+}
+
 export const primaryButtonStyle: React.CSSProperties = {
   display: "inline-block",
   background: "#1a66cc",

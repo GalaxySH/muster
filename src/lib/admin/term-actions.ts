@@ -26,8 +26,8 @@ import {
 import type { AdminActionResult } from "./actions";
 
 /**
- * Save the working term's name, dates, new hire date, schedule note and the
- * number of closes a new Shift Lead starts on. That number is only a default:
+ * Save the working term's name, dates, new hire date, schedule note, system
+ * message and the number of closes a new Shift Lead starts on. That number is only a default:
  * leads who already have one keep it (lib/closes/requirements.ts).
  */
 export async function saveTermDetails(
@@ -43,6 +43,9 @@ export async function saveTermDetails(
     endsOn: String(input?.endsOn ?? ""),
     newHireCutoff: String(input?.newHireCutoff ?? ""),
     scheduleNote: String(input?.scheduleNote ?? ""),
+    systemMessage: String(input?.systemMessage ?? ""),
+    // Not coerced: an unknown color is refused by the check, not saved as blue.
+    systemMessageTone: String(input?.systemMessageTone ?? "") as TermDetails["systemMessageTone"],
     closeRequirement: Number(input?.closeRequirement),
   });
   const error = validateTermDetails(details);
@@ -62,6 +65,7 @@ export async function saveTermDetails(
 
   // The name is in every admin header; the dates and note reach these pages.
   revalidatePath("/admin", "layout");
+  revalidatePath("/me");
   revalidatePath("/travel");
   revalidatePath("/intro");
   revalidatePath("/exit");
