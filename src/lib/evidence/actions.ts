@@ -43,13 +43,15 @@ export interface ActionResult {
  * An admin may instead name a student to act for (the per-student response page,
  * mirroring the change-request `employee` seam). The gate owns that rule: it
  * skips the window checks for an on-behalf target and refuses one for everyone
- * else.
+ * else. The travel actions pass `scope: "travel"`, which the term can keep open
+ * after the window closes (see the gate).
  */
 async function requireStudent(
   onBehalfOf = "",
   renderedTermId = "",
+  scope: "form" | "travel" = "form",
 ): Promise<{ email: string; onBehalf: boolean; termId: string } | { error: string }> {
-  const gate = await requireEditableStudent(onBehalfOf, renderedTermId);
+  const gate = await requireEditableStudent(onBehalfOf, renderedTermId, scope);
   return gate.ok
     ? { email: gate.email, onBehalf: gate.onBehalf, termId: gate.termId }
     : { error: gate.error };
@@ -248,7 +250,7 @@ export async function saveExtracurricularNotes(
 }
 
 export async function addTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData), "travel");
   if ("error" in who) return { ok: false, error: who.error };
 
   // The cutoff (PLAN §8) binds students under the admin-set late policy:
@@ -336,7 +338,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
  * adding it again.
  */
 export async function updateTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData), "travel");
   if ("error" in who) return { ok: false, error: who.error };
 
   // Same cutoff rule as adding: it binds the student, and an admin correcting an
@@ -397,7 +399,7 @@ export async function removeTravelRequest(
   onBehalfOf?: string,
   termId?: string,
 ): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf, termId);
+  const who = await requireStudent(onBehalfOf, termId, "travel");
   if ("error" in who) return { ok: false, error: who.error };
 
   if (!(await travelUnlocked(who))) {

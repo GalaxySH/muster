@@ -315,6 +315,24 @@ export async function setLateTravelAccepted(
 }
 
 /**
+ * Toggle keeping the travel step open after a group's form closes, until the
+ * travel cutoff (/admin/terms, beside the cutoff). Only has an effect when the
+ * cutoff falls after a group's close; the gate is `travelOpenPastClose`.
+ */
+export async function setTravelAfterClose(
+  termId: string,
+  enabled: boolean,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  await getDb().update(terms).set({ travelAfterClose: enabled }).where(eq(terms.id, termId));
+  revalidatePath("/admin/terms");
+  revalidatePath("/travel");
+  revalidatePath("/me");
+  return { ok: true };
+}
+
+/**
  * Master switch for outbound email (the /admin/email-settings toggle). When off,
  * `sendEmail` suppresses every message (sign-in links and batch notifications).
  */

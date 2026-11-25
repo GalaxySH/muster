@@ -21,11 +21,7 @@ export type WindowState = "before" | "open" | "closed" | "unconfigured";
  * it closes. A missing bound (either null) means the admin hasn't scheduled the
  * window yet → `unconfigured`.
  */
-export function windowState(
-  opensAt: Date | null,
-  closesAt: Date | null,
-  now: Date,
-): WindowState {
+export function windowState(opensAt: Date | null, closesAt: Date | null, now: Date): WindowState {
   if (!opensAt || !closesAt) return "unconfigured";
   const t = now.getTime();
   if (t < opensAt.getTime()) return "before";
@@ -64,4 +60,24 @@ export function isLockedAfterSubmit(
   submitted: boolean,
 ): boolean {
   return canEditInWindow(state) && lockAfterSubmit && submitted;
+}
+
+/**
+ * Whether the travel step stays open after a closed window (PLAN.md §13, 1.65).
+ * Only with the term's bypass on, and only while the travel cutoff is still
+ * ahead of both the window's close and `now`: the rest of the form stays
+ * closed, and travel locks at the cutoff like it always does. The post-submit
+ * lock still applies on top of this (the caller folds it in).
+ */
+export function travelOpenPastClose(args: {
+  state: WindowState;
+  closesAt: Date | null;
+  travelCutoff: Date;
+  bypass: boolean;
+  now: Date;
+}): boolean {
+  const { state, closesAt, travelCutoff, bypass, now } = args;
+  if (!bypass || state !== "closed" || !closesAt) return false;
+  const cutoff = travelCutoff.getTime();
+  return cutoff > closesAt.getTime() && now.getTime() < cutoff;
 }

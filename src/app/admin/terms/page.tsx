@@ -28,16 +28,16 @@ export default async function AdminTermPage() {
   const termId = await workingTermId();
   const [term, travelCutoff, lateTravelPolicy, scheduleEmail, otherNames, allTerms, currentId] =
     await Promise.all([
-    workingTerm(),
-    getTravelCutoff(termId),
-    getLateTravelPolicy(termId),
-    getScheduleEmailConfig(),
-    listOtherTermNames(),
-    listTerms(),
-    // The current semester, not the working one: starting a new semester
-    // closes the one students are filling in, whichever is selected here.
-    currentTermId(),
-  ]);
+      workingTerm(),
+      getTravelCutoff(termId),
+      getLateTravelPolicy(termId),
+      getScheduleEmailConfig(),
+      listOtherTermNames(),
+      listTerms(),
+      // The current semester, not the working one: starting a new semester
+      // closes the one students are filling in, whichever is selected here.
+      currentTermId(),
+    ]);
   const current = allTerms.find((t) => t.id === currentId) ?? { id: currentId, name: currentId };
   const isCurrent = term.id === currentId;
   // A saved schedule email that still names another semester would go out wrong.
@@ -81,6 +81,7 @@ export default async function AdminTermPage() {
           cutoffMs: travelCutoff.cutoff.getTime(),
           isCustom: travelCutoff.isCustom,
           lateAccepted: lateTravelPolicy === "accept-and-flag",
+          afterClose: term.travelAfterClose,
         }}
       />
       {!isCurrent && (

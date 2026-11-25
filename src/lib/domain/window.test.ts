@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { windowState, canEditInWindow, canEditSubmission, isLockedAfterSubmit } from "./window";
+import {
+  windowState,
+  canEditInWindow,
+  canEditSubmission,
+  isLockedAfterSubmit,
+  travelOpenPastClose,
+} from "./window";
 
 const opens = new Date("2026-08-15T00:00:00Z");
 const closes = new Date("2026-08-22T00:00:00Z");
@@ -68,5 +74,43 @@ describe("isLockedAfterSubmit", () => {
     expect(isLockedAfterSubmit("open", false, true)).toBe(false);
     expect(isLockedAfterSubmit("open", true, false)).toBe(false);
     expect(isLockedAfterSubmit("closed", true, true)).toBe(false);
+  });
+});
+
+describe("travelOpenPastClose", () => {
+  const cutoff = new Date("2026-08-29T00:00:00Z");
+  const afterClose = new Date("2026-08-25T00:00:00Z");
+  const base = { closesAt: closes, travelCutoff: cutoff, bypass: true, now: afterClose };
+
+  it("keeps travel open after the form closes, until the cutoff, when the bypass is on", () => {
+    expect(travelOpenPastClose({ ...base, state: "closed" })).toBe(true);
+    expect(travelOpenPastClose({ ...base, state: "closed", now: closes })).toBe(true);
+  });
+
+  it("does nothing while the bypass is off", () => {
+    expect(travelOpenPastClose({ ...base, state: "closed", bypass: false })).toBe(false);
+  });
+
+  it("ends at the cutoff instant", () => {
+    expect(travelOpenPastClose({ ...base, state: "closed", now: cutoff })).toBe(false);
+  });
+
+  it("does nothing when the cutoff is not after the close", () => {
+    expect(
+      travelOpenPastClose({ ...base, state: "closed", travelCutoff: closes, now: closes }),
+    ).toBe(false);
+    expect(
+      travelOpenPastClose({
+        ...base,
+        state: "closed",
+        travelCutoff: new Date("2026-08-20T00:00:00Z"),
+      }),
+    ).toBe(false);
+  });
+
+  it("only applies to a closed window", () => {
+    expect(travelOpenPastClose({ ...base, state: "before" })).toBe(false);
+    expect(travelOpenPastClose({ ...base, state: "open" })).toBe(false);
+    expect(travelOpenPastClose({ ...base, state: "unconfigured", closesAt: null })).toBe(false);
   });
 });

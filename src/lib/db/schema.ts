@@ -94,6 +94,9 @@ export const terms = mysqlTable("terms", {
   travelCutoff: datetime("travel_cutoff", { mode: "date" }).notNull(),
   // What happens to late travel: refused (false), or accepted and stored unexcused.
   lateTravelAccept: boolean("late_travel_accept").notNull().default(false),
+  // Keep the travel step open after a group's form closes, until the travel
+  // cutoff (PLAN §13, 1.65). Only matters when the cutoff is after the close.
+  travelAfterClose: boolean("travel_after_close").notNull().default(false),
   // Hired on or after this date counts as new this term (PLAN §13).
   newHireCutoff: date("new_hire_cutoff", { mode: "string" }).notNull(),
   // The exit page's sentence about when to expect a schedule.

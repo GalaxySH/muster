@@ -117,12 +117,19 @@ export default async function TravelPage({
     );
   }
 
-  const editable = access.canEdit;
+  // The term can keep this one step open past the window's close, until the
+  // travel cutoff. The rest of the wizard stays closed, so there is no Continue.
+  const travelOnly = !access.canEdit && access.travelOpenUntil !== null;
+  const editable = access.canEdit || travelOnly;
 
   return (
     <StudentPage nav={nav} current="travel">
       {access.lockedAfterSubmit ? (
         <SubmittedLockBanner />
+      ) : travelOnly ? (
+        <Notice tone="info" role="status" title="The rest of the form is closed">
+          <p>You can still add travel here.</p>
+        </Notice>
       ) : (
         <FormWindowBanner
           state={access.state}
@@ -141,7 +148,7 @@ export default async function TravelPage({
         returnDate={returnDate}
         contactEmail={contactLabel}
       />
-      {editable && !evidence.submitted && (
+      {access.canEdit && !evidence.submitted && (
         <TravelContinue nextHref={nextHref("travel", nav.steps)} />
       )}
     </StudentPage>

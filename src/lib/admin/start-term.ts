@@ -127,6 +127,7 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
       endsOn: input.endsOn,
       travelCutoff: defaultTravelCutoff(input.startsOn),
       lateTravelAccept: false,
+      travelAfterClose: false,
       ...newTermDefaults(input.startsOn),
       rosterConfig: source.rosterConfig,
       // The Semester page's "Closes per Shift Lead" carries forward, and every

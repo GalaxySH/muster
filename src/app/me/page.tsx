@@ -19,6 +19,7 @@ import { getTerm } from "@/lib/terms/term-id";
 import { getDb } from "@/lib/db";
 import { systemMessageTone } from "@/lib/domain/terms";
 import { APP_TIME_ZONE } from "@/lib/domain/time";
+import { formatCutoffDate } from "@/lib/domain/travel";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -95,6 +96,19 @@ export default async function MePage() {
             closesAt={flow.access.closesAt}
           />
 
+          {flow.access.travelOpenUntil && (
+            <Notice tone="info" title="Travel is still open">
+              <p>
+                You can still add travel before {formatCutoffDate(flow.access.travelOpenUntil)}.
+              </p>
+              <p>
+                <ButtonLink href="/travel" small>
+                  Add travel
+                </ButtonLink>
+              </p>
+            </Notice>
+          )}
+
           {(flow.status.kind === "done" || flow.status.kind === "continue") &&
             flow.closes.required &&
             flow.closes.count < flow.closes.needed && (
@@ -153,7 +167,10 @@ export default async function MePage() {
               </ul>
             </>
           ) : !flow.access.canEdit ? (
-            <ReadOnlyNotice state={flow.access.state} />
+            // The travel notice above already says what they can still change.
+            flow.access.travelOpenUntil ? null : (
+              <ReadOnlyNotice state={flow.access.state} />
+            )
           ) : flow.status.kind === "not-started" ? (
             <Card>
               <div className="sf-card-head">

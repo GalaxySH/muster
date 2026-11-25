@@ -35,6 +35,8 @@ export type FlowAccess =
       canEdit: boolean;
       /** Editing blocked because the student already submitted (group locks it). */
       lockedAfterSubmit: boolean;
+      /** The travel cutoff while travel alone stays open past the close, else null. */
+      travelOpenUntil: Date | null;
     };
 
 export type FlowState =
@@ -145,6 +147,7 @@ export async function loadFlowState(email: string, termId: string): Promise<Flow
           closesAt: accessRaw.closesAt,
           canEdit: accessRaw.canEdit,
           lockedAfterSubmit: accessRaw.lockedAfterSubmit,
+          travelOpenUntil: accessRaw.travelOpenUntil,
         };
 
   const closes = await loadCloses(form.student.positionId, email, termId);

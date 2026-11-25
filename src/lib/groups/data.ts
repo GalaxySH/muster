@@ -17,10 +17,12 @@ import {
   windowState,
   canEditSubmission,
   isLockedAfterSubmit,
+  travelOpenPastClose,
   type WindowState,
 } from "@/lib/domain/window";
 import { matchesStarted, type StartedMode } from "@/lib/domain/calendar-day";
 import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 import { submissionOf, memberOf } from "@/lib/terms/scope";
 import { groupOf, inGroup, inNoGroup } from "@/lib/groups/membership";
 
@@ -114,6 +116,11 @@ export type StudentAccess =
       canEdit: boolean;
       /** Editing blocked *specifically* because they've already submitted. */
       lockedAfterSubmit: boolean;
+      /**
+       * The travel cutoff, when the travel step alone stays open past the
+       * window's close (the term's bypass, `travelOpenPastClose`). Null otherwise.
+       */
+      travelOpenUntil: Date | null;
     };
 
 /**
@@ -140,6 +147,17 @@ export async function resolveStudentAccess(
   const submitted = sub?.status === "submitted";
 
   const state = windowState(grp.opensAt, grp.closesAt, now);
+  const term = await getTerm(db, termId);
+  // Travel past the close is the window treated as open for that one step, so
+  // the post-submit lock still holds a locked group's submitted students.
+  const travelPastClose =
+    travelOpenPastClose({
+      state,
+      closesAt: grp.closesAt,
+      travelCutoff: term.travelCutoff,
+      bypass: term.travelAfterClose,
+      now,
+    }) && canEditSubmission("open", grp.lockAfterSubmit, submitted);
   return {
     access: "windowed",
     state,
@@ -150,6 +168,7 @@ export async function resolveStudentAccess(
     submitted,
     canEdit: canEditSubmission(state, grp.lockAfterSubmit, submitted),
     lockedAfterSubmit: isLockedAfterSubmit(state, grp.lockAfterSubmit, submitted),
+    travelOpenUntil: travelPastClose ? term.travelCutoff : null,
   };
 }
 

@@ -36,6 +36,7 @@ const openWindow = () =>
     submitted: false,
     canEdit: true,
     lockedAfterSubmit: false,
+    travelOpenUntil: null,
   });
 
 const lockedWindow = () =>
@@ -49,6 +50,21 @@ const lockedWindow = () =>
     submitted: true,
     canEdit: false,
     lockedAfterSubmit: true,
+    travelOpenUntil: null,
+  });
+
+const closedWindow = (travelOpenUntil: Date | null) =>
+  access.mockResolvedValue({
+    access: "windowed",
+    state: "closed",
+    opensAt: new Date("2026-08-01T00:00:00Z"),
+    closesAt: new Date("2026-08-20T00:00:00Z"),
+    groupName: "A",
+    lockAfterSubmit: false,
+    submitted: true,
+    canEdit: false,
+    lockedAfterSubmit: false,
+    travelOpenUntil,
   });
 
 beforeEach(() => {
@@ -104,6 +120,27 @@ describe("requireEditableStudent (student path)", () => {
       positionId: "sl",
       onBehalf: false,
       termId: "test-term",
+    });
+  });
+
+  it("lets travel actions through a closed window while travel stays open", async () => {
+    signedIn("stu@wisc.edu", false);
+    lookup.mockResolvedValue(rosterRow("stu@wisc.edu"));
+    closedWindow(new Date("2026-08-29T00:00:00Z"));
+    expect(await requireEditableStudent(undefined, undefined, "travel")).toMatchObject({
+      ok: true,
+      email: "stu@wisc.edu",
+    });
+    // The rest of the form stays closed.
+    expect(await requireEditableStudent()).toMatchObject({ ok: false });
+  });
+
+  it("keeps travel actions closed when travel does not stay open", async () => {
+    signedIn("stu@wisc.edu", false);
+    lookup.mockResolvedValue(rosterRow("stu@wisc.edu"));
+    closedWindow(null);
+    expect(await requireEditableStudent(undefined, undefined, "travel")).toMatchObject({
+      ok: false,
     });
   });
 
