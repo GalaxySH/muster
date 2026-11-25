@@ -560,7 +560,7 @@ export const changeRequests = mysqlTable("change_requests", {
   id: varchar("id", { length: 36 }).primaryKey(),
   // The term it was filed in. The student's own list reads the current term;
   // the admin queue, its counts and the row actions read the term being worked
-  // in. The daily digest reads every term.
+  // in. The daily digest reads the current term.
   termId: termIdColumn(),
   studentEmail: varchar("student_email", { length: 255 })
     .notNull()

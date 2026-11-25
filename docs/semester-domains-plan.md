@@ -781,7 +781,9 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
   shared and replaced wholesale on upload, as today.
 - Open change requests survive the flip in the admin queue, shown with their
   term. The daily digest is unchanged. (1.60: they stay in the earlier term's
-  queue, reached by selecting that term; see above.)
+  queue, reached by selecting that term; see above.) (1.61: the digest reports
+  only the current term's requests, so an earlier term's open request it never
+  reported is not emailed after the flip. The runbook's first step covers it.)
 - A position renamed or removed for the new term: the old term keeps its own
   position row, so nothing about fall changes and the delete is not blocked by
   fall's picks.
@@ -802,6 +804,8 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
 **System**
 
 - The digest scheduler and the health endpoint do not depend on the term.
+  (1.61: the digest run itself reads the current term once and reports only
+  its requests. The scheduler's tick still does not read it.)
 - Test accounts live in the test group, whose window is 2000 to 2100. Starting
   a term enrolls every test account in the new term's test group.
 - A student can never read or write an earlier term, whatever cookie they send
@@ -846,7 +850,9 @@ left with a single caller, and update `CLAUDE.md`'s current-state section.
    which lists every term, so they are unaffected. (1.60: they go to the
    student's admin page with `?request=<id>` (`changeRequestAdminPath`), which
    lists only the selected term. When the request is in another term, the page
-   says which and offers to switch to it.)
+   says which and offers to switch to it.) (1.61: the digest now reports only
+   the current term, and that line is still needed: the admin following the link
+   may have an earlier term selected.)
 10. **Code that means "the current term" must say so.** After Phase 5 the
    resolver every loader calls returns the working term. The short list in §2.9
    that must keep reading the pointer is the place a wrong choice would be

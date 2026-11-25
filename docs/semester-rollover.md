@@ -22,7 +22,9 @@ only the order to do things in.
 1. **Work through the change requests.** Admin, Change requests. Resolve what
    you can before you start the new semester. Anything still open stays in this
    semester's queue, not the new one's. To see it later, pick this semester
-   from the semester menu at the top of any admin page.
+   from the semester menu at the top of any admin page. The daily digest only
+   covers the current semester, so a request here that it has not emailed yet
+   will not be emailed after the switch.
 2. **Start the semester.** Admin, Semester, "Start a new semester". Give it a
    name and its first and last day, type the name again, and start it. The page
    lists what starts empty and what is copied.

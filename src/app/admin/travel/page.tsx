@@ -38,7 +38,17 @@ export default async function AdminTravelPage() {
           {weeks.map((w) => (
             <section key={w.weekStart} style={weekCard}>
               <h2 style={weekHeader}>Week of {formatDayLabel(w.weekStart)}</h2>
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+              {/* A zero minimum on the column, so a long name cannot widen every row. */}
+              <ul
+                style={{
+                  listStyle: "none",
+                  margin: 0,
+                  padding: 0,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  gap: 8,
+                }}
+              >
                 {w.entries.map((entry) => (
                   <UpcomingTravelRow key={entry.id} entry={entry} />
                 ))}

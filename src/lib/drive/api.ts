@@ -286,18 +286,19 @@ const MAX_PREVIEW_REDIRECTS = 2;
 
 /**
  * Drive's preview image of a file (a PDF's is its first page), or null when it
- * has none. One metadata call for the short-lived `thumbnailLink`, then that
- * link is fetched with the same token. The original is never downloaded here.
+ * has none. One metadata call with the token for the short-lived
+ * `thumbnailLink`, then that link is fetched without it: the link is itself
+ * the capability, so the token never leaves Drive's API. The original is never
+ * downloaded here.
  */
 export async function downloadThumbnail(
   accessToken: string,
   fileId: string,
   size: ThumbnailSize,
 ): Promise<DownloadResult | null> {
-  const headers = { Authorization: `Bearer ${accessToken}` };
   const metaRes = await driveFetch(
     `${FILES_URL}/${encodeURIComponent(fileId)}?fields=hasThumbnail,thumbnailLink&supportsAllDrives=true`,
-    { headers },
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!metaRes.ok) {
     throw new Error(`Drive metadata fetch failed (${metaRes.status}): ${await safeText(metaRes)}`);
@@ -307,10 +308,10 @@ export async function downloadThumbnail(
 
   const link = meta.thumbnailLink;
   const sized = size === "preview" ? largerPreviewLink(link) : link;
-  const found = await fetchPreview(sized, headers);
+  const found = await fetchPreview(sized);
   // The size suffix is not a documented contract, so a larger preview that is not there falls
   // back to the link as given. A failure throws instead, and is not retried.
-  return found ?? (sized !== link ? fetchPreview(link, headers) : null);
+  return found ?? (sized !== link ? fetchPreview(link) : null);
 }
 
 /**
@@ -322,8 +323,8 @@ export function largerPreviewLink(link: string): string {
 }
 
 /**
- * The link came from an API response and carries our token, so it is only ever
- * fetched from a Google host over https on the default port.
+ * The link came from an API response, so it is only ever fetched over https on
+ * the default port from a googleusercontent host, where Drive serves previews.
  */
 export function isGoogleHttpsUrl(link: string): boolean {
   let url: URL;
@@ -337,29 +338,29 @@ export function isGoogleHttpsUrl(link: string): boolean {
     url.port === "" &&
     !url.username &&
     !url.password &&
-    (url.hostname.endsWith(".googleusercontent.com") || url.hostname.endsWith(".google.com"))
+    url.hostname.endsWith(".googleusercontent.com")
   );
 }
 
-/** The preview host's answers that mean the preview is not there. */
-const NO_PREVIEW_STATUSES = new Set([403, 404, 410]);
+/**
+ * The preview host's answers that mean the preview is not there. No token is
+ * sent there, so a 401 says no more than a 403 does.
+ */
+const NO_PREVIEW_STATUSES = new Set([401, 403, 404, 410]);
 
 /**
- * Fetch a preview link: null when it is not there (403/404/410), for a
- * non-Google or unparseable hop, too many redirects, or a body that is not a
- * plain image type. Any other failure throws with the status only: the link is
- * a capability and an error page can echo it, so neither goes in the message.
- * Redirects are followed by hand so every hop passes the host check before the
- * token goes out.
+ * Fetch a preview link, with no Authorization header: null when it is not
+ * there (401/403/404/410), for a disallowed or unparseable hop, too many
+ * redirects, or a body that is not a plain image type. Any other failure throws
+ * with the status only: the link is a capability and an error page can echo
+ * it, so neither goes in the message. Redirects are followed by hand so every
+ * hop passes the host check before it is fetched.
  */
-async function fetchPreview(
-  link: string,
-  headers: Record<string, string>,
-): Promise<DownloadResult | null> {
+async function fetchPreview(link: string): Promise<DownloadResult | null> {
   let url = link;
   for (let hop = 0; hop <= MAX_PREVIEW_REDIRECTS; hop++) {
     if (!isGoogleHttpsUrl(url)) return null;
-    const res = await driveFetch(url, { headers, redirect: "manual" });
+    const res = await driveFetch(url, { redirect: "manual" });
     const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
     if (next) {
       await discardBody(res);

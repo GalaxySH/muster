@@ -161,14 +161,21 @@ export async function listChangeRequestQueue(
 }
 
 /**
- * Open requests not yet reported in a digest, oldest first (§roadmap 3.1).
- * Every term's: the digest runs with no admin and no selected term.
+ * One term's open requests not yet reported in a digest, oldest first
+ * (roadmap 3.1). The digest passes the current term. An earlier term's
+ * unreported requests are never emailed; they stay in that term's queue.
  */
-export async function loadPendingDigestRequests(): Promise<AdminChangeRequest[]> {
+export async function loadPendingDigestRequests(termId: string): Promise<AdminChangeRequest[]> {
   return getDb()
     .select(adminRequestColumns())
     .from(changeRequests)
     .innerJoin(students, eq(changeRequests.studentEmail, students.email))
-    .where(and(eq(changeRequests.status, "open"), isNull(changeRequests.digestSentAt)))
+    .where(
+      and(
+        eq(changeRequests.termId, termId),
+        eq(changeRequests.status, "open"),
+        isNull(changeRequests.digestSentAt),
+      ),
+    )
     .orderBy(changeRequests.createdAt);
 }

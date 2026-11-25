@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // fetch is stubbed, so nothing here ever reaches Google.
 vi.mock("server-only", () => ({}));
@@ -65,7 +65,16 @@ describe("downloadThumbnail", () => {
 
   beforeEach(() => fetchMock.mockReset());
 
-  it("asks Drive for the preview fields, then fetches the link with the token", async () => {
+  // The token is for Drive's API only. No preview host or redirect hop sees it.
+  afterEach(() => {
+    for (const [url, init] of fetchMock.mock.calls) {
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (new URL(String(url)).hostname === "www.googleapis.com") expect(auth).toBe("Bearer tok");
+      else expect(auth).toBeNull();
+    }
+  });
+
+  it("asks Drive for the preview fields with the token, then fetches the link without it", async () => {
     fetchMock.mockResolvedValueOnce(withLink()).mockResolvedValueOnce(image("image/png; x=1"));
 
     const got = await downloadThumbnail("tok", "file/1", "thumb");
@@ -75,9 +84,10 @@ describe("downloadThumbnail", () => {
       "https://www.googleapis.com/drive/v3/files/file%2F1?fields=hasThumbnail,thumbnailLink&supportsAllDrives=true",
       LINK,
     ]);
-    for (const [, init] of fetchMock.mock.calls) {
-      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer tok");
-    }
+    expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get("Authorization")).toBe(
+      "Bearer tok",
+    );
+    expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).has("Authorization")).toBe(false);
     expect(fetchMock.mock.calls[1]![1]?.redirect).toBe("manual");
     expect(urls().some((u) => u.includes("alt=media"))).toBe(false);
   });
@@ -101,12 +111,12 @@ describe("downloadThumbnail", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each([404, 403, 410])("has no preview when the link answers %i", async (status) => {
+  it.each([404, 403, 410, 401])("has no preview when the link answers %i", async (status) => {
     fetchMock.mockResolvedValueOnce(withLink()).mockResolvedValueOnce(new Response("", { status }));
     expect(await downloadThumbnail("tok", "f", "thumb")).toBeNull();
   });
 
-  it.each([429, 401, 400, 503])(
+  it.each([429, 400, 503])(
     "throws with the status, and without the link or the body, when the link answers %i",
     async (status) => {
       fetchMock
@@ -140,6 +150,8 @@ describe("downloadThumbnail", () => {
     "https://evil.example.com/x=s220",
     "https://lh3.googleusercontent.com.evil.com/x",
     "https://googleusercontent.com/x",
+    "https://drive.google.com/x=s220",
+    "https://lh3.google.com/x=s220",
     "https://lh3.googleusercontent.com:8443/x",
     "https://user:pw@lh3.googleusercontent.com/x",
     "not a url",
@@ -149,17 +161,14 @@ describe("downloadThumbnail", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("follows a redirect to another Google host", async () => {
-    const hop = "https://drive.google.com/thumb/next";
+  it("follows a redirect to another googleusercontent host", async () => {
+    const hop = "https://lh5.googleusercontent.com/thumb/next";
     fetchMock
       .mockResolvedValueOnce(withLink())
       .mockResolvedValueOnce(redirect(hop))
       .mockResolvedValueOnce(image("image/jpeg"));
     expect((await downloadThumbnail("tok", "f", "thumb"))?.mimeType).toBe("image/jpeg");
     expect(urls()[2]).toBe(hop);
-    expect(new Headers(fetchMock.mock.calls[2]![1]?.headers).get("Authorization")).toBe(
-      "Bearer tok",
-    );
     for (const [, init] of fetchMock.mock.calls.slice(1)) expect(init?.redirect).toBe("manual");
   });
 
@@ -170,15 +179,13 @@ describe("downloadThumbnail", () => {
       .mockResolvedValueOnce(image());
     expect(await downloadThumbnail("tok", "f", "thumb")).not.toBeNull();
     expect(urls()[2]).toBe("https://lh3.googleusercontent.com/thumb/next");
-    expect(new Headers(fetchMock.mock.calls[2]![1]?.headers).get("Authorization")).toBe(
-      "Bearer tok",
-    );
   });
 
   it.each([
     "http://lh3.googleusercontent.com/x",
     "https://user:pw@lh3.googleusercontent.com/x",
-    "https://user@drive.google.com/x",
+    "https://user@lh3.googleusercontent.com/x",
+    "https://drive.google.com/x",
   ])("never follows a redirect to %s", async (to) => {
     fetchMock.mockResolvedValueOnce(withLink()).mockResolvedValueOnce(redirect(to));
     expect(await downloadThumbnail("tok", "f", "thumb")).toBeNull();
@@ -241,7 +248,7 @@ describe("downloadThumbnail", () => {
 
   it("gives up after two redirects", async () => {
     fetchMock.mockResolvedValueOnce(withLink());
-    fetchMock.mockImplementation(async () => redirect("https://lh3.google.com/again"));
+    fetchMock.mockImplementation(async () => redirect("https://lh3.googleusercontent.com/again"));
     expect(await downloadThumbnail("tok", "f", "thumb")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
@@ -302,9 +309,10 @@ describe("largerPreviewLink", () => {
 });
 
 describe("isGoogleHttpsUrl", () => {
-  it("allows Google hosts over https only", () => {
+  it("allows googleusercontent hosts over https only", () => {
     expect(isGoogleHttpsUrl("https://lh3.googleusercontent.com/a")).toBe(true);
-    expect(isGoogleHttpsUrl("https://drive.google.com/a")).toBe(true);
+    expect(isGoogleHttpsUrl("https://drive.google.com/a")).toBe(false);
+    expect(isGoogleHttpsUrl("https://lh3.google.com/a")).toBe(false);
     expect(isGoogleHttpsUrl("https://LH3.GoogleUserContent.com/a")).toBe(true);
     expect(isGoogleHttpsUrl("https://google.com.evil.com/a")).toBe(false);
     expect(isGoogleHttpsUrl("https://evilgoogle.com/a")).toBe(false);

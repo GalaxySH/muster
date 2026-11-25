@@ -106,6 +106,14 @@ describe("UpcomingTravelRow", () => {
     expect(screen.getByRole("link", { name: "Ann Lee" }).contains(position)).toBe(false);
   });
 
+  it("lets a long name break inside the row instead of widening it", () => {
+    renderRow(entry({ studentName: "Featherstonehaugh-Worthington" }));
+    const column = screen.getByRole("link", { name: "Featherstonehaugh-Worthington" })
+      .parentElement as HTMLElement;
+    expect(column.style.minWidth).toBe("0");
+    expect(column.style.getPropertyValue("overflow-wrap")).toBe("anywhere");
+  });
+
   it("shows no separator without a position", () => {
     const { container } = renderRow(entry({ positionName: null }));
     expect(container.querySelector(".travel-row-sep")).toBeNull();

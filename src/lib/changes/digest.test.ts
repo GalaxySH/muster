@@ -12,6 +12,7 @@ vi.mock("@/lib/settings", () => ({
   markChangeDigestRun: vi.fn(),
 }));
 vi.mock("@/lib/email/resend", () => ({ sendEmail: vi.fn() }));
+vi.mock("@/lib/terms/term-id", () => ({ getCurrentTermId: vi.fn() }));
 vi.mock("./data", () => ({ loadPendingDigestRequests: vi.fn() }));
 vi.mock("./digest-email", () => ({
   buildChangeDigestEmail: vi.fn(() => ({ subject: "Digest", text: "body" })),
@@ -28,6 +29,7 @@ import {
   getEmailSendingEnabled,
   markChangeDigestRun,
 } from "@/lib/settings";
+import { getCurrentTermId } from "@/lib/terms/term-id";
 import { loadPendingDigestRequests } from "./data";
 import { buildChangeDigestEmail } from "./digest-email";
 import { runChangeDigest } from "./digest";
@@ -36,6 +38,7 @@ const now = new Date("2026-07-15T12:00:00.000Z");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getCurrentTermId).mockResolvedValue("fall-2026");
   vi.mocked(loadPendingDigestRequests).mockResolvedValue([{ id: 1 }, { id: 2 }] as never);
   vi.mocked(getChangeDigestEnabled).mockResolvedValue(true);
   vi.mocked(getChangeDigestRecipients).mockResolvedValue(["a@wisc.edu", "b@wisc.edu"]);
@@ -44,6 +47,28 @@ beforeEach(() => {
 });
 
 describe("runChangeDigest", () => {
+  it("reads the current term once and reports only its requests", async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
+
+    await runChangeDigest(now);
+
+    expect(getCurrentTermId).toHaveBeenCalledTimes(1);
+    expect(loadPendingDigestRequests).toHaveBeenCalledTimes(1);
+    expect(loadPendingDigestRequests).toHaveBeenCalledWith("fall-2026");
+  });
+
+  // The scheduler catches the throw and logs it; the cron route answers 500.
+  it("stamps and sends nothing when the current term cannot be read", async () => {
+    vi.mocked(getCurrentTermId).mockRejectedValue(new Error("No current term"));
+
+    await expect(runChangeDigest(now)).rejects.toThrow("No current term");
+
+    expect(markChangeDigestRun).not.toHaveBeenCalled();
+    expect(loadPendingDigestRequests).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("stamps the requests once a digest is actually sent", async () => {
     vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
 

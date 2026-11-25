@@ -161,7 +161,7 @@ states that changes due to events/extracurriculars must include proof). Pure val
 + a rolling 3-per-24h rate cap in `domain/change-requests.ts`; open requests are
 withdrawable by the student. Requests
 render on the admin per-student page (§10) and are batched into a **daily digest email**
-to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
+of the current semester's new requests (1.61) to the admin-configured recipients (0.47), sent by the **in-app scheduler** (0.75: due
 daily at 7:00 America/Chicago, atomic claim on the last-run stamp, downtime catch-up;
 no host setup). The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`)
 remains as a manual fallback trigger (docs/deploy.md §7). An admin toggle on
@@ -1273,8 +1273,9 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
     responses spreadsheet** (below); **all proof files live in a single `proofs/`
     subfolder**, named `{studentEmail}__{kind}__{timestamp}.{ext}`. The app stores
     only the `fileId`; the admin view renders inline via the same grant, and
-    thumbnails on both sides are Drive's own preview images relayed the same way
-    (1.61), never cached or stored by the app (the viewer's browser keeps a served
+    thumbnails on both sides are Drive's own preview images (1.61: the grant reads
+    each file's preview link, which is then fetched without the token and only from
+    a `*.googleusercontent.com` host), never cached or stored by the app (the viewer's browser keeps a served
     thumbnail for 5 minutes, as it does an original). (The
     `proofs/` folder id is discovered/created lazily and cached in `app_settings`.)
     **Per term since 1.55:** that layout is fall 2026's, which keeps its files at
@@ -1688,7 +1689,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     recorded with no proof shows no thumbnail.
   - **Evidence thumbnails are Drive's previews and lazy load.** `?size=thumb` on
     `/api/evidence/[fileId]` (same access check) relays Drive's own preview image
-    (`thumbnailLink`, fetched with the admin grant, never stored) instead of the
+    (`thumbnailLink`, read with the admin grant, then fetched without the token and
+    only from `*.googleusercontent.com`, never stored) instead of the
     original, and `?size=preview` a larger one (1200px) for the course schedule on
     the per-student page. The small image is `loading="lazy"`, so a long list only
     fetches the previews scrolled into view, and never an original. A PDF's preview
@@ -1706,7 +1708,17 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     thumbnails line up in one column (the dates column has a minimum width on
     desktop), and at phone width the position drops to its own line under the
     name. A long unbroken URL in a travel note now wraps on the student `/travel`
-    page instead of making the page scroll sideways.
+    page instead of making the page scroll sideways. A long unbroken name on
+    `/admin/travel` breaks inside its row instead of pushing every row of its week
+    past the card at phone width (the week's grid column has a zero minimum).
+  - **The daily digest covers only the current semester.** `runChangeDigest` reads
+    the current term once, before it stamps anything, and `loadPendingDigestRequests`
+    selects only that term's open, unreported requests. A broken pointer throws, so
+    the run stamps and sends nothing (the scheduler logs it). An earlier semester's
+    open requests the digest never reported are not emailed after a new semester
+    starts; they stay in that semester's queue, and the runbook's first step says so.
+    The per-student page still says which semester a linked request is from, since
+    the admin following a digest link may have an earlier one selected.
 - **1.60 (2026-11-25)** — **The rest of the review's open items (issue #40).**
   Migration 0054, additive.
   - **Sign-ins are counted per semester.** `students.last_seen_at` is one stamp per

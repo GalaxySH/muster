@@ -3,6 +3,10 @@
  * in-app scheduler (scheduler.ts) and, as a manual fallback, by the
  * token-authenticated /api/cron/change-digest route.
  *
+ * It reports the current semester's requests only (1.61). An earlier
+ * semester's that were never reported are not emailed; they stay in that
+ * semester's admin queue.
+ *
  * Recipients come ONLY from the admin-configured list on
  * /admin/email-settings (never ADMIN_EMAILS or admin_users). The run is
  * idempotent via `change_requests.digestSentAt`: only open, unstamped rows
@@ -26,6 +30,7 @@ import {
   markChangeDigestRun,
 } from "@/lib/settings";
 import { sendEmail } from "@/lib/email/resend";
+import { getCurrentTermId } from "@/lib/terms/term-id";
 import { loadPendingDigestRequests } from "./data";
 import { buildChangeDigestEmail } from "./digest-email";
 
@@ -43,12 +48,17 @@ export interface ChangeDigestRunResult {
 }
 
 export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDigestRunResult> {
+  // The digest covers the current semester. No request or admin is behind it,
+  // so it reads the pointer itself, once. A broken pointer throws here, before
+  // the run stamps or sends anything.
+  const termId = await getCurrentTermId(getDb());
+
   // Stamped before any early return, so a run that sends nothing still proves
   // the scheduler fired. The admin surfaces read this to tell a dead scheduler
   // from a quiet week; every `return` below is a run that happened.
   await markChangeDigestRun(now);
 
-  const pending = await loadPendingDigestRequests();
+  const pending = await loadPendingDigestRequests(termId);
   const base = { sent: false, requestCount: pending.length, recipientCount: 0 };
   if (pending.length === 0) return { ...base, reason: "no-requests" };
   if (!(await getChangeDigestEnabled())) return { ...base, reason: "digest-off" };

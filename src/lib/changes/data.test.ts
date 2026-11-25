@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The admin queue and a student's list read one term, the one they are given.
+// The admin queue, a student's list and the digest batch read one term, the one
+// they are given.
 // The fake cannot run SQL, so the term test is read back off the rendered WHERE.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
@@ -8,7 +9,12 @@ vi.mock("@/lib/db", () => ({ getDb: vi.fn() }));
 import type { SQL } from "drizzle-orm";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { listChangeRequestQueue, listChangeRequests, requestInOtherTerm } from "./data";
+import {
+  listChangeRequestQueue,
+  listChangeRequests,
+  loadPendingDigestRequests,
+  requestInOtherTerm,
+} from "./data";
 
 let wheres: { sql: string; params: unknown[] }[] = [];
 
@@ -54,6 +60,18 @@ describe("listChangeRequests", () => {
     await listChangeRequests("worker@wisc.edu", "spring-2027");
     expect(wheres[0]?.sql).toContain("`change_requests`.`term_id` = ?");
     expect(wheres[0]?.params).toEqual(["worker@wisc.edu", "spring-2027"]);
+  });
+});
+
+describe("loadPendingDigestRequests", () => {
+  it("reads only the given term's open, unreported requests", async () => {
+    await loadPendingDigestRequests("spring-2027");
+    expect(wheres).toMatchObject([
+      {
+        sql: "(`change_requests`.`term_id` = ? and `change_requests`.`status` = ? and `change_requests`.`digest_sent_at` is null)",
+        params: ["spring-2027", "open"],
+      },
+    ]);
   });
 });
 

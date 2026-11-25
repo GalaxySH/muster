@@ -19,7 +19,7 @@ export function UpcomingTravelRow({ entry }: { entry: UpcomingTravelEntry }) {
         ...(entry.resolved ? resolvedRow : null),
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
         <Link
           href={`/admin/students/${encodeURIComponent(entry.studentEmail)}`}
           style={{ fontWeight: 500 }}

@@ -63,4 +63,15 @@ describe("digestTick", () => {
     expect(await digestTick(now)).toBe("error");
     expect(runChangeDigest).not.toHaveBeenCalled();
   });
+
+  // A broken current-term pointer throws inside the run, after the claim.
+  it("logs a run that throws and reports an error", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(getChangeDigestLastRun).mockResolvedValue(lastRunYesterday);
+    vi.mocked(claimChangeDigestRun).mockResolvedValue(true);
+    vi.mocked(runChangeDigest).mockRejectedValue(new Error("No current term"));
+    expect(await digestTick(now)).toBe("error");
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
 });

@@ -173,10 +173,11 @@ someone with no row was never part of that term.
   per-file database fakes never have to queue the pointer read. `term-id.test.ts`
   tests the real pointer read and `working.test.ts` the real resolver.
 - **What is deliberately not term-scoped:** `students` (the person, in no term),
-  `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
-  links, and the change-request digest (it runs with no admin and no selection).
-  The admin change-request queue, its counts and row actions follow the working
-  term.
+  `position_changes`, `admin_users`, `w2w_employees`, the Drive grant and magic
+  links. The admin change-request queue, its counts and row actions follow the
+  working term. The change-request digest runs with no admin and no selection,
+  so it reads the current term itself (`getCurrentTermId`, once per run, before
+  it stamps anything) and reports only that term's requests (1.61).
 - **Expand, then contract: done.** The 1.48 migrations added every `term_id` with a
   database default and kept the pre-term columns and settings written in step, so the
   release before could still run. 1.56 dropped the defaults (0049, 0050) and 1.57
@@ -460,7 +461,13 @@ shared `ChangeStatusBadge` (check icon). Both surfaces use the
 shows no control), and the per-student header email is a `SelectableEmail` island
 (click selects the address for copying). The **daily digest email** carries an inline deep link on every
 request line and goes ONLY to the v0.47 admin-configured recipients
-and honors the digest toggle plus the master email switch; `runChangeDigest` is
+and honors the digest toggle plus the master email switch. It reports the **current
+semester's** open, unreported requests only (1.61): `runChangeDigest` reads the pointer
+once, before stamping anything (a broken pointer throws, so nothing is stamped or sent),
+and passes it to `loadPendingDigestRequests`. An earlier semester's requests it never
+reported are not emailed; they stay in that semester's queue. Because a digest link can
+still be followed while an earlier semester is selected, the per-student page keeps
+saying which semester the request is from. `runChangeDigest` is
 idempotent via `digestSentAt` (stamped once at least one recipient was sent it; since
 1.60 every recipient is still tried when one throws, and the rows are stamped even then,
 so a recipient whose send threw misses that digest while the requests stay in the admin
@@ -1066,24 +1073,31 @@ authenticated proxy (`/api/evidence/[fileId]`, admin-or-owner via `evidence/data
 ownership check as the file itself) serves Drive's own preview image instead of the
 original, and `?size=preview` a larger one; any other value is a 400. `relayThumbnail` →
 `downloadThumbnail` (`drive/api.ts`) makes one metadata call for `hasThumbnail` +
-`thumbnailLink`, then fetches that short-lived link with the same Bearer token through
-`driveFetch`. The original (`alt=media`) is never downloaded on this path, and neither
+`thumbnailLink` with the Bearer token, then fetches that short-lived link through
+`driveFetch` **without** it: the link is itself the capability, so the token never
+leaves `www.googleapis.com` on this path. The original (`alt=media`) is never downloaded on this path, and neither
 the link nor the bytes are kept. No preview (no link, `hasThumbnail` false, the link
-answering 403/404/410, a redirect to a Location that won't parse, a body that is not
-JPEG/PNG/WebP/GIF) is a `404 No preview` with `no-store`, not logged. Any other answer
-(a 429 or 401 too) is a Drive failure: it throws with the status only, never the link or
+answering 401/403/404/410, a redirect to a Location that won't parse, a body that is not
+JPEG/PNG/WebP/GIF) is a `404 No preview` with `no-store`, not logged; with no token sent,
+a 401 from the preview host means no more than a 403. Any other answer (a 429 or 5xx
+too) is a Drive failure: it throws with the status only, never the link or
 the body (an error page can echo the link), logs and answers as the full path does, and
 the larger size is not retried after it. Bodies that are not read are cancelled. On the
 student pages a missing or failed preview loads the original in the small image, as
 before 1.61, so a file just uploaded shows while Drive is still making its preview; the
 admin views never load the original for a thumbnail.
-The link came from an API response and carries the token, so `isGoogleHttpsUrl` only lets
-it go to `*.googleusercontent.com` / `*.google.com` over https on the default port, and
-redirects are followed by hand (at most 2) with every hop passing the same check. The
-larger size rewrites a trailing `=s<digits>` to `=s1200` (`LARGE_PREVIEW_PX`); that
-suffix is not a documented contract, so a link without it is used as given, and a refused
-rewrite falls back to the link as given. Drive's preview of a PDF is its first page, so a
-PDF thumbnails like an image.
+The link came from an API response, so `isGoogleHttpsUrl` only lets it go to
+`*.googleusercontent.com` (a suffix match, since Google may use other `lhN` hosts) over
+https on the default port with no userinfo, and redirects are followed by hand (at most
+2) with every hop passing the same check. The larger size rewrites a trailing
+`=s<digits>` to `=s1200` (`LARGE_PREVIEW_PX`); that suffix is not a documented contract,
+so a link without it is used as given, and a refused rewrite falls back to the link as
+given. Drive's preview of a PDF is its first page, so a PDF thumbnails like an image.
+A read-only check against the real Drive on 2026-11-25 (8 files, jpeg, png and pdf, all
+with previews) found every link on `lh3.googleusercontent.com` ending `=s220`, answering
+200 with no redirects and without an Authorization header, PDFs previewing as PNG, a PNG
+original previewing as JPEG at 220 and PNG at 1200, and the largest 1200 preview at
+460 KB.
 
 The one thumbnail is `components/evidence/EvidenceThumb.tsx`, form-core so the student
 pages can use it and the admin views import it from there. Its small image lazy loads in
