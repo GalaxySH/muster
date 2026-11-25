@@ -31,7 +31,6 @@ import {
 import { ensureCloseRequirements } from "@/lib/closes/requirements";
 import { newTermDefaults, termSettingKey, termSlug } from "@/lib/domain/terms";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
-import { syncRetiredRosterColumns } from "@/lib/terms/members";
 import { submissionInTerm } from "@/lib/terms/scope";
 import { SETTING_CURRENT_TERM_ID, type DbOrTx } from "@/lib/terms/term-id";
 import {
@@ -272,7 +271,6 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
 
     const leads = await ensureCloseRequirements(tx, termId);
     await setPointer(tx, termId);
-    await syncRetiredRosterColumns(tx, termId);
 
     return {
       termId,
@@ -324,7 +322,6 @@ export async function makeTermCurrent(db: Database, input: MakeCurrentInput): Pr
       if (Number(n) > 0) throw new HasResponsesError(Number(n));
     }
     await setPointer(tx, input.termId);
-    await syncRetiredRosterColumns(tx, input.termId);
   });
 }
 

@@ -3,7 +3,7 @@
  * handle rather than reaching for the app's, so the CLI importer shares it.
  */
 import { eq } from "drizzle-orm";
-import { appSettings, terms } from "@/lib/db/schema";
+import { terms } from "@/lib/db/schema";
 import type { DbOrTx } from "@/lib/terms/term-id";
 import {
   parseRosterConfig,
@@ -11,7 +11,7 @@ import {
   type RosterConfig,
   type RosterReading,
 } from "./config";
-import { effectiveExcludedTitles, SETTING_EXCLUDED_ROSTER_TITLES } from "./position-mapping";
+import { SKIP_TITLES } from "./position-mapping";
 
 /** A term's roster config with every fallback applied, ready for the import to compare against. */
 export interface EffectiveRosterConfig {
@@ -32,38 +32,21 @@ async function storedConfig(db: DbOrTx, termId: string): Promise<RosterConfig> {
 }
 
 /**
- * Excluded titles have three sources, most specific first: the list saved on
- * the term, the pre-term `excluded_roster_titles` setting (what every install
- * had before terms existed; read until the term saves its own), and the
- * SKIP_TITLES fixture.
+ * The term's excluded titles are the list saved on it. A saved empty list
+ * excludes nothing; the SKIP_TITLES fixture applies only until one is saved.
  */
 export async function loadRosterConfig(db: DbOrTx, termId: string): Promise<EffectiveRosterConfig> {
   const config = await storedConfig(db, termId);
-  let excludedTitles: ReadonlySet<string>;
-  if (config.excludedTitles !== null) {
-    excludedTitles = new Set(config.excludedTitles);
-  } else {
-    const [legacy] = await db
-      .select({ value: appSettings.value })
-      .from(appSettings)
-      .where(eq(appSettings.key, SETTING_EXCLUDED_ROSTER_TITLES))
-      .limit(1);
-    excludedTitles = effectiveExcludedTitles(legacy?.value ?? null);
-  }
   return {
     sheetCandidates: config.sheetCandidates,
     leavingSheet: config.leavingSheet,
     adminTitles: new Set(config.adminTitles),
-    excludedTitles,
+    excludedTitles: config.excludedTitles === null ? SKIP_TITLES : new Set(config.excludedTitles),
     columns: config.columns,
   };
 }
 
-/**
- * Save the term's excluded titles (already normalized). The pre-term setting is
- * written too, so the previous release still reads the current list if a
- * deploy is rolled back; it goes with the contract migration.
- */
+/** Save the term's excluded titles (already normalized). */
 export async function saveExcludedTitles(
   db: DbOrTx,
   termId: string,
@@ -74,11 +57,6 @@ export async function saveExcludedTitles(
     .update(terms)
     .set({ rosterConfig: JSON.stringify({ ...config, excludedTitles: titles }) })
     .where(eq(terms.id, termId));
-  const legacy = titles.join("\n");
-  await db
-    .insert(appSettings)
-    .values({ key: SETTING_EXCLUDED_ROSTER_TITLES, value: legacy })
-    .onDuplicateKeyUpdate({ set: { value: legacy } });
 }
 
 /**

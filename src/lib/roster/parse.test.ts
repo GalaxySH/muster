@@ -35,7 +35,7 @@ const TITLE_MAP: ReadonlyMap<string, string> = new Map([
 ]);
 
 // Injected excluded-title set mirroring the SKIP_TITLES fixture (the importer
-// builds the real one from app_settings via effectiveExcludedTitles).
+// builds the real one from the term's saved list in loadRosterConfig).
 const EXCLUDED: ReadonlySet<string> = new Set(["dining advisor board member (dab)"]);
 
 describe("extractRosterRows", () => {

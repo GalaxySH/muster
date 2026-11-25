@@ -233,6 +233,46 @@ Only do that while there is one semester. **Once a second semester exists, do no
 roll back past 1.48 at all**: an older image reads every term at once. Starting a
 semester is not part of a deploy (`docs/semester-rollover.md`).
 
+**1.57 (semester domains, Phase 7: contract).** Two migrations:
+
+- 0051 drops five columns from `students` (`position_id`, `on_roster`, `roster_title`,
+  `group_id`, `group_assigned_auto`) and their two foreign keys. The table has a few
+  hundred rows, so it takes no measurable time. The values are not lost: they are the
+  current term's rows in `term_members`.
+- 0052, data only: saves the pre-term excluded-titles list onto each term that has
+  none of its own, then deletes the settings rows nothing reads.
+
+**The deploy window is wider here than in 1.56.** Between `migrate` finishing and the
+new container starting, an image older than 1.48 that is still serving cannot read the
+roster at all (it selects the dropped columns), so most pages error for those few
+seconds. An image from 1.48 on is unaffected. If production is still on a pre-1.48
+image, either deploy at a quiet hour and expect a few seconds of errors, or release
+1.56 first and 1.57 once it has settled, which has no such window.
+
+**Rolling back past 1.48 after 1.57.** Possible only while there is one semester, and
+only after putting the columns back and filling them, as the migrate user:
+
+```sql
+ALTER TABLE `students`
+  ADD COLUMN `position_id` varchar(64),
+  ADD COLUMN `on_roster` boolean NOT NULL DEFAULT false,
+  ADD COLUMN `roster_title` varchar(128),
+  ADD COLUMN `group_id` varchar(64),
+  ADD COLUMN `group_assigned_auto` boolean NOT NULL DEFAULT false;
+UPDATE `students` s
+JOIN `term_members` m ON m.`student_email` = s.`email`
+JOIN `app_settings` p ON p.`key` = 'current_term_id' AND p.`value` = m.`term_id`
+SET s.`position_id` = m.`position_id`, s.`on_roster` = m.`on_roster`,
+    s.`roster_title` = m.`roster_title`, s.`group_id` = m.`group_id`,
+    s.`group_assigned_auto` = m.`assigned_auto`;
+```
+
+plus the `term_id` defaults above. The travel cutoff, the late-travel switch and the
+excluded titles would read as their defaults in the old image, and it would make new
+Drive sheets instead of finding the existing ones (their ids are under per-term keys
+now). Restoring last night's backup is the cleaner way back; rolling back to 1.48 or
+later needs none of this.
+
 Rollback = run the Deploy workflow by hand from `main` and enter the previous tag.
 Don't push a new tag at an older commit: a tag push runs that commit's workflow,
 and one from before the forced command is refused. Migrations aren't reversed, so

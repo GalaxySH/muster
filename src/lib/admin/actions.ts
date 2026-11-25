@@ -30,8 +30,6 @@ import { relayDelete } from "@/lib/drive/relay";
 import {
   setSetting,
   deleteSetting,
-  SETTING_TRAVEL_CUTOFF,
-  SETTING_LATE_TRAVEL_ACCEPT,
   SETTING_EMAIL_SENDING_ENABLED,
   SETTING_CHANGE_DIGEST_ENABLED,
   SETTING_CHANGE_DIGEST_RECIPIENTS,
@@ -286,9 +284,6 @@ export async function setTravelCutoff(
   const cutoff = iso === null ? defaultTravelCutoff(term.startsOn) : new Date(iso);
   if (Number.isNaN(cutoff.getTime())) return { ok: false, error: "Invalid date." };
   await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, term.id));
-  // The retired setting, kept in step for a rollback (see lib/settings.ts).
-  if (iso === null) await deleteSetting(SETTING_TRAVEL_CUTOFF);
-  else await setSetting(SETTING_TRAVEL_CUTOFF, cutoff.toISOString());
   revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/intro");
@@ -308,8 +303,6 @@ export async function setLateTravelAccepted(
   const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   await getDb().update(terms).set({ lateTravelAccept: accepted }).where(eq(terms.id, termId));
-  // The retired setting, kept in step for a rollback (see lib/settings.ts).
-  await setSetting(SETTING_LATE_TRAVEL_ACCEPT, accepted ? "1" : "0");
   revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/admin");

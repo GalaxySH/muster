@@ -27,7 +27,7 @@ function fakeDb() {
 }
 
 describe("enrollMember", () => {
-  it("writes the person's place in the term and mirrors it to the retired columns", async () => {
+  it("writes the person's place in the term", async () => {
     const { db, writes } = fakeDb();
     const place = { positionId: "cashier", onRoster: true, rosterTitle: "Cashier" };
     await enrollMember(db, "2026-fall", "a@wisc.edu", place);
@@ -39,22 +39,16 @@ describe("enrollMember", () => {
         // The group on the same row is not in the update: an import must not move it.
         set: place,
       },
-      {
-        op: "update",
-        table: "students",
-        set: { legacyPositionId: "cashier", legacyOnRoster: true, legacyRosterTitle: "Cashier" },
-      },
     ]);
   });
 });
 
 describe("setMemberPosition", () => {
-  it("moves the term's rows and the retired column together", async () => {
+  it("moves the term's rows", async () => {
     const { db, writes } = fakeDb();
     await setMemberPosition(db, "2026-fall", ["a@wisc.edu", "b@wisc.edu"], "stocker");
     expect(writes).toEqual([
       { op: "update", table: "term_members", set: { positionId: "stocker" } },
-      { op: "update", table: "students", set: { legacyPositionId: "stocker" } },
     ]);
   });
 
@@ -72,7 +66,6 @@ describe("takeOffRoster", () => {
     await takeOffRoster(db, "2026-fall", ["a@wisc.edu"]);
     expect(writes).toEqual([
       { op: "update", table: "term_members", set: { onRoster: false } },
-      { op: "update", table: "students", set: { legacyOnRoster: false } },
     ]);
   });
 

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.56
+- **Version:** 1.57
 - **Last updated:** 2026-11-24
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1667,6 +1667,26 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.57 (2026-11-25)** — **Semester domains, Phase 7: contract (issue #40;
+  `docs/semester-domains-plan.md` §4, §17).** Everything that was kept only so the
+  release before terms could still run is removed. No behavior changes.
+  - **`students` is only the person.** Its `position_id`, `on_roster`,
+    `roster_title`, `group_id` and `group_assigned_auto` columns are dropped
+    (migration **0051**). They moved to `term_members` in 1.48 and 1.51 and nothing
+    has read them since; the writes that kept them in step are gone
+    (`terms/members.ts`, `groups/membership.ts`, `syncRetiredRosterColumns`,
+    `isCurrentTermSql`).
+  - **Retired settings** (migration **0052**, data only). A term with no excluded
+    titles of its own used to fall back to the pre-term `excluded_roster_titles`
+    setting; each such term now has that list saved on it, so every term excludes
+    exactly what it did, and the fallback is gone. Then the rows nothing reads are
+    deleted: `travel_cutoff`, `late_travel_accept`, `excluded_roster_titles`, and
+    the Drive ids and engine params that 0046 and 0047 copied to per-term keys.
+  - **Rollback.** After this release an image older than 1.48 cannot run against
+    the database without the steps in `docs/deploy.md`. During the deploy itself,
+    for the few seconds between `migrate` finishing and the new container
+    starting, that older image is still serving and its roster reads fail. Deploy
+    at a quiet hour, or release 1.56 first and this one after it has settled.
 - **1.56 (2026-11-24)** — **Semester domains, Phase 6: starting a new semester
   (issue #40; `docs/semester-domains-plan.md` §2.4, §2.5, §2.9, §16;
   runbook `docs/semester-rollover.md`).** The Semester page gains **Start a new

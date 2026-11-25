@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: Phases 1 to 6 are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54, 1.55 and 1.56). Phase 7 is not.** Branch
+**Status: all seven phases are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54, 1.55, 1.56 and 1.57).** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -1488,3 +1488,55 @@ operation in one transaction; the runbook is `docs/semester-rollover.md`.
 real databases only. Nothing was written to a real Drive, so a new term's
 folder and sheets have still never been created for real. The roster import
 into a freshly started term was not run.
+
+## 17. Phase 7 as built (PLAN 1.57)
+
+The contract. Nothing behaves differently; what goes is everything that was
+kept only so a release from before terms could still run.
+
+- **Columns** (migration 0051): `students.position_id`, `on_roster`,
+  `roster_title`, `group_id` and `group_assigned_auto`, with their two foreign
+  keys. The writes that mirrored `term_members` into them are deleted, along
+  with `syncRetiredRosterColumns` and `isCurrentTermSql`, which existed only for
+  them.
+- **Settings** (migration 0052). The pre-term excluded-titles setting was still
+  read by any term with no list of its own, so the migration first saves it onto
+  each such term (a saved empty list stays empty: "exclude nothing"), and the
+  fallback in `loadRosterConfig` goes. Then it deletes `travel_cutoff`,
+  `late_travel_accept`, `excluded_roster_titles`, the seven bare Drive keys and
+  the bare `schedule_params`. `effectiveExcludedTitles` and `TEST_GROUP_ID` had
+  no caller left and are deleted.
+- **The column defaults** went in 1.56 (0049, 0050), ahead of this phase.
+- **`CLAUDE.md`**'s current-state section now describes semesters.
+
+**What this costs.** After 1.57 a pre-1.48 image cannot run against the
+database without putting columns back (`docs/deploy.md` has the statements), and
+during the deploy itself such an image fails its roster reads for the seconds
+between `migrate` and the new container. §4 planned the contract as a later
+release for that reason. It is built as its own commit, so 1.56 can be released
+first and this after it has settled; released together they work, with that
+window.
+
+**Verified.**
+
+- 1,828 unit tests, typecheck, lint, the build with no database reachable.
+- **On a same-day read-only copy of production:** 0037 to 0052 applied in about
+  five seconds. `students` keeps all 458 people with only the five person
+  columns; `term_members` is untouched (458 members, 215 on the roster, 321 in a
+  group); fall's saved excluded titles are the empty list production has today;
+  only live settings keys remain. Running 0051 and 0052 again changed nothing. A
+  semester started from a script afterwards with the same counts as in §16, and
+  the roster and group writers ran. The copy was deleted.
+- **The title conversion with a real list.** A synthetic database given a
+  two-line pre-term list, migrated by the real runner: the term got both titles
+  as two entries, the Roster page shows them, and a new semester inherited them.
+  (The first version of the statement did not split lines; it was found on a
+  three-line test value before this point and fixed.)
+- **In the browser on the contracted synthetic database:** all 18 admin pages, a
+  roster import, the late-travel switch saved on the term with no settings row
+  written, and a semester started. The server log has no missing-column error.
+
+**Not verified.** Nothing was written to a real Drive in any phase. The dev
+script `tune-schedule-params` reads an exported snapshot file in the old shape
+(`students.on_roster`, `position_id`); a snapshot exported after 1.57 will need
+those read from `term_members` instead. The script was not changed.

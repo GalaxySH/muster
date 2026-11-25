@@ -17,10 +17,7 @@ position they hold, whether they are on the roster, the tracker title they came 
 under, and their group. **A query on `students` alone can no longer say who is on the
 roster or what job anyone has.** It joins `term_members` through `memberOf(termId)`,
 or filters with `onRosterStudent(termId)` when it has no other reason to join.
-`students.position_id`, `on_roster` and `roster_title` still exist for a rollback and
-are written in step, but they are named `legacyPositionId`, `legacyOnRoster` and
-`legacyRosterTitle` in the schema so a read of them stands out and the old names do
-not compile. Two things the type checker cannot see, so check them by hand: a query
+The old columns on `students` were dropped in 1.57. Two things the type checker cannot see, so check them by hand: a query
 that selects `termMembers.*` must actually join it (a predicate held in a variable is
 the easy one to miss), and a list of a term's people wants an **inner** join, because
 someone with no row was never part of that term.
@@ -60,8 +57,7 @@ someone with no row was never part of that term.
     own term), `rosterOf(termId)` (WHERE for a query that starts from `term_members`)
     and `onRosterStudent(termId)` (an EXISTS test for a `students` query).
   - `members.ts`: the one writer of a person's roster place (`enrollMember`,
-    `setMemberPosition`, `takeOffRoster`). Each also mirrors the retired `students`
-    columns. Plain and CLI-safe, because the importer and the dev scripts use it. The
+    `setMemberPosition`, `takeOffRoster`). Plain and CLI-safe, because the importer and the dev scripts use it. The
     group on the same row is written by `groups/membership.ts`.
 - **The Semester page (`/admin/terms`, 1.49).** `TermDetailsForm` edits the current
   term's name, dates, new-hire date and schedule note through `saveTermDetails`
@@ -100,19 +96,14 @@ someone with no row was never part of that term.
   (`components/WorkingTerm.tsx`), the same provider the admin layout uses.
   `TermSwitcher` also keeps one browser's tabs together (a tab reloads when another
   changes the selection), which is a convenience, not the guard.
-- **Person facts and the retired columns follow the current term (1.55).**
-  `importRoster` takes `updatePeople`: false for an earlier term, where it leaves
-  names, the international flag, hire dates and `admin_users` alone. The mirrors in
-  `terms/members.ts` and `groups/membership.ts` carry `isCurrentTermSql(termId)` in
-  their WHERE, so a write to an earlier term does not touch them and the transaction
-  gains no read.
+- **Person facts follow the current term (1.55).** `importRoster` takes
+  `updatePeople`: false for an earlier term, where it leaves names, the
+  international flag, hire dates and `admin_users` alone.
 - **Starting a term (1.56).** `lib/admin/start-term.ts`, console code and plain
   (it takes a database handle): `startNewTerm` creates the term, copies the
   configuration and the roster with new ids, and moves the pointer, in one
   transaction that first locks the pointer row and refuses when it no longer names
-  the term the caller saw. `makeTermCurrent` moves the pointer back. Both end with
-  `syncRetiredRosterColumns` (`terms/members.ts`), the one place the retired
-  `students` mirrors are rewritten wholesale. The pure parts (`termSlug`,
+  the term the caller saw. `makeTermCurrent` moves the pointer back. The pure parts (`termSlug`,
   `newTermDefaults`, `validateNewTerm`) are in `domain/terms.ts`. Both actions use
   the *current* term, never the working one. The engine params are stored per term
   (`schedulingParamsKey()` in `lib/settings.ts`); the copy remaps their position
@@ -140,16 +131,15 @@ someone with no row was never part of that term.
 - **Tests.** `vitest.setup.ts` mocks `@/lib/terms/working` for every test file, so the
   per-file database fakes never have to queue the pointer read. `term-id.test.ts`
   tests the real pointer read and `working.test.ts` the real resolver.
-- **What is deliberately not term-scoped:** `students` (always the current term's
-  roster), `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
+- **What is deliberately not term-scoped:** `students` (the person, in no term),
+  `position_changes`, `admin_users`, `w2w_employees`, the Drive grant, magic
   links, and the admin change-request queue.
-- **Expand, then contract.** The 1.48 migrations gave every `term_id` a database
-  default (`2026-fall`) that the Drizzle schema never declared, which is what makes
-  TypeScript require the term on every insert. **1.56 drops the defaults**
-  (migration 0049), so the database refuses an insert with no term too. Still to be
-  contracted, and still written until then: `students.position_id`, `on_roster`,
-  `roster_title`, `group_id` and `group_assigned_auto`, and the pre-term
-  `excluded_roster_titles`, `travel_cutoff` and `late_travel_accept` settings.
+- **Expand, then contract: done.** The 1.48 migrations added every `term_id` with a
+  database default and kept the pre-term columns and settings written in step, so the
+  release before could still run. 1.56 dropped the defaults (0049, 0050) and 1.57
+  dropped the old `students` columns and the pre-term settings (0051, 0052). Nothing
+  is written twice any more, and an insert with no term is refused by the database as
+  well as by TypeScript.
 - **Verifying a change here.** Unit tests cannot see a term leak. Run the loaders
   against a real MariaDB holding two terms (a throwaway container, never the shared
   dev database) and compare what each term shows; `docs/semester-domains-plan.md` §8
@@ -1264,10 +1254,8 @@ on the student. `groups/membership.ts` is the only reader and writer of the grou
 that row: `groupOf(db, email, termId)`, the WHERE predicates (`inGroup`, `inNoGroup`,
 `inTestGroup`; the join itself is `memberOf` in `lib/terms/scope.ts`), and
 `assignMembers` / `unassignMembers` /
-`listUnsweptEmails`. The writers also keep the retired `students.group_id` and
-`group_assigned_auto` columns in step until the contract migration drops them. The
-test-accounts group is recognized by `groups.kind = 'test'`; `TEST_GROUP_ID` survives
-only as the id the first term's group is created with.
+`listUnsweptEmails`. The
+test-accounts group is recognized by `groups.kind = 'test'`, never by its id.
 
 The pure
 seam is `domain/window.ts`; pure email parsing is `groups/parse-emails.ts` (both

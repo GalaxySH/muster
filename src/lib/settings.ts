@@ -21,8 +21,7 @@ import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/confi
 
 /**
  * The Drive keys below are per term: read and write them through
- * `termSettingKey(base, termId)`. The bare keys are the ones the release
- * before 1.55 used; migration 0046 copied them to the term that existed then.
+ * `termSettingKey(base, termId)`.
  */
 export const SETTING_PROOFS_FOLDER_ID = "proofs_folder_id";
 /** The cached id of a term's own Drive folder. Per term, like the keys beside it. */
@@ -40,14 +39,6 @@ export const SETTING_SCHEDULE_SHEET_ID = "schedule_sheet_id";
 export const SETTING_SCHEDULE_SHEET_SYNCED_AT = "schedule_sheet_synced_at";
 /** "1"/"0": whether ungrouped students get swept into the default group (PLAN §13). Absent ⇒ off. */
 export const SETTING_DEFAULT_GROUP_AUTO_ASSIGN = "default_group_auto_assign";
-/**
- * RETIRED: the travel cutoff and the late-travel switch live on the term now
- * (terms.travel_cutoff, terms.late_travel_accept). These two keys are still
- * written beside it, never read, so the previous release finds them current if
- * a deploy is rolled back. They go with the contract migration.
- */
-export const SETTING_TRAVEL_CUTOFF = "travel_cutoff";
-export const SETTING_LATE_TRAVEL_ACCEPT = "late_travel_accept";
 /** "1"/"0": master switch for outbound email. Absent ⇒ enabled (the default). */
 export const SETTING_EMAIL_SENDING_ENABLED = "email_sending_enabled";
 /** "1"/"0": the daily schedule-change digest (roadmap 3.1). Absent ⇒ enabled. */

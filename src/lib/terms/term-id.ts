@@ -8,20 +8,11 @@
  *
  * The request-side wrappers are `currentTermId()` and `workingTermId()` in ./working.
  */
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import { appSettings, terms } from "@/lib/db/schema";
 
 export const SETTING_CURRENT_TERM_ID = "current_term_id";
-
-/**
- * WHERE test, true only when `termId` is the current term. The retired columns
- * on `students` mirror the current term's roster and groups and nothing else,
- * so a write to an earlier term must leave them alone. It is tested in SQL so
- * that a transaction body gains no read.
- */
-export const isCurrentTermSql = (termId: string) =>
-  sql`${termId} = (select ${appSettings.value} from ${appSettings} where ${appSettings.key} = ${SETTING_CURRENT_TERM_ID})`;
 
 /** A database handle or an open transaction on one. */
 export type DbOrTx = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];

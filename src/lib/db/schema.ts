@@ -213,19 +213,6 @@ export const students = mysqlTable("students", {
   // Hire date from the People Coming sheet (PLAN §9); null when the workbook
   // omits it or the date is unparseable.
   hiredOn: date("hired_on", { mode: "date" }),
-  // RETIRED, kept in step until the contract migration drops them. The five
-  // columns below moved to term_members (one row per person per term) and
-  // nothing reads them. lib/terms/members.ts and lib/groups/membership.ts write
-  // both, so the previous release still finds them current if a deploy is
-  // rolled back. The `legacy` names are there so a new read does not compile
-  // by accident.
-  legacyPositionId: varchar("position_id", { length: 64 }).references(() => positions.id),
-  legacyOnRoster: boolean("on_roster").notNull().default(false),
-  legacyRosterTitle: varchar("roster_title", { length: 128 }),
-  groupId: varchar("group_id", { length: 64 }).references(() => groups.id, {
-    onDelete: "set null",
-  }),
-  groupAssignedAuto: boolean("group_assigned_auto").notNull().default(false),
   // Most recent authenticated activity for this person (any signed-in page load,
   // throttled write via lib/auth/last-seen.ts). Null = never signed in, which is
   // what the analytics surface reads to tell who has yet to log in. Set from the

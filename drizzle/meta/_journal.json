@@ -358,6 +358,20 @@
       "when": 1795585146943,
       "tag": "0050_close_requirement_no_default",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1795587328131,
+      "tag": "0051_contract_students",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1795587352491,
+      "tag": "0052_contract_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -55,7 +55,7 @@ describe("membership predicates", () => {
 });
 
 describe("assignMembers", () => {
-  it("writes the membership row and keeps the retired student columns in step", async () => {
+  it("writes the membership row", async () => {
     const { db, writes } = fakeDb();
     await assignMembers(db, "2026-fall", ["a@wisc.edu", "b@wisc.edu"], "g1", false);
     expect(writes).toEqual([
@@ -68,7 +68,6 @@ describe("assignMembers", () => {
         ],
         set: { groupId: "g1", assignedAuto: false },
       },
-      { op: "update", table: "students", set: { groupId: "g1", groupAssignedAuto: false } },
     ]);
   });
 
@@ -93,7 +92,6 @@ describe("unassignMembers", () => {
     await unassignMembers(db, "2026-fall", ["a@wisc.edu"]);
     expect(writes).toEqual([
       { op: "update", table: "term_members", set: { groupId: null } },
-      { op: "update", table: "students", set: { groupId: null } },
     ]);
   });
 });

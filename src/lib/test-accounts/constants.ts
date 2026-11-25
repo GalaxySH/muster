@@ -8,11 +8,10 @@
 
 // Kept as "dev-test" (the manager's dev-only predecessor) so existing dev-DB
 // accounts aren't stranded under an orphaned group id.
-export const TEST_GROUP_ID = "dev-test";
 /**
- * The id a term's test-accounts group is created with. The first term's group
- * predates terms and keeps the id above; it is always found by its kind, never
- * by id, so the two never have to agree.
+ * The id a term's test-accounts group is created with. The group is always
+ * found by its kind, never by id (the first term's predates this and has
+ * another id).
  */
 export const testGroupIdFor = (termId: string): string => `test-${termId}`;
 export const TEST_GROUP_NAME = "Test accounts";

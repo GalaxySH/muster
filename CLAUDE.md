@@ -69,6 +69,16 @@ The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`) remains a
 manual fallback trigger, and `/admin/email-settings` shows the last run + run health
 (docs/deploy.md §7).
 
+**Semesters done** (issue #40, 1.48 to 1.57; `docs/semester-domains-plan.md`): the app
+runs in **terms**. Every per-semester table carries a `term_id`; `students` is only the
+person, and their position, roster flag and group are per term in `term_members`.
+Students always work in the **current** term; an admin can select another in the header
+and work in it fully (a banner shows while they do). A new semester is started from
+`/admin/terms`: it copies positions, blocks, roster settings and the roster, starts
+with empty forms and no groups, and leaves the earlier semester untouched and still
+editable. Each term has its own Drive folder and sheets. The rollover order is in
+`docs/semester-rollover.md`.
+
 **Per-subsystem architecture notes live in `docs/architecture.md`** — feature layering
 and module seams for the Tier 2 features (2.1–2.5), SL weekend-close picking (3.2),
 schedule change requests (3.1),

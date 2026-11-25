@@ -29,7 +29,7 @@ import { getDb } from "@/lib/db";
 import { collectChangeRequestDriveFileIds } from "@/lib/changes/data";
 import { collectSubmissionDriveFileIds } from "@/lib/evidence/data";
 import { relayDelete } from "@/lib/drive/relay";
-import { TEST_GROUP_ID } from "./constants";
+const TEST_GROUP_ID = "dev-test";
 import { deleteTestAccount } from "./actions";
 
 const nameOf = (table: unknown) => getTableName(table as Table);
