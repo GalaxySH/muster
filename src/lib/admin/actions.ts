@@ -50,7 +50,7 @@ import { workingTermId } from "@/lib/terms/working";
 import { getTerm } from "@/lib/terms/term-id";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { terms } from "@/lib/db/schema";
-import { submissionOf } from "@/lib/terms/scope";
+import { submissionInTerm, submissionOf } from "@/lib/terms/scope";
 import { saveExcludedTitles, saveRosterReading } from "@/lib/roster/config-data";
 import {
   cleanRosterReading,
@@ -71,7 +71,7 @@ export async function setScheduled(
 ): Promise<AdminActionResult> {
   const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
-  return updateSubmission(studentEmail, { scheduled }, termId);
+  return updateSubmission(gate, studentEmail, { scheduled });
 }
 
 /** Save the scheduler's free-text notes for a student (PLAN §10a). */
@@ -83,11 +83,9 @@ export async function saveSchedulerNotes(
   const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   const trimmed = notes.trim();
-  return updateSubmission(
-    studentEmail,
-    { schedulerNotes: trimmed.length ? trimmed : null },
-    termId,
-  );
+  return updateSubmission(gate, studentEmail, {
+    schedulerNotes: trimmed.length ? trimmed : null,
+  });
 }
 
 export interface GenerateMagicLinkResult extends AdminActionResult {
@@ -179,10 +177,12 @@ export async function dismissFlag(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  // Only a submission of the term being worked in: a page left open on another
+  // semester names one that is not found here.
   const [sub] = await db
     .select({ email: submissions.studentEmail })
     .from(submissions)
-    .where(eq(submissions.id, submissionId))
+    .where(and(eq(submissions.id, submissionId), submissionInTerm(await workingTermId())))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -261,7 +261,7 @@ export async function setTravelResolved(id: string, resolved: boolean): Promise<
     .select({ email: submissions.studentEmail })
     .from(travelRequests)
     .innerJoin(submissions, eq(travelRequests.submissionId, submissions.id))
-    .where(eq(travelRequests.id, id))
+    .where(and(eq(travelRequests.id, id), submissionInTerm(await workingTermId())))
     .limit(1);
   if (!row) return { ok: false, error: "That travel entry no longer exists." };
 

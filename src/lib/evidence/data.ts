@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionOf } from "@/lib/terms/scope";
 import { localDay } from "@/lib/domain/calendar-day";
 
@@ -39,9 +38,8 @@ export interface EvidenceView {
   travel: TravelEntry[];
 }
 
-export async function loadEvidence(studentEmail: string): Promise<EvidenceView> {
+export async function loadEvidence(studentEmail: string, termId: string): Promise<EvidenceView> {
   const db = getDb();
-  const termId = await workingTermId();
   const [sub] = await db
     .select()
     .from(submissions)

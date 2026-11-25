@@ -266,6 +266,9 @@ export const termMembers = mysqlTable(
       onDelete: "set null",
     }),
     assignedAuto: boolean("assigned_auto").notNull().default(false),
+    // Their most recent signed-in activity while this was the current term.
+    // `students.last_seen_at` is the same for the person, across terms.
+    lastSeenAt: datetime("last_seen_at", { mode: "date" }),
   },
   (t) => [primaryKey({ columns: [t.termId, t.studentEmail] })],
 );

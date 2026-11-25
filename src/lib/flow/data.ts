@@ -22,7 +22,7 @@ import {
   type WizardStepKey,
 } from "./steps";
 import { isReturningStudent } from "./returner";
-import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 import { submissionOf } from "@/lib/terms/scope";
 
 export type FlowAccess =
@@ -130,11 +130,10 @@ async function loadCloses(
   };
 }
 
-export async function loadFlowState(email: string): Promise<FlowState> {
-  const form = await loadStudentForm(email);
+export async function loadFlowState(email: string, termId: string): Promise<FlowState> {
+  const form = await loadStudentForm(email, termId);
   if (!form) return { onRoster: false };
 
-  const termId = await workingTermId();
   const accessRaw = await resolveStudentAccess(email, termId);
   const access: FlowAccess =
     accessRaw.access === "no-group"
@@ -157,7 +156,7 @@ export async function loadFlowState(email: string): Promise<FlowState> {
     positionId: form.student.positionId,
     positionName: form.position?.name ?? null,
     international: form.student.international,
-    returning: isReturningStudent(form.student.hiredOn, (await workingTerm()).newHireCutoff),
+    returning: isReturningStudent(form.student.hiredOn, (await getTerm(getDb(), termId)).newHireCutoff),
     access,
     status: flowStatus(inputs),
     closes,
@@ -176,10 +175,9 @@ export interface WizardNav {
  * forward gate, mirroring the per-step "Next" gates. Off-roster/no-form
  * students see the base steps with only the first reachable.
  */
-export async function loadWizardNav(email: string): Promise<WizardNav> {
-  const form = await loadStudentForm(email);
+export async function loadWizardNav(email: string, termId: string): Promise<WizardNav> {
+  const form = await loadStudentForm(email, termId);
   if (!form) return { steps: wizardSteps(false), reachable: ["course-schedule"] };
-  const termId = await workingTermId();
   const closes = await loadCloses(form.student.positionId, email, termId);
   const inputs = computeFlowInputs(form, await loadSubmissionProgress(email, termId), closes);
   return { steps: wizardSteps(closes.required), reachable: reachableStepKeys(inputs) };

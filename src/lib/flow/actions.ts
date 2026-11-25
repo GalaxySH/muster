@@ -17,13 +17,13 @@ import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { ensureSubmissionId } from "@/lib/evidence/data";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId } from "@/lib/terms/working";
 
 export async function confirmRosterInfo() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
-  const termId = await workingTermId();
+  const termId = await currentTermId();
   const student = await findStudentByEmail(session.email, termId);
   if (student) {
     const submissionId = await ensureSubmissionId(student.email, termId);

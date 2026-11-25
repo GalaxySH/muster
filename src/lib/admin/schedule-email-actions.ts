@@ -225,14 +225,10 @@ export async function sendScheduleEmail(
     };
   }
 
-  const stamped = await updateSubmission(
-    email,
-    {
-      scheduleEmailSentAt: new Date(),
-      ...(config.marksScheduled ? { scheduled: true } : {}),
-    },
-    termId,
-  );
+  const stamped = await updateSubmission(gate, email, {
+    scheduleEmailSentAt: new Date(),
+    ...(config.marksScheduled ? { scheduled: true } : {}),
+  });
   const message = sentMessage(res.outcome, email, res.cc);
   if (!stamped.ok) {
     return { ok: true, message: `${message} The sent date couldn't be saved: ${stamped.error}` };

@@ -2,8 +2,9 @@
  * The shared admin write onto a student's submission, used by the per-student
  * server actions. It lives outside the "use server" files on purpose: exported
  * from one, it would become a client-callable action taking an arbitrary patch.
- * It has no gate of its own: every caller gates with `requireAdminIn(termId)`
- * first, so the term is resolved once per action.
+ * It takes the passed gate as its first argument, which is the only way to
+ * reach it: there is no calling it without `requireAdminIn`, and the term it
+ * writes in is the one the gate proved.
  */
 import "server-only";
 import { eq } from "drizzle-orm";
@@ -11,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { normalizeEmail } from "@/lib/auth/policy";
+import type { AdminInTerm } from "@/lib/auth/require-admin";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import type { AdminActionResult } from "./actions";
@@ -28,9 +30,9 @@ import type { AdminActionResult } from "./actions";
  * only when a caller sets it. Don't add it to `patch`.
  */
 export async function updateSubmission(
+  { termId }: AdminInTerm,
   studentEmail: string,
   patch: Partial<typeof submissions.$inferInsert>,
-  termId: string,
 ): Promise<AdminActionResult> {
   const email = normalizeEmail(studentEmail);
   // submissions.studentEmail is a foreign key, so an unknown address would fail

@@ -15,7 +15,7 @@ import { requireEditableStudent } from "@/lib/groups/gate";
 import { trySyncSheet, CLOSES_SHEET } from "@/lib/admin/sheet-sync";
 import { insertCloseClaim } from "./claim-write";
 import { loadCloseBoard, positionPicksCloses, type CloseBoard } from "./data";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId } from "@/lib/terms/working";
 import { closeClaimInTerm } from "@/lib/terms/scope";
 
 export interface CloseActionResult {
@@ -79,5 +79,5 @@ export async function releaseCloseClaim(slotId: string): Promise<CloseActionResu
 export async function refreshCloseBoard(): Promise<CloseBoard | null> {
   const session = await getAppSession();
   if (!session) return null;
-  return loadCloseBoard(session.email, await workingTermId());
+  return loadCloseBoard(session.email, await currentTermId());
 }

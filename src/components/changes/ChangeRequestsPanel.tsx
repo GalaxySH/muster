@@ -78,7 +78,10 @@ export function ChangeRequestsPanel({
     const email = next?.email ?? admin?.selfEmail ?? null;
     startListLoad(async () => {
       const [list, nextBlocks] = email
-        ? await Promise.all([adminListChangeRequests(email), adminShiftTimeBlocks(email)])
+        ? await Promise.all([
+            adminListChangeRequests(email, termId),
+            adminShiftTimeBlocks(email, termId),
+          ])
         : [[], []];
       setRequests(list);
       setBlocks(nextBlocks);

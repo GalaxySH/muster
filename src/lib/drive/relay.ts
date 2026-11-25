@@ -205,7 +205,7 @@ export async function upsertManagedSheet(
     // The id is cached inside the shared resolution, before any write to the
     // sheet, so a caller arriving later reads it and never searches Drive for a
     // sheet that was only just created.
-    const resolveSheet = (replacing?: string) =>
+    const lookUp = (replacing?: string) =>
       singleFlight(idKey, async () => {
         const cached = await getSetting(idKey);
         if (cached && cached !== replacing) return cached;
@@ -222,6 +222,13 @@ export async function upsertManagedSheet(
         await setSetting(idKey, id);
         return id;
       });
+    // A caller replacing a deleted sheet may have joined a lookup another sync
+    // began before it knew the sheet was gone, and been handed the same dead
+    // id. That lookup is over by then, so asking again starts the replacement.
+    const resolveSheet = async (replacing?: string) => {
+      const id = await lookUp(replacing);
+      return replacing && id === replacing ? lookUp(replacing) : id;
+    };
 
     let sheetId = await resolveSheet();
     try {

@@ -17,7 +17,11 @@ describe("requireAdminIn", () => {
 
   it("lets an admin act on the semester they are working in", async () => {
     signIn(true);
-    expect(await requireAdminIn("test-term")).toEqual({ ok: true, email: "boss@wisc.edu" });
+    expect(await requireAdminIn("test-term")).toEqual({
+      ok: true,
+      email: "boss@wisc.edu",
+      termId: "test-term",
+    });
   });
 
   // A tab left open on another semester after the admin moved on.

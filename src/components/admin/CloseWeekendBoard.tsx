@@ -15,6 +15,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   assignCloseClaim,
   unassignCloseClaim,
@@ -40,6 +41,7 @@ export function CloseWeekendBoard({
   leads: ShiftLeadProgress[];
 }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,9 @@ export function CloseWeekendBoard({
                     pendingKey={pendingKey}
                     menuOpen={menuFor === s.id}
                     onMenu={() => setMenuFor(menuFor === s.id ? null : s.id)}
-                    onAssign={(email) => run(`a:${s.id}`, () => assignCloseClaim(s.id, email))}
+                    onAssign={(email) =>
+                      run(`a:${s.id}`, () => assignCloseClaim(s.id, email, termId))
+                    }
                     onUnassign={(email) =>
                       run(`u:${s.id}:${email}`, () => unassignCloseClaim(s.id, email))
                     }

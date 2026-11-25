@@ -164,13 +164,17 @@ async function afterClaimChange(termId: string) {
 /**
  * Admin: put a Shift Lead on a close shift, no student interaction needed.
  * Goes through the same locking insert as student claims, so capacity and the
- * per-lead limit hold even against a concurrent student pick.
+ * per-lead limit hold even against a concurrent student pick. The same lead is
+ * in every term, so the page says which term it is showing.
  */
-export async function assignCloseClaim(slotId: string, email: string): Promise<CloseAssignResult> {
-  const gate = await requireAdmin();
+export async function assignCloseClaim(
+  slotId: string,
+  email: string,
+  termId: string,
+): Promise<CloseAssignResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const termId = await workingTermId();
   const lead = await findStudentByEmail(email, termId);
   if (!lead?.onRoster || !(await positionPicksCloses(lead.positionId)))
     return { ok: false, error: "Pick an active Shift Lead." };

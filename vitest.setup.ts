@@ -6,7 +6,7 @@ import { vi } from "vitest";
 // extra app_settings read. The seam itself is tested unmocked in
 // src/lib/terms/term-id.test.ts.
 vi.mock("@/lib/terms/working", () => ({
-  currentTermId: async () => "test-term",
+  currentTermId: vi.fn(async () => "test-term"),
   workingTermId: vi.fn(async () => "test-term"),
   listTerms: vi.fn(async () => [{ id: "test-term", name: "Test Term" }]),
   workingTerm: async () => ({

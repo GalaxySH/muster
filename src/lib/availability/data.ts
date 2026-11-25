@@ -12,7 +12,6 @@ import { findStudentByEmail, type StudentRecord } from "@/lib/roster/lookup";
 import { highDemandCells, type CellCount } from "@/lib/domain/demand";
 import { partitionSelection } from "@/lib/domain/orphans";
 import type { Day, Position, ShiftBlock, SelectedShift } from "@/lib/domain/types";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
 
 export interface PositionWithBlocks {
@@ -49,7 +48,10 @@ export async function loadPositionWithBlocks(
  * least its target number of takers. See domain/demand.ts. Runs at grid load
  * (~cheap, two queries). Keys are `demandCellKey(blockId, day)`.
  */
-export async function loadHighDemandCells(positionId: string): Promise<Set<string>> {
+export async function loadHighDemandCells(
+  positionId: string,
+  termId: string,
+): Promise<Set<string>> {
   const db = getDb();
   // Per-block target staffing, to floor each cell individually.
   const blockRows = await db
@@ -73,7 +75,7 @@ export async function loadHighDemandCells(positionId: string): Promise<Set<strin
     .innerJoin(shiftBlocks, eq(shiftSelections.shiftBlockId, shiftBlocks.id))
     .where(
       and(
-        submissionInTerm(await workingTermId()),
+        submissionInTerm(termId),
         eq(termMembers.positionId, positionId),
         eq(termMembers.onRoster, true),
         eq(submissions.status, "submitted"),
@@ -116,8 +118,10 @@ export interface StudentForm {
  * Everything the form route needs. Returns null when the user has no roster
  * record (off-roster; onboarding handled separately).
  */
-export async function loadStudentForm(email: string): Promise<StudentForm | null> {
-  const termId = await workingTermId();
+export async function loadStudentForm(
+  email: string,
+  termId: string,
+): Promise<StudentForm | null> {
   const student = await findStudentByEmail(email, termId);
   if (!student) return null;
 

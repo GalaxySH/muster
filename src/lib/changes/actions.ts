@@ -24,7 +24,7 @@ import {
 import { validateEvidenceUpload } from "@/lib/drive/upload-validation";
 import { relayUpload, relayDelete, NoDriveGrantError } from "@/lib/drive/relay";
 import { listChangeRequests, recentChangeRequestTimes, type ChangeRequestRow } from "./data";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 
 export interface ChangeRequestActionResult {
   ok: boolean;
@@ -47,7 +47,8 @@ async function resolveTargetStudent(
 > {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
-  const termId = await workingTermId();
+  // Their own request goes in the current semester, whatever an admin has selected.
+  const termId = onBehalfOf ? await workingTermId() : await currentTermId();
 
   if (onBehalfOf) {
     if (!session.isAdmin) {
@@ -171,7 +172,7 @@ export async function withdrawChangeRequest(id: string): Promise<ChangeRequestAc
 
   const db = getDb();
   const [row] = await db
-    .select({ studentEmail: changeRequests.studentEmail })
+    .select({ studentEmail: changeRequests.studentEmail, termId: changeRequests.termId })
     .from(changeRequests)
     .where(eq(changeRequests.id, id))
     .limit(1);
@@ -186,6 +187,6 @@ export async function withdrawChangeRequest(id: string): Promise<ChangeRequestAc
   revalidatePath("/change-requests");
   return {
     ok: true,
-    requests: await listChangeRequests(row.studentEmail, await workingTermId()),
+    requests: await listChangeRequests(row.studentEmail, row.termId),
   };
 }

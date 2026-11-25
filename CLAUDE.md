@@ -69,7 +69,7 @@ The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`) remains a
 manual fallback trigger, and `/admin/email-settings` shows the last run + run health
 (docs/deploy.md §7).
 
-**Semesters done** (issue #40, 1.48 to 1.59; `docs/semester-domains-plan.md`): the app
+**Semesters done** (issue #40, 1.48 to 1.60; `docs/semester-domains-plan.md`): the app
 runs in **terms**. Every per-semester table carries a `term_id`; `students` is only the
 person, and their position, roster flag and group are per term in `term_members`.
 Students always work in the **current** term; an admin can select another in the header
@@ -274,7 +274,9 @@ These are non-obvious and pervade the data model — internalize them before edi
   in `scope.ts`. A shared root like `lib/db`. Read "Terms" in `docs/architecture.md`
   before writing any query on `submissions`, runs, plans, closes, groups or positions.
   **A request works in one term (1.55):** `workingTermId()` in `working.ts`, the
-  current term for a student and the selected one for an admin. Use it everywhere;
+  current term for a student and the selected one for an admin. A person's own
+  form (the student pages, and an action sent with no `onBehalfOf`) is always the
+  current term, also for an admin with another selected (1.60). Use it everywhere else;
   `currentTermId()` is only for what must follow the term students are filling in.
   An admin action that acts on a whole term, or names a person by email, and names
   no row of the term gates with `requireAdminIn(termId)` (on-behalf actions shared

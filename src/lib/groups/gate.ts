@@ -13,7 +13,7 @@ import "server-only";
 import { getAppSession } from "@/lib/auth/session";
 import { STALE_TERM_MESSAGE } from "@/lib/auth/require-admin";
 import { findStudentByEmail } from "@/lib/roster/lookup";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 import { resolveStudentAccess } from "./data";
 import { NO_GROUP_MESSAGE, SUBMITTED_LOCK_MESSAGE, lockedReasonLine } from "./window-message";
 
@@ -26,7 +26,8 @@ export type StudentGate =
  * only on behalf of someone: the same person is in every semester, so a tab
  * left on another one would otherwise write this semester's row for them.
  *
- * The gate resolves the working term once and hands it back as `termId`. The
+ * The gate resolves the term once (the working term on behalf of someone, the
+ * current one for a person's own form) and hands it back as `termId`. The
  * action uses that for everything it reads and writes, so a semester started
  * while it runs cannot split it across two terms.
  */
@@ -36,9 +37,11 @@ export async function requireEditableStudent(
 ): Promise<StudentGate> {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
-  const termId = await workingTermId();
-
+  // A person's own form is always the current semester's, also for an admin
+  // who has another one selected. The selection is for the admin console and
+  // for acting on someone's behalf.
   const target = onBehalfOf?.trim();
+  const termId = target ? await workingTermId() : await currentTermId();
   if (target) {
     if (!session.isAdmin) {
       return { ok: false, error: "Only admins can fill in the form for someone else." };

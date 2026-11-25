@@ -89,4 +89,58 @@ describe("runChangeDigest", () => {
     expect(res.sent).toBe(true);
     expect(update).toHaveBeenCalledTimes(1);
   });
+
+  it("sends each recipient the batch under its own repeatable key", async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
+
+    await runChangeDigest(now);
+    const first = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
+    vi.mocked(sendEmail).mockClear();
+    // The same requests again, in another order: the same keys.
+    vi.mocked(loadPendingDigestRequests).mockResolvedValue([{ id: 2 }, { id: 1 }] as never);
+    await runChangeDigest(now);
+    const second = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
+
+    expect(first).toHaveLength(2);
+    expect(first[0]).toMatch(/^change-digest-[0-9a-f]{32}-[0-9a-f]{16}$/);
+    expect(first[0]).not.toBe(first[1]);
+    expect(second).toEqual(first);
+  });
+
+  it("uses a new key once the batch has another request in it", async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ outcome: "sent", cc: [] });
+
+    await runChangeDigest(now);
+    vi.mocked(loadPendingDigestRequests).mockResolvedValue([
+      { id: 1 },
+      { id: 2 },
+      { id: 3 },
+    ] as never);
+    await runChangeDigest(now);
+
+    const keys = vi.mocked(sendEmail).mock.calls.map(([m]) => m.idempotencyKey);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it("stamps the requests when one recipient's send fails and another's goes out", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(sendEmail)
+      .mockRejectedValueOnce(new Error("timed out"))
+      .mockResolvedValueOnce({ outcome: "sent", cc: [] });
+
+    const res = await runChangeDigest(now);
+
+    expect(res.sent).toBe(true);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the requests unstamped when every send fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(sendEmail).mockRejectedValue(new Error("timed out"));
+
+    const res = await runChangeDigest(now);
+
+    expect(res).toMatchObject({ sent: false, reason: "not-delivered" });
+    expect(update).not.toHaveBeenCalled();
+  });
 });

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.59
+- **Version:** 1.60
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1668,6 +1668,41 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.60 (2026-11-25)** — **The rest of the review's open items (issue #40).**
+  Migration 0054, additive.
+  - **Sign-ins are counted per semester.** `students.last_seen_at` is one stamp per
+    person, so analytics for an earlier semester counted a visit made after a later
+    one had started. `term_members.last_seen_at` (migration 0054, nullable) is
+    stamped with it for the current term (`auth/last-seen.ts`), and
+    `/admin/analytics` reads that. 0054 fills the current term from the stamps
+    people already have. The per-student Last seen card is still the person's own.
+  - **A person's own form is always the current semester's.** An admin who is also
+    on the roster, with another semester selected, was shown and saved their own
+    form in the selected one. `requireEditableStudent` and the change-request
+    target resolve `currentTermId()` when no one is named, the student pages pass
+    the current term to their loaders (`loadStudentForm`, `loadEvidence`,
+    `loadFlowState`, `loadWizardNav` and `loadHighDemandCells` now take the term),
+    and `?student=` on a student page keeps the selected one. Nothing changes for
+    a student, whose working term already was the current one.
+  - **The change digest cannot double-send.** Each send carries an idempotency key
+    made from the batch's request ids and the recipient, so a send that timed out
+    after Resend took it and is sent again is one email. One recipient failing no
+    longer leaves the batch unstamped for the others (`changes/digest.ts`). The
+    schedule email already had a key; a magic link is never retried with the same
+    token.
+  - **`updateSubmission` cannot be reached without the gate.** It takes the
+    result of `requireAdminIn` (`AdminInTerm`, which only that gate makes) and
+    works in the term it proved.
+  - **`assignCloseClaim`** takes the page's term and gates with `requireAdminIn`,
+    as do the change-request panel's two reads by email.
+  - **Row-id admin actions.** All of them in groups, positions, schedule, closes
+    and W2W were checked and already look their row up inside the working term.
+    `dismissFlag` and `setTravelResolved` did not, and now do. The three
+    change-request row actions stay as they are on purpose: the admin queue shows
+    every semester's requests, and an admin resolves last semester's from it.
+  - **The last managed-sheet race.** A sync replacing a deleted sheet that joined
+    another sync's lookup got the dead id back and failed. It now asks once more,
+    which starts the replacement.
 - **1.59 (2026-11-25)** — **What the 1.58 review left open (issue #40).** No schema
   change and no migration.
   - **Calls out of the app have a time limit.** No call to Drive, Sheets or Resend

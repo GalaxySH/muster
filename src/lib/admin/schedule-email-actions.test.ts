@@ -11,7 +11,10 @@ const requireAdmin = vi.fn();
 vi.mock("@/lib/auth/require-admin", () => ({
   requireAdmin: () => requireAdmin(),
   // The semester check has its own test; here it is the same gate.
-  requireAdminIn: () => requireAdmin(),
+  requireAdminIn: async (termId: string) => {
+    const gate = await requireAdmin();
+    return gate.ok ? { ...gate, termId } : gate;
+  },
 }));
 const sendEmail = vi.fn();
 vi.mock("@/lib/email/resend", () => ({ sendEmail: (m: unknown) => sendEmail(m) }));
@@ -45,7 +48,7 @@ vi.mock("@/lib/settings", () => ({
 }));
 const updateSubmission = vi.fn();
 vi.mock("./update-submission", () => ({
-  updateSubmission: (e: string, patch: unknown, t: string) => updateSubmission(e, patch, t),
+  updateSubmission: (gate: unknown, e: string, patch: unknown) => updateSubmission(gate, e, patch),
 }));
 const { workingTermId } = await import("@/lib/terms/working");
 
@@ -104,9 +107,9 @@ describe("sendScheduleEmail", () => {
     expect(msg.text).toContain("Tuesday: 6:30 AM to 10:00 AM");
     expect(msg.html).toContain(">Tuesday</td>");
     expect(updateSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: true, termId: "test-term" }),
       "sfhauge@wisc.edu",
       { scheduleEmailSentAt: expect.any(Date), scheduled: true },
-      "test-term",
     );
   });
 
@@ -161,9 +164,9 @@ describe("sendScheduleEmail", () => {
     config = { ...DEFAULT_SCHEDULE_EMAIL, marksScheduled: false };
     await sendScheduleEmail("sfhauge@wisc.edu", input, "test-term");
     expect(updateSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ termId: "test-term" }),
       "sfhauge@wisc.edu",
       { scheduleEmailSentAt: expect.any(Date) },
-      "test-term",
     );
   });
 

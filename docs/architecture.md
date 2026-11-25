@@ -994,7 +994,11 @@ nobody's to review, so it matches neither side.
 ## Sign-in tracking & analytics (PLAN §10, §11, v1.06)
 
 "Has this person logged in?" is separate from "did they submit the form?", and the app
-tracks it in one nullable column, **`students.last_seen_at`**. The write happens at the
+tracks it in one nullable column, **`students.last_seen_at`**, and the same stamp
+goes on the person's place in the current term, **`term_members.last_seen_at`**
+(1.60), which is what `/admin/analytics` reads: a term's stamp only moves while it
+is the current one, so an earlier semester's numbers do not count later visits.
+The per-student Last seen card still shows the person's own stamp. The write happens at the
 **single session seam** every authenticated request passes through, `getAppSession`
 (`lib/auth/session.ts`) — method-agnostic across Google, magic-link, and dev-login — so
 adding it there covers every path without touching the NextAuth callbacks. A null stamp

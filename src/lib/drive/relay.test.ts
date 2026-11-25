@@ -237,6 +237,21 @@ describe("upsertManagedSheet", () => {
       expect(createSpreadsheet).not.toHaveBeenCalled();
     });
 
+    it("still replaces it after joining a lookup that began before it was known gone", async () => {
+      // The first sync finds it gone while a second is midway through reading
+      // the cached id, so the first joins that lookup and gets "old" back.
+      let late: Promise<unknown> | undefined;
+      vi.mocked(writeSheetValues).mockImplementationOnce(async () => {
+        late = upsertManagedSheet(sheet, [["h"]]);
+        throw gone();
+      });
+      const result = await upsertManagedSheet(sheet, [["h"]]);
+      await late;
+      expect(result.spreadsheetId).toBe("new");
+      expect(createSpreadsheet).toHaveBeenCalledTimes(1);
+      expect(store.get("responses_sheet_id:test-term")).toBe("new");
+    });
+
     it("gives up when the replacement cannot be written either", async () => {
       vi.mocked(writeSheetValues).mockRejectedValue(gone());
       await expect(upsertManagedSheet(sheet, [["h"]])).rejects.toThrow("gone");

@@ -27,12 +27,26 @@ export async function requireAdmin(): Promise<AdminGate> {
  * Actions that name a row of the semester are already safe: the row is looked
  * up inside the working semester.
  */
-export async function requireAdminIn(renderedTermId: string): Promise<AdminGate> {
+export async function requireAdminIn(renderedTermId: string): Promise<AdminTermGate> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
   if (!(await isWorkingTerm(renderedTermId))) return { ok: false, error: STALE_TERM_MESSAGE };
-  return gate;
+  return { ...gate, termId: renderedTermId } as AdminInTerm;
 }
+
+declare const passedTermGate: unique symbol;
+
+/**
+ * An admin who passed `requireAdminIn` for `termId`. Only that gate makes one,
+ * so a helper that takes it as an argument cannot be reached without the gate.
+ */
+export type AdminInTerm = {
+  ok: true;
+  email: string;
+  termId: string;
+  readonly [passedTermGate]: true;
+};
+export type AdminTermGate = AdminInTerm | { ok: false; error: string };
 
 export const STALE_TERM_MESSAGE =
   "This page is showing a different semester. Reload it and try again.";

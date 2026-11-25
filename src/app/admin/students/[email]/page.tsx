@@ -239,7 +239,9 @@ export default async function StudentDetailPage({
       })
     : null;
 
-  const highDemand = position ? await loadHighDemandCells(position.id) : new Set<string>();
+  const highDemand = position
+    ? await loadHighDemandCells(position.id, await workingTermId())
+    : new Set<string>();
   // Every assignable position, for the change-position control in the details
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.

@@ -6,7 +6,9 @@ import { loadWizardNav } from "@/lib/flow/data";
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
-import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { currentTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
+import { getDb } from "@/lib/db";
 
 /**
  * Final wizard step (PLAN §13). Sets expectations (these are preferences, not a
@@ -15,10 +17,11 @@ import { workingTerm, workingTermId } from "@/lib/terms/working";
 export default async function ExitPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/exit");
-  const student = await findStudentByEmail(session.email, await workingTermId());
+  const termId = await currentTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) redirect("/me");
-  const nav = await loadWizardNav(session.email);
-  const { scheduleNote } = await workingTerm();
+  const nav = await loadWizardNav(session.email, termId);
+  const { scheduleNote } = await getTerm(getDb(), termId);
 
   return (
     <Page>

@@ -6,7 +6,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 import { loadWizardNav } from "@/lib/flow/data";
 import { nextHref } from "@/lib/flow/steps";
 import { TravelForm } from "@/components/evidence/TravelForm";
@@ -49,9 +49,15 @@ export default async function TravelPage({
   // from the per-student admin page). That path loads the target's entries and
   // skips the group/window gates. The travel cutoff still applies (PLAN §8).
   const { student: studentParam } = await searchParams;
-  const termId = await workingTermId();
-  const onBehalf =
-    session.isAdmin && studentParam ? await findStudentByEmail(studentParam, termId) : null;
+  // Their own page is the current semester's. For someone else it is the one
+  // the admin is working in.
+  let termId = await currentTermId();
+  let onBehalf: Awaited<ReturnType<typeof findStudentByEmail>> = null;
+  if (session.isAdmin && studentParam) {
+    const selected = await workingTermId();
+    onBehalf = await findStudentByEmail(studentParam, selected);
+    if (onBehalf) termId = selected;
+  }
   const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
@@ -66,7 +72,7 @@ export default async function TravelPage({
 
   const now = new Date();
   const [evidence, drive, { cutoff }, policy, returnDateRow] = await Promise.all([
-    loadEvidence(student.email),
+    loadEvidence(student.email, termId),
     getDriveGrantStatus(),
     getTravelCutoff(termId),
     getLateTravelPolicy(termId),
@@ -99,7 +105,7 @@ export default async function TravelPage({
 
   const [access, nav] = await Promise.all([
     resolveStudentAccess(student.email, termId),
-    loadWizardNav(student.email),
+    loadWizardNav(student.email, termId),
   ]);
 
   if (access.access === "no-group") {

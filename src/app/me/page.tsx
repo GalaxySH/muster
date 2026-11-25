@@ -11,13 +11,14 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled } from "@/lib/settings";
+import { currentTermId } from "@/lib/terms/working";
 
 export default async function MePage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
   const [flow, changeRequestsEnabled] = await Promise.all([
-    loadFlowState(session.email),
+    loadFlowState(session.email, await currentTermId()),
     getChangeRequestsEnabled(),
   ]);
   // Admins are staff, so they have no roster row and no form to fill out. Give them the

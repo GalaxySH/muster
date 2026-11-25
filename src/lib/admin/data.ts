@@ -225,7 +225,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
   }
 
   const [evidence, closes] = await Promise.all([
-    loadEvidence(email),
+    loadEvidence(email, termId),
     loadStudentCloseClaims(email, student.positionId, termId),
   ]);
 

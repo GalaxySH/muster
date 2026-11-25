@@ -10,7 +10,7 @@ vi.mock("./data", () => ({ resolveStudentAccess: vi.fn() }));
 
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 import { resolveStudentAccess } from "./data";
 import { requireEditableStudent } from "./gate";
 import { NO_GROUP_MESSAGE, SUBMITTED_LOCK_MESSAGE } from "./window-message";
@@ -54,12 +54,15 @@ const lockedWindow = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(workingTermId).mockImplementation(async () => "test-term");
+  vi.mocked(currentTermId).mockImplementation(async () => "test-term");
 });
 
-/** The working term reads "A" the first time and "B" after, as if a semester started. */
+/** Each term reads "A" the first time and "B" after, as if a semester started. */
 const termMovesAfterFirstRead = () => {
-  let calls = 0;
-  vi.mocked(workingTermId).mockImplementation(async () => (calls++ === 0 ? "A" : "B"));
+  let working = 0;
+  vi.mocked(workingTermId).mockImplementation(async () => (working++ === 0 ? "A" : "B"));
+  let current = 0;
+  vi.mocked(currentTermId).mockImplementation(async () => (current++ === 0 ? "A" : "B"));
 };
 
 describe("requireEditableStudent (student path)", () => {
@@ -113,9 +116,23 @@ describe("requireEditableStudent (student path)", () => {
     openWindow();
 
     expect(await requireEditableStudent()).toMatchObject({ ok: true, termId: "A" });
-    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(currentTermId).toHaveBeenCalledTimes(1);
+    expect(workingTermId).not.toHaveBeenCalled();
     expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "A");
     expect(access).toHaveBeenCalledWith("stu@wisc.edu", "A");
+  });
+
+  // An admin who is also on the roster, with another semester selected.
+  it("puts an admin's own form in the current semester, not the selected one", async () => {
+    vi.mocked(workingTermId).mockImplementation(async () => "2026-fall");
+    vi.mocked(currentTermId).mockImplementation(async () => "spring-2027");
+    signedIn("boss@wisc.edu", true);
+    lookup.mockResolvedValue(rosterRow("boss@wisc.edu"));
+    openWindow();
+
+    expect(await requireEditableStudent()).toMatchObject({ ok: true, termId: "spring-2027" });
+    expect(lookup).toHaveBeenCalledWith("boss@wisc.edu", "spring-2027");
+    expect(access).toHaveBeenCalledWith("boss@wisc.edu", "spring-2027");
   });
 });
 
@@ -134,6 +151,19 @@ describe("requireEditableStudent (admin on behalf of a student)", () => {
     });
     expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "test-term");
     expect(access).not.toHaveBeenCalled();
+  });
+
+  it("works in the selected semester when acting for someone", async () => {
+    vi.mocked(workingTermId).mockImplementation(async () => "2026-fall");
+    vi.mocked(currentTermId).mockImplementation(async () => "spring-2027");
+    signedIn("boss@wisc.edu", true);
+    lookup.mockResolvedValue(rosterRow("stu@wisc.edu", "barista"));
+
+    expect(await requireEditableStudent("stu@wisc.edu", "2026-fall")).toMatchObject({
+      ok: true,
+      termId: "2026-fall",
+    });
+    expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "2026-fall");
   });
 
   it("compares the page's semester to the one term it resolved, then looks the target up in it", async () => {

@@ -230,10 +230,10 @@ If it cannot be fixed soon, go back to v1.47 (below). If the failed migration is
 0048 or earlier, v1.47 runs against the database as it is. If it is 0049 or
 later, run rollback step 1 first.
 
-### The semester release (1.48 to 1.59, migrations 0037 to 0053)
+### The semester release (1.48 to 1.60, migrations 0037 to 0054)
 
 Production runs v1.47. No release between 1.47 and this one is tagged, so this
-deploy applies 0037 to 0053 in one `migrate`. On a copy of production they took
+deploy applies 0037 to 0054 in one `migrate`. On a copy of production they took
 about 6 seconds, so expect about 15 seconds of proxy errors. This release changes
 the image, so that downtime cannot be avoided; follow the advice above.
 
@@ -257,6 +257,8 @@ the image, so that downtime cannot be avoided; follow the advice above.
   `late_travel_accept`, `excluded_roster_titles`, the seven bare Drive keys and
   the bare `schedule_params`.
 - 0053: close slot dates are unique within a term, not across all terms.
+- 0054: `term_members.last_seen_at`, a nullable column, filled for the current
+  term from `students.last_seen_at`.
 
 Before the deploy, note `responses_sheet_id` in `app_settings`. After it:
 
@@ -384,6 +386,8 @@ is a `travel_cutoff` row that production does not have today. It holds the
 default instant, so v1.47 behaves the same but shows the cutoff as set by hand.
 
 0053 needs no rollback step: v1.47 works with close dates unique per term.
+Nor does 0054: v1.47 never reads `term_members`, and it keeps stamping
+`students.last_seen_at`, which the roll-forward SQL below copies back in.
 
 **Rolling forward again** after such a rollback:
 
@@ -401,13 +405,14 @@ default instant, so v1.47 behaves the same but shows the cutoff as set by hand.
 
 ```sql
 INSERT INTO `term_members` (`term_id`, `student_email`, `position_id`, `on_roster`,
-  `roster_title`, `group_id`, `assigned_auto`)
+  `roster_title`, `group_id`, `assigned_auto`, `last_seen_at`)
 SELECT '2026-fall', `email`, `position_id`, `on_roster`, `roster_title`, `group_id`,
-  `group_assigned_auto`
+  `group_assigned_auto`, `last_seen_at`
 FROM `students`
 ON DUPLICATE KEY UPDATE `position_id` = VALUES(`position_id`),
   `on_roster` = VALUES(`on_roster`), `roster_title` = VALUES(`roster_title`),
-  `group_id` = VALUES(`group_id`), `assigned_auto` = VALUES(`assigned_auto`);
+  `group_id` = VALUES(`group_id`), `assigned_auto` = VALUES(`assigned_auto`),
+  `last_seen_at` = VALUES(`last_seen_at`);
 
 UPDATE `terms` t
 LEFT JOIN `app_settings` c ON c.`key` = 'travel_cutoff'

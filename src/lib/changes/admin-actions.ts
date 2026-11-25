@@ -10,33 +10,50 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { changeRequestFiles, changeRequests } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn, type AdminInTerm } from "@/lib/auth/require-admin";
+import { currentTermId } from "@/lib/terms/working";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { relayDelete } from "@/lib/drive/relay";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadPositionWithBlocks } from "@/lib/availability/data";
 import { validateChangeRequest, type ShiftTimeBlock } from "@/lib/domain/change-requests";
 import { listChangeRequests, type ChangeRequestRow } from "./data";
-import { workingTermId } from "@/lib/terms/working";
+
+/**
+ * The panel also lists the admin's own requests, when the form acts for nobody.
+ * Those are filed in the current semester like anyone's own (changes/actions.ts),
+ * so they are read from it too. Anyone else is read in the semester worked in.
+ */
+const ownOrWorkingTerm = async (email: string, gate: AdminInTerm): Promise<string> =>
+  email === gate.email ? currentTermId() : gate.termId;
 
 /**
  * One employee's requests, for the form panel when an admin picks an employee
- * to act for (the panel's list follows whoever the form targets).
+ * to act for (the panel's list follows whoever the form targets). The same
+ * person is in every term, so the page says which term it is showing.
  */
-export async function adminListChangeRequests(email: string): Promise<ChangeRequestRow[]> {
-  const gate = await requireAdmin();
+export async function adminListChangeRequests(
+  email: string,
+  termId: string,
+): Promise<ChangeRequestRow[]> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return [];
-  return listChangeRequests(normalizeEmail(email), await workingTermId());
+  const who = normalizeEmail(email);
+  return listChangeRequests(who, await ownOrWorkingTerm(who, gate));
 }
 
 /**
  * The live blocks of an employee's position, for the form's quick-insert shift
  * times when an admin picks someone to act for. Empty without a position.
  */
-export async function adminShiftTimeBlocks(email: string): Promise<ShiftTimeBlock[]> {
-  const gate = await requireAdmin();
+export async function adminShiftTimeBlocks(
+  email: string,
+  termId: string,
+): Promise<ShiftTimeBlock[]> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return [];
-  const student = await findStudentByEmail(email, await workingTermId());
+  const who = normalizeEmail(email);
+  const student = await findStudentByEmail(who, await ownOrWorkingTerm(who, gate));
   if (!student?.positionId) return [];
   const loaded = await loadPositionWithBlocks(student.positionId);
   return (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));

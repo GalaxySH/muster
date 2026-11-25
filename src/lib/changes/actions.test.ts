@@ -24,7 +24,7 @@ import { getDb } from "@/lib/db";
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { relayUpload } from "@/lib/drive/relay";
-import { workingTermId } from "@/lib/terms/working";
+import { currentTermId, workingTermId } from "@/lib/terms/working";
 import { listChangeRequests, recentChangeRequestTimes } from "./data";
 import { createChangeRequest } from "./actions";
 
@@ -59,6 +59,8 @@ beforeEach(() => {
   // the request was being saved.
   let calls = 0;
   vi.mocked(workingTermId).mockImplementation(async () => (calls++ === 0 ? "A" : "B"));
+  let current = 0;
+  vi.mocked(currentTermId).mockImplementation(async () => (current++ === 0 ? "A" : "B"));
   vi.mocked(findStudentByEmail).mockResolvedValue({
     email: STUDENT,
     positionId: "ca",
@@ -74,7 +76,8 @@ describe("createChangeRequest", () => {
     const inserts = useDb();
 
     expect(await createChangeRequest(requestForm())).toEqual({ ok: true, requests: [] });
-    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(currentTermId).toHaveBeenCalledTimes(1);
+    expect(workingTermId).not.toHaveBeenCalled();
     expect(findStudentByEmail).toHaveBeenCalledWith(STUDENT, "A");
     expect(relayUpload).toHaveBeenCalledWith(expect.objectContaining({ termId: "A" }));
     expect(inserts.find((i) => i.table === "change_requests")?.values).toMatchObject({

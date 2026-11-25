@@ -8,9 +8,11 @@
  * idempotent via `change_requests.digestSentAt`: only open, unstamped rows
  * are reported, and rows are stamped after a successful send. Every skip
  * leaves rows unstamped so no request is silently lost; a crash between send
- * and stamp re-sends rather than drops.
+ * and stamp re-sends rather than drops, under the same idempotency key, which
+ * Resend treats as the same email for a day.
  */
 import "server-only";
+import { createHash } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { changeRequests } from "@/lib/db/schema";
@@ -52,10 +54,32 @@ export async function runChangeDigest(now: Date = new Date()): Promise<ChangeDig
   if (!(await getEmailSendingEnabled())) return { ...base, reason: "email-off" };
 
   const email = buildChangeDigestEmail(pending, env.NEXTAUTH_URL);
+  // The key names this batch and this recipient. A send that timed out after
+  // Resend took it, then went out again with the same requests, is one email.
+  const batch = createHash("sha256")
+    .update(
+      pending
+        .map((p) => p.id)
+        .sort()
+        .join(","),
+    )
+    .digest("hex")
+    .slice(0, 32);
   let delivered = 0;
   for (const to of recipients) {
-    const { outcome } = await sendEmail({ to, ...email });
-    if (outcome === "sent") delivered += 1;
+    const recipient = createHash("sha256").update(to).digest("hex").slice(0, 16);
+    try {
+      const { outcome } = await sendEmail({
+        to,
+        ...email,
+        idempotencyKey: `change-digest-${batch}-${recipient}`,
+      });
+      if (outcome === "sent") delivered += 1;
+    } catch (e) {
+      // One address failing must not undo the others: without this the rows
+      // stayed unstamped and everyone already reached got the digest again.
+      console.error("Change digest send failed for one recipient:", e);
+    }
   }
   // A message only logged (no Resend key) or blocked by the dev test-recipient
   // guard reached nobody, so the rows stay unstamped for a later digest rather

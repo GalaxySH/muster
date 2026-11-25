@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
  * entry says why.
  */
 const ALLOWED: Record<string, string> = {
-  "src/lib/admin/actions.ts": "setTravelResolved finds the owner of one travel entry by its id",
   "src/lib/availability/actions.ts": "finalizeSubmission updates the row it just loaded, by id",
   "src/lib/test-accounts/actions.ts":
     "deleting a test account removes its submission in every term",
