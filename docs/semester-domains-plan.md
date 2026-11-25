@@ -1335,12 +1335,8 @@ Built as §2.9 and §5 describe, with these choices and differences.
 
 **Known gaps.**
 
-- **Actions keyed by a person's email are not covered by the rendered-term
-  check** (saving an admin's copy of someone's availability, marking scheduled,
-  scheduler notes, a position change, deleting a response). The same person
-  exists in both terms, so a stale tab could write the other term's row for
-  them. The tabs-follow-each-other reload is what stands in the way today.
-  Covering them means the same gate on about fifteen more actions.
+- **Actions keyed by a person's email** were not covered when Phase 5 was
+  first built. They are now: see "Email-keyed actions" below.
 - The Drive folder is not renamed when a term is.
 - The schedule email preview uses the working term's name, not the current
   term's as §2.10 said: it shows what a send from where the admin is working
@@ -1371,6 +1367,39 @@ Built as §2.9 and §5 describe, with these choices and differences.
   sync after a deploy writes the sheets it writes today. The copy was deleted.
 - The production build with no database reachable, which is how the image is
   built.
+
+**Email-keyed actions (added after the first build).** The same person is in
+every term, so an action that names someone by email could write the other
+term's row from a stale tab. Every admin write of that kind now sends the term
+its page was rendered for and is refused when it is not the working term:
+
+- Through `requireAdminIn`: marking scheduled, scheduler notes, deleting a
+  response, removing an orphaned pick, the pasted form response steps, the
+  schedule email, taking someone out of a group, a position change, schedule
+  edits and clearing one person's schedule.
+- Through the on-behalf gates (`requireEditableStudent`, and
+  `resolveTargetStudent` for change requests), which take the rendered term and
+  check it only when an admin acts for someone: the admin's copy of
+  availability and reverting it, requested hours, student notes, every evidence
+  and travel action, and a change request sent for an employee. A student's own
+  call passes nothing and is unaffected.
+
+The on-behalf pages live on student routes (`/course-schedule`, `/travel`,
+`/change-requests`), outside the admin layout, so they wrap their form in the
+same `WorkingTerm` provider. An on-behalf call that names no term is refused,
+which is what would show up at once if a call site were missed.
+
+Checked in the browser on the two-term database: with the page on the working
+term, marking scheduled, requested hours and extracurricular notes on behalf
+all saved to that term; with the tab left stale, requested hours, the notes and
+a group change were refused and neither term's row changed.
+
+Left as they are: actions that only read (a stale tab shows the other term's
+data until it reloads), actions that name a row of the term (already looked up
+inside the working term), and the few that create something in the term and
+name no row (a new group or position, the default sweep, a schedule snapshot,
+engine params, a new test account). The last group is the remaining hole; what
+a stale tab can do there is create something visible in the wrong term.
 
 **Not verified.** Nothing was written to a real Drive: the test database has no
 grant, so the per-term folder and sheet paths are covered by reading the code

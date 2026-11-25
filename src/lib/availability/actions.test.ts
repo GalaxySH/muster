@@ -75,8 +75,8 @@ describe("saveDesiredHoursFor", () => {
   it("overwrites the student's answer without moving updated_at", async () => {
     const updates = useDb([{ id: "sub-1", status: "submitted" }]);
 
-    expect(await saveDesiredHoursFor(STUDENT, 15)).toEqual({ ok: true });
-    expect(requireEditableStudent).toHaveBeenCalledWith(STUDENT);
+    expect(await saveDesiredHoursFor(STUDENT, 15, "test-term")).toEqual({ ok: true });
+    expect(requireEditableStudent).toHaveBeenCalledWith(STUDENT, "test-term");
     expect(updates).toEqual([{ desiredHours: 15 }]);
     // It is one of the revalidation checks, and a submitted row is in the sheet.
     expect(syncRevalidationFlag).toHaveBeenCalledWith(expect.anything(), "sub-1");
@@ -85,27 +85,27 @@ describe("saveDesiredHoursFor", () => {
 
   it("refuses anything under the position floor, as the form does", async () => {
     const updates = useDb([{ id: "sub-1", status: "draft" }]);
-    const res = await saveDesiredHoursFor(STUDENT, 9);
+    const res = await saveDesiredHoursFor(STUDENT, 9, "test-term");
     expect(res).toEqual({ ok: false, error: "Must be at least 10h." });
     expect(updates).toEqual([]);
   });
 
   it("refuses a fraction of an hour", async () => {
     const updates = useDb([{ id: "sub-1", status: "draft" }]);
-    expect((await saveDesiredHoursFor(STUDENT, 12.5)).ok).toBe(false);
+    expect((await saveDesiredHoursFor(STUDENT, 12.5, "test-term")).ok).toBe(false);
     expect(updates).toEqual([]);
   });
 
   it("clears the answer on null", async () => {
     const updates = useDb([{ id: "sub-1", status: "draft" }]);
-    expect(await saveDesiredHoursFor(STUDENT, null)).toEqual({ ok: true });
+    expect(await saveDesiredHoursFor(STUDENT, null, "test-term")).toEqual({ ok: true });
     expect(updates).toEqual([{ desiredHours: null }]);
     expect(trySyncSheet).not.toHaveBeenCalled();
   });
 
   it("starts a stub for a student with no submission, with nothing to revalidate", async () => {
     const updates = useDb([]);
-    expect(await saveDesiredHoursFor(STUDENT, 12)).toEqual({ ok: true });
+    expect(await saveDesiredHoursFor(STUDENT, 12, "test-term")).toEqual({ ok: true });
     expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT);
     expect(updates).toEqual([{ desiredHours: 12 }]);
     expect(syncRevalidationFlag).not.toHaveBeenCalled();
@@ -118,13 +118,13 @@ describe("saveDesiredHoursFor", () => {
       ok: false,
       error: "Only admins can fill in the form for someone else.",
     });
-    expect((await saveDesiredHoursFor(STUDENT, 12)).ok).toBe(false);
+    expect((await saveDesiredHoursFor(STUDENT, 12, "test-term")).ok).toBe(false);
     expect(updates).toEqual([]);
   });
 
   it("never falls back to the caller's own form on a blank student", async () => {
     useDb([]);
-    expect((await saveDesiredHoursFor("  ", 12)).ok).toBe(false);
+    expect((await saveDesiredHoursFor("  ", 12, "test-term")).ok).toBe(false);
     expect(requireEditableStudent).not.toHaveBeenCalled();
   });
 });
@@ -132,7 +132,7 @@ describe("saveDesiredHoursFor", () => {
 describe("saveStudentNotesFor", () => {
   it("trims the note and leaves updated_at alone", async () => {
     const updates = useDb([{ id: "sub-1", status: "submitted" }]);
-    expect(await saveStudentNotesFor(STUDENT, "  Mornings only \n")).toEqual({ ok: true });
+    expect(await saveStudentNotesFor(STUDENT, "  Mornings only \n", "test-term")).toEqual({ ok: true });
     expect(updates).toEqual([{ studentNotes: "Mornings only" }]);
     expect(syncRevalidationFlag).not.toHaveBeenCalled();
     expect(trySyncSheet).toHaveBeenCalled();
@@ -140,13 +140,13 @@ describe("saveStudentNotesFor", () => {
 
   it("stores an emptied note as null", async () => {
     const updates = useDb([{ id: "sub-1", status: "draft" }]);
-    await saveStudentNotesFor(STUDENT, "   ");
+    await saveStudentNotesFor(STUDENT, "   ", "test-term");
     expect(updates).toEqual([{ studentNotes: null }]);
   });
 
   it("never falls back to the caller's own form on a blank student", async () => {
     useDb([]);
-    expect((await saveStudentNotesFor("", "hi")).ok).toBe(false);
+    expect((await saveStudentNotesFor("", "hi", "test-term")).ok).toBe(false);
     expect(requireEditableStudent).not.toHaveBeenCalled();
   });
 });

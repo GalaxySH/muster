@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import {
   searchStudentsForPicker,
@@ -24,6 +25,7 @@ interface Option {
  * options + a date) mirrors the response dashboard's start-date filter.
  */
 export function StudentAssigner({ groups, positions }: { groups: Option[]; positions: Option[] }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -102,7 +104,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
   function unassignSelected() {
     setMsg(null);
     startTransition(async () => {
-      const res = await unassignStudents([...selected]);
+      const res = await unassignStudents([...selected], termId);
       setMsg({
         ok: res.ok,
         text: res.ok ? `Removed ${selected.size} from their group.` : (res.error ?? "Failed."),

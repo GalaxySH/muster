@@ -1,3 +1,4 @@
+import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
@@ -49,11 +50,13 @@ export default async function CourseSchedulePage({
       <Page>
         <AppHeader />
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
-        <CourseScheduleForm
-          initial={evidence}
-          driveConnected={drive.connected}
-          onBehalfOf={onBehalf.email}
-        />
+        <WorkingTerm>
+          <CourseScheduleForm
+            initial={evidence}
+            driveConnected={drive.connected}
+            onBehalfOf={onBehalf.email}
+          />
+        </WorkingTerm>
       </Page>
     );
   }

@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { ensureSubmissionId } from "@/lib/evidence/data";
@@ -29,8 +29,8 @@ interface Target {
 }
 
 /** The admin gate, the roster check, and the student's submission row if they have one. */
-async function target(student: string): Promise<Target | { error: string }> {
-  const gate = await requireAdmin();
+async function target(student: string, termId: string): Promise<Target | { error: string }> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { error: gate.error };
   const email = normalizeEmail(student);
   // submissions.studentEmail is a foreign key, so check the roster first.
@@ -60,8 +60,9 @@ function refresh(email: string) {
 export async function saveEveryWeekendFor(
   student: string,
   optIn: boolean,
+  termId: string,
 ): Promise<AdminActionResult> {
-  const t = await target(student);
+  const t = await target(student, termId);
   if ("error" in t) return { ok: false, error: t.error };
 
   const submissionId = t.existing?.id ?? (await ensureSubmissionId(t.email));
@@ -86,8 +87,9 @@ export async function saveEveryWeekendFor(
 export async function recordFormResponse(
   student: string,
   submittedAtIso: string | null,
+  termId: string,
 ): Promise<AdminActionResult> {
-  const t = await target(student);
+  const t = await target(student, termId);
   if ("error" in t) return { ok: false, error: t.error };
   if (t.existing?.status === "submitted" && t.existing.submittedVia === "muster") {
     return { ok: false, error: "They already submitted in Muster." };

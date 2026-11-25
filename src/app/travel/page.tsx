@@ -1,3 +1,4 @@
+import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
@@ -77,16 +78,18 @@ export default async function TravelPage({
       <Page>
         <AppHeader />
         <OnBehalfBanner displayName={onBehalf.displayName} email={onBehalf.email} />
-        <TravelForm
-          initial={evidence}
-          driveConnected={drive.connected}
-          cutoffMs={cutoff.getTime()}
-          pastCutoff={pastCutoff}
-          lateAccepted={lateAccepted}
-          onBehalfOf={onBehalf.email}
-          returnDate={returnDate}
-          contactEmail={contactLabel}
-        />
+        <WorkingTerm>
+          <TravelForm
+            initial={evidence}
+            driveConnected={drive.connected}
+            cutoffMs={cutoff.getTime()}
+            pastCutoff={pastCutoff}
+            lateAccepted={lateAccepted}
+            onBehalfOf={onBehalf.email}
+            returnDate={returnDate}
+            contactEmail={contactLabel}
+          />
+        </WorkingTerm>
       </Page>
     );
   }

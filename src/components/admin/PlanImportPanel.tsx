@@ -9,7 +9,7 @@
  * here only to save the scheduler from picking it twice.
  */
 import { useRef, useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import {
   importShiftPlanFromUpload,

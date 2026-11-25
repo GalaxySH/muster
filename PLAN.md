@@ -1697,7 +1697,12 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     the working term (`requireAdminIn`): the roster import, the W2W plan import,
     generating and clearing a schedule, generating the close inventory, setting
     close requirements, and saving the semester's details, travel cutoff,
-    late-travel switch, excluded titles and tracker reading.
+    late-travel switch, excluded titles and tracker reading. So does every admin
+    write that names a **person by email**, because the same person is in every
+    term: marking scheduled, notes, requested hours, the admin's copy of
+    availability, evidence and travel added for someone, a change request sent
+    for an employee, a position or group change, schedule edits, deleting a
+    response and the schedule email.
   - **Confirmations name the semester**: generating and clearing a schedule, the
     roster import's result and its absence-guard override.
   - **An import into an earlier term changes only that term's roster.** Names, the

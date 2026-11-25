@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRenderedTermId, useRenderedTermName } from "./RenderedTerm";
+import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
 import { clearScheduleRun } from "@/lib/schedule/actions";
 
 /**

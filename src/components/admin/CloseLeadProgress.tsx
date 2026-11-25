@@ -11,7 +11,7 @@
  * open when anyone is short or over and closed when every lead is done.
  */
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setCloseRequirements } from "@/lib/closes/admin-actions";

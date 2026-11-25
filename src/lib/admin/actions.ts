@@ -68,17 +68,23 @@ export interface AdminActionResult {
 export async function setScheduled(
   studentEmail: string,
   scheduled: boolean,
+  termId: string,
 ): Promise<AdminActionResult> {
-  return updateSubmission(studentEmail, { scheduled });
+  return updateSubmission(studentEmail, { scheduled }, termId);
 }
 
 /** Save the scheduler's free-text notes for a student (PLAN §10a). */
 export async function saveSchedulerNotes(
   studentEmail: string,
   notes: string,
+  termId: string,
 ): Promise<AdminActionResult> {
   const trimmed = notes.trim();
-  return updateSubmission(studentEmail, { schedulerNotes: trimmed.length ? trimmed : null });
+  return updateSubmission(
+    studentEmail,
+    { schedulerNotes: trimmed.length ? trimmed : null },
+    termId,
+  );
 }
 
 export interface GenerateMagicLinkResult extends AdminActionResult {
@@ -122,8 +128,11 @@ export async function generateStudentMagicLink(
  * bytes are left behind, and rebuilds the running sheet so the row drops out.
  * The student record itself stays on the roster; only their submission is gone.
  */
-export async function deleteResponse(studentEmail: string): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+export async function deleteResponse(
+  studentEmail: string,
+  termId: string,
+): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
@@ -194,8 +203,9 @@ export async function removeOrphanedSelection(
   studentEmail: string,
   blockId: string,
   day: Day,
+  termId: string,
 ): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   const email = normalizeEmail(studentEmail);
 

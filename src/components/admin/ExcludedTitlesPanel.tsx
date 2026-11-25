@@ -7,7 +7,7 @@
  * both the upload action and the CLI importer read the stored list.
  */
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { setExcludedRosterTitles } from "@/lib/admin/actions";

@@ -7,6 +7,7 @@
  * neither page duplicates it.
  */
 import { useState, useTransition, type FormEvent } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/evidence/actions";
@@ -247,7 +248,16 @@ export function OnBehalfBanner({ displayName, email }: { displayName: string; em
   );
 }
 
-/** The hidden field that carries the on-behalf target into a FormData action. */
+/**
+ * The hidden fields that carry the on-behalf target into a FormData action:
+ * who it is for, and the semester the admin's page is showing.
+ */
 export function OnBehalfField({ onBehalfOf }: { onBehalfOf?: string }) {
-  return onBehalfOf ? <input type="hidden" name="student" value={onBehalfOf} /> : null;
+  const termId = useRenderedTermId();
+  return onBehalfOf ? (
+    <>
+      <input type="hidden" name="student" value={onBehalfOf} />
+      <input type="hidden" name="termId" value={termId} />
+    </>
+  ) : null;
 }

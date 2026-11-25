@@ -30,7 +30,7 @@ import {
   type PositionChangeSource,
   termMembers,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { validateBlockTimes, validateDesiredCapacity } from "@/lib/domain/config-validation";
 import { canAliasTo } from "@/lib/domain/position-alias";
 import type { DayType } from "@/lib/domain/types";
@@ -952,6 +952,7 @@ export interface ChangeStudentPositionResult extends ActionResult {
 export async function changeStudentPosition(
   email: string,
   toPositionId: string,
+  renderedTermId: string,
 ): Promise<ChangeStudentPositionResult> {
   const fail = (error: string): ChangeStudentPositionResult => ({
     ok: false,
@@ -961,7 +962,7 @@ export async function changeStudentPosition(
     removedShifts: 0,
     releasedCloses: 0,
   });
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(renderedTermId);
   if (!gate.ok) return fail(gate.error);
 
   const normalized = email.trim().toLowerCase();

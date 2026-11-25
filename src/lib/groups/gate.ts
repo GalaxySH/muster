@@ -11,6 +11,7 @@
  */
 import "server-only";
 import { getAppSession } from "@/lib/auth/session";
+import { STALE_TERM_MESSAGE, isWorkingTerm } from "@/lib/auth/require-admin";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import { resolveStudentAccess } from "./data";
 import { NO_GROUP_MESSAGE, SUBMITTED_LOCK_MESSAGE, lockedReasonLine } from "./window-message";
@@ -19,7 +20,15 @@ export type StudentGate =
   | { ok: true; email: string; positionId: string | null; onBehalf: boolean }
   | { ok: false; error: string };
 
-export async function requireEditableStudent(onBehalfOf?: string): Promise<StudentGate> {
+/**
+ * `renderedTermId` is the semester the admin's page was showing. It is needed
+ * only on behalf of someone: the same person is in every semester, so a tab
+ * left on another one would otherwise write this semester's row for them.
+ */
+export async function requireEditableStudent(
+  onBehalfOf?: string,
+  renderedTermId?: string,
+): Promise<StudentGate> {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
 
@@ -28,6 +37,7 @@ export async function requireEditableStudent(onBehalfOf?: string): Promise<Stude
     if (!session.isAdmin) {
       return { ok: false, error: "Only admins can fill in the form for someone else." };
     }
+    if (!(await isWorkingTerm(renderedTermId))) return { ok: false, error: STALE_TERM_MESSAGE };
     const employee = await findStudentByEmail(target);
     if (!employee) return { ok: false, error: "That employee is not a known student." };
     return { ok: true, email: employee.email, positionId: employee.positionId, onBehalf: true };

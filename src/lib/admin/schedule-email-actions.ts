@@ -7,7 +7,7 @@
  * a schedule or in bulk.
  */
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { env } from "@/lib/env";
 import { sendEmail, type EmailOutcome } from "@/lib/email/resend";
@@ -164,8 +164,9 @@ export async function sendScheduleEmail(
     includeCc: boolean;
     requestId: string;
   },
+  termId: string,
 ): Promise<ScheduleEmailSendResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const fields: ScheduleEmailInput = {
@@ -220,10 +221,14 @@ export async function sendScheduleEmail(
     };
   }
 
-  const stamped = await updateSubmission(email, {
-    scheduleEmailSentAt: new Date(),
-    ...(config.marksScheduled ? { scheduled: true } : {}),
-  });
+  const stamped = await updateSubmission(
+    email,
+    {
+      scheduleEmailSentAt: new Date(),
+      ...(config.marksScheduled ? { scheduled: true } : {}),
+    },
+    termId,
+  );
   const message = sentMessage(res.outcome, email, res.cc);
   if (!stamped.ok) {
     return { ok: true, message: `${message} The sent date couldn't be saved: ${stamped.error}` };

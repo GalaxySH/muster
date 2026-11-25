@@ -12,6 +12,7 @@
  * "Multiple" one for everyone.
  */
 import { useRef, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   createChangeRequest,
   withdrawChangeRequest,
@@ -49,6 +50,7 @@ export function ChangeRequestsPanel({
   initialBlocks: ShiftTimeBlock[];
   admin?: ChangeRequestsAdminProps;
 }) {
+  const termId = useRenderedTermId();
   const [requests, setRequests] = useState(initial);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [employee, setEmployee] = useState<EmployeeOption | null>(admin?.initialEmployee ?? null);
@@ -94,7 +96,10 @@ export function ChangeRequestsPanel({
       fd.set("comment", comment);
       if (permanent) fd.set("permanent", "1");
       if (resolveOnSubmit) fd.set("resolved", "1");
-      if (employee) fd.set("employee", employee.email);
+      if (employee) {
+        fd.set("employee", employee.email);
+        fd.set("termId", termId);
+      }
       for (const file of fileInput.current?.files ?? []) fd.append("files", file);
       const res = await createChangeRequest(fd);
       const target = employee ? ` for ${employee.displayName}` : "";

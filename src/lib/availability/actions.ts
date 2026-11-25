@@ -413,10 +413,11 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 export async function saveAvailabilityFor(
   student: string,
   input: { selection: SelectedShift[]; everyWeekendOptIn: boolean; overrideInvalid?: boolean },
+  termId: string,
 ): Promise<SaveResult> {
   if (!student.trim()) return { ok: false, errors: ["No student was named."] };
 
-  const gate = await requireEditableStudent(student);
+  const gate = await requireEditableStudent(student, termId);
   if (!gate.ok) return { ok: false, errors: [gate.error] };
   if (!gate.positionId) return { ok: false, errors: ["No position is set for this student."] };
   const session = await getAppSession();
@@ -513,9 +514,12 @@ export interface RevertInternalResult {
  * are untouched, since internal edits never modified them. No-op when there is
  * nothing to revert.
  */
-export async function revertInternalAvailability(student: string): Promise<RevertInternalResult> {
+export async function revertInternalAvailability(
+  student: string,
+  termId: string,
+): Promise<RevertInternalResult> {
   if (!student.trim()) return { ok: false, error: "No student was named." };
-  const gate = await requireEditableStudent(student);
+  const gate = await requireEditableStudent(student, termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
@@ -595,9 +599,10 @@ async function writeAnswerFor(
 export async function saveDesiredHoursFor(
   student: string,
   hours: number | null,
+  termId: string,
 ): Promise<AdminAnswerResult> {
   if (!student.trim()) return { ok: false, error: "No student was named." };
-  const gate = await requireEditableStudent(student);
+  const gate = await requireEditableStudent(student, termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!gate.positionId) return { ok: false, error: "No position is set for this student." };
 
@@ -625,9 +630,10 @@ export async function saveDesiredHoursFor(
 export async function saveStudentNotesFor(
   student: string,
   notes: string,
+  termId: string,
 ): Promise<AdminAnswerResult> {
   if (!student.trim()) return { ok: false, error: "No student was named." };
-  const gate = await requireEditableStudent(student);
+  const gate = await requireEditableStudent(student, termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   await writeAnswerFor(gate.email, { studentNotes: notes.trim() || null });

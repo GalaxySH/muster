@@ -51,7 +51,7 @@ describe("AddEvidenceButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Band, Tue 6-8pm", "stu@wisc.edu"),
+      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Band, Tue 6-8pm", "stu@wisc.edu", ""),
     );
     expect(addExtracurricularFile).not.toHaveBeenCalled();
   });
@@ -63,7 +63,7 @@ describe("AddEvidenceButton", () => {
     fireEvent.keyDown(details, { key: "Enter", ctrlKey: true });
 
     await waitFor(() =>
-      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Band, Tue 6-8pm", "stu@wisc.edu"),
+      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Band, Tue 6-8pm", "stu@wisc.edu", ""),
     );
   });
 
@@ -74,7 +74,7 @@ describe("AddEvidenceButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload and save" }));
 
     await waitFor(() =>
-      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Choir", "stu@wisc.edu"),
+      expect(saveExtracurricularNotes).toHaveBeenCalledWith("Choir", "stu@wisc.edu", ""),
     );
     expect(addExtracurricularFile).toHaveBeenCalledTimes(1);
   });

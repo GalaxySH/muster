@@ -22,14 +22,22 @@ export async function requireAdmin(): Promise<AdminGate> {
  * semester's own settings). The selected semester belongs to the browser, not
  * the tab, so the page that sent this may be showing a semester the admin has
  * since left. The page says which one it was rendered for, and anything else is
- * refused (docs/semester-domains-plan.md §2.9). Actions that name a row are
- * already safe: the row is looked up inside the working semester.
+ * refused (docs/semester-domains-plan.md §2.9). The same goes for an action
+ * that names a person by email, because the same person is in both semesters.
+ * Actions that name a row of the semester are already safe: the row is looked
+ * up inside the working semester.
  */
 export async function requireAdminIn(renderedTermId: string): Promise<AdminGate> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  if (renderedTermId !== (await workingTermId())) {
-    return { ok: false, error: "This page is showing a different semester. Reload it and try again." };
-  }
+  if (!(await isWorkingTerm(renderedTermId))) return { ok: false, error: STALE_TERM_MESSAGE };
   return gate;
+}
+
+export const STALE_TERM_MESSAGE =
+  "This page is showing a different semester. Reload it and try again.";
+
+/** True when the page that sent an action was rendered for the term being worked in. */
+export async function isWorkingTerm(renderedTermId: string | undefined): Promise<boolean> {
+  return Boolean(renderedTermId) && renderedTermId === (await workingTermId());
 }

@@ -11,6 +11,7 @@
  */
 import { addTravelRequest, removeTravelRequest } from "@/lib/evidence/actions";
 import type { EvidenceView } from "@/lib/evidence/data";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { TRAVEL_STANDING_LABEL, travelStanding } from "@/lib/domain/travel";
 import {
   Thumb,
@@ -57,6 +58,7 @@ export function TravelForm({
   /** What to name as the contact (CONTACT_EMAIL, or the fallback phrase). */
   contactEmail: string;
 }) {
+  const termId = useRenderedTermId();
   const { pending, busy, onUpload, run, note } = useEvidenceRunner();
   const canAddTravel = !pastCutoff || lateAccepted;
   const lateNow = pastCutoff && lateAccepted;
@@ -136,7 +138,7 @@ export function TravelForm({
                 <button
                   type="button"
                   disabled={pending || !editable}
-                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf))}
+                  onClick={() => run("travel", () => removeTravelRequest(t.id, onBehalfOf, termId))}
                   style={{ color: "#b00" }}
                 >
                   Remove

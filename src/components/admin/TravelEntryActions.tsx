@@ -9,6 +9,7 @@
  * Removing takes the Drive proof with it, so it asks first.
  */
 import { useState, useTransition, type FormEvent } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { removeTravelRequest, updateTravelRequest } from "@/lib/evidence/actions";
 import { Modal } from "@/components/Modal";
@@ -28,6 +29,7 @@ export function TravelEntryActions({
   endDate: string;
   note: string | null;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [open, setOpen] = useState<"edit" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export function TravelEntryActions({
   function remove() {
     setError(null);
     startTransition(async () => {
-      const res = await removeTravelRequest(id, studentEmail);
+      const res = await removeTravelRequest(id, studentEmail, termId);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
         return;
@@ -80,6 +82,7 @@ export function TravelEntryActions({
         <Modal label="Edit travel entry" onClose={close} maxWidth="420px">
           <form onSubmit={save} style={formStyle}>
             <input type="hidden" name="student" value={studentEmail} />
+            <input type="hidden" name="termId" value={termId} />
             <input type="hidden" name="id" value={id} />
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <label style={field}>

@@ -89,9 +89,15 @@ someone with no row was never part of that term.
   An action that acts on a whole term takes the term id its page was rendered for
   and gates with `requireAdminIn(termId)` (`auth/require-admin.ts`), which refuses
   anything but the working term. The id comes from `useRenderedTermId()`
-  (`components/admin/RenderedTerm.tsx`), provided once by `app/admin/layout.tsx`; a
+  (`components/RenderedTerm.tsx`), provided once by `app/admin/layout.tsx`; a
   layout is not re-rendered on navigation, so it stays what the tab is showing.
   When adding an admin action that takes no term-scoped row id, use this gate.
+  That includes any action that names a **person by email**: the same person is in
+  every term. Actions shared with the student's own form go through
+  `requireEditableStudent(onBehalfOf, renderedTermId)` (`groups/gate.ts`), which
+  checks the term only on the on-behalf branch and refuses when none was sent. The
+  on-behalf pages on student routes wrap their form in `<WorkingTerm>`
+  (`components/WorkingTerm.tsx`), the same provider the admin layout uses.
   `TermSwitcher` also keeps one browser's tabs together (a tab reloads when another
   changes the selection), which is a convenience, not the guard.
 - **Person facts and the retired columns follow the current term (1.55).**

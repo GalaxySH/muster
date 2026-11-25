@@ -5,7 +5,7 @@
  * and schedule note. The travel cutoff has its own panel below it.
  */
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";

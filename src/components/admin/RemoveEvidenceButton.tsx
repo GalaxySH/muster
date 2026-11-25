@@ -9,6 +9,7 @@
  * Removing deletes the Drive file too, so it asks first.
  */
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { removeCourseSchedule, removeExtracurricularFile } from "@/lib/evidence/actions";
 import { Modal } from "@/components/Modal";
@@ -22,6 +23,7 @@ const COPY = {
 } as const;
 
 export function RemoveEvidenceButton(props: RemoveTarget & { studentEmail: string }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +41,8 @@ export function RemoveEvidenceButton(props: RemoveTarget & { studentEmail: strin
     startTransition(async () => {
       const res =
         props.kind === "course"
-          ? await removeCourseSchedule(props.studentEmail)
-          : await removeExtracurricularFile(props.rowId, props.studentEmail);
+          ? await removeCourseSchedule(props.studentEmail, termId)
+          : await removeExtracurricularFile(props.rowId, props.studentEmail, termId);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
         return;

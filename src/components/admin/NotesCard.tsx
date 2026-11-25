@@ -15,6 +15,7 @@
  * anyone on the roster.
  */
 import { useState, useTransition, type FormEvent } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { saveSchedulerNotes } from "@/lib/admin/actions";
 import { saveStudentNotesFor } from "@/lib/availability/actions";
@@ -29,7 +30,7 @@ const KINDS: Record<
   {
     title: string;
     placeholder: string;
-    save: (email: string, notes: string) => Promise<{ ok: boolean; error?: string }>;
+    save: (email: string, notes: string, termId: string) => Promise<{ ok: boolean; error?: string }>;
   }
 > = {
   scheduling: {
@@ -50,6 +51,7 @@ export function NotesCard({
   notes: string;
 }) {
   const { title, placeholder, save } = KINDS[kind];
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export function NotesCard({
     const text = String(new FormData(e.currentTarget).get("notes") ?? "");
     setError(null);
     startTransition(async () => {
-      const res = await save(studentEmail, text);
+      const res = await save(studentEmail, text, termId);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
         return;

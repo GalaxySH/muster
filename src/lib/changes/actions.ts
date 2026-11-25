@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { changeRequestFiles, changeRequests } from "@/lib/db/schema";
 import { getAppSession } from "@/lib/auth/session";
+import { STALE_TERM_MESSAGE, isWorkingTerm } from "@/lib/auth/require-admin";
 import { findStudentByEmail } from "@/lib/roster/lookup";
 import {
   changeRequestRate,
@@ -38,6 +39,7 @@ export interface ChangeRequestActionResult {
  */
 async function resolveTargetStudent(
   onBehalfOf: string,
+  renderedTermId: string,
 ): Promise<
   { ok: true; email: string; onBehalf: boolean; isAdmin: boolean } | { ok: false; error: string }
 > {
@@ -48,6 +50,8 @@ async function resolveTargetStudent(
     if (!session.isAdmin) {
       return { ok: false, error: "Only admins can send a request for someone else." };
     }
+    // The same person is in every semester, so the page says which one it shows.
+    if (!(await isWorkingTerm(renderedTermId))) return { ok: false, error: STALE_TERM_MESSAGE };
     const employee = await findStudentByEmail(onBehalfOf);
     if (!employee) return { ok: false, error: "That employee is not a known student." };
     return { ok: true, email: employee.email, onBehalf: true, isAdmin: true };
@@ -64,7 +68,10 @@ async function resolveTargetStudent(
 }
 
 export async function createChangeRequest(formData: FormData): Promise<ChangeRequestActionResult> {
-  const gate = await resolveTargetStudent(String(formData.get("employee") ?? "").trim());
+  const gate = await resolveTargetStudent(
+    String(formData.get("employee") ?? "").trim(),
+    String(formData.get("termId") ?? ""),
+  );
   if (!gate.ok) return { ok: false, error: gate.error, requests: null };
   const email = gate.email;
   const fail = async (error: string): Promise<ChangeRequestActionResult> => ({

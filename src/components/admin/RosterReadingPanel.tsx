@@ -8,7 +8,7 @@
  * built-in header matching.
  */
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui";
 import { setRosterReading } from "@/lib/admin/actions";

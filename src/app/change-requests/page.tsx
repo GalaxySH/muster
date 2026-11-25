@@ -1,3 +1,4 @@
+import { WorkingTerm } from "@/components/WorkingTerm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
@@ -92,7 +93,9 @@ export default async function ChangeRequestsPage({
       <p style={{ color: "#555" }}>
         If your request is for a non-permanent change, put the specific date in the description.
       </p>
-      <ChangeRequestsPanel initial={requests} initialBlocks={blocks} admin={admin} />
+      <WorkingTerm>
+        <ChangeRequestsPanel initial={requests} initialBlocks={blocks} admin={admin} />
+      </WorkingTerm>
     </Page>
   );
 }

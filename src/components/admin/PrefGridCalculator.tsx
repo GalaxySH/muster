@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import type { AdminGridModel, AdminSubGrid } from "@/lib/admin/summary";
 import { computeCapacity } from "@/lib/domain/capacity";
@@ -231,6 +232,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   const [assignWarnings, setAssignWarnings] = useState<string[] | null>(null);
   const [busyCell, setBusyCell] = useState<string | null>(null);
   const [orphanError, setOrphanError] = useState<string | null>(null);
+  const termId = useRenderedTermId();
   const [, startTransition] = useTransition();
 
   /**
@@ -243,7 +245,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     setOrphanError(null);
     setBusyCell(key);
     startTransition(async () => {
-      const res = await removeOrphanedSelection(props.studentEmail, blockId, day);
+      const res = await removeOrphanedSelection(props.studentEmail, blockId, day, termId);
       setBusyCell(null);
       if (!res.ok) setOrphanError(res.error ?? "Could not remove that pick.");
       else router.refresh();
@@ -374,7 +376,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         selection,
         everyWeekendOptIn: optIn,
         overrideInvalid: override,
-      });
+      }, termId);
       if (!res.ok) {
         setSaveError(res.errors[0] ?? "Something went wrong.");
         setSaveState("idle");
@@ -501,6 +503,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           // keeps each standing row where it is, which is what stops a batch
           // of cell edits from quietly normalizing rows that carry a mix.
           rotationMoves ? schedCohort : undefined,
+          termId,
         );
         if (!res.ok) {
           // The trial survives a refusal: the error names a cell, and the admin

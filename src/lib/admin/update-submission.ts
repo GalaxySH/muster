@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { ensureSubmissionId } from "@/lib/evidence/data";
 import { findStudentByEmail } from "@/lib/roster/lookup";
@@ -29,8 +29,9 @@ import type { AdminActionResult } from "./actions";
 export async function updateSubmission(
   studentEmail: string,
   patch: Partial<typeof submissions.$inferInsert>,
+  termId: string,
 ): Promise<AdminActionResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const email = normalizeEmail(studentEmail);

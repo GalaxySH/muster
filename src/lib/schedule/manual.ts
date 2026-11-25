@@ -33,7 +33,7 @@ import {
   students,
   submissions,
 } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { hourCap } from "@/lib/domain/caps";
 import { laborLimits } from "@/lib/domain/scheduling/labor";
@@ -115,9 +115,10 @@ export async function applyScheduleEdits(
   studentEmail: string,
   removes: readonly ScheduleEditCell[],
   adds: readonly ScheduleEditCell[],
-  weekendCohort?: Exclude<Cohort, "weekday">,
+  weekendCohort: Exclude<Cohort, "weekday"> | undefined,
+  termId: string,
 ): Promise<AssignmentEditResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return fail(gate.error);
   const email = normalizeEmail(studentEmail);
   if (!email) return fail("No student was named.");
@@ -324,8 +325,9 @@ export interface ClearStudentScheduleResult {
  */
 export async function clearStudentSchedule(
   studentEmail: string,
+  termId: string,
 ): Promise<ClearStudentScheduleResult> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
   const email = normalizeEmail(studentEmail);
   if (!email) return { ok: false, error: "No student was named." };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { clearStudentSchedule } from "@/lib/schedule/manual";
 
@@ -21,6 +22,7 @@ export function ClearStudentScheduleButton({
   studentEmail: string;
   count: number;
 }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function ClearStudentScheduleButton({
   function clear() {
     setError(null);
     startTransition(async () => {
-      const res = await clearStudentSchedule(studentEmail);
+      const res = await clearStudentSchedule(studentEmail, termId);
       if (res.ok) {
         setConfirming(false);
         router.refresh();

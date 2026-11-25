@@ -38,7 +38,7 @@ describe("RemoveEvidenceButton", () => {
     render(<RemoveEvidenceButton kind="course" studentEmail="stu@wisc.edu" />);
     confirmRemove();
 
-    await waitFor(() => expect(removeCourseSchedule).toHaveBeenCalledWith("stu@wisc.edu"));
+    await waitFor(() => expect(removeCourseSchedule).toHaveBeenCalledWith("stu@wisc.edu", ""));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -49,7 +49,7 @@ describe("RemoveEvidenceButton", () => {
     confirmRemove();
 
     await waitFor(() =>
-      expect(removeExtracurricularFile).toHaveBeenCalledWith("row-1", "stu@wisc.edu"),
+      expect(removeExtracurricularFile).toHaveBeenCalledWith("row-1", "stu@wisc.edu", ""),
     );
     expect(removeCourseSchedule).not.toHaveBeenCalled();
   });

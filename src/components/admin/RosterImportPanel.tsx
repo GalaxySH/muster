@@ -15,7 +15,7 @@
  * re-sends the same file.
  */
 import { useRef, useState, useTransition } from "react";
-import { useRenderedTermId, useRenderedTermName } from "./RenderedTerm";
+import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
 import Link from "next/link";
 import { importRosterFromUpload, type RosterGuardBlock } from "@/lib/roster/actions";
 import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";

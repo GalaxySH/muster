@@ -14,7 +14,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { groups, students } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { normalizeEmail } from "@/lib/auth/policy";
 import { setSetting, SETTING_DEFAULT_GROUP_AUTO_ASSIGN } from "@/lib/settings";
 import {
@@ -279,8 +279,8 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
 }
 
 /** Remove students from their group this term (keeps the sticky marker). */
-export async function unassignStudents(emails: string[]): Promise<ActionResult> {
-  const gate = await requireAdmin();
+export async function unassignStudents(emails: string[], termId: string): Promise<ActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return gate;
   const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))];
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };

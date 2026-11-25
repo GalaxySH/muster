@@ -8,6 +8,7 @@
  * of the page uses. Nothing is written until Apply.
  */
 import { useMemo, useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { ActionButton } from "@/components/ui";
@@ -24,17 +25,24 @@ import {
   uploadCourseSchedule,
 } from "@/lib/evidence/actions";
 
-const ACTIONS: PasteActions = {
-  saveDesiredHours: saveDesiredHoursFor,
-  saveEveryWeekend: saveEveryWeekendFor,
-  saveStudentNotes: saveStudentNotesFor,
-  saveExtracurricularNotes,
-  uploadCourseSchedule,
-  addExtracurricularFile,
-  addTravelRequest,
-  saveSchedulerNotes,
-  recordFormResponse,
-};
+/** Every step goes to the semester this page is showing. */
+function pasteActions(termId: string): PasteActions {
+  const withTerm = (form: FormData) => {
+    form.set("termId", termId);
+    return form;
+  };
+  return {
+    saveDesiredHours: (student, hours) => saveDesiredHoursFor(student, hours, termId),
+    saveEveryWeekend: (student, optIn) => saveEveryWeekendFor(student, optIn, termId),
+    saveStudentNotes: (student, text) => saveStudentNotesFor(student, text, termId),
+    saveExtracurricularNotes: (text, student) => saveExtracurricularNotes(text, student, termId),
+    uploadCourseSchedule: (form) => uploadCourseSchedule(withTerm(form)),
+    addExtracurricularFile: (form) => addExtracurricularFile(withTerm(form)),
+    addTravelRequest: (form) => addTravelRequest(withTerm(form)),
+    saveSchedulerNotes: (student, notes) => saveSchedulerNotes(student, notes, termId),
+    recordFormResponse: (student, at) => recordFormResponse(student, at, termId),
+  };
+}
 
 type Read = { plan: Plan } | { error: string } | null;
 
@@ -49,6 +57,7 @@ export function FormPasteButton({
   termStartsOn: string;
 }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   // Per-step overrides: the checkbox, and travel dates edited in the preview.
@@ -90,7 +99,7 @@ export function FormPasteButton({
     if (!plan) return;
     startTransition(async () => {
       setResults(
-        await applyPlan({ student: studentEmail, plan, chosen, onFile, actions: ACTIONS }),
+        await applyPlan({ student: studentEmail, plan, chosen, onFile, actions: pasteActions(termId) }),
       );
     });
   }

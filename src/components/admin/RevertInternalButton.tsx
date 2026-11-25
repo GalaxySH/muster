@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { revertInternalAvailability } from "@/lib/availability/actions";
 
@@ -10,6 +11,7 @@ import { revertInternalAvailability } from "@/lib/availability/actions";
  * second confirms, since the internal adjustments are gone for good.
  */
 export function RevertInternalButton({ studentEmail }: { studentEmail: string }) {
+  const termId = useRenderedTermId();
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function RevertInternalButton({ studentEmail }: { studentEmail: string })
   function revert() {
     setError(null);
     startTransition(async () => {
-      const res = await revertInternalAvailability(studentEmail);
+      const res = await revertInternalAvailability(studentEmail, termId);
       if (res.ok) {
         setConfirming(false);
         router.refresh();

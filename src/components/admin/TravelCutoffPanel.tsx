@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { setTravelCutoff, setLateTravelAccepted } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";

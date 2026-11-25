@@ -7,7 +7,7 @@
  * hold claims are reported, not removed).
  */
 import { useState, useTransition } from "react";
-import { useRenderedTermId } from "./RenderedTerm";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { generateCloseInventory } from "@/lib/closes/admin-actions";
 import { ActionButton } from "@/components/ui";

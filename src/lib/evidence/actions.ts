@@ -47,8 +47,9 @@ export interface ActionResult {
  */
 async function requireStudent(
   onBehalfOf = "",
+  termId = "",
 ): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
-  const gate = await requireEditableStudent(onBehalfOf);
+  const gate = await requireEditableStudent(onBehalfOf, termId);
   return gate.ok ? { email: gate.email, onBehalf: gate.onBehalf } : { error: gate.error };
 }
 
@@ -78,6 +79,8 @@ async function touchSubmission(submissionId: string, who: { onBehalf: boolean })
 
 /** The admin-only "act for this student" field the response-page modal submits. */
 const onBehalfOf = (formData: FormData) => String(formData.get("student") ?? "").trim();
+/** The semester that modal was showing, sent beside it (see `requireEditableStudent`). */
+const termOf = (formData: FormData) => String(formData.get("termId") ?? "");
 
 /** Pull a File out of FormData and read it into a Buffer after validation. */
 async function readUpload(
@@ -100,7 +103,7 @@ function relayError(e: unknown): string {
 // types (PNG/JPEG); PDFs can't be shown as a glanceable thumbnail beside the
 // preferences grid. Other evidence (travel itineraries) keeps PDF support.
 export async function uploadCourseSchedule(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -131,8 +134,11 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
  * offers Replace and never an empty slot; clearing one (say, a schedule filed
  * under the wrong person) is the scheduler's call on the response page.
  */
-export async function removeCourseSchedule(onBehalfOf?: string): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+export async function removeCourseSchedule(
+  onBehalfOf?: string,
+  termId?: string,
+): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
   if (!who.onBehalf) return { ok: false, error: "Only an admin can remove a course schedule." };
 
@@ -155,7 +161,7 @@ export async function removeCourseSchedule(onBehalfOf?: string): Promise<ActionR
 }
 
 export async function addExtracurricularFile(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
   const upload = await readUpload(formData);
   if ("error" in upload) return { ok: false, error: upload.error };
@@ -192,8 +198,9 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
 export async function removeExtracurricularFile(
   rowId: string,
   onBehalfOf?: string,
+  termId?: string,
 ): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
@@ -214,8 +221,12 @@ export async function removeExtracurricularFile(
   return { ok: true };
 }
 
-export async function saveExtracurricularNotes(notes: string, student = ""): Promise<ActionResult> {
-  const who = await requireStudent(student);
+export async function saveExtracurricularNotes(
+  notes: string,
+  student = "",
+  termId = "",
+): Promise<ActionResult> {
+  const who = await requireStudent(student, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
@@ -229,7 +240,7 @@ export async function saveExtracurricularNotes(notes: string, student = ""): Pro
 }
 
 export async function addTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
   // The cutoff (PLAN §8) binds students under the admin-set late policy:
@@ -309,7 +320,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
  * adding it again.
  */
 export async function updateTravelRequest(formData: FormData): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf(formData));
+  const who = await requireStudent(onBehalfOf(formData), termOf(formData));
   if ("error" in who) return { ok: false, error: who.error };
 
   // Same cutoff rule as adding: it binds the student, and an admin correcting an
@@ -362,8 +373,12 @@ async function travelUnlocked(who: { onBehalf: boolean }): Promise<boolean> {
   return decideTravelSubmission(now, cutoff, policy).allowed;
 }
 
-export async function removeTravelRequest(id: string, onBehalfOf?: string): Promise<ActionResult> {
-  const who = await requireStudent(onBehalfOf);
+export async function removeTravelRequest(
+  id: string,
+  onBehalfOf?: string,
+  termId?: string,
+): Promise<ActionResult> {
+  const who = await requireStudent(onBehalfOf, termId);
   if ("error" in who) return { ok: false, error: who.error };
 
   if (!(await travelUnlocked(who))) {
