@@ -2,13 +2,26 @@
 
 /**
  * The Semester page's editor for the working term's name, dates, new hire date,
- * schedule note and system message. The travel cutoff has its own panel below it.
+ * travel cutoff, schedule note and system message, all saved by one button.
+ *
+ * The travel cutoff (PLAN §8) is one instant per term, independent of the
+ * per-group form windows: students can add travel entries until it, and the
+ * late-travel toggle decides what happens after it. Off (default), the travel
+ * step refuses new entries and locks the existing ones ("refuse" in
+ * domain/travel.ts); on, entries stay accepted but are stored late and
+ * unexcused ("accept-and-flag"). Reset puts the date back to the term's
+ * default, the day before the semester starts. Nothing else moves the cutoff:
+ * changing the semester's first day leaves it where it was set. Both travel
+ * settings keep their own actions, which Save runs after `saveTermDetails`.
  */
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton, SystemMessage } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
+import { setLateTravelAccepted, setTravelCutoff } from "@/lib/admin/actions";
+import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
+import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { MAX_CLOSE_REQUIREMENT } from "@/lib/domain/close-claims";
 import {
   SCHEDULE_NOTE_MAX,
@@ -27,14 +40,36 @@ const TONE_LABELS: Record<SystemMessageTone, string> = {
   danger: "Red",
 };
 
-export function TermDetailsForm({ details }: { details: TermDetails }) {
+/** The term's travel cutoff as stored, and whether late travel is accepted. */
+export interface TravelSettings {
+  cutoffMs: number;
+  /** False while the cutoff is still the term's default. */
+  isCustom: boolean;
+  lateAccepted: boolean;
+}
+
+export function TermDetailsForm({
+  details,
+  travel,
+}: {
+  details: TermDetails;
+  travel: TravelSettings;
+}) {
   const termId = useRenderedTermId();
   const router = useRouter();
   const [draft, setDraft] = useState(details);
+  const savedCutoff = toLocalInput(travel.cutoffMs);
+  const [cutoff, setCutoff] = useState(savedCutoff);
+  // Set by Reset: the save puts the cutoff back to the term's default.
+  const [resetCutoff, setResetCutoff] = useState(false);
+  const [lateAccepted, setLateAccepted] = useState(travel.lateAccepted);
   const [pending, startSave] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(details);
+  const detailsDirty = JSON.stringify(draft) !== JSON.stringify(details);
+  const cutoffDirty = resetCutoff || cutoff !== savedCutoff;
+  const lateDirty = lateAccepted !== travel.lateAccepted;
+  const dirty = detailsDirty || cutoffDirty || lateDirty;
   const set = <K extends keyof TermDetails>(k: K, v: TermDetails[K]) => {
     setMsg(null);
     setDraft((d) => ({ ...d, [k]: v }));
@@ -42,17 +77,39 @@ export function TermDetailsForm({ details }: { details: TermDetails }) {
 
   function save() {
     setMsg(null);
+    const cutoffIso = resetCutoff ? null : localInputToIso(cutoff);
+    if (cutoffDirty && !resetCutoff && !cutoffIso) {
+      setMsg({ ok: false, text: "Pick a travel cutoff date, or reset it to the default." });
+      return;
+    }
     startSave(async () => {
-      const res = await saveTermDetails(termId, draft);
-      setMsg(
-        res.ok ? { ok: true, text: "Saved." } : { ok: false, text: res.error ?? "Could not save." },
-      );
-      if (res.ok) {
-        // Show what was stored: the name and note are tidied on save.
-        setDraft(cleanTermDetails(draft));
-        router.refresh();
+      // Details first: a reset cutoff is worked out from the first day just saved.
+      const steps = [
+        detailsDirty ? () => saveTermDetails(termId, draft) : null,
+        cutoffDirty ? () => setTravelCutoff(termId, cutoffIso) : null,
+        lateDirty ? () => setLateTravelAccepted(termId, lateAccepted) : null,
+      ];
+      for (const step of steps) {
+        if (!step) continue;
+        const res = await step();
+        if (!res.ok) {
+          setMsg({ ok: false, text: res.error ?? "Could not save." });
+          router.refresh();
+          return;
+        }
       }
+      setMsg({ ok: true, text: "Saved." });
+      // Show what was stored: the name and note are tidied on save.
+      setDraft(cleanTermDetails(draft));
+      setResetCutoff(false);
+      router.refresh();
     });
+  }
+
+  function resetToDefault() {
+    setMsg(null);
+    setResetCutoff(true);
+    setCutoff(toLocalInput(defaultTravelCutoff(draft.startsOn).getTime()));
   }
 
   return (
@@ -113,7 +170,52 @@ export function TermDetailsForm({ details }: { details: TermDetails }) {
             on the Closes page.
           </span>
         </label>
+        <label style={field}>
+          <span style={labelText}>Travel excusal cutoff</span>
+          <input
+            type="date"
+            value={cutoff}
+            onChange={(e) => {
+              setMsg(null);
+              setResetCutoff(false);
+              setCutoff(e.target.value);
+            }}
+            style={input}
+          />
+          <span style={hint}>
+            Students can add travel until midnight on this date, in every group.
+            {!travel.isCustom &&
+              !cutoffDirty &&
+              " This is the default, the day before the semester starts."}
+            {resetCutoff && " Back to the default once you save."}
+            {travel.isCustom && !resetCutoff && (
+              <>
+                {" "}
+                <button type="button" onClick={resetToDefault} style={linkButton}>
+                  Reset to default
+                </button>
+              </>
+            )}
+          </span>
+        </label>
       </div>
+      <label style={lateToggle}>
+        <input
+          type="checkbox"
+          checked={lateAccepted}
+          onChange={(e) => {
+            setMsg(null);
+            setLateAccepted(e.target.checked);
+          }}
+        />
+        <span>
+          Accept late travel
+          <span style={{ ...hint, display: "block" }}>
+            Students can keep adding travel after the cutoff. Those entries are marked late and are
+            not excused.
+          </span>
+        </span>
+      </label>
       <label style={{ ...field, marginTop: 14 }}>
         <span style={labelText}>Schedule note</span>
         <textarea
@@ -191,6 +293,22 @@ const grid: React.CSSProperties = {
 const field: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
 const labelText: React.CSSProperties = { fontSize: 13, fontWeight: 600 };
 const hint: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)" };
+const lateToggle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-start",
+  marginTop: 14,
+  fontSize: 14,
+  cursor: "pointer",
+};
+const linkButton: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "var(--color-text-link, #1a66cc)",
+  cursor: "pointer",
+  fontSize: 13,
+};
 const input: React.CSSProperties = {
   padding: 6,
   borderRadius: "var(--border-radius-md)",

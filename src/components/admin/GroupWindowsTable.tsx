@@ -311,7 +311,7 @@ function StatusChip({ state }: { state: WindowState }) {
   );
 }
 
-// date <-> instant helpers (shared with TravelCutoffPanel). The input is a
+// date <-> instant helpers (shared with the travel cutoff in TermDetailsForm). The input is a
 // calendar date; the time defaults to 00:00 in the browser's local timezone, so
 // the window opens/closes at the start of the chosen day. Round-trips through a
 // UTC ISO instant for storage.

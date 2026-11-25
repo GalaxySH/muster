@@ -101,10 +101,16 @@ export async function recordFormResponse(
   const stamp = submittedAtIso ? new Date(submittedAtIso) : null;
   const submittedAt = stamp && !Number.isNaN(stamp.getTime()) ? stamp : new Date();
   const submissionId = t.existing?.id ?? (await ensureSubmissionId(t.email, t.termId));
-  await getDb()
-    .update(submissions)
-    .set({ status: "submitted", submittedVia: "google_form", submittedAt })
-    .where(eq(submissions.id, submissionId));
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(submissions)
+      .set({ status: "submitted", submittedVia: "google_form", submittedAt })
+      .where(eq(submissions.id, submissionId));
+    // The paste's earlier steps checked the row while it still read as a Muster
+    // response, which flags the availability the form never carries. Check again
+    // now that it counts as a Google Form response.
+    await syncRevalidationFlag(tx, submissionId);
+  });
   await trySyncSheet(RESPONSES_SHEET, t.termId);
   refresh(t.email);
   return { ok: true };

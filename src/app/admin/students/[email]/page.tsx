@@ -24,7 +24,7 @@ import {
   type InternalDiff,
 } from "@/lib/availability/effective";
 import { hourCap } from "@/lib/domain/caps";
-import { validateAvailability } from "@/lib/domain/validation";
+import { availabilityNotCollected, validateAvailability } from "@/lib/domain/validation";
 import { formatCloseSlot } from "@/lib/domain/close-claims";
 import { weekMinutesForRows } from "@/lib/domain/scheduling/manual";
 import { weekendCohortOf } from "@/lib/domain/scheduling/types";
@@ -288,6 +288,10 @@ export default async function StudentDetailPage({
   // layer empties out when one is loaded.
   const gridSelection = internal ? internal.selection : selection;
   const gridAutoAssigned = internal ? [] : autoAssigned;
+  // The Google Form brings no availability over, so its checks have nothing to
+  // judge until someone records some. Judged on the effective layer, the same
+  // one the revalidation_failed flag reads.
+  const noFormAvailability = availabilityNotCollected(submission, gridSelection);
   const gridOptIn = effectiveRotation(
     internal?.everyWeekendOptIn ?? null,
     submission?.everyWeekendOptIn,
@@ -540,12 +544,15 @@ export default async function StudentDetailPage({
             </SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
               <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-              {validation.checks
-                .filter((c) => c.id !== "weekend")
-                .map((c) => (
-                  <CheckLine key={c.id} ok={c.passed} text={c.detail} />
-                ))}
-              {!position!.weekendExempt &&
+              {noFormAvailability ? (
+                <CheckLine ok={null} text="No availability on file from the Google Form" />
+              ) : (
+                validation.checks
+                  .filter((c) => c.id !== "weekend")
+                  .map((c) => <CheckLine key={c.id} ok={c.passed} text={c.detail} />)
+              )}
+              {!noFormAvailability &&
+                !position!.weekendExempt &&
                 (autoAssigned.length > 0 ? (
                   <CheckLine
                     ok={false}
@@ -1145,17 +1152,23 @@ function StoredFlagAlerts({
   );
 }
 
-function CheckLine({ ok, text }: { ok: boolean; text: string }) {
+/** `ok: null` is a neutral line: nothing passed or failed. */
+function CheckLine({ ok, text }: { ok: boolean | null; text: string }) {
   return (
     <div>
       <span
         aria-hidden
         style={{
           marginRight: 8,
-          color: ok ? "var(--color-text-success)" : "var(--color-text-warning)",
+          color:
+            ok === null
+              ? "var(--color-text-secondary)"
+              : ok
+                ? "var(--color-text-success)"
+                : "var(--color-text-warning)",
         }}
       >
-        {ok ? "✓" : "⚠"}
+        {ok === null ? "–" : ok ? "✓" : "⚠"}
       </span>
       {text}
     </div>

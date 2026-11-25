@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.63
+- **Version:** 1.64
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -759,7 +759,8 @@ Design and phases: `docs/semester-domains-plan.md`.
   generic revalidation seam (`positions/apply-change.ts`) — written whenever a re-run
   of `validateAvailability` fails against the **effective** availability (1.29: the
   internal copy when one exists, the student's own rows otherwise, since the effective
-  layer is the one that gets scheduled), deleted the moment a validation run passes,
+  layer is the one that gets scheduled; 1.63: a Google Form response with no
+  availability on file is judged on desired hours only), deleted the moment a validation run passes,
   never manually dismissed. It is re-synced on an internal save, an internal revert, and
   a student save alike. `student_changed_after_internal_edit` (1.07) is raised by every
   student save/finalize while an internal copy exists (drafts included) and cleared
@@ -1677,7 +1678,7 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
-- **1.63 (2026-11-25)** — **The student form has a new look, built for phones.**
+- **1.64 (2026-11-25)** — **The student form has a new look, built for phones.**
   Presentation only: no rule, route, step order, server action or stored data
   changed. Every student page (`/`, `/signin`, `/me`, `/intro`, `/course-schedule`,
   `/availability`, `/travel`, `/closes`, `/exit`, `/change-requests`, `/dev-login`,
@@ -1702,6 +1703,27 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   and button labels were shortened ("Course schedule", "Travel", "Add trip", "Add
   proof", "Mandatory activities"). See "Student design system" in
   `docs/architecture.md`.
+- **1.63 (2026-11-25)** — **Google Form responses skip the availability checks.** The
+  form paste import (`docs/form-paste.md`) never brings shift picks over, so a response
+  counted as `submitted_via = google_form` was always raising `revalidation_failed`
+  for minimum hours, an opening or closing shift, and days spanned. While such a
+  response has no availability on file (`availabilityNotCollected` in
+  `domain/validation.ts`), `syncRevalidationFlag` now skips those rules and keeps only
+  the desired-hours check, which the form does carry. Once availability exists (an
+  admin's internal copy, or the student picking shifts in Muster), the rules apply as
+  usual. `recordFormResponse` now re-syncs the flag, since the paste's earlier steps
+  check the row while it still reads as a Muster response. The per-student Flags card
+  shows one neutral "No availability on file from the Google Form" line in place of
+  the availability and weekend lines. No schema change. Flags already stored on such
+  responses clear the next time the flag is re-synced (re-pasting the response, or
+  editing its desired hours or weekend answer).
+  - **The travel cutoff moves into the Semester details card.** `/admin/terms` showed
+    the travel excusal cutoff and the "Accept late travel" toggle in a card of their
+    own, which read as if they applied to every semester. They were already per term
+    (`terms.travel_cutoff`, `terms.late_travel_accept`); they now sit in the details
+    card with the term's other settings and save with its Save details button, which
+    runs `saveTermDetails` and then the existing cutoff and late-travel actions for
+    whatever changed. `TravelCutoffPanel` is removed.
 - **1.62 (2026-11-25)** — **A system message on `/me`, set per semester.** The
   Semester page (`/admin/terms`) has a System message field and a Message color
   (blue, green, yellow or red) in its details form, saved with the rest by

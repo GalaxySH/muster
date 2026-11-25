@@ -72,8 +72,10 @@ someone with no row was never part of that term.
   student-design `Notice` in that colour. The form's preview is `SystemMessage`
   (`components/ui.tsx`), the same text and colour in the console's card style. Empty
   means none, and a new term starts with none. Saving the details never
-  moves the travel cutoff, even when the first day changes. The page
-  also holds `TravelCutoffPanel` and warns when the saved schedule email names
+  moves the travel cutoff, even when the first day changes. The travel cutoff
+  and the late-travel toggle sit in the same details card (1.63) and save with
+  it, through their own actions (`setTravelCutoff`, `setLateTravelAccepted`). The
+  page warns when the saved schedule email names
   another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
   and the hub nav is grouped into "This semester" and "All semesters".
 - **Who resolves the term.** Request-side loaders call `workingTermId()`
@@ -546,7 +548,8 @@ ingest** — written by the admin (picker / pasted emails) or the dormant
 group only if absent (default-flagged only when no group holds the flag). The
 **travel-excusal cutoff** (default: the day before the term starts) lives on the term
 (`getTravelCutoff` in `settings.ts`), editable on the Semester page, `/admin/terms`
-(`TravelCutoffPanel`, moved there from `/admin/groups` in 1.49), which also carries
+(moved there from `/admin/groups` in 1.49; part of the details card, `TermDetailsForm`,
+since 1.63), which also carries
 the **"Accept late travel" toggle** (`terms.late_travel_accept`, read via
 `getLateTravelPolicy`, written by `setLateTravelAccepted`). Off (default), on/after the
 cutoff the travel step **refuses** new entries and locks existing ones; on, entries
@@ -831,7 +834,12 @@ Google Form response copied by the sheet script. The full contract and rules are
   Drive `fileId` for the footer, and `addTravelRequest` honors `excused=0` from an admin.
   `lib/admin/form-paste-actions.ts` adds `saveEveryWeekendFor` (re-syncs
   `revalidation_failed` like desired hours) and `recordFormResponse` (status submitted,
-  `submitted_via = google_form`, the form's timestamp, a responses-sheet refresh).
+  `submitted_via = google_form`, the form's timestamp, a responses-sheet refresh, and a
+  `revalidation_failed` re-sync, since the earlier steps checked the row as a Muster one).
+- A Google Form response has no availability, so while none is on file
+  (`availabilityNotCollected` in `domain/validation.ts`) `syncRevalidationFlag` judges it on
+  desired hours only and the per-student Flags card shows a neutral line instead of the
+  availability checks (1.63).
 - `submitted_via` shows as a "via Google Form" tag in `ResponseList` and the student
   header. `travelStanding` in `domain/travel.ts` keeps an imported no-proof entry from
   reading as late on every travel surface and in the export.
@@ -1353,7 +1361,7 @@ so the `animationend` still arrives. Admins who are also students are not redire
 
 ## Unified navigation
 
-Student pages render in `components/student/StudentPage.tsx` (1.63): a sticky top bar
+Student pages render in `components/student/StudentPage.tsx` (1.64): a sticky top bar
 with the Muster wordmark (to `/me`) and a Home link, a skip link, and `<main>`. On the
 flow pages it is passed `nav` (from `loadWizardNav`) and renders
 `components/student/StepProgress.tsx`, which **is** the flow's navigation: "Step 2 of 3"
@@ -1377,7 +1385,7 @@ travel→next gate is `components/evidence/TravelContinue.tsx` (an acknowledgeme
 checkbox, since travel is optional; its target comes from the position-aware
 `nextHref`).
 
-## Student design system (1.63)
+## Student design system (1.64)
 
 The student pages have their own look, separate from the admin console's.
 
@@ -1803,7 +1811,9 @@ dates come back as `releasedCloses`. Earlier closes stay as the record.
 (mirrors the finalize gate: hard rules + desired-hours; upserts/deletes the
 `revalidation_failed` flag). Since 1.29 it judges the **effective** availability, not the
 student's rows: the internal copy when one exists, since that is the layer that actually
-gets scheduled and the layer an admin can break. Reading the copy is allowed here because
+gets scheduled and the layer an admin can break. A Google Form response whose effective
+layer is empty skips the availability rules and keeps the desired-hours check (1.63,
+`availabilityNotCollected`). Reading the copy is allowed here because
 the flag is admin-only; student-facing surfaces still never read it. It is called from
 `saveAvailabilityFor`, `revertInternalAvailability` and `writeSelectionAndFlags` too, so
 an admin saving an invalid copy through `overrideInvalid` no longer passes unreported.

@@ -130,6 +130,27 @@ export function checkDesiredHours(desiredHours: number | null, position: Positio
   };
 }
 
+/**
+ * True when a response came in through the Google Form and no availability is on
+ * file for it. The form import (docs/form-paste.md) brings over hours, notes and
+ * evidence but never shift picks, so the availability rules (minimum hours, an
+ * opening or closing shift, days spanned) have nothing to judge and are skipped
+ * instead of reported as failed. Desired hours still applies: the form carries it.
+ *
+ * Once availability exists for the response (an admin's internal copy, or the
+ * student later picking shifts in Muster), the rules apply again as usual.
+ */
+export function availabilityNotCollected(
+  submission: { status: "draft" | "submitted"; submittedVia: "muster" | "google_form" } | null,
+  selection: readonly SelectedShift[],
+): boolean {
+  return (
+    submission?.status === "submitted" &&
+    submission.submittedVia === "google_form" &&
+    selection.length === 0
+  );
+}
+
 /** Set of block ids that are the derived open or close of either day-type. */
 function openAndCloseIds(blocks: readonly ShiftBlock[]): Set<string> {
   const result = new Set<string>();
