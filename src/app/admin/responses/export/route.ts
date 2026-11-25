@@ -14,13 +14,14 @@ export async function GET() {
   const session = await getAppSession();
   if (!session?.isAdmin) return new Response("Forbidden", { status: 403 });
 
-  const csv = toCsv(buildExportMatrix(await loadExportData()));
+  const termId = await workingTermId();
+  const csv = toCsv(buildExportMatrix(await loadExportData(termId)));
   const date = new Date().toISOString().slice(0, 10);
 
   return new Response(BOM + csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="muster-responses-${await workingTermId()}-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="muster-responses-${termId}-${date}.csv"`,
       "Cache-Control": "no-store",
     },
   });

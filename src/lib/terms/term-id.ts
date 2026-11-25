@@ -40,3 +40,14 @@ export async function getCurrentTermId(db: DbOrTx): Promise<string> {
   }
   return row.id;
 }
+
+/**
+ * One term's row: its name, dates, travel cutoff and the rest. Throws when no
+ * such term exists. A request reads the working term's through `workingTerm()`;
+ * an action that already holds its term id reads it here.
+ */
+export async function getTerm(db: DbOrTx, termId: string): Promise<typeof terms.$inferSelect> {
+  const [term] = await db.select().from(terms).where(eq(terms.id, termId)).limit(1);
+  if (!term) throw new Error(`The term "${termId}" does not exist.`);
+  return term;
+}

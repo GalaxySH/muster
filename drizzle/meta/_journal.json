@@ -372,6 +372,13 @@
       "when": 1795587352491,
       "tag": "0052_contract_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1795589843575,
+      "tag": "0053_close_slots_term_date",
+      "breakpoints": true
     }
   ]
 }

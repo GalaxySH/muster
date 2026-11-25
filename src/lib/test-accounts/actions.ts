@@ -14,14 +14,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { getDb } from "@/lib/db";
-import {
-  students,
-  submissions,
-  groups,
-  magicLinks,
-  scheduleAssignments,
-  scheduleRuns,
-} from "@/lib/db/schema";
+import { students, submissions, groups, magicLinks } from "@/lib/db/schema";
 import { signIn } from "@/lib/auth";
 import { MAGIC_LINK_PROVIDER } from "@/lib/auth/config";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -40,7 +33,6 @@ import {
 } from "./constants";
 import { slugFromName, isValidTestSlug, testEmailFromSlug, isTestAccountEmail } from "./email";
 import { workingTermId } from "@/lib/terms/working";
-import { currentRunOf } from "@/lib/terms/scope";
 import { assignMembers, groupOf } from "@/lib/groups/membership";
 import { enrollMember } from "@/lib/terms/members";
 import { ensureCloseRequirements } from "@/lib/closes/requirements";
@@ -51,7 +43,6 @@ export type TestAccountError =
   | "invalid-position"
   | "exists"
   | "not-found"
-  | "in-schedule"
   | "signin";
 
 function fail(code: TestAccountError): never {
@@ -66,7 +57,8 @@ export async function createTestAccount(formData: FormData): Promise<void> {
   const slug = slugFromName(name);
   if (!isValidTestSlug(slug)) fail("invalid-name");
   const positionId = String(formData.get("position") ?? "");
-  const validPositions = await positionOptions();
+  const termId = await workingTermId();
+  const validPositions = await positionOptions(termId);
   if (!validPositions.some((p) => p.id === positionId)) fail("invalid-position");
   const international = formData.get("international") === "on";
   // Same tolerance as the roster importer: blank or unparseable means no hire
@@ -84,7 +76,6 @@ export async function createTestAccount(formData: FormData): Promise<void> {
     .limit(1);
   if (existing) fail("exists");
 
-  const termId = await workingTermId();
   const testGroupId = await ensureTestGroup(termId);
 
   try {
@@ -141,48 +132,28 @@ async function isInTestGroup(email: string): Promise<boolean> {
   return group?.kind === "test";
 }
 
-export async function deleteTestAccount(formData: FormData): Promise<void> {
+/**
+ * Shared gate for every action on an existing account. Requires BOTH
+ * test-group membership AND the synthetic domain, so a real student moved
+ * into the group via the /admin/groups picker can never be impersonated or
+ * deleted. Returns the normalized target email.
+ */
+async function requireTestAccount(formData: FormData): Promise<string> {
   const gate = await requireAdmin();
   if (!gate.ok) fail("forbidden");
   const email = normalizeEmail(String(formData.get("email") ?? ""));
 
+  if (!(await isInTestGroup(email)) || !isTestAccountEmail(email)) fail("not-found");
+  return email;
+}
+
+/**
+ * Delete a test account in every term. Its shifts cascade away with it, which
+ * is fine for a synthetic off-roster account.
+ */
+export async function deleteTestAccount(formData: FormData): Promise<void> {
+  const email = await requireTestAccount(formData);
   const db = getDb();
-
-  // Safety rail: only ever delete accounts the manager owns (in the test group),
-  // never a real roster student. Group-only (not domain) so legacy dev-created
-  // @wisc.edu accounts stay deletable.
-  if (!(await isInTestGroup(email))) fail("not-found");
-
-  // schedule_assignments cascades off students, so deleting the account would
-  // strip its shifts out of the schedule with no warning. Refused rather than
-  // reported, the same way a position with run rows on its blocks is
-  // (positions/actions.ts), and checked before anything else is deleted so a
-  // refusal costs no rows and no Drive files.
-  //
-  // Synthetic-domain accounts skip it: the grid places them on purpose
-  // (schedule/manual.ts), and as off-roster students their rows never reach the
-  // schedule, so their shifts simply go with them. The guard still covers
-  // anyone else in the test group, such as a legacy @wisc.edu account.
-  //
-  // Scoped to the current run on purpose. Superseded runs can also hold rows for
-  // this account, but the grid only edits the current one, so guarding on those
-  // would leave the account permanently undeletable with no way to clear it. The
-  // run the scheduler is working from is the one worth protecting; older runs
-  // lose a synthetic row from their history, which is what a test account is.
-  if (!isTestAccountEmail(email)) {
-    const [assigned] = await db
-      .select({ runId: scheduleAssignments.runId })
-      .from(scheduleAssignments)
-      .innerJoin(scheduleRuns, eq(scheduleAssignments.runId, scheduleRuns.id))
-      .where(
-        and(
-          eq(scheduleAssignments.studentEmail, email),
-          currentRunOf(await workingTermId()),
-        ),
-      )
-      .limit(1);
-    if (assigned) fail("in-schedule");
-  }
 
   // Every term's submission, not just the current one: the student row below
   // cannot be deleted while any submission still points at it.
@@ -210,28 +181,13 @@ export async function deleteTestAccount(formData: FormData): Promise<void> {
 }
 
 /**
- * Shared gate for the two impersonation actions below. Requires BOTH
- * test-group membership AND the synthetic domain, so a real student moved
- * into the group via the /admin/groups picker can never be impersonated.
- * Returns the normalized target email.
- */
-async function requireImpersonableTestAccount(formData: FormData): Promise<string> {
-  const gate = await requireAdmin();
-  if (!gate.ok) fail("forbidden");
-  const email = normalizeEmail(String(formData.get("email") ?? ""));
-
-  if (!(await isInTestGroup(email)) || !isTestAccountEmail(email)) fail("not-found");
-  return email;
-}
-
-/**
  * Sign the current admin in AS a test account: mint a single-use magic-link
  * token and redeem it through the existing `magic-link` Credentials provider,
  * no new auth surface. Replaces the admin's session; they return by signing
  * back in with Google.
  */
 export async function signInAsTestAccount(formData: FormData): Promise<void> {
-  const email = await requireImpersonableTestAccount(formData);
+  const email = await requireTestAccount(formData);
   const token = await issueMagicLink(email);
   try {
     await signIn(MAGIC_LINK_PROVIDER, { token, email, redirectTo: "/me" });
@@ -250,9 +206,7 @@ export async function signInAsTestAccount(formData: FormData): Promise<void> {
  * single-use expiring token as sign-in-as.
  */
 export async function mintTestAccountLink(formData: FormData): Promise<void> {
-  const email = await requireImpersonableTestAccount(formData);
+  const email = await requireTestAccount(formData);
   const token = await issueMagicLink(email);
-  redirect(
-    `/admin/test-users?token=${encodeURIComponent(token)}&for=${encodeURIComponent(email)}`,
-  );
+  redirect(`/admin/test-users?token=${encodeURIComponent(token)}&for=${encodeURIComponent(email)}`);
 }

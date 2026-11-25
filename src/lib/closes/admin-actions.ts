@@ -139,7 +139,7 @@ export async function generateCloseInventory(
 
   revalidatePath("/admin/closes");
   revalidatePath("/closes");
-  await trySyncSheet(CLOSES_SHEET, 0);
+  await trySyncSheet(CLOSES_SHEET, termId, 0);
   return { ok: true, summary };
 }
 
@@ -155,10 +155,10 @@ const ASSIGN_ERROR_MESSAGES = {
 } as const;
 
 /** After an admin claim change: refresh both surfaces and back up the sheet. */
-async function afterClaimChange() {
+async function afterClaimChange(termId: string) {
   revalidatePath("/admin/closes");
   revalidatePath("/closes");
-  await trySyncSheet(CLOSES_SHEET);
+  await trySyncSheet(CLOSES_SHEET, termId);
 }
 
 /**
@@ -170,14 +170,15 @@ export async function assignCloseClaim(slotId: string, email: string): Promise<C
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const lead = await findStudentByEmail(email);
+  const termId = await workingTermId();
+  const lead = await findStudentByEmail(email, termId);
   if (!lead?.onRoster || !(await positionPicksCloses(lead.positionId)))
     return { ok: false, error: "Pick an active Shift Lead." };
 
-  const code = await insertCloseClaim(slotId, email);
+  const code = await insertCloseClaim(slotId, email, termId);
   if (code) return { ok: false, error: ASSIGN_ERROR_MESSAGES[code] };
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
 }
 
@@ -192,16 +193,17 @@ export async function removeCloseSlot(slotId: string): Promise<CloseAssignResult
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
+  const termId = await workingTermId();
   const [slot] = await db
     .select({ id: closeSlots.id })
     .from(closeSlots)
-    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, await workingTermId())))
+    .where(and(eq(closeSlots.id, slotId), eq(closeSlots.termId, termId)))
     .limit(1);
   if (!slot) return { ok: false, error: "That shift no longer exists." };
 
   await db.delete(closeSlots).where(eq(closeSlots.id, slotId));
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
 }
 
@@ -213,17 +215,18 @@ export async function unassignCloseClaim(
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
+  const termId = await workingTermId();
   await getDb()
     .delete(closeClaims)
     .where(
       and(
         eq(closeClaims.closeSlotId, slotId),
         eq(closeClaims.studentEmail, email),
-        closeClaimInTerm(await workingTermId()),
+        closeClaimInTerm(termId),
       ),
     );
 
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true };
 }
 
@@ -285,7 +288,7 @@ export async function setCloseRequirements(
   revalidatePath("/me");
   revalidatePath("/admin");
   revalidatePath("/admin/students/[email]", "page");
-  await afterClaimChange();
+  await afterClaimChange(termId);
   return { ok: true, updated: leads.length };
 }
 
@@ -300,7 +303,9 @@ export async function rebuildClosesSheet(): Promise<RebuildClosesSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(CLOSES_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(CLOSES_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/closes");
     return { ok: true, sync };
   } catch (e) {

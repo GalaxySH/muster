@@ -32,8 +32,11 @@ export interface StudentRecord {
   rosterTitle: string | null;
 }
 
-/** The person with this email and their place in the working term, or null when unknown. */
-export async function findStudentByEmail(email: string): Promise<StudentRecord | null> {
+/** The person with this email and their place in the term, or null when unknown. */
+export async function findStudentByEmail(
+  email: string,
+  termId: string,
+): Promise<StudentRecord | null> {
   const [row] = await getDb()
     .select({
       email: students.email,
@@ -46,7 +49,7 @@ export async function findStudentByEmail(email: string): Promise<StudentRecord |
       rosterTitle: termMembers.rosterTitle,
     })
     .from(students)
-    .leftJoin(termMembers, memberOf(await workingTermId()))
+    .leftJoin(termMembers, memberOf(termId))
     .where(eq(students.email, normalizeEmail(email)))
     .limit(1);
   return row ? { ...row, onRoster: row.onRoster ?? false } : null;

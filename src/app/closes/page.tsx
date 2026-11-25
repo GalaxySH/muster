@@ -11,6 +11,7 @@ import { FormWindowBanner, NoGroupNotice, SubmittedLockBanner } from "@/componen
 import { AppHeader } from "@/components/AppHeader";
 import { WizardSteps } from "@/components/WizardSteps";
 import { Page } from "@/components/ui";
+import { workingTermId } from "@/lib/terms/working";
 
 /**
  * SL-only wizard step (PLAN §18a): claim weekend close shifts from the dated
@@ -21,15 +22,16 @@ export default async function ClosesPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/closes");
 
-  const student = await findStudentByEmail(session.email);
+  const termId = await workingTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) redirect("/me");
-  const requirement = await loadCloseRequirement(student.email, student.positionId);
+  const requirement = await loadCloseRequirement(student.email, student.positionId, termId);
   if (!requirement || !closeStepApplies(requirement.required)) redirect("/me");
 
   const [access, nav, board] = await Promise.all([
-    resolveStudentAccess(student.email),
+    resolveStudentAccess(student.email, termId),
     loadWizardNav(student.email),
-    loadCloseBoard(student.email),
+    loadCloseBoard(student.email, termId),
   ]);
 
   if (access.access === "no-group") {

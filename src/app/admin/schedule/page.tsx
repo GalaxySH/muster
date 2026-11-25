@@ -28,6 +28,7 @@ import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
 import { CoverageGrid, CoverageLegend, legendChip } from "@/components/admin/CoverageGrid";
 import { getSchedulingParams } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import { rebuildScheduleSheet } from "@/lib/schedule/actions";
 import {
   countScheduledMarks,
@@ -85,6 +86,7 @@ export default async function AdminSchedulePage({
   if (!session) redirect("/signin?callbackUrl=/admin/schedule");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [
     sp,
     coverage,
@@ -100,13 +102,13 @@ export default async function AdminSchedulePage({
   ] = await Promise.all([
     searchParams,
     loadCoverage(),
-    loadCurrentSchedule(),
-    getSchedulingParams(),
+    loadCurrentSchedule(termId),
+    getSchedulingParams(termId),
     listScheduleRuns(),
-    getSheetUrl(SCHEDULE_SHEET),
-    getLastSheetSync(SCHEDULE_SHEET),
+    getSheetUrl(SCHEDULE_SHEET, termId),
+    getLastSheetSync(SCHEDULE_SHEET, termId),
     loadFrozenMismatches(),
-    getCurrentPlan(),
+    getCurrentPlan(termId),
     loadScopeLedger(),
     countScheduledMarks(),
   ]);

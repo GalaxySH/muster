@@ -8,6 +8,7 @@ import { PlanImportPanel } from "@/components/admin/PlanImportPanel";
 import { W2wEmployeesPanel } from "@/components/admin/W2wEmployeesPanel";
 import { getPlanPageModel, getW2wEmployeesStatus, type PlanPageModel } from "@/lib/w2w/plan-data";
 import { buildExportModel, type ExportModel } from "@/lib/w2w/export-data";
+import { workingTermId } from "@/lib/terms/working";
 import { formatSpan } from "@/lib/domain/time";
 import type { DayType } from "@/lib/domain/types";
 
@@ -25,10 +26,11 @@ export default async function AdminSchedulePlanPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/schedule/plan");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [model, employees, exportModel] = await Promise.all([
-    getPlanPageModel(),
+    getPlanPageModel(termId),
     getW2wEmployeesStatus(),
-    buildExportModel(),
+    buildExportModel(termId),
   ]);
 
   return (

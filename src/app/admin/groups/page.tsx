@@ -3,6 +3,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listGroups, getDefaultAutoAssignEnabled } from "@/lib/groups/data";
 import { positionOptions } from "@/lib/positions/data";
+import { workingTermId } from "@/lib/terms/working";
 import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
 import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPanel";
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
@@ -24,7 +25,7 @@ export default async function AdminGroupsPage() {
     listGroups(),
     getDefaultAutoAssignEnabled(),
     getHighDemandMarksEnabled(),
-    positionOptions(),
+    positionOptions(await workingTermId()),
   ]);
 
   // Dates → epoch ms so the client can render them in the admin's local timezone.

@@ -13,6 +13,9 @@ only the order to do things in.
   step 1 and step 6.
 - Take note of the last backup time (`docs/deploy.md`). Starting a semester only
   adds rows, but it is the one step here you cannot undo by clicking.
+- Start it at a quiet hour, when few students are filling in the form.
+- Do not create the semester's Drive folder by hand. The app makes it the first
+  time it writes there, and it cannot see a folder it did not create.
 
 ## The steps
 
@@ -59,12 +62,15 @@ responded in the mistaken semester you are asked to confirm, because they stop
 seeing those responses until it is current again.
 
 The mistaken semester is not deleted. It stays in the menu. Rename it so it is
-not confused with the real one; its name can be reused once it is renamed.
+not confused with the real one; its name can be reused once it is renamed. If
+anything was written to Drive in it, its Drive folder keeps the old name. A real
+semester started under that name gets a new folder of its own, so two folders in
+Drive can carry the same name; the newer one belongs to the real semester.
 
 ## What a deploy has to do with it
 
 Nothing. Starting a semester is data, not a release. One caution: once a second
 semester exists, do not roll the app back to a release older than 1.48. Those
 releases know nothing about semesters and would read both at once. (Before a
-second semester exists such a rollback is possible, with one extra step:
-`docs/deploy.md`.)
+second semester exists, a rollback to v1.47 is possible after running the
+rollback SQL first, or by restoring a backup: `docs/deploy.md`.)

@@ -24,7 +24,6 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { terms } from "@/lib/db/schema";
 import { termSettingKey } from "@/lib/domain/terms";
-import { workingTermId } from "@/lib/terms/working";
 import { getActiveDriveGrant } from "./grants";
 import { getAccessToken } from "./oauth";
 import {
@@ -36,7 +35,6 @@ import {
   createSpreadsheet,
   writeSheetValues,
   SheetWriteError,
-  FOLDER_MIME,
   SPREADSHEET_MIME,
   type DownloadResult,
 } from "./api";
@@ -56,6 +54,8 @@ export type ProofKind = "course" | "extracurricular" | "travel" | "change-reques
 
 export interface RelayUploadInput {
   studentEmail: string;
+  /** The term whose proofs/ folder receives the file. */
+  termId: string;
   kind: ProofKind;
   mimeType: string;
   bytes: Buffer;
@@ -63,24 +63,40 @@ export interface RelayUploadInput {
 
 const driveRoot = (): string | null => env.DRIVE_FOLDER_ID || null;
 
+const inFlight = new Map<string, Promise<string>>();
+
 /**
- * Find-or-create a folder by name under a parent, caching its id under `key`.
- * The name lookup comes before creating so a manually-made folder is reused.
+ * Concurrent callers for the same settings key share one resolution, so two
+ * requests that both miss a cached id create one Drive object, not two. This
+ * holds because the app runs as a single Node process. The entry is dropped
+ * once it settles, so a failure is retried by the next caller.
  */
-async function ensureFolder(
+function singleFlight(key: string, resolve: () => Promise<string>): Promise<string> {
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const flight = resolve().finally(() => inFlight.delete(key));
+  inFlight.set(key, flight);
+  return flight;
+}
+
+/**
+ * A folder under a parent, created on first use and cached under `key`. It is
+ * never looked up by name: `drive.file` only shows the app its own folders, so
+ * a name match could only be another term's folder (one renamed, then reused).
+ */
+function ensureFolder(
   accessToken: string,
   key: string,
   name: string,
   parentId: () => Promise<string | null>,
 ): Promise<string> {
-  const cached = await getSetting(key);
-  if (cached) return cached;
-  const parent = await parentId();
-  const id =
-    (await findChildByName({ accessToken, parentId: parent, name, mimeType: FOLDER_MIME })) ??
-    (await createFolder({ accessToken, name, parentId: parent }));
-  await setSetting(key, id);
-  return id;
+  return singleFlight(key, async () => {
+    const cached = await getSetting(key);
+    if (cached) return cached;
+    const id = await createFolder({ accessToken, name, parentId: await parentId() });
+    await setSetting(key, id);
+    return id;
+  });
 }
 
 /** Where a term's sheets and proofs folder live: its own folder, or the root. */
@@ -114,15 +130,15 @@ const ensureProofsFolder = (accessToken: string, termId: string): Promise<string
   );
 
 /**
- * Relay one file into the working term's proofs/ folder; returns the stored
- * fileId. For a student that is always the current term.
+ * Relay one file into the term's proofs/ folder; returns the stored fileId.
+ * For a student that is always the current term.
  */
 export async function relayUpload(input: RelayUploadInput): Promise<string> {
   const grant = await getActiveDriveGrant();
   if (!grant) throw new NoDriveGrantError();
   try {
     const accessToken = await getAccessToken(grant.refreshToken);
-    const folderId = await ensureProofsFolder(accessToken, await workingTermId());
+    const folderId = await ensureProofsFolder(accessToken, input.termId);
     const ext = extensionForType(input.mimeType);
     const name = `${input.studentEmail}__${input.kind}__${Date.now()}.${ext}`;
     const fileId = await uploadFile({
@@ -195,15 +211,18 @@ export async function upsertManagedSheet(
         parentId: await termFolder(accessToken, sheet.termId),
       });
 
-    let sheetId =
-      (await getSetting(idKey)) ??
-      (await findChildByName({
-        accessToken,
-        parentId: await termFolder(accessToken, sheet.termId),
-        name: sheet.name,
-        mimeType: SPREADSHEET_MIME,
-      })) ??
-      (await create());
+    let sheetId = await singleFlight(
+      idKey,
+      async () =>
+        (await getSetting(idKey)) ??
+        (await findChildByName({
+          accessToken,
+          parentId: await termFolder(accessToken, sheet.termId),
+          name: sheet.name,
+          mimeType: SPREADSHEET_MIME,
+        })) ??
+        (await create()),
+    );
 
     try {
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });

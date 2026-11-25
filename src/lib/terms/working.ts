@@ -9,15 +9,19 @@
  *   it is always the current term. For an admin it is the term they selected, or
  *   the current term when they selected none.
  *
- * Request-side loaders and actions call `workingTermId()` themselves and take no
- * term id from the client, so this file is the whole of how a page or an action
- * learns its term. The few things that must follow the current term whatever is
- * selected call `currentTermId()` and say why. Anything that takes a database
- * handle or a transaction (the roster import, the position change path, the
- * scripts) takes the term id as an argument instead.
+ * Pages and actions learn their term here and take no term id from the client,
+ * so this file is the whole of how a request learns its term. The few things
+ * that must follow the current term whatever is selected call `currentTermId()`
+ * and say why. Anything that takes a database handle or a transaction (the
+ * roster import, the position change path, the scripts) takes the term id as an
+ * argument instead.
  *
- * Both are memoized with React `cache`, so a page that calls several loaders
- * resolves the term once.
+ * Both are memoized with React `cache`, and that memo only holds while Server
+ * Components render: a page that calls several loaders resolves the term once.
+ * A server action or a route handler gets no memo at all, so it resolves the
+ * term once at its top (usually in its gate) and passes that id down to every
+ * helper it calls. Resolving again partway through could land in a new
+ * semester started in the meantime.
  */
 import "server-only";
 import { cache } from "react";
@@ -27,7 +31,7 @@ import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { terms } from "@/lib/db/schema";
 import { chooseWorkingTerm } from "@/lib/domain/terms";
-import { getCurrentTermId } from "./term-id";
+import { getCurrentTermId, getTerm } from "./term-id";
 
 /** Holds the term an admin selected. httpOnly; only `selectTerm` writes it. */
 export const TERM_COOKIE = "muster_term";
@@ -77,14 +81,10 @@ export const workingTermId = cache(async (): Promise<string> => {
 
 export type Term = typeof terms.$inferSelect;
 
-async function termById(termId: string, what: string): Promise<Term> {
-  const [term] = await getDb().select().from(terms).where(eq(terms.id, termId)).limit(1);
-  if (!term) throw new Error(`The ${what} term "${termId}" does not exist.`);
-  return term;
-}
-
 /** The working term's row: its name, dates, travel cutoff and the rest. */
-export const workingTerm = cache(async (): Promise<Term> => termById(await workingTermId(), "working"));
+export const workingTerm = cache(
+  async (): Promise<Term> => getTerm(getDb(), await workingTermId()),
+);
 
 /** Every term, newest first: the header's semester control lists these. */
 export async function listTerms(): Promise<{ id: string; name: string }[]> {

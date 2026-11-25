@@ -8,6 +8,7 @@ vi.mock("@/lib/schedule/actions", () => ({
 }));
 
 import { ScheduleParamsForm } from "./ScheduleParamsForm";
+import { RenderedTerm } from "@/components/RenderedTerm";
 import { saveScheduleParams } from "@/lib/schedule/actions";
 import { DEFAULT_SCHEDULING_PARAMS, type SchedulingParams } from "@/lib/domain/scheduling/params";
 
@@ -25,10 +26,20 @@ const withPool = (ids: string[]): SchedulingParams => ({
 
 /** Render, press Save, and hand back the pool the form actually submitted. */
 async function savedPool(initial: SchedulingParams): Promise<string[]> {
-  render(<ScheduleParamsForm initial={initial} positions={positions} leadPositionIds={["shift-lead"]} />);
+  render(
+    <RenderedTerm term={{ id: "2026-fall", name: "Fall 2026" }}>
+      <ScheduleParamsForm
+        initial={initial}
+        positions={positions}
+        leadPositionIds={["shift-lead"]}
+      />
+    </RenderedTerm>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
   await waitFor(() => expect(saveScheduleParams).toHaveBeenCalled());
-  const [payload] = vi.mocked(saveScheduleParams).mock.calls[0]!;
+  const [termId, payload] = vi.mocked(saveScheduleParams).mock.calls[0]!;
+  // The save names the semester the page was rendered for.
+  expect(termId).toBe("2026-fall");
   return payload.coveragePoolPositionIds;
 }
 
@@ -63,7 +74,7 @@ describe("the cross-coverage pool a save writes", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: "Cashier" }));
     await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(saveScheduleParams).toHaveBeenCalled());
-    expect(vi.mocked(saveScheduleParams).mock.calls[0]![0].coveragePoolPositionIds).toEqual([]);
+    expect(vi.mocked(saveScheduleParams).mock.calls[0]![1].coveragePoolPositionIds).toEqual([]);
   });
 
   it("does not offer a box for anything the page held back", () => {

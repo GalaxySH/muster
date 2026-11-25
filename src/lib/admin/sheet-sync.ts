@@ -5,8 +5,8 @@
  * sheet, the SL closes backup sheet, and the recommended-schedule sheet; each
  * carries its own Drive name, cached sheet id, and matrix builder. Each term has
  * its own three sheets (docs/semester-domains-plan.md §2.6), and everything here
- * acts on the working term's: the matrix builders read it, and the cached id and
- * the last-sync stamp are stored per term.
+ * acts on the term the caller names: the matrix builders read it, and the cached
+ * id and the last-sync stamp are stored per term.
  *
  * Rate limit (per product decision): the cooldown is split by trigger. The
  * best-effort resync after a student submit/claim uses a hard 10-minute
@@ -27,7 +27,6 @@ import {
 } from "@/lib/settings";
 import { upsertManagedSheet } from "@/lib/drive/relay";
 import { termSettingKey } from "@/lib/domain/terms";
-import { workingTermId } from "@/lib/terms/working";
 import { loadCloseAdmin } from "@/lib/closes/data";
 import { buildCloseClaimsMatrix } from "@/lib/closes/export";
 import { loadCurrentSchedule } from "@/lib/schedule/data";
@@ -47,22 +46,22 @@ export interface SheetTarget {
   idSettingKey: string;
   /** app_settings key holding the last successful sync instant, before the term is added. */
   syncedAtSettingKey: string;
-  buildValues: () => Promise<string[][]>;
+  buildValues: (termId: string) => Promise<string[][]>;
 }
 
 export const RESPONSES_SHEET: SheetTarget = {
   name: "Muster Responses",
   idSettingKey: SETTING_RESPONSES_SHEET_ID,
   syncedAtSettingKey: SETTING_RESPONSES_SHEET_SYNCED_AT,
-  buildValues: async () => buildExportMatrix(await loadExportData()),
+  buildValues: async (termId) => buildExportMatrix(await loadExportData(termId)),
 };
 
 export const CLOSES_SHEET: SheetTarget = {
   name: "Muster SL Closes",
   idSettingKey: SETTING_CLOSES_SHEET_ID,
   syncedAtSettingKey: SETTING_CLOSES_SHEET_SYNCED_AT,
-  buildValues: async () => {
-    const view = await loadCloseAdmin();
+  buildValues: async (termId) => {
+    const view = await loadCloseAdmin(termId);
     return buildCloseClaimsMatrix(view.slots, view.leads);
   },
 };
@@ -71,7 +70,8 @@ export const SCHEDULE_SHEET: SheetTarget = {
   name: "Muster Schedule",
   idSettingKey: SETTING_SCHEDULE_SHEET_ID,
   syncedAtSettingKey: SETTING_SCHEDULE_SHEET_SYNCED_AT,
-  buildValues: async () => buildScheduleMatrix((await loadCurrentSchedule())?.students ?? []),
+  buildValues: async (termId) =>
+    buildScheduleMatrix((await loadCurrentSchedule(termId))?.students ?? []),
 };
 
 export interface SheetSyncResult {
@@ -94,14 +94,14 @@ export function cooldownRemainingMs(last: Date | null, now: Date, cooldownMs: nu
   return Math.max(0, cooldownMs - elapsed);
 }
 
-export async function getLastSheetSync(target: SheetTarget): Promise<Date | null> {
-  const v = await getSetting(termSettingKey(target.syncedAtSettingKey, await workingTermId()));
+export async function getLastSheetSync(target: SheetTarget, termId: string): Promise<Date | null> {
+  const v = await getSetting(termSettingKey(target.syncedAtSettingKey, termId));
   return v ? new Date(v) : null;
 }
 
 /** The Drive URL of a target's sheet, if one has been created. */
-export async function getSheetUrl(target: SheetTarget): Promise<string | null> {
-  const id = await getSetting(termSettingKey(target.idSettingKey, await workingTermId()));
+export async function getSheetUrl(target: SheetTarget, termId: string): Promise<string | null> {
+  const id = await getSetting(termSettingKey(target.idSettingKey, termId));
   return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : null;
 }
 
@@ -112,9 +112,10 @@ export async function getSheetUrl(target: SheetTarget): Promise<string | null> {
  */
 export async function syncSheet(
   target: SheetTarget,
+  termId: string,
   { cooldownMs, now = new Date() }: { cooldownMs: number; now?: Date },
 ): Promise<SheetSyncResult> {
-  const last = await getLastSheetSync(target);
+  const last = await getLastSheetSync(target, termId);
   const remaining = cooldownRemainingMs(last, now, cooldownMs);
   if (remaining > 0) {
     return {
@@ -125,8 +126,7 @@ export async function syncSheet(
     };
   }
 
-  const termId = await workingTermId();
-  const values = await target.buildValues();
+  const values = await target.buildValues(termId);
   const { url } = await upsertManagedSheet({ ...target, termId }, values);
   await setSetting(termSettingKey(target.syncedAtSettingKey, termId), now.toISOString());
   return { synced: true, url, lastSyncedAt: now, nextEligibleAt: null };
@@ -139,10 +139,11 @@ export async function syncSheet(
  */
 export async function trySyncSheet(
   target: SheetTarget,
+  termId: string,
   cooldownMs: number = SHEET_AUTO_COOLDOWN_MS,
 ): Promise<void> {
   try {
-    await syncSheet(target, { cooldownMs });
+    await syncSheet(target, termId, { cooldownMs });
   } catch (e) {
     console.error(`${target.name} sheet sync failed (non-fatal):`, e);
   }

@@ -12,8 +12,11 @@ export interface TestAccount {
   displayName: string;
   positionName: string | null;
   status: "draft" | "submitted" | null;
-  /** False for legacy dev-created @wisc.edu accounts; hides the sign-in-as button. */
-  canSignInAs: boolean;
+  /**
+   * Only synthetic-domain accounts can be signed in as or deleted. False for
+   * anyone else in the test group, such as a real student moved there.
+   */
+  canManage: boolean;
 }
 
 /** The throwaway accounts created by the /admin/test-users manager (test-group members). */
@@ -40,6 +43,6 @@ export async function listTestAccounts(): Promise<TestAccount[]> {
     displayName: r.displayName,
     positionName: r.positionName ?? null,
     status: r.status ?? null,
-    canSignInAs: isTestAccountEmail(r.email),
+    canManage: isTestAccountEmail(r.email),
   }));
 }

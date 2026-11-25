@@ -6,6 +6,7 @@
  * loaded only when an admin actually opens it.
  */
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { workingTermId } from "@/lib/terms/working";
 import { loadStudentScheduleView, type StudentScheduleView } from "./student-schedule-data";
 
 export type StudentScheduleResult =
@@ -16,7 +17,7 @@ export async function fetchStudentSchedule(email: string): Promise<StudentSchedu
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const lookup = await loadStudentScheduleView(email);
+  const lookup = await loadStudentScheduleView(email, await workingTermId());
   if (lookup.kind === "no-run") return { ok: false, error: "No schedule has been generated yet." };
   if (lookup.kind === "unknown-student") return { ok: false, error: "Unknown student." };
   return { ok: true, data: lookup.view };

@@ -46,7 +46,8 @@ import {
   SHEET_MANUAL_COOLDOWN_MS,
   type SheetSyncResult,
 } from "./sheet-sync";
-import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { terms } from "@/lib/db/schema";
 import { submissionOf } from "@/lib/terms/scope";
@@ -68,6 +69,8 @@ export async function setScheduled(
   scheduled: boolean,
   termId: string,
 ): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
   return updateSubmission(studentEmail, { scheduled }, termId);
 }
 
@@ -77,6 +80,8 @@ export async function saveSchedulerNotes(
   notes: string,
   termId: string,
 ): Promise<AdminActionResult> {
+  const gate = await requireAdminIn(termId);
+  if (!gate.ok) return { ok: false, error: gate.error };
   const trimmed = notes.trim();
   return updateSubmission(
     studentEmail,
@@ -109,7 +114,7 @@ export async function generateStudentMagicLink(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const email = normalizeEmail(studentEmail);
-  const student = await findStudentByEmail(email);
+  const student = await findStudentByEmail(email, await workingTermId());
   if (!student) return { ok: false, error: "That employee is not a known student." };
 
   const token = await issueMagicLink(email);
@@ -138,7 +143,7 @@ export async function deleteResponse(
   const [sub] = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .where(submissionOf(email, await workingTermId()))
+    .where(submissionOf(email, termId))
     .limit(1);
   if (!sub) return { ok: false, error: "No submission exists for this student." };
 
@@ -149,7 +154,7 @@ export async function deleteResponse(
 
   // Best-effort Drive cleanup (relayDelete never throws) and sheet rebuild.
   for (const fileId of fileIds) await relayDelete(fileId);
-  await trySyncSheet(RESPONSES_SHEET, 0);
+  await trySyncSheet(RESPONSES_SHEET, termId, 0);
 
   revalidatePath("/admin/responses");
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
@@ -211,7 +216,7 @@ export async function removeOrphanedSelection(
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(submissionOf(email, await workingTermId()))
+    .where(submissionOf(email, termId))
     .limit(1);
   if (!sub) return { ok: false, error: "No such submission." };
 
@@ -234,7 +239,7 @@ export async function removeOrphanedSelection(
   });
   if (refused) return { ok: false, error: "That pick is not on a removed shift." };
 
-  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET, termId);
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
   revalidatePath("/admin/responses");
   revalidatePath("/admin");
@@ -280,10 +285,10 @@ export async function setTravelCutoff(
   const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const term = await workingTerm();
+  const term = await getTerm(getDb(), termId);
   const cutoff = iso === null ? defaultTravelCutoff(term.startsOn) : new Date(iso);
   if (Number.isNaN(cutoff.getTime())) return { ok: false, error: "Invalid date." };
-  await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, term.id));
+  await getDb().update(terms).set({ travelCutoff: cutoff }).where(eq(terms.id, termId));
   revalidatePath("/admin/terms");
   revalidatePath("/travel");
   revalidatePath("/intro");
@@ -441,7 +446,7 @@ export async function setRosterReading(
   const error = validateRosterReading(reading);
   if (error) return { ok: false, error };
 
-  await saveRosterReading(getDb(), await workingTermId(), reading);
+  await saveRosterReading(getDb(), termId, reading);
   revalidatePath("/admin/roster");
   return { ok: true };
 }
@@ -459,7 +464,9 @@ export async function rebuildResponsesSheet(): Promise<RebuildSheetResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(RESPONSES_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(RESPONSES_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/responses");
     return { ok: true, sync };
   } catch (e) {

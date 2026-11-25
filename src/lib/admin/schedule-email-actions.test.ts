@@ -15,16 +15,24 @@ vi.mock("@/lib/auth/require-admin", () => ({
 }));
 const sendEmail = vi.fn();
 vi.mock("@/lib/email/resend", () => ({ sendEmail: (m: unknown) => sendEmail(m) }));
+const positionOptions = vi.fn<(termId: string) => Promise<{ id: string; name: string }[]>>(
+  async () => [{ id: "ca", name: "Culinary Assistant" }],
+);
 vi.mock("@/lib/positions/data", () => ({
-  positionOptions: async () => [{ id: "ca", name: "Culinary Assistant" }],
+  positionOptions: (t: string) => positionOptions(t),
 }));
 const loadStudentCurrentAssignments = vi.fn();
 vi.mock("@/lib/schedule/data", () => ({
-  loadStudentCurrentAssignments: (e: string) => loadStudentCurrentAssignments(e),
+  loadStudentCurrentAssignments: (e: string, t: string) => loadStudentCurrentAssignments(e, t),
 }));
 const findStudentByEmail = vi.fn();
 vi.mock("@/lib/roster/lookup", () => ({
-  findStudentByEmail: (e: string) => findStudentByEmail(e),
+  findStudentByEmail: (e: string, t: string) => findStudentByEmail(e, t),
+}));
+vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
+const getTerm = vi.fn(async (_db: unknown, id: string) => ({ id, name: "Test Term" }));
+vi.mock("@/lib/terms/term-id", () => ({
+  getTerm: (db: unknown, id: string) => getTerm(db, id),
 }));
 let config: ScheduleEmailConfig = DEFAULT_SCHEDULE_EMAIL;
 let emailEnabled = true;
@@ -37,8 +45,9 @@ vi.mock("@/lib/settings", () => ({
 }));
 const updateSubmission = vi.fn();
 vi.mock("./update-submission", () => ({
-  updateSubmission: (e: string, patch: unknown) => updateSubmission(e, patch),
+  updateSubmission: (e: string, patch: unknown, t: string) => updateSubmission(e, patch, t),
 }));
+const { workingTermId } = await import("@/lib/terms/working");
 
 const {
   sendScheduleEmail,
@@ -94,10 +103,22 @@ describe("sendScheduleEmail", () => {
     expect(msg.text).toContain("Sunday, October 4");
     expect(msg.text).toContain("Tuesday: 6:30 AM to 10:00 AM");
     expect(msg.html).toContain(">Tuesday</td>");
-    expect(updateSubmission).toHaveBeenCalledWith("sfhauge@wisc.edu", {
-      scheduleEmailSentAt: expect.any(Date),
-      scheduled: true,
-    });
+    expect(updateSubmission).toHaveBeenCalledWith(
+      "sfhauge@wisc.edu",
+      { scheduleEmailSentAt: expect.any(Date), scheduled: true },
+      "test-term",
+    );
+  });
+
+  // The gate already checked the page's semester is the working one, so every
+  // read and the stamp use that id and nothing looks the term up again.
+  it("uses the page's semester for every read and the stamp, resolving nothing again", async () => {
+    await sendScheduleEmail("sfhauge@wisc.edu", input, "test-term");
+    expect(workingTermId).not.toHaveBeenCalled();
+    expect(findStudentByEmail).toHaveBeenCalledWith("sfhauge@wisc.edu", "test-term");
+    expect(positionOptions).toHaveBeenCalledWith("test-term");
+    expect(getTerm).toHaveBeenCalledWith(expect.anything(), "test-term");
+    expect(loadStudentCurrentAssignments).toHaveBeenCalledWith("sfhauge@wisc.edu", "test-term");
   });
 
   it("sends the dialog's edited subject and text with the saved font", async () => {
@@ -139,9 +160,11 @@ describe("sendScheduleEmail", () => {
   it("only stamps the sent date when marking scheduled is off", async () => {
     config = { ...DEFAULT_SCHEDULE_EMAIL, marksScheduled: false };
     await sendScheduleEmail("sfhauge@wisc.edu", input, "test-term");
-    expect(updateSubmission).toHaveBeenCalledWith("sfhauge@wisc.edu", {
-      scheduleEmailSentAt: expect.any(Date),
-    });
+    expect(updateSubmission).toHaveBeenCalledWith(
+      "sfhauge@wisc.edu",
+      { scheduleEmailSentAt: expect.any(Date) },
+      "test-term",
+    );
   });
 
   it("refuses when email sending is off, without sending or stamping", async () => {

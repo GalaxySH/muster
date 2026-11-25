@@ -36,7 +36,7 @@ export async function adminListChangeRequests(email: string): Promise<ChangeRequ
 export async function adminShiftTimeBlocks(email: string): Promise<ShiftTimeBlock[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
-  const student = await findStudentByEmail(email);
+  const student = await findStudentByEmail(email, await workingTermId());
   if (!student?.positionId) return [];
   const loaded = await loadPositionWithBlocks(student.positionId);
   return (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));

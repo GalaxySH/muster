@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { localDay } from "@/lib/domain/calendar-day";
 import { windowState, type WindowState } from "@/lib/domain/window";
 import {
@@ -253,6 +254,7 @@ function GroupRow({ group }: { group: GroupView }) {
 
 function CreateGroup() {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
@@ -260,7 +262,7 @@ function CreateGroup() {
   function create() {
     setErr(null);
     startTransition(async () => {
-      const res = await createGroup(name);
+      const res = await createGroup(termId, name);
       if (res.ok) {
         setName("");
         router.refresh();

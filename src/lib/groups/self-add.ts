@@ -21,9 +21,12 @@ import { assignMembers } from "./membership";
  * No-op (denied) when the toggle is off or no default exists. Returns whether
  * a group was assigned.
  */
-export async function applyDefaultGroupOnSelfAdd(emailRaw: string): Promise<boolean> {
+export async function applyDefaultGroupOnSelfAdd(
+  emailRaw: string,
+  termId: string,
+): Promise<boolean> {
   if (!(await getDefaultAutoAssignEnabled())) return false;
-  const target = await getDefaultGroup();
+  const target = await getDefaultGroup(termId);
   if (!target) return false;
   await assignMembers(getDb(), target.termId, [normalizeEmail(emailRaw)], target.id, true);
   return true;

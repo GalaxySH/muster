@@ -41,8 +41,8 @@ function revalidateGroups() {
  * WHERE for a group id sent by the client: it only matches a group of the
  * working term, so no action here can change another semester's group.
  */
-async function thisTermsGroup(id: string) {
-  return and(eq(groups.id, id), eq(groups.termId, await workingTermId()));
+function thisTermsGroup(id: string, termId: string) {
+  return and(eq(groups.id, id), eq(groups.termId, termId));
 }
 
 /**
@@ -61,20 +61,18 @@ function parseInstant(value: string | null): Date | null {
 export async function searchStudentsForPicker(filters: PickerFilters): Promise<PickerStudent[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
-  return listStudentsForPicker(filters);
+  return listStudentsForPicker(filters, await workingTermId());
 }
 
-export async function createGroup(name: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
+export async function createGroup(termId: string, name: string): Promise<ActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return gate;
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "Enter a group name." };
 
   const db = getDb();
   try {
-    await db
-      .insert(groups)
-      .values({ id: randomUUID(), termId: await workingTermId(), name: trimmed, isDefault: false });
+    await db.insert(groups).values({ id: randomUUID(), termId, name: trimmed, isDefault: false });
   } catch {
     return { ok: false, error: "A group with that name already exists." };
   }
@@ -90,7 +88,10 @@ export async function renameGroup(id: string, name: string): Promise<ActionResul
 
   const db = getDb();
   try {
-    await db.update(groups).set({ name: trimmed }).where(await thisTermsGroup(id));
+    await db
+      .update(groups)
+      .set({ name: trimmed })
+      .where(thisTermsGroup(id, await workingTermId()));
   } catch {
     return { ok: false, error: "A group with that name already exists." };
   }
@@ -119,7 +120,10 @@ export async function setGroupWindow(
   }
 
   const db = getDb();
-  await db.update(groups).set({ opensAt, closesAt }).where(await thisTermsGroup(id));
+  await db
+    .update(groups)
+    .set({ opensAt, closesAt })
+    .where(thisTermsGroup(id, await workingTermId()));
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -138,7 +142,10 @@ export async function setGroupLockAfterSubmit(
   if (!gate.ok) return gate;
 
   const db = getDb();
-  await db.update(groups).set({ lockAfterSubmit: enabled }).where(await thisTermsGroup(id));
+  await db
+    .update(groups)
+    .set({ lockAfterSubmit: enabled })
+    .where(thisTermsGroup(id, await workingTermId()));
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -158,7 +165,7 @@ export async function setDefaultGroup(id: string): Promise<ActionResult> {
   const [g] = await db
     .select({ id: groups.id, kind: groups.kind })
     .from(groups)
-    .where(await thisTermsGroup(id))
+    .where(thisTermsGroup(id, termId))
     .limit(1);
   if (!g) return { ok: false, error: "Group not found." };
   if (g.kind === "test") {
@@ -184,7 +191,7 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
   const [g] = await db
     .select({ isDefault: groups.isDefault, kind: groups.kind })
     .from(groups)
-    .where(await thisTermsGroup(id))
+    .where(thisTermsGroup(id, await workingTermId()))
     .limit(1);
   if (!g) return { ok: false, error: "Group not found." };
   if (g.kind === "test") {
@@ -212,10 +219,11 @@ export async function assignStudents(emails: string[], groupId: string): Promise
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };
 
   const db = getDb();
+  const termId = await workingTermId();
   const [g] = await db
     .select({ id: groups.id })
     .from(groups)
-    .where(await thisTermsGroup(groupId))
+    .where(thisTermsGroup(groupId, termId))
     .limit(1);
   if (!g) return { ok: false, error: "Group not found." };
 
@@ -226,7 +234,7 @@ export async function assignStudents(emails: string[], groupId: string): Promise
     .where(inArray(students.email, normalized));
   await assignMembers(
     db,
-    await workingTermId(),
+    termId,
     known.map((s) => s.email),
     groupId,
     false,
@@ -255,10 +263,11 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
   }
 
   const db = getDb();
+  const termId = await workingTermId();
   const [g] = await db
     .select({ id: groups.id })
     .from(groups)
-    .where(await thisTermsGroup(groupId))
+    .where(thisTermsGroup(groupId, termId))
     .limit(1);
   if (!g) return { ok: false, error: "Group not found.", assigned: 0, unmatched: [], invalid };
 
@@ -272,7 +281,7 @@ export async function assignByPaste(blob: string, groupId: string): Promise<Past
   const matchedEmails = [...matchedSet];
   const unmatched = valid.filter((e) => !matchedSet.has(e));
 
-  await assignMembers(db, await workingTermId(), matchedEmails, groupId, false);
+  await assignMembers(db, termId, matchedEmails, groupId, false);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true, assigned: matchedEmails.length, unmatched, invalid };
@@ -285,7 +294,8 @@ export async function unassignStudents(emails: string[], termId: string): Promis
   const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))];
   if (normalized.length === 0) return { ok: false, error: "Select at least one student." };
 
-  await unassignMembers(getDb(), await workingTermId(), normalized);
+  // The gate proved this is the working term, so it needs no second lookup.
+  await unassignMembers(getDb(), termId, normalized);
   revalidateGroups();
   revalidatePath("/availability");
   return { ok: true };
@@ -311,18 +321,17 @@ export interface SweepResult extends ActionResult {
  * (sticky). A no-op when the toggle is off. Idempotent: already-grouped and
  * already-auto students are skipped.
  */
-export async function runDefaultAssignmentSweep(): Promise<SweepResult> {
-  const gate = await requireAdmin();
+export async function runDefaultAssignmentSweep(termId: string): Promise<SweepResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error, enabled: false, swept: 0 };
 
   const enabled = await getDefaultAutoAssignEnabled();
   if (!enabled) return { ok: true, enabled: false, swept: 0 };
 
-  const target = await getDefaultGroup();
+  const target = await getDefaultGroup(termId);
   if (!target) return { ok: false, error: "No default group is set.", enabled: true, swept: 0 };
 
   const db = getDb();
-  const termId = await workingTermId();
   const targets = await listUnsweptEmails(db, termId);
   await assignMembers(db, termId, targets, target.id, true);
   revalidateGroups();

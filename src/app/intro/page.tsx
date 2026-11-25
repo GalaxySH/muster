@@ -7,6 +7,7 @@ import { WizardSteps } from "@/components/WizardSteps";
 import { Page, PrimaryLink } from "@/components/ui";
 import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled, getTravelCutoff } from "@/lib/settings";
+import { workingTermId } from "@/lib/terms/working";
 import Link from "next/link";
 
 /**
@@ -17,11 +18,12 @@ import Link from "next/link";
 export default async function IntroPage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/intro");
-  const student = await findStudentByEmail(session.email);
+  const termId = await workingTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) redirect("/me");
   const nav = await loadWizardNav(session.email);
   const [{ cutoff }, changeRequestsEnabled] = await Promise.all([
-    getTravelCutoff(),
+    getTravelCutoff(termId),
     getChangeRequestsEnabled(),
   ]);
 

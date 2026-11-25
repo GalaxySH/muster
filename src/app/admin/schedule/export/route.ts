@@ -15,14 +15,15 @@ export async function GET() {
   const session = await getAppSession();
   if (!session?.isAdmin) return new Response("Forbidden", { status: 403 });
 
-  const schedule = await loadCurrentSchedule();
+  const termId = await workingTermId();
+  const schedule = await loadCurrentSchedule(termId);
   if (!schedule) return new Response("No schedule has been generated yet.", { status: 404 });
 
   const date = new Date().toISOString().slice(0, 10);
   return new Response(BOM + toCsv(buildScheduleMatrix(schedule.students)), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="muster-schedule-${await workingTermId()}-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="muster-schedule-${termId}-${date}.csv"`,
       "Cache-Control": "no-store",
     },
   });

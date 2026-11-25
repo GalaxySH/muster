@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { saveScheduleRunSnapshot } from "@/lib/schedule/actions";
 
 /**
@@ -8,12 +9,13 @@ import { saveScheduleRunSnapshot } from "@/lib/schedule/actions";
  * live current run is never touched, so no confirm step is needed.
  */
 export function SaveRunButton() {
+  const termId = useRenderedTermId();
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const submit = () => {
     startTransition(async () => {
-      const res = await saveScheduleRunSnapshot();
+      const res = await saveScheduleRunSnapshot(termId);
       if (!res.ok) {
         setMsg(res.error ?? "Failed.");
         return;

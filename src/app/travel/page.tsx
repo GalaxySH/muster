@@ -6,6 +6,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { workingTermId } from "@/lib/terms/working";
 import { loadWizardNav } from "@/lib/flow/data";
 import { nextHref } from "@/lib/flow/steps";
 import { TravelForm } from "@/components/evidence/TravelForm";
@@ -48,8 +49,10 @@ export default async function TravelPage({
   // from the per-student admin page). That path loads the target's entries and
   // skips the group/window gates. The travel cutoff still applies (PLAN §8).
   const { student: studentParam } = await searchParams;
-  const onBehalf = session.isAdmin && studentParam ? await findStudentByEmail(studentParam) : null;
-  const student = onBehalf ?? (await findStudentByEmail(session.email));
+  const termId = await workingTermId();
+  const onBehalf =
+    session.isAdmin && studentParam ? await findStudentByEmail(studentParam, termId) : null;
+  const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
       <Page>
@@ -65,8 +68,8 @@ export default async function TravelPage({
   const [evidence, drive, { cutoff }, policy, returnDateRow] = await Promise.all([
     loadEvidence(student.email),
     getDriveGrantStatus(),
-    getTravelCutoff(),
-    getLateTravelPolicy(),
+    getTravelCutoff(termId),
+    getLateTravelPolicy(termId),
     getPositionReturnDate(student.positionId),
   ]);
   const pastCutoff = !isTravelExcused(now, cutoff);
@@ -95,7 +98,7 @@ export default async function TravelPage({
   }
 
   const [access, nav] = await Promise.all([
-    resolveStudentAccess(student.email),
+    resolveStudentAccess(student.email, termId),
     loadWizardNav(student.email),
   ]);
 

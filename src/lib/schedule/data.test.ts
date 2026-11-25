@@ -95,6 +95,8 @@ const storedReport = (over: Partial<StoredRunReport> = {}): StoredRunReport => (
 const runRow = (report: StoredRunReport): ScheduleRunRow =>
   ({
     id: "run-1",
+    // The loader reads the run in its own term, never the request's.
+    termId: "t1",
     generatedAt: new Date("2026-08-01T12:00:00Z"),
     generatedBy: "admin@wisc.edu",
     status: "current",

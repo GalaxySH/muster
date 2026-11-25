@@ -98,14 +98,14 @@ function computeFlowInputs(
   };
 }
 
-async function loadSubmissionProgress(email: string): Promise<SubmissionProgress> {
+async function loadSubmissionProgress(email: string, termId: string): Promise<SubmissionProgress> {
   const [sub] = await getDb()
     .select({
       courseScheduleFileId: submissions.courseScheduleFileId,
       confirmedAt: submissions.confirmedAt,
     })
     .from(submissions)
-    .where(submissionOf(email, await workingTermId()))
+    .where(submissionOf(email, termId))
     .limit(1);
   return {
     courseScheduleFileId: sub?.courseScheduleFileId ?? null,
@@ -114,19 +114,28 @@ async function loadSubmissionProgress(email: string): Promise<SubmissionProgress
 }
 
 /** Does the closes step apply, how many claims are held, and how many are owed. */
-async function loadCloses(positionId: string | null, email: string): Promise<CloseStepState> {
-  const requirement = await loadCloseRequirement(email, positionId);
+async function loadCloses(
+  positionId: string | null,
+  email: string,
+  termId: string,
+): Promise<CloseStepState> {
+  const requirement = await loadCloseRequirement(email, positionId, termId);
   if (!requirement || !closeStepApplies(requirement.required)) {
     return { required: false, count: 0, needed: 0 };
   }
-  return { required: true, count: await countCloseClaims(email), needed: requirement.required };
+  return {
+    required: true,
+    count: await countCloseClaims(email, termId),
+    needed: requirement.required,
+  };
 }
 
 export async function loadFlowState(email: string): Promise<FlowState> {
   const form = await loadStudentForm(email);
   if (!form) return { onRoster: false };
 
-  const accessRaw = await resolveStudentAccess(email);
+  const termId = await workingTermId();
+  const accessRaw = await resolveStudentAccess(email, termId);
   const access: FlowAccess =
     accessRaw.access === "no-group"
       ? { kind: "no-group" }
@@ -139,8 +148,8 @@ export async function loadFlowState(email: string): Promise<FlowState> {
           lockedAfterSubmit: accessRaw.lockedAfterSubmit,
         };
 
-  const closes = await loadCloses(form.student.positionId, email);
-  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email), closes);
+  const closes = await loadCloses(form.student.positionId, email, termId);
+  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email, termId), closes);
 
   return {
     onRoster: true,
@@ -170,7 +179,8 @@ export interface WizardNav {
 export async function loadWizardNav(email: string): Promise<WizardNav> {
   const form = await loadStudentForm(email);
   if (!form) return { steps: wizardSteps(false), reachable: ["course-schedule"] };
-  const closes = await loadCloses(form.student.positionId, email);
-  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email), closes);
+  const termId = await workingTermId();
+  const closes = await loadCloses(form.student.positionId, email, termId);
+  const inputs = computeFlowInputs(form, await loadSubmissionProgress(email, termId), closes);
   return { steps: wizardSteps(closes.required), reachable: reachableStepKeys(inputs) };
 }

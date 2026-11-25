@@ -24,7 +24,8 @@ vi.mock("@/lib/admin/sheet-sync", () => ({
   trySyncSheet,
 }));
 
-import { getTableName, type Table } from "drizzle-orm";
+import { getTableName, type SQL, type Table } from "drizzle-orm";
+import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -130,7 +131,7 @@ describe("clearStudentSchedule", () => {
     expect(writes).toEqual([{ op: "delete", table: "schedule_assignments" }]);
     expect(vi.mocked(revalidatePath).mock.calls.flat()).toContain("/admin/students/s%40wisc.edu");
     expect(vi.mocked(revalidatePath).mock.calls.flat()).toContain("/admin/schedule");
-    expect(trySyncSheet).toHaveBeenCalledWith("schedule");
+    expect(trySyncSheet).toHaveBeenCalledWith("schedule", "test-term");
   });
 
   it("is a no-op, with no refresh, when the student already has no rows there", async () => {
@@ -201,5 +202,55 @@ describe("applyScheduleEdits roster check", () => {
 
     expect(res.error).not.toMatch(/roster/i);
     expect(res.error).toMatch(/generate a schedule/i);
+  });
+});
+
+describe("applyScheduleEdits block lookup", () => {
+  beforeEach(() => {
+    vi.mocked(requireAdmin).mockResolvedValue({ ok: true, email: "boss@wisc.edu" });
+  });
+
+  // A block id from another semester has to read as gone, so it can never be
+  // added to this semester's run. The transaction runs here against a tx that
+  // keeps each select's WHERE, and finds no block, as the database would.
+  it("only looks up blocks of the run's own term", async () => {
+    const run = { id: "run-1", status: "current", termId: "test-term", summaryJson: "{}" };
+    const wheres: Record<string, unknown> = {};
+    const tx = {
+      select: () => {
+        let table = "";
+        const chain = {
+          from(t: unknown) {
+            table = nameOf(t);
+            return chain;
+          },
+          innerJoin: () => chain,
+          where(clause: unknown) {
+            wheres[table] = clause;
+            return chain;
+          },
+          orderBy: () => chain,
+          limit: () => chain,
+          for: () => chain,
+          then: (fulfil?: (r: unknown) => unknown, reject?: (r: unknown) => unknown) =>
+            Promise.resolve(table === "schedule_runs" ? [run] : []).then(fulfil, reject),
+        };
+        return chain;
+      },
+    };
+    const { handle } = fakeDb([run], 0, [{ email: "s@wisc.edu" }]);
+    vi.mocked(getDb).mockReturnValue({
+      ...handle,
+      transaction: (fn: (t: unknown) => unknown) => fn(tx),
+    } as never);
+
+    const foreign = { blockId: "spring-block", day: "mon" } as never;
+    const res = await applyScheduleEdits("s@wisc.edu", [], [foreign], undefined, "test-term");
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/That shift no longer exists/);
+    const query = new MySqlDialect().sqlToQuery(wheres.shift_blocks as SQL);
+    expect(query.sql).toContain("`shift_blocks`.`term_id` = ?");
+    expect(query.params).toContain("test-term");
   });
 });

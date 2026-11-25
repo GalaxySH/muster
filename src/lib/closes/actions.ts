@@ -26,13 +26,13 @@ export interface CloseActionResult {
 }
 
 async function gateShiftLead(): Promise<
-  { ok: true; email: string } | { ok: false; error: string }
+  { ok: true; email: string; termId: string } | { ok: false; error: string }
 > {
   const gate = await requireEditableStudent();
   if (!gate.ok) return gate;
   if (!(await positionPicksCloses(gate.positionId)))
     return { ok: false, error: "Only Shift Leads pick weekend closes." };
-  return { ok: true, email: gate.email };
+  return { ok: true, email: gate.email, termId: gate.termId };
 }
 
 const CLAIM_ERROR_MESSAGES = {
@@ -44,16 +44,16 @@ const CLAIM_ERROR_MESSAGES = {
 export async function claimCloseSlot(slotId: string): Promise<CloseActionResult> {
   const gate = await gateShiftLead();
   if (!gate.ok) return { ok: false, error: gate.error, board: null };
-  const email = gate.email;
+  const { email, termId } = gate;
 
-  const code = await insertCloseClaim(slotId, email);
+  const code = await insertCloseClaim(slotId, email, termId);
   const error = code ? CLAIM_ERROR_MESSAGES[code] : null;
 
   if (!error) {
     revalidatePath("/closes");
-    await trySyncSheet(CLOSES_SHEET);
+    await trySyncSheet(CLOSES_SHEET, termId);
   }
-  return { ok: !error, error: error ?? undefined, board: await loadCloseBoard(email) };
+  return { ok: !error, error: error ?? undefined, board: await loadCloseBoard(email, termId) };
 }
 
 /** Release one of the student's own claims; the seat returns to the pool. */
@@ -67,17 +67,17 @@ export async function releaseCloseClaim(slotId: string): Promise<CloseActionResu
       and(
         eq(closeClaims.closeSlotId, slotId),
         eq(closeClaims.studentEmail, gate.email),
-        closeClaimInTerm(await workingTermId()),
+        closeClaimInTerm(gate.termId),
       ),
     );
   revalidatePath("/closes");
-  await trySyncSheet(CLOSES_SHEET);
-  return { ok: true, board: await loadCloseBoard(gate.email) };
+  await trySyncSheet(CLOSES_SHEET, gate.termId);
+  return { ok: true, board: await loadCloseBoard(gate.email, gate.termId) };
 }
 
 /** Read-only poll for live open/full status; any signed-in student may read. */
 export async function refreshCloseBoard(): Promise<CloseBoard | null> {
   const session = await getAppSession();
   if (!session) return null;
-  return loadCloseBoard(session.email);
+  return loadCloseBoard(session.email, await workingTermId());
 }

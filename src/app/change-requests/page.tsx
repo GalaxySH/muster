@@ -26,7 +26,8 @@ export default async function ChangeRequestsPage({
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/change-requests");
 
-  const student = await findStudentByEmail(session.email);
+  const termId = await workingTermId();
+  const student = await findStudentByEmail(session.email, termId);
   if (!student && !session.isAdmin) {
     return (
       <Page>
@@ -43,7 +44,7 @@ export default async function ChangeRequestsPage({
   let target: typeof student = null;
   if (session.isAdmin) {
     const { student: studentParam } = await searchParams;
-    target = studentParam ? await findStudentByEmail(studentParam) : null;
+    target = studentParam ? await findStudentByEmail(studentParam, termId) : null;
     admin = {
       initialEmployee: target ? { email: target.email, displayName: target.displayName } : null,
       selfEmail: student?.email ?? null,
@@ -52,9 +53,7 @@ export default async function ChangeRequestsPage({
 
   // The form starts out acting for the pre-seeded employee, else the signer.
   const formFor = target ?? student;
-  const requests = formFor
-    ? await listChangeRequests(formFor.email, await workingTermId())
-    : [];
+  const requests = formFor ? await listChangeRequests(formFor.email, termId) : [];
   // Its position's shift times become the quick inserts under the shift time box.
   const loaded = formFor?.positionId ? await loadPositionWithBlocks(formFor.positionId) : null;
   const blocks = (loaded?.blocks ?? []).map(({ dayType, start, end }) => ({ dayType, start, end }));

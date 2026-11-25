@@ -35,6 +35,7 @@ import {
   type SheetSyncResult,
 } from "@/lib/admin/sheet-sync";
 import { deriveOpenClose } from "@/lib/domain/blocks";
+import { termSettingKey } from "@/lib/domain/terms";
 import { fillInSelection } from "@/lib/domain/scheduling/availability";
 import { generateAssignments } from "@/lib/domain/scheduling/engine";
 import { computeRunStats } from "@/lib/domain/scheduling/stats";
@@ -56,7 +57,7 @@ import type {
   StoredRunReport,
 } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
-import { getSchedulingParams, schedulingParamsKey, setSetting } from "@/lib/settings";
+import { getSchedulingParams, SETTING_SCHEDULE_PARAMS, setSetting } from "@/lib/settings";
 import { loadRepairSeeds, type RepairEligibleStudent } from "@/lib/w2w/repair";
 import {
   eligibleSubmittedFilter,
@@ -66,7 +67,8 @@ import {
 } from "./data";
 import { pruneStaleRuns, writeRunAsCurrent } from "./run-write";
 import { lateStartWarnings } from "@/lib/domain/scheduling/run-warnings";
-import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 import { currentRunOf, submissionInTerm, submissionOfStudent } from "@/lib/terms/scope";
 
 /**
@@ -175,11 +177,11 @@ export async function generateSchedule(
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, submissionOfStudent(await workingTermId()))
+        .innerJoin(students, submissionOfStudent(termId))
         .where(eligibleSubmittedFilter(termId)),
-      loadInternalCopiesByEmail(),
-      loadCurrentRunRow(),
-      getSchedulingParams(),
+      loadInternalCopiesByEmail(termId),
+      loadCurrentRunRow(termId),
+      getSchedulingParams(termId),
     ]);
 
   // Picks on a removed shift are dropped before anything reads them (PLAN
@@ -207,7 +209,7 @@ export async function generateSchedule(
   // term and the engine deliberately has none. The cutoff is the term's
   // new-hire date, read once so every student in this run is judged against the
   // same boundary, and it is stored on the run so the run stays reproducible.
-  const term = await workingTerm();
+  const term = await getTerm(db, termId);
   const cutoff = term.newHireCutoff;
 
   // The engine consumes the EFFECTIVE availability (PLAN §10a): where an admin
@@ -274,7 +276,7 @@ export async function generateSchedule(
         })
         .from(shiftSelections)
         .innerJoin(submissions, eq(shiftSelections.submissionId, submissions.id))
-        .innerJoin(students, submissionOfStudent(await workingTermId()))
+        .innerJoin(students, submissionOfStudent(termId))
         .where(notSubmitted),
     ]);
 
@@ -356,7 +358,7 @@ export async function generateSchedule(
         .filter((s) => !s.scheduled)
         .map((s) => [s.email, { everyWeekendOptIn: s.everyWeekendOptIn, selection: s.selection }]),
     );
-    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60);
+    const seeds = await loadRepairSeeds(eligibleForRepair, params.dayCapHours * 60, termId);
     if (!seeds) {
       return {
         ok: false,
@@ -466,7 +468,7 @@ export async function generateSchedule(
 
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true, placed: result.assignments.length, repaired };
 }
 
@@ -523,7 +525,7 @@ export async function restoreScheduleRun(runId: string): Promise<RestoreResult> 
 
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true };
 }
 
@@ -565,12 +567,12 @@ export interface SaveSnapshotResult {
  * place. The live current run and its id are never touched, so this cannot
  * disturb what is on screen or in the Muster Schedule sheet.
  */
-export async function saveScheduleRunSnapshot(): Promise<SaveSnapshotResult> {
-  const gate = await requireAdmin();
+export async function saveScheduleRunSnapshot(termId: string): Promise<SaveSnapshotResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const db = getDb();
-  const current = await loadCurrentRunRow();
+  const current = await loadCurrentRunRow(termId);
   if (!current) return { ok: false, error: "No schedule has been generated yet." };
 
   const runId = randomUUID();
@@ -679,7 +681,7 @@ export async function clearScheduleRun(
   revalidatePath("/admin/schedule");
   revalidatePath("/admin");
   if (alsoUnmarkScheduled) revalidatePath("/admin/responses");
-  await trySyncSheet(SCHEDULE_SHEET, 0);
+  await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   return { ok: true, unmarked };
 }
 
@@ -697,7 +699,9 @@ export async function rebuildScheduleSheet(): Promise<RebuildScheduleSheetResult
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
-    const sync = await syncSheet(SCHEDULE_SHEET, { cooldownMs: SHEET_MANUAL_COOLDOWN_MS });
+    const sync = await syncSheet(SCHEDULE_SHEET, await workingTermId(), {
+      cooldownMs: SHEET_MANUAL_COOLDOWN_MS,
+    });
     revalidatePath("/admin/schedule");
     return { ok: true, sync };
   } catch (e) {
@@ -725,7 +729,7 @@ export async function fetchCellAvailability(
 ): Promise<CellAvailabilityResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  return { ok: true, data: await loadCellAvailability(blockId, day) };
+  return { ok: true, data: await loadCellAvailability(blockId, day, await workingTermId()) };
 }
 
 /**
@@ -733,14 +737,17 @@ export async function fetchCellAvailability(
  * from the next generation on; each run also snapshots the values it used
  * into its stored report.
  */
-export async function saveScheduleParams(params: SchedulingParams): Promise<SaveParamsResult> {
-  const gate = await requireAdmin();
+export async function saveScheduleParams(
+  termId: string,
+  params: SchedulingParams,
+): Promise<SaveParamsResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const error = validateSchedulingParams(params);
   if (error) return { ok: false, error };
 
-  await setSetting(await schedulingParamsKey(), JSON.stringify(params));
+  await setSetting(termSettingKey(SETTING_SCHEDULE_PARAMS, termId), JSON.stringify(params));
   revalidatePath("/admin/schedule");
   return { ok: true };
 }

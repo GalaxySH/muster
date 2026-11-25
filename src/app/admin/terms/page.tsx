@@ -8,7 +8,13 @@ import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
 import { MakeCurrentPanel, StartSemesterPanel } from "@/components/admin/StartSemesterPanel";
 import { termNamesIn } from "@/lib/domain/terms";
 import { getLateTravelPolicy, getScheduleEmailConfig, getTravelCutoff } from "@/lib/settings";
-import { currentTermId, listOtherTermNames, listTerms, workingTerm } from "@/lib/terms/working";
+import {
+  currentTermId,
+  listOtherTermNames,
+  listTerms,
+  workingTerm,
+  workingTermId,
+} from "@/lib/terms/working";
 
 /**
  * Admin: the working semester's own details (docs/semester-domains-plan.md
@@ -20,11 +26,12 @@ export default async function AdminTermPage() {
   if (!session) redirect("/signin?callbackUrl=/admin/terms");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [term, travelCutoff, lateTravelPolicy, scheduleEmail, otherNames, allTerms, currentId] =
     await Promise.all([
     workingTerm(),
-    getTravelCutoff(),
-    getLateTravelPolicy(),
+    getTravelCutoff(termId),
+    getLateTravelPolicy(termId),
     getScheduleEmailConfig(),
     listOtherTermNames(),
     listTerms(),

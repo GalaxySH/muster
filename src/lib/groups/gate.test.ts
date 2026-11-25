@@ -10,6 +10,7 @@ vi.mock("./data", () => ({ resolveStudentAccess: vi.fn() }));
 
 import { getAppSession } from "@/lib/auth/session";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { workingTermId } from "@/lib/terms/working";
 import { resolveStudentAccess } from "./data";
 import { requireEditableStudent } from "./gate";
 import { NO_GROUP_MESSAGE, SUBMITTED_LOCK_MESSAGE } from "./window-message";
@@ -50,7 +51,16 @@ const lockedWindow = () =>
     lockedAfterSubmit: true,
   });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(workingTermId).mockImplementation(async () => "test-term");
+});
+
+/** The working term reads "A" the first time and "B" after, as if a semester started. */
+const termMovesAfterFirstRead = () => {
+  let calls = 0;
+  vi.mocked(workingTermId).mockImplementation(async () => (calls++ === 0 ? "A" : "B"));
+};
 
 describe("requireEditableStudent (student path)", () => {
   it("refuses when there is no session", async () => {
@@ -90,7 +100,22 @@ describe("requireEditableStudent (student path)", () => {
       email: "stu@wisc.edu",
       positionId: "sl",
       onBehalf: false,
+      termId: "test-term",
     });
+  });
+
+  // An action has no request memo, so a second read could land in a semester
+  // started meanwhile. The gate reads the term once and hands that one back.
+  it("resolves the term once and uses it for the lookup, the access check and the result", async () => {
+    termMovesAfterFirstRead();
+    signedIn("stu@wisc.edu", false);
+    lookup.mockResolvedValue(rosterRow("stu@wisc.edu"));
+    openWindow();
+
+    expect(await requireEditableStudent()).toMatchObject({ ok: true, termId: "A" });
+    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "A");
+    expect(access).toHaveBeenCalledWith("stu@wisc.edu", "A");
   });
 });
 
@@ -105,9 +130,23 @@ describe("requireEditableStudent (admin on behalf of a student)", () => {
       email: "stu@wisc.edu",
       positionId: "barista",
       onBehalf: true,
+      termId: "test-term",
     });
-    expect(lookup).toHaveBeenCalledWith("stu@wisc.edu");
+    expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "test-term");
     expect(access).not.toHaveBeenCalled();
+  });
+
+  it("compares the page's semester to the one term it resolved, then looks the target up in it", async () => {
+    termMovesAfterFirstRead();
+    signedIn("boss@wisc.edu", true);
+    lookup.mockResolvedValue(rosterRow("stu@wisc.edu", "barista"));
+
+    expect(await requireEditableStudent("stu@wisc.edu", "A")).toMatchObject({
+      ok: true,
+      termId: "A",
+    });
+    expect(workingTermId).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("stu@wisc.edu", "A");
   });
 
   it("works for an admin who is not on the roster themselves", async () => {
@@ -163,6 +202,6 @@ describe("requireEditableStudent (admin on behalf of a student)", () => {
     lookup.mockResolvedValue(rosterRow("stu@wisc.edu"));
     openWindow();
     expect(await requireEditableStudent("  ")).toMatchObject({ ok: true, onBehalf: false });
-    expect(access).toHaveBeenCalledWith("stu@wisc.edu");
+    expect(access).toHaveBeenCalledWith("stu@wisc.edu", "test-term");
   });
 });

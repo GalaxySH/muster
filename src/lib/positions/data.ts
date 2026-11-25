@@ -38,15 +38,16 @@ export interface PositionListItem {
  * The term's positions ordered by name. Default: active, non-alias only (what the app
  * treats as assignable); `includeInactive` returns every row.
  */
-export async function listPositions(opts?: {
-  includeInactive?: boolean;
-}): Promise<PositionListItem[]> {
+export async function listPositions(
+  termId: string,
+  opts?: { includeInactive?: boolean },
+): Promise<PositionListItem[]> {
   const rows = await getDb()
     .select()
     .from(positions)
     .where(
       and(
-        eq(positions.termId, await workingTermId()),
+        eq(positions.termId, termId),
         opts?.includeInactive
           ? undefined
           : and(eq(positions.active, true), isNull(positions.mergedIntoId)),
@@ -61,8 +62,8 @@ export async function listPositions(opts?: {
 }
 
 /** Picker options (active, non-alias), ordered by name. */
-export async function positionOptions(): Promise<{ id: string; name: string }[]> {
-  const items = await listPositions();
+export async function positionOptions(termId: string): Promise<{ id: string; name: string }[]> {
+  const items = await listPositions(termId);
   return items.map(({ position }) => ({ id: position.id, name: position.name }));
 }
 

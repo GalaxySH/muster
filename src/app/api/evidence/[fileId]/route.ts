@@ -7,13 +7,15 @@
 import { getAppSession } from "@/lib/auth/session";
 import { studentOwnsFile } from "@/lib/evidence/data";
 import { relayDownload, NoDriveGrantError } from "@/lib/drive/relay";
+import { workingTermId } from "@/lib/terms/working";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ fileId: string }> }) {
   const session = await getAppSession();
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const { fileId } = await params;
-  const allowed = session.isAdmin || (await studentOwnsFile(session.email, fileId));
+  const allowed =
+    session.isAdmin || (await studentOwnsFile(session.email, fileId, await workingTermId()));
   if (!allowed) return new Response("Forbidden", { status: 403 });
 
   try {

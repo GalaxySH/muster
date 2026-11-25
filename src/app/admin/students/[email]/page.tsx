@@ -75,7 +75,7 @@ import {
   successPillStyle,
   dangerPillStyle,
 } from "@/components/admin/ui";
-import { workingTerm } from "@/lib/terms/working";
+import { workingTerm, workingTermId } from "@/lib/terms/working";
 
 const fmtHours = (h: number) => {
   const r = Math.round(h * 10) / 10;
@@ -243,7 +243,7 @@ export default async function StudentDetailPage({
   // Every assignable position, for the change-position control in the details
   // card. Loaded unconditionally: a student with no position is exactly who
   // most needs one set.
-  const allPositions = await positionOptions();
+  const allPositions = await positionOptions(await workingTermId());
   const [term, scheduleEmail, emailEnabled] = await Promise.all([
     workingTerm(),
     getScheduleEmailConfig(),
@@ -253,7 +253,9 @@ export default async function StudentDetailPage({
   const allGroups = (await listGroups()).map((g) => ({ id: g.id, name: g.name }));
   // The current run's rows for this student, overlaid as the schedule half of
   // the split grid. Null before any generation, which keeps schedule mode off.
-  const schedule = position ? await loadStudentCurrentAssignments(detail.email) : null;
+  const schedule = position
+    ? await loadStudentCurrentAssignments(detail.email, await workingTermId())
+    : null;
   // The same coverage grid /admin/schedule shows, narrowed to this student's
   // position: how staffed each of their shifts is. Only once a run exists, since
   // the numbers on it are that run's seats.

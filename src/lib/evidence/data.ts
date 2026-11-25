@@ -90,9 +90,8 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
 }
 
 /** Load or create the student's (draft) submission for the working term and return its id. */
-export async function ensureSubmissionId(studentEmail: string): Promise<string> {
+export async function ensureSubmissionId(studentEmail: string, termId: string): Promise<string> {
   const db = getDb();
-  const termId = await workingTermId();
   const [existing] = await db
     .select({ id: submissions.id })
     .from(submissions)
@@ -136,11 +135,14 @@ export async function collectSubmissionDriveFileIds(submissionId: string): Promi
  * Whether a fileId belongs to this student's current-term submission: the proxy's access
  * gate for non-admins. Checks course schedule, extracurricular, and travel proof.
  */
-export async function studentOwnsFile(studentEmail: string, fileId: string): Promise<boolean> {
+export async function studentOwnsFile(
+  studentEmail: string,
+  fileId: string,
+  termId: string,
+): Promise<boolean> {
   // A travel entry can carry no proof, so an empty id must never match one.
   if (!fileId) return false;
   const db = getDb();
-  const termId = await workingTermId();
   const [sub] = await db
     .select({ id: submissions.id, courseScheduleFileId: submissions.courseScheduleFileId })
     .from(submissions)

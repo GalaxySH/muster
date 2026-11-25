@@ -26,7 +26,6 @@ import type {
   W2wPlanRow,
   W2wPositionMapEntry,
 } from "@/lib/domain/w2w-plan/types";
-import { workingTermId } from "@/lib/terms/working";
 import { currentPlanOf } from "@/lib/terms/scope";
 
 export interface PlanMeta {
@@ -51,9 +50,8 @@ export interface PlanMatchInputs {
   positionNames: Map<string, string>;
 }
 
-export async function loadPlanMatchInputs(): Promise<PlanMatchInputs> {
+export async function loadPlanMatchInputs(termId: string): Promise<PlanMatchInputs> {
   const db = getDb();
-  const termId = await workingTermId();
   const [mapRows, blockRows, positionRows] = await Promise.all([
     // Ordered: resolution is first-wins by id and by name, so an unordered
     // read could resolve a duplicated name differently between requests.
@@ -105,9 +103,9 @@ export function currentPlanRowQuery(termId: string) {
     .limit(1);
 }
 
-export async function getCurrentPlan(): Promise<CurrentPlan | null> {
+export async function getCurrentPlan(termId: string): Promise<CurrentPlan | null> {
   const db = getDb();
-  const [meta] = await currentPlanRowQuery(await workingTermId());
+  const [meta] = await currentPlanRowQuery(termId);
   if (!meta) return null;
 
   const rows = await db
@@ -173,10 +171,10 @@ export interface PlanPageModel {
 }
 
 /** Everything the plan page renders about the current plan, matched live. */
-export async function getPlanPageModel(): Promise<PlanPageModel | null> {
-  const plan = await getCurrentPlan();
+export async function getPlanPageModel(termId: string): Promise<PlanPageModel | null> {
+  const plan = await getCurrentPlan(termId);
   if (!plan) return null;
-  const inputs = await loadPlanMatchInputs();
+  const inputs = await loadPlanMatchInputs(termId);
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
 
   const perPosition: { name: string; rows: number }[] = [];

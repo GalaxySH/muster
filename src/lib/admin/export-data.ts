@@ -14,15 +14,13 @@ import { liveBlocksOnly } from "@/lib/db/blocks";
 import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 const toIsoDate = (d: Date | string): string =>
   typeof d === "string" ? d : d.toISOString().slice(0, 10);
 
-export async function loadExportData(): Promise<ExportAggregate[]> {
+export async function loadExportData(termId: string): Promise<ExportAggregate[]> {
   const db = getDb();
-  const termId = await workingTermId();
 
   const base = await db
     .select({

@@ -39,6 +39,7 @@ import {
   TEST_GROUP_OPENS_AT,
   testGroupIdFor,
 } from "@/lib/test-accounts/constants";
+import { isTestAccountEmail } from "@/lib/test-accounts/email";
 
 /** The key the engine params are stored under, before the term is added. */
 const SCHEDULE_PARAMS_KEY = "schedule_params";
@@ -254,7 +255,12 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
       .from(termMembers)
       .leftJoin(groups, eq(groups.id, termMembers.groupId))
       .where(eq(termMembers.termId, from));
-    const carried = oldMembers.filter((m) => m.onRoster || m.groupKind === "test");
+    // The new test group's form is open from the start, so only a synthetic
+    // account goes into it. A real student moved into the old one carries only
+    // if on the roster, with no group, like everyone else.
+    const isTestAccount = (m: (typeof oldMembers)[number]) =>
+      m.groupKind === "test" && isTestAccountEmail(m.email);
+    const carried = oldMembers.filter((m) => m.onRoster || isTestAccount(m));
     if (carried.length > 0) {
       await tx.insert(termMembers).values(
         carried.map((m) => ({
@@ -263,7 +269,7 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
           positionId: newPosition(m.positionId) ?? null,
           onRoster: m.onRoster,
           rosterTitle: m.rosterTitle,
-          groupId: m.groupKind === "test" ? testGroupId : null,
+          groupId: isTestAccount(m) ? testGroupId : null,
           assignedAuto: false,
         })),
       );
@@ -277,7 +283,7 @@ export async function startNewTerm(db: Database, input: StartTermInput): Promise
       positions: kept.length,
       blocks: blocks.length,
       members: carried.filter((m) => m.onRoster).length,
-      testAccounts: carried.filter((m) => m.groupKind === "test").length,
+      testAccounts: carried.filter(isTestAccount).length,
       leads,
     };
   });

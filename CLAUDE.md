@@ -69,7 +69,7 @@ The token-authenticated `POST /api/cron/change-digest` (`CRON_SECRET`) remains a
 manual fallback trigger, and `/admin/email-settings` shows the last run + run health
 (docs/deploy.md §7).
 
-**Semesters done** (issue #40, 1.48 to 1.57; `docs/semester-domains-plan.md`): the app
+**Semesters done** (issue #40, 1.48 to 1.58; `docs/semester-domains-plan.md`): the app
 runs in **terms**. Every per-semester table carries a `term_id`; `students` is only the
 person, and their position, roster flag and group are per term in `term_members`.
 Students always work in the **current** term; an admin can select another in the header

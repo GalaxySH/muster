@@ -47,10 +47,12 @@ export interface ActionResult {
  */
 async function requireStudent(
   onBehalfOf = "",
-  termId = "",
-): Promise<{ email: string; onBehalf: boolean } | { error: string }> {
-  const gate = await requireEditableStudent(onBehalfOf, termId);
-  return gate.ok ? { email: gate.email, onBehalf: gate.onBehalf } : { error: gate.error };
+  renderedTermId = "",
+): Promise<{ email: string; onBehalf: boolean; termId: string } | { error: string }> {
+  const gate = await requireEditableStudent(onBehalfOf, renderedTermId);
+  return gate.ok
+    ? { email: gate.email, onBehalf: gate.onBehalf, termId: gate.termId }
+    : { error: gate.error };
 }
 
 /** The student page the entry lives on, plus the admin's view of it when they added it. */
@@ -109,9 +111,14 @@ export async function uploadCourseSchedule(formData: FormData): Promise<ActionRe
   if ("error" in upload) return { ok: false, error: upload.error };
 
   try {
-    const fileId = await relayUpload({ studentEmail: who.email, kind: "course", ...upload });
+    const fileId = await relayUpload({
+      studentEmail: who.email,
+      termId: who.termId,
+      kind: "course",
+      ...upload,
+    });
     const db = getDb();
-    const submissionId = await ensureSubmissionId(who.email);
+    const submissionId = await ensureSubmissionId(who.email, who.termId);
     const [prev] = await db
       .select({ courseScheduleFileId: submissions.courseScheduleFileId })
       .from(submissions)
@@ -143,7 +150,7 @@ export async function removeCourseSchedule(
   if (!who.onBehalf) return { ok: false, error: "Only an admin can remove a course schedule." };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ courseScheduleFileId: submissions.courseScheduleFileId })
     .from(submissions)
@@ -168,7 +175,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
 
   // Cap before relaying so a rejected upload never orphans a Drive file.
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const ecCount = await db
     .select({ n: sql<number>`count(*)` })
     .from(extracurricularFiles)
@@ -183,6 +190,7 @@ export async function addExtracurricularFile(formData: FormData): Promise<Action
   try {
     const fileId = await relayUpload({
       studentEmail: who.email,
+      termId: who.termId,
       kind: "extracurricular",
       ...upload,
     });
@@ -204,7 +212,7 @@ export async function removeExtracurricularFile(
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ fileId: extracurricularFiles.fileId })
     .from(extracurricularFiles)
@@ -230,7 +238,7 @@ export async function saveExtracurricularNotes(
   if ("error" in who) return { ok: false, error: who.error };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   await db
     .update(submissions)
     .set({ extracurricularNotes: notes.slice(0, 2000), ...editStamp(who) })
@@ -251,7 +259,10 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
   // says otherwise with `excused=0` (the Google Form import does that for a
   // range that came with no proof, docs/form-paste.md).
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([
+    getTravelCutoff(who.termId),
+    getLateTravelPolicy(who.termId),
+  ]);
   const decision = decideTravelSubmission(now, cutoff, policy);
   if (!decision.allowed && !who.onBehalf) {
     return {
@@ -279,7 +290,7 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 
   // Cap before relaying so a rejected upload never orphans a Drive file.
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const travelCount = await db
     .select({ n: sql<number>`count(*)` })
     .from(travelRequests)
@@ -293,7 +304,12 @@ export async function addTravelRequest(formData: FormData): Promise<ActionResult
 
   try {
     const proofFileId = upload
-      ? await relayUpload({ studentEmail: who.email, kind: "travel", ...upload })
+      ? await relayUpload({
+          studentEmail: who.email,
+          termId: who.termId,
+          kind: "travel",
+          ...upload,
+        })
       : null;
     await db.insert(travelRequests).values({
       id: randomUUID(),
@@ -337,7 +353,7 @@ export async function updateTravelRequest(formData: FormData): Promise<ActionRes
   if (endDate < startDate) return { ok: false, error: "End date can't be before the start date." };
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   // Existence is checked directly rather than through affectedRows, which counts
   // CHANGED rows: saving the box without touching a field would otherwise come
   // back as "Entry not found". Both statements are scoped to this student's
@@ -366,10 +382,13 @@ export async function updateTravelRequest(formData: FormData): Promise<ActionRes
  * An admin acting on behalf is never locked out: the deadline is a rule for
  * students, and fixing what a student handed in is the admin's job after it.
  */
-async function travelUnlocked(who: { onBehalf: boolean }): Promise<boolean> {
+async function travelUnlocked(who: { onBehalf: boolean; termId: string }): Promise<boolean> {
   if (who.onBehalf) return true;
   const now = new Date();
-  const [{ cutoff }, policy] = await Promise.all([getTravelCutoff(), getLateTravelPolicy()]);
+  const [{ cutoff }, policy] = await Promise.all([
+    getTravelCutoff(who.termId),
+    getLateTravelPolicy(who.termId),
+  ]);
   return decideTravelSubmission(now, cutoff, policy).allowed;
 }
 
@@ -386,7 +405,7 @@ export async function removeTravelRequest(
   }
 
   const db = getDb();
-  const submissionId = await ensureSubmissionId(who.email);
+  const submissionId = await ensureSubmissionId(who.email, who.termId);
   const [row] = await db
     .select({ proofFileId: travelRequests.proofFileId })
     .from(travelRequests)

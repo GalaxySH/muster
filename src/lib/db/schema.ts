@@ -574,17 +574,22 @@ export const closeSlotKindEnum = ["fri", "sat"] as const;
  * range + per-slot capacity), unlike the templated shift_blocks config.
  * Dates are plain YYYY-MM-DD strings; times are minutes since midnight.
  */
-export const closeSlots = mysqlTable("close_slots", {
-  id: varchar("id", { length: 36 }).primaryKey(),
-  // Claims carry no term of their own: they are scoped through their slot.
-  // `date` stays globally unique, since a calendar date belongs to one term.
-  termId: termIdColumn(),
-  date: date("date", { mode: "string" }).notNull().unique(),
-  kind: mysqlEnum("kind", closeSlotKindEnum).notNull(),
-  startMinutes: int("start_minutes").notNull(),
-  endMinutes: int("end_minutes").notNull(),
-  capacity: int("capacity").notNull(),
-});
+export const closeSlots = mysqlTable(
+  "close_slots",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    // Claims carry no term of their own: they are scoped through their slot.
+    termId: termIdColumn(),
+    date: date("date", { mode: "string" }).notNull(),
+    kind: mysqlEnum("kind", closeSlotKindEnum).notNull(),
+    startMinutes: int("start_minutes").notNull(),
+    endMinutes: int("end_minutes").notNull(),
+    capacity: int("capacity").notNull(),
+  },
+  // A date is unique within a term, since two terms can overlap. Led by
+  // term_id, so it also serves the foreign key to terms.
+  (t) => [uniqueIndex("close_slots_term_date_unique").on(t.termId, t.date)],
+);
 
 /**
  * How many weekend closes one Shift Lead owes in one term (PLAN.md §18a). A

@@ -4,6 +4,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { loadStudentForm, loadHighDemandCells } from "@/lib/availability/data";
 import { buildGridModel } from "@/lib/availability/grid";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { workingTermId } from "@/lib/terms/working";
 import { getHighDemandMarksEnabled } from "@/lib/settings";
 import { loadWizardNav } from "@/lib/flow/data";
 import { AvailabilityForm } from "@/components/AvailabilityForm";
@@ -30,7 +31,7 @@ export default async function AvailabilityPage() {
   }
 
   // Membership gate (PLAN §13): no group ⇒ no access at all.
-  const access = await resolveStudentAccess(form.student.email);
+  const access = await resolveStudentAccess(form.student.email, await workingTermId());
   if (access.access === "no-group") {
     return (
       <Page>

@@ -11,19 +11,24 @@
  */
 import "server-only";
 import { getAppSession } from "@/lib/auth/session";
-import { STALE_TERM_MESSAGE, isWorkingTerm } from "@/lib/auth/require-admin";
+import { STALE_TERM_MESSAGE } from "@/lib/auth/require-admin";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { workingTermId } from "@/lib/terms/working";
 import { resolveStudentAccess } from "./data";
 import { NO_GROUP_MESSAGE, SUBMITTED_LOCK_MESSAGE, lockedReasonLine } from "./window-message";
 
 export type StudentGate =
-  | { ok: true; email: string; positionId: string | null; onBehalf: boolean }
+  | { ok: true; email: string; positionId: string | null; onBehalf: boolean; termId: string }
   | { ok: false; error: string };
 
 /**
  * `renderedTermId` is the semester the admin's page was showing. It is needed
  * only on behalf of someone: the same person is in every semester, so a tab
  * left on another one would otherwise write this semester's row for them.
+ *
+ * The gate resolves the working term once and hands it back as `termId`. The
+ * action uses that for everything it reads and writes, so a semester started
+ * while it runs cannot split it across two terms.
  */
 export async function requireEditableStudent(
   onBehalfOf?: string,
@@ -31,22 +36,31 @@ export async function requireEditableStudent(
 ): Promise<StudentGate> {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
+  const termId = await workingTermId();
 
   const target = onBehalfOf?.trim();
   if (target) {
     if (!session.isAdmin) {
       return { ok: false, error: "Only admins can fill in the form for someone else." };
     }
-    if (!(await isWorkingTerm(renderedTermId))) return { ok: false, error: STALE_TERM_MESSAGE };
-    const employee = await findStudentByEmail(target);
+    if (!renderedTermId || renderedTermId !== termId) {
+      return { ok: false, error: STALE_TERM_MESSAGE };
+    }
+    const employee = await findStudentByEmail(target, termId);
     if (!employee) return { ok: false, error: "That employee is not a known student." };
-    return { ok: true, email: employee.email, positionId: employee.positionId, onBehalf: true };
+    return {
+      ok: true,
+      email: employee.email,
+      positionId: employee.positionId,
+      onBehalf: true,
+      termId,
+    };
   }
 
-  const student = await findStudentByEmail(session.email);
+  const student = await findStudentByEmail(session.email, termId);
   if (!student) return { ok: false, error: "You are not on the roster." };
 
-  const access = await resolveStudentAccess(student.email);
+  const access = await resolveStudentAccess(student.email, termId);
   if (access.access === "no-group") return { ok: false, error: NO_GROUP_MESSAGE };
   if (!access.canEdit) {
     return {
@@ -56,5 +70,11 @@ export async function requireEditableStudent(
         : lockedReasonLine(access.state, access.opensAt, access.closesAt),
     };
   }
-  return { ok: true, email: student.email, positionId: student.positionId, onBehalf: false };
+  return {
+    ok: true,
+    email: student.email,
+    positionId: student.positionId,
+    onBehalf: false,
+    termId,
+  };
 }

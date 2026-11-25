@@ -14,7 +14,9 @@
 # --single-transaction takes a consistent InnoDB snapshot without locking, so
 # the other apps on this instance are not blocked while the dump runs.
 #
-# Restore (single DB):  zcat <file> | sudo mariadb muster
+# Restore (single DB):  zcat <file> | sudo mariadb --one-database muster
+#   The dump holds every database on the box, so leave --one-database in:
+#   without it the restore replays every other app's data too.
 # Verify a backup:      zcat <file> | head   (should start with -- MariaDB dump)
 set -euo pipefail
 

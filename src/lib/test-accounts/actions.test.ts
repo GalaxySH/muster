@@ -52,7 +52,6 @@ interface QueryChain {
  */
 function fakeDb(rows: Record<string, unknown[]>) {
   const deletes: string[] = [];
-  const joins: string[] = [];
   const select = (): QueryChain => {
     let table = "";
     const chain: QueryChain = {
@@ -61,13 +60,8 @@ function fakeDb(rows: Record<string, unknown[]>) {
         return chain;
       },
       // The joined table does not change the keying: rows are still keyed by the
-      // table the query selects FROM. Joins are logged so a test can assert the
-      // saved-run guard is scoped through schedule_runs, which is the one thing
-      // about it this fake can check (it does not interpret WHERE).
-      innerJoin: (t: unknown) => {
-        joins.push(`${table}:${nameOf(t)}`);
-        return chain;
-      },
+      // table the query selects FROM.
+      innerJoin: () => chain,
       where: () => chain,
       limit: () => chain,
       then: (fulfil, reject) => Promise.resolve(rows[table] ?? []).then(fulfil, reject),
@@ -82,13 +76,13 @@ function fakeDb(rows: Record<string, unknown[]>) {
       },
     }),
   };
-  return { db, deletes, joins };
+  return { db, deletes };
 }
 
 function useDb(rows: Record<string, unknown[]>) {
-  const { db, deletes, joins } = fakeDb(rows);
+  const { db, deletes } = fakeDb(rows);
   vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
-  return { deletes, joins };
+  return { deletes };
 }
 
 const form = (email: string) => {
@@ -98,8 +92,8 @@ const form = (email: string) => {
 };
 
 const EMAIL = "training-barista@test.muster.invalid";
-/** A dev-created test-group member from before the synthetic domain. */
-const LEGACY_EMAIL = "old-test@wisc.edu";
+/** A real student address, as a test-group member could have. */
+const REAL_EMAIL = "real.student@wisc.edu";
 // Membership is read through term_members joined to its group; the group's
 // kind is what marks the test-accounts group.
 const testAccount = { term_members: [{ group: { id: TEST_GROUP_ID, kind: "test" } }] };
@@ -130,39 +124,24 @@ describe("deleteTestAccount", () => {
     expect(deletes).toEqual(["submissions", "magic_links", "students"]);
   });
 
-  // schedule_assignments cascades off students, so deleting anyone else in the
-  // test group would strip their shifts out of every saved run without saying so.
-  it("refuses a legacy test-group account that holds shifts in a saved run", async () => {
+  // The delete removes the person in every term, so a real student who was put
+  // in the test group from the Groups page must never reach it.
+  it("refuses a test-group member at a real address and deletes nothing", async () => {
     const { deletes } = useDb({
       ...testAccount,
       submissions: [{ id: "s1" }],
       schedule_assignments: [{ runId: "r1" }],
     });
-    await expect(deleteTestAccount(form(LEGACY_EMAIL))).rejects.toThrow(
-      "REDIRECT /admin/test-users?error=in-schedule",
+    await expect(deleteTestAccount(form(REAL_EMAIL))).rejects.toThrow(
+      "REDIRECT /admin/test-users?error=not-found",
     );
     expect(deletes).toEqual([]);
     expect(relayDelete).not.toHaveBeenCalled();
   });
 
-  // Scoped to the current run so an account whose only rows live in a superseded
-  // run stays deletable: the grid edits the current run only, so a guard over all
-  // runs would strand it with no way to clear it. This fake does not interpret
-  // WHERE, so what is checked here is that the guard goes through schedule_runs
-  // at all; the status filter itself is covered by the query, not by this test.
-  it("scopes the saved-run guard to the current run", async () => {
-    const { joins } = useDb({
-      ...testAccount,
-      submissions: [{ id: "s1" }],
-      schedule_assignments: [{ runId: "r1" }],
-    });
-    await expect(deleteTestAccount(form(LEGACY_EMAIL))).rejects.toThrow("REDIRECT");
-    expect(joins).toContain("schedule_assignments:schedule_runs");
-  });
-
-  it("still refuses anyone outside the test group", async () => {
+  it("still refuses a synthetic address outside the test group", async () => {
     const { deletes } = useDb({ term_members: [{ group: { id: "gordon", kind: null } }] });
-    await expect(deleteTestAccount(form("real.student@wisc.edu"))).rejects.toThrow(
+    await expect(deleteTestAccount(form(EMAIL))).rejects.toThrow(
       "REDIRECT /admin/test-users?error=not-found",
     );
     expect(deletes).toEqual([]);

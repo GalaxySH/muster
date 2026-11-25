@@ -6,7 +6,8 @@
 -- fell back to the pre-term `excluded_roster_titles` setting (one title per
 -- line). Each such term gets that list saved on it, so the fallback can go and
 -- every term keeps excluding exactly what it excludes today. A saved empty
--- list stays an empty list: it means "exclude nothing".
+-- list stays an empty list: it means "exclude nothing". A key saved as JSON
+-- null counts as no list, the same as a missing key.
 --
 -- The list is quoted as one JSON string and then cut at each line break (which
 -- JSON writes as a backslash and an n). CHAR(92) is the backslash, written that
@@ -21,7 +22,7 @@ SET t.`roster_config` = JSON_SET(
     '$'
   )
 )
-WHERE JSON_EXTRACT(COALESCE(NULLIF(t.`roster_config`, ''), '{}'), '$.excludedTitles') IS NULL;--> statement-breakpoint
+WHERE IFNULL(JSON_EXTRACT(COALESCE(NULLIF(t.`roster_config`, ''), '{}'), '$.excludedTitles'), 'null') = 'null';--> statement-breakpoint
 -- Then the rows nothing reads: the travel cutoff and late-travel switch (on
 -- the term since 1.49), the excluded titles just moved, and the Drive ids and
 -- engine params that 0046 and 0047 copied to per-term keys.

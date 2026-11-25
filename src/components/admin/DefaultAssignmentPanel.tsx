@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { setDefaultAutoAssign, runDefaultAssignmentSweep } from "@/lib/groups/actions";
 
 /**
@@ -11,6 +12,7 @@ import { setDefaultAutoAssign, runDefaultAssignmentSweep } from "@/lib/groups/ac
  */
 export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boolean }) {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -32,7 +34,7 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
   function save() {
     setMsg(null);
     startTransition(async () => {
-      const res = await runDefaultAssignmentSweep();
+      const res = await runDefaultAssignmentSweep(termId);
       if (!res.ok) {
         setMsg({ ok: false, text: res.error ?? "Failed." });
       } else if (!res.enabled) {

@@ -19,7 +19,6 @@ import {
   type RepairStudent,
 } from "@/lib/domain/w2w-plan/repair-seeds";
 import { getCurrentPlan, loadPlanMatchInputs } from "./plan-data";
-import { workingTermId } from "@/lib/terms/working";
 
 export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-plan/repair-seeds";
 
@@ -27,13 +26,14 @@ export type { RepairStudent as RepairEligibleStudent } from "@/lib/domain/w2w-pl
 export async function loadRepairSeeds(
   eligible: Map<string, RepairStudent>,
   dayCapMinutes: number,
+  termId: string,
 ): Promise<RepairSeedResult | null> {
-  const plan = await getCurrentPlan();
+  const plan = await getCurrentPlan(termId);
   if (!plan) return null;
 
   const db = getDb();
   const [inputs, mappedRows, rosterRows] = await Promise.all([
-    loadPlanMatchInputs(),
+    loadPlanMatchInputs(termId),
     db.select({ email: w2wEmployees.email, name: w2wEmployees.w2wName }).from(w2wEmployees),
     // Current roster only: a name on the plan must not resolve to somebody who
     // has left, whether by seeding them shifts or by making the lookup
@@ -41,7 +41,7 @@ export async function loadRepairSeeds(
     db
       .select({ email: students.email, displayName: students.displayName })
       .from(students)
-      .where(onRosterStudent(await workingTermId())),
+      .where(onRosterStudent(termId)),
   ]);
   const report = matchPlan(plan.rows, inputs.map, inputs.blocks);
 

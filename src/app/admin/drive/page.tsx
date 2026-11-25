@@ -8,6 +8,7 @@ import { DriveControls } from "@/components/DriveControls";
 import { Page } from "@/components/ui";
 import { getSheetUrl, getLastSheetSync, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildResponsesSheet } from "@/lib/admin/actions";
+import { workingTermId } from "@/lib/terms/working";
 import { SheetControls, btnLink } from "@/components/admin/SheetControls";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
@@ -28,11 +29,12 @@ export default async function AdminDrivePage({
   if (!session) redirect("/signin?callbackUrl=/admin/drive");
   if (!session.isAdmin) redirect("/me");
 
+  const termId = await workingTermId();
   const [status, { connected, error }, responsesSheetUrl, responsesLastSync] = await Promise.all([
     getDriveGrantStatus(),
     searchParams,
-    getSheetUrl(RESPONSES_SHEET),
-    getLastSheetSync(RESPONSES_SHEET),
+    getSheetUrl(RESPONSES_SHEET, termId),
+    getLastSheetSync(RESPONSES_SHEET, termId),
   ]);
   const folderSet = Boolean(env.DRIVE_FOLDER_ID);
 

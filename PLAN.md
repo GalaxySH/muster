@@ -47,8 +47,8 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.57
-- **Last updated:** 2026-11-24
+- **Version:** 1.58
+- **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
 ---
@@ -680,14 +680,12 @@ Design and phases: `docs/semester-domains-plan.md`.
   RosterImport), `activatedAt?`, `createdAt`, `createdBy?`.
   The current term is the `current_term_id` row in `app_settings`. A missing pointer
   fails closed: every page errors instead of reading every term.
-- **Student**: `email` (PK / lookup key — must equal Google sign-in email),
-  `displayName`, `positionId?` (from roster), `rosterTitle?` (raw PCPL position title,
-  stored at import; surfaces "ghost" titles that map to no position — §6.1),
-  `international` (from roster or
-  self-report), `hiredOn?` (date, from People Coming; drives the welcome-back greeting —
-  §4.1, roadmap 2.1), `onRoster: bool`. (`groupId` and `groupAssignedAuto` are
-  retired as of 1.48: membership is **GroupMember**. The two columns are still written,
-  never read, and go with the contract migration.)
+- **Student**: the person only. `email` (PK and lookup key; must equal the Google
+  sign-in email), `displayName`, `international` (from roster or self-report), `hiredOn?`
+  (date, from People Coming; drives the welcome-back greeting, §4.1, roadmap 2.1),
+  `lastSeenAt?`. Their position, roster flag, tracker title and group are per term, on
+  **GroupMember** (the `term_members` table). The old `positionId`, `rosterTitle`,
+  `onRoster`, `groupId` and `groupAssignedAuto` columns were dropped in 1.57.
 - **Position**: `id`, `termId`, `name` (unique within its term), `minHours`, `minDays`,
   `weekendExempt: bool` (Barista), `picksCloses: bool` (holders pick weekend closes,
   §18a; this flag is what "Shift Lead" means to the code, so no id carries meaning),
@@ -794,13 +792,16 @@ Design and phases: `docs/semester-domains-plan.md`.
   window). Students join through **GroupMember**. (The
   **travel-excusal cutoff** is separate global config in `app_settings` — default 9/1,
   admin-set — not window-derived.)
-- **GroupMember** (1.48): (`termId`, `studentEmail`) PK, `groupId?`, `assignedAuto:
-  bool`. A student's group for one term; no row, or a row with no group, means no form
-  access, so a new term starts with every form closed. `assignedAuto` is the sticky
+- **GroupMember** (1.48; the `term_members` table since 1.51): (`termId`,
+  `studentEmail`) PK, `positionId?` (from roster), `onRoster: bool`, `rosterTitle?`
+  (raw PCPL position title, stored at import; surfaces "ghost" titles that map to no
+  position, §6.1), `groupId?`, `assignedAuto: bool`. A person's place in one term.
+  No row, or a row with no group, means no form access, so a new term starts with
+  every form closed. `assignedAuto` is the sticky
   marker (set by the default-assignment sweep / self-add hook, cleared by a manual
   assignment): taking a swept student out keeps their row with a null group, so the
-  sweep does not put them straight back. `lib/groups/membership.ts` is the only reader
-  and writer.
+  sweep does not put them straight back. `lib/terms/members.ts` writes the roster
+  place and `lib/groups/membership.ts` the group.
 - **AdminUser**: `email`, allowlist.
 - **AdminGoogleGrant**: `drive.file` refresh token (encrypted) for the image relay
   (§12) — admin-only; one row.
@@ -1667,6 +1668,55 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.58 (2026-11-25)** — **Semester domains: review fixes before release (issue #40;
+  `docs/semester-domains-plan.md` §18).** A security and correctness review of the
+  branch before its first deploy. What it found, and what the code does now:
+  - **Aliases and the W2W map.** Making a position an alias re-pointed the W2W
+    mapping of the same W2W id in every term, because every term holds the same W2W
+    ids. `repointW2wMappings` (`positions/actions.ts`) now also matches the source
+    position, so only that term's mapping moves.
+  - **One term per action.** React `cache` memoizes only during a render, so inside
+    a server action every `workingTermId()` call read the pointer again. An action
+    in flight while a semester started could gate in one term and write in the
+    other, and several actions awaited that pooled read inside an open transaction:
+    a request holding one connection while it waits for a second, which can starve
+    the 10-connection pool. The rule now: an action or route handler resolves the
+    term once, before any transaction, and passes it down; a transaction body never
+    resolves it (`terms/working.ts`, `positions/actions.ts`, `persistAvailability`).
+  - **Whole-term actions check the page's term.** `createPosition`,
+    `createPositionForTitle`, `createGroup`, `runDefaultAssignmentSweep`,
+    `saveScheduleParams`, `saveScheduleRunSnapshot` and `deleteW2wMapping` named no
+    row of the term, so a stale tab could act in the other one. They now take the
+    rendered term and gate with `requireAdminIn`. Hand edits to a schedule only
+    accept shift blocks of the run's term.
+  - **Position ids are random.** A new position got a slug of its name as its id,
+    which had to be unique across every term. It gets a random id now, so a name is
+    only compared within its term. `slugifyPositionId` is deleted.
+  - **Test accounts.** Deleting one deletes the person in every term, so it is
+    refused unless the address is a synthetic test address. The per-term schedule
+    check that guarded real addresses goes with it. Starting a semester carries only
+    synthetic test addresses into the new test group; a real student in the old one
+    carries over only if on the roster, with no group, like everyone else.
+  - **Drive.** A term's folder was found by name before it was created, so a
+    semester restarted under a reused name adopted the earlier one's folder and
+    sheets. Folders are now created on first use and cached, never looked up by
+    name, and concurrent first writes in a new term share one in-flight creation
+    (`drive/relay.ts`).
+  - **`/api/health`** reads the current-term pointer, so a broken pointer fails the
+    deploy check instead of passing on a bare connection.
+  - **Close dates are unique per term** (migration **0053**,
+    `close_slots_term_date_unique`), not across all terms. Generating closes for a
+    restarted or overlapping semester used to fail on a duplicate key. Migration
+    **0052**'s fill now also covers a term whose config holds an explicit JSON null
+    for the excluded titles. That cannot occur when 0037 to 0053 run in one deploy;
+    it protects databases where the newer code ran first, such as dev databases.
+  - **Deploy and rollback docs corrected** (`docs/deploy.md`). The old image never
+    serves a migrated database: compose stops it before `migrate` runs, so the site
+    is down until the new container answers (about 15 seconds for this release).
+    After 0051 no image from before 1.57 works, so v1.47 is the only rollback
+    target; the rollback and roll-forward SQL is written out and was rehearsed on a
+    migrated copy of production. New: a runbook for a failed or hung `migrate`, and
+    the backup restore limited to Muster's database (`--one-database`).
 - **1.57 (2026-11-25)** — **Semester domains, Phase 7: contract (issue #40;
   `docs/semester-domains-plan.md` §4, §17).** Everything that was kept only so the
   release before terms could still run is removed. No behavior changes.
@@ -1682,11 +1732,13 @@ live in `README.md` § "Before you start" as a pre-send checklist.
     exactly what it did, and the fallback is gone. Then the rows nothing reads are
     deleted: `travel_cutoff`, `late_travel_accept`, `excluded_roster_titles`, and
     the Drive ids and engine params that 0046 and 0047 copied to per-term keys.
-  - **Rollback.** After this release an image older than 1.48 cannot run against
-    the database without the steps in `docs/deploy.md`. During the deploy itself,
-    for the few seconds between `migrate` finishing and the new container
-    starting, that older image is still serving and its roster reads fail. Deploy
-    at a quiet hour, or release 1.56 first and this one after it has settled.
+  - **Rollback.** After this release no image from before 1.57 runs against the
+    database: v1.47 and 1.48 to 1.50 read the dropped columns, and 1.51 to 1.56
+    still write them, so their roster, position and group writes fail. v1.47 is
+    the only rollback target, with the rehearsed steps in `docs/deploy.md` (1.58).
+    (This bullet first said the old image keeps serving for a few seconds after
+    `migrate`. That was wrong: the old container is stopped before `migrate`
+    runs, so the site is down instead.)
 - **1.56 (2026-11-24)** — **Semester domains, Phase 6: starting a new semester
   (issue #40; `docs/semester-domains-plan.md` §2.4, §2.5, §2.9, §16;
   runbook `docs/semester-rollover.md`).** The Semester page gains **Start a new
@@ -1729,8 +1781,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   - **The `term_id` column defaults are dropped** (migration **0049**, metadata
     only). An insert that forgot its term now fails instead of being filed under
     fall. From this release on, an image older than 1.48 cannot insert into the
-    term-scoped tables; `docs/deploy.md` has what that means for a deploy and a
-    rollback.
+    term-scoped tables, so a rollback to one needs the defaults put back first
+    (`docs/deploy.md`). A deploy is not affected: the old container is stopped
+    before `migrate` runs (corrected in 1.58).
 - **1.55 (2026-11-24)** — **Semester domains, Phase 5: working in a selected semester
   (issue #40; `docs/semester-domains-plan.md` §2.6, §2.9, §15).** Until now every
   page and action read "the current term". Two terms are now named apart. The

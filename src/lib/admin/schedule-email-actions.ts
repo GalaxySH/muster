@@ -38,7 +38,9 @@ import {
 } from "@/lib/settings";
 import type { AdminActionResult } from "./actions";
 import { updateSubmission } from "./update-submission";
+import { getDb } from "@/lib/db";
 import { workingTerm } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 
 export interface ScheduleEmailSendResult extends AdminActionResult {
   /** What to tell the admin on success. */
@@ -189,19 +191,21 @@ export async function sendScheduleEmail(
       error: "Test accounts can't get email. Use Send a test to me in Email settings instead.",
     };
   }
-  const student = await findStudentByEmail(email);
+  // The gate proved termId is the working term, so nothing below looks it up again.
+  const student = await findStudentByEmail(email, termId);
   if (!student) return { ok: false, error: "That employee is not a known student." };
   const position =
-    (await positionOptions()).find((p) => p.id === student.positionId)?.name ?? "your position";
+    (await positionOptions(termId)).find((p) => p.id === student.positionId)?.name ??
+    "your position";
 
   const config = { ...(await getScheduleEmailConfig()), ...template };
   const vars = buildScheduleEmailVars(
     { displayName: student.displayName, position },
     fields,
-    (await workingTerm()).name,
+    (await getTerm(getDb(), termId)).name,
   );
   // The shifts the current run gives them: what the dialog previewed.
-  const shifts = (await loadStudentCurrentAssignments(email))?.cells ?? [];
+  const shifts = (await loadStudentCurrentAssignments(email, termId))?.cells ?? [];
   const res = await deliver(
     email,
     config,

@@ -15,7 +15,8 @@ import {
 } from "@/lib/domain/travel";
 import { parseSchedulingParams, type SchedulingParams } from "@/lib/domain/scheduling/params";
 import { parseScheduleEmailConfig, type ScheduleEmailConfig } from "@/lib/email/schedule-email";
-import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { workingTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
 import { termSettingKey } from "@/lib/domain/terms";
 import { loadRosterConfig, type EffectiveRosterConfig } from "@/lib/roster/config-data";
 
@@ -92,11 +93,13 @@ export async function deleteSetting(key: string): Promise<void> {
 }
 
 /**
- * The current term's travel-excusal cutoff (PLAN §8). `isCustom` says whether
- * the admin moved it off the term's default, the day before the term starts.
+ * The term's travel-excusal cutoff (PLAN §8). `isCustom` says whether the admin
+ * moved it off the term's default, the day before the term starts.
  */
-export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boolean }> {
-  const term = await workingTerm();
+export async function getTravelCutoff(
+  termId: string,
+): Promise<{ cutoff: Date; isCustom: boolean }> {
+  const term = await getTerm(getDb(), termId);
   return {
     cutoff: term.travelCutoff,
     isCustom: term.travelCutoff.getTime() !== defaultTravelCutoff(term.startsOn).getTime(),
@@ -104,13 +107,13 @@ export async function getTravelCutoff(): Promise<{ cutoff: Date; isCustom: boole
 }
 
 /**
- * The current term's late-travel policy (PLAN §8), admin-toggled on /admin/terms.
+ * The term's late-travel policy (PLAN §8), admin-toggled on /admin/terms.
  * Off (the default) keeps the domain's "refuse" policy: nothing past the cutoff
  * is stored. On, entries past the cutoff are accepted but stored unexcused
  * ("accept-and-flag"), and finalize raises the travel_late flag.
  */
-export async function getLateTravelPolicy(): Promise<LateTravelPolicy> {
-  return (await workingTerm()).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
+export async function getLateTravelPolicy(termId: string): Promise<LateTravelPolicy> {
+  return (await getTerm(getDb(), termId)).lateTravelAccept ? "accept-and-flag" : LATE_TRAVEL_POLICY;
 }
 
 /**
@@ -156,18 +159,11 @@ export async function getRosterConfig(): Promise<EffectiveRosterConfig> {
 /**
  * The schedule engine's tunable knobs (docs/schedule-generation-plan.md §3.2),
  * admin-set on /admin/schedule; the domain defaults apply until first saved
- * (and whenever the stored value is unreadable).
+ * (and whenever the stored value is unreadable). They are stored per term
+ * because they name positions (the coverage pool), and each term has its own.
  */
-export async function getSchedulingParams(): Promise<SchedulingParams> {
-  return parseSchedulingParams(await getSetting(await schedulingParamsKey()));
-}
-
-/**
- * Where the working term's engine params are stored. They are per term because
- * they name positions (the coverage pool), and each term has its own.
- */
-export async function schedulingParamsKey(): Promise<string> {
-  return termSettingKey(SETTING_SCHEDULE_PARAMS, await workingTermId());
+export async function getSchedulingParams(termId: string): Promise<SchedulingParams> {
+  return parseSchedulingParams(await getSetting(termSettingKey(SETTING_SCHEDULE_PARAMS, termId)));
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createPosition } from "@/lib/positions/actions";
 
 /**
@@ -11,6 +12,7 @@ import { createPosition } from "@/lib/positions/actions";
  */
 export function AddPositionForm() {
   const router = useRouter();
+  const termId = useRenderedTermId();
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function AddPositionForm() {
   function create() {
     setError(null);
     startTransition(async () => {
-      const res = await createPosition(name);
+      const res = await createPosition(termId, name);
       if (res.ok) {
         setName("");
         router.refresh();

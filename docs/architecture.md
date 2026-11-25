@@ -9,7 +9,7 @@ spec; these notes describe how the implementation is layered.
 
 Every per-semester table carries a `term_id`, and exactly one term is current: the
 `current_term_id` row in `app_settings`. Students only ever see the current term.
-(Admins selecting and editing an earlier term is planned, not built: plan §2.9.)
+An admin can select another term and work in it (1.55, below).
 
 **The roster is per term (1.51).** `students` is the person: email, name,
 international, hire date, last seen. `term_members` is their place in one term: the
@@ -28,7 +28,11 @@ someone with no row was never part of that term.
   - `term-id.ts`: `getCurrentTermId(db)`, plain and CLI-safe. It **throws** when the
     pointer is missing. Nothing may ever fall back to reading every term.
   - `working.ts` (1.55; it was `current.ts`): the term a request works in.
-    `currentTermId()` is the pointer read, memoized per request with React `cache`.
+    `currentTermId()` is the pointer read. Both it and `workingTermId()` are
+    memoized with React `cache`, which holds only during a render: a page that
+    calls several loaders resolves the term once, but inside a server action or a
+    route handler every call reads the pointer again (see "Who resolves the
+    term").
     `workingTermId()` is what every loader and action calls: the current term,
     unless the request carries the selection cookie (`TERM_COOKIE`), the session is
     an admin's and the cookie names a term that exists, in which case it is that
@@ -67,18 +71,27 @@ someone with no row was never part of that term.
   also holds `TravelCutoffPanel` and warns when the saved schedule email names
   another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
   and the hub nav is grouped into "This semester" and "All semesters".
-- **Who resolves the term.** Request-side loaders and actions call `workingTermId()`
-  themselves: they are defined as "the working term's" data. Call `currentTermId()`
+- **Who resolves the term.** Request-side loaders call `workingTermId()`
+  themselves: they are defined as "the working term's" data. **A server action or
+  route handler resolves the term once, at the top, and passes it down (1.58).**
+  Calling it again later in the same action reads the pointer again, so an action
+  in flight while a semester starts could gate in one term and write in the other.
+  Never call it inside a transaction: it takes a second pooled connection while the
+  transaction holds the first, and enough of those at once starve the pool
+  (`persistAvailability` and `positions/actions.ts` show the shape). Call `currentTermId()`
   only for something that must follow the term students are filling in whatever an
   admin has selected, and say why at the call (today: the header's banner,
   `selectTerm`, and the roster import's `updatePeople`). Anything that takes a
   database handle or a transaction (`importRoster`, `applyPositionChange`,
   `resolveDeferredCarryOver`, `releaseDepartedSchedules`, `writeRunAsCurrent`,
   `pruneStaleRuns`, `lib/groups/membership.ts`) takes `termId` as an argument, so its
-  transaction body gains no read. **No server action accepts a term id from the
-  client.** Where a client sends a row id (a group, a position, a block, a close slot,
-  a run, a W2W mapping), the lookup also tests the term, so another term's row reads
-  as not found. An admin reaches another term only by selecting it, which changes the working
+  transaction body gains no read. **No server action takes its term from the
+  client.** An action may receive the term id its page was rendered for, but only
+  to compare it with the working term (`requireAdminIn`, below), and it acts in the
+  working term. Where a client sends a row id (a group, a position, a block, a close
+  slot, a run, a W2W mapping), the lookup also tests the term, so another term's row
+  reads as not found. Hand edits to a schedule only accept shift blocks of the run's
+  term (`schedule/manual.ts`). An admin reaches another term only by selecting it, which changes the working
   term for the whole request.
 - **Actions that name no row (1.55).** The selection belongs to the browser, not
   the tab, so a tab still showing fall can submit after another tab moved to spring.
@@ -88,8 +101,19 @@ someone with no row was never part of that term.
   (`components/RenderedTerm.tsx`), provided once by `app/admin/layout.tsx`; a
   layout is not re-rendered on navigation, so it stays what the tab is showing.
   When adding an admin action that takes no term-scoped row id, use this gate.
-  That includes any action that names a **person by email**: the same person is in
-  every term. Actions shared with the student's own form go through
+  Since 1.58 that covers the actions that create something in the term and name no
+  row: `createPosition`, `createPositionForTitle`, `createGroup`,
+  `runDefaultAssignmentSweep`, `saveScheduleParams`, `saveScheduleRunSnapshot` and
+  `deleteW2wMapping` (a W2W id is the same in every term). What still gates with
+  `requireAdmin()` alone acts on something that is not one term's rows: the three
+  sheet rebuilds (`rebuildResponsesSheet`, `rebuildClosesSheet`,
+  `rebuildScheduleSheet`) rewrite the working term's sheet from that term's own
+  data; `setDefaultAutoAssign`, the email and change-request switches and the
+  schedule email template are settings shared by every term;
+  `importW2wEmployeesFromUpload` writes `w2w_employees`, which has no term; and
+  `setPlanRotationWeek` names a plan, looked up as the working term's current plan.
+  The gate also covers any action that names a **person by email**: the same person
+  is in every term. Actions shared with the student's own form go through
   `requireEditableStudent(onBehalfOf, renderedTermId)` (`groups/gate.ts`), which
   checks the term only on the on-behalf branch and refuses when none was sent. The
   on-behalf pages on student routes wrap their form in `<WorkingTerm>`
@@ -106,7 +130,7 @@ someone with no row was never part of that term.
   the term the caller saw. `makeTermCurrent` moves the pointer back. The pure parts (`termSlug`,
   `newTermDefaults`, `validateNewTerm`) are in `domain/terms.ts`. Both actions use
   the *current* term, never the working one. The engine params are stored per term
-  (`schedulingParamsKey()` in `lib/settings.ts`); the copy remaps their position
+  (`getSchedulingParams(termId)` in `lib/settings.ts`); the copy remaps their position
   ids as plain JSON so the console does not import the generator's parser.
 - **Client state and the term.** Selecting a term reloads the page
   (`TermSwitcher`), because a form that seeded `useState` from its props would
@@ -114,8 +138,13 @@ someone with no row was never part of that term.
   reload (the Semester page after a start), key its forms by the term id.
 - **Drive per term (1.55).** `drive/relay.ts` resolves a term's folder
   (`termFolder`): the Drive root for the term named by `drive_root_term` (fall 2026),
-  otherwise a folder named after the term, found or created under the root and
-  cached. Proofs and the three sheets live in it, and every cached id and sync stamp
+  otherwise a folder named after the term, created under the root on first use and
+  cached (1.58). It is never looked up by name: `drive.file` shows the app only its
+  own folders, so a name match could only be another term's folder, one renamed and
+  then reused. Concurrent first writes for the same key share one in-flight creation
+  (`singleFlight`, which holds because the app is one Node process). Sheets are
+  still found by cached id, then by name inside the term's folder, then created.
+  Proofs and the three sheets live in it, and every cached id and sync stamp
   is stored under `termSettingKey(base, termId)`. `admin/sheet-sync.ts` acts on the
   working term.
 - **`students LEFT JOIN submissions` puts the term in the ON clause**
@@ -278,8 +307,9 @@ pure rules (`closeClaimsComplete` is "at least", `canClaimAnotherClose`,
 current term and releases nothing.
 
 A claim/inventory subsystem for Shift Leads, who must each claim their number of Fri/Sat
-close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory,
-unique date, per-slot capacity) + `close_claims` (composite PK `(closeSlotId,
+close shifts (6p–11:30p) for the semester. Tables `close_slots` (dated inventory, a
+date unique within its term via `close_slots_term_date_unique` since 1.58, per-slot
+capacity) + `close_claims` (composite PK `(closeSlotId,
 studentEmail)`, cascading deletes); pure rules in `domain/close-claims.ts` (default
 range = first September weekend → second December weekend, slot generation, remaining
 capacity, feasibility, and the per-lead rules above); server layer in `src/lib/closes/`
@@ -490,10 +520,14 @@ per-student card.
 
 ## Drive folder layout (PLAN §12)
 
-The configured root (`DRIVE_FOLDER_ID`) holds the running
-`Muster Responses` spreadsheet; **all proof files live in a single `proofs/` subfolder**
-(named `{email}__{kind}__{timestamp}.{ext}`). Both the proofs-folder id and the sheet id
-are discovered/created lazily and cached in `app_settings` via `src/lib/settings.ts`. The
+Each term has its own folder under the configured root (`DRIVE_FOLDER_ID`); fall 2026
+uses the root itself (`drive_root_term`). The term's folder holds its running
+`Muster Responses` spreadsheet and the other sheets; **all of a term's proof files live
+in a single `proofs/` subfolder** (named `{email}__{kind}__{timestamp}.{ext}`). Folders
+are created on first use and their ids cached in `app_settings` under per-term keys
+(`src/lib/settings.ts`); they are never looked up by name (1.58). A sheet is found by its
+cached id, then by name in the term's folder, then created. Concurrent first writes
+share one in-flight creation. See "Drive per term" under Terms. The
 sheet is written via the **Google Sheets API v4** (`drive/api.ts` `createSpreadsheet`
 [empty native sheet via Drive] + `writeSheetValues` [read title → clear → RAW values →
 freeze/bold header]) — within the `drive.file` grant (the Sheets API is now enabled on the
@@ -1433,17 +1467,17 @@ keeping their own session. The minted URL carries `&email=` which `/magic/redeem
 uses only as a form prefill (emailed links never include it; redemption stays bound
 to token+email). The synthetic domain fails `isWiscEmail`, so the
 admin-minted token is the **only** door in. Rails: create refuses existing rows
-(never upserts); sign-in-as and get-link share one gate (`requireImpersonableTestAccount`:
-test-group membership AND the synthetic domain);
-delete only ever removes test-group members. **Shifts (1.47):** the per-student grid
+(never upserts); sign-in-as, get-link and delete share one gate (`requireTestAccount`:
+test-group membership AND the synthetic domain). **Delete needs a synthetic address
+(1.58):** it deletes the person in every term, so a real student moved into the test
+group can never be deleted from here, and the page offers it only where
+`canManage` is true. **Shifts (1.47):** the per-student grid
 refuses to add shifts for off-roster students except synthetic-domain test accounts,
 which may be placed on purpose; the on-roster filter keeps their rows off every
 schedule surface, generation drops them from the previous run's rows, and deleting
-such an account lets its rows cascade. Any other test-group member (a legacy
-`@wisc.edu` account) is refused while it still holds shifts in the **current** run
-(`schedule_assignments` cascades off `students`). That guard is scoped to the current run deliberately: the grid edits only that
-run, so guarding over superseded runs too would leave such an account permanently
-undeletable with no in-app way to clear it. Delete also cleans up relayed Drive proofs (shared
+such an account lets its rows cascade. (The per-term schedule check that used to
+guard deleting a non-synthetic member is gone with that case.) Starting a semester
+carries only synthetic addresses into the new term's test group. Delete also cleans up relayed Drive proofs (shared
 `collectSubmissionDriveFileIds` in `evidence/data.ts`); the test group can't
 be deleted on `/admin/groups`. This replaces the old dev-only manager on `/dev-login`
 (and before that, `/admin/preview`).
@@ -1583,8 +1617,10 @@ Pure seams (all TDD, `src/lib/domain/`): `carry-over.ts` (`carryOverSelections` 
 time-matched keep/drop rule, generic over the row type so DB rows pass through),
 `config-validation.ts` (`validateBlockTimes`, `blockSetWarnings` — empty weekend set,
 unreachable min hours via `capacity.ts`), `position-alias.ts` (`resolveAlias`,
-`canAliasTo`), `time.ts` (`minutesToHHMM`/`hhmmToMinutes`), plus
-`positions/slug.ts` (`slugifyPositionId`). Reads live in `positions/data.ts`
+`canAliasTo`), `time.ts` (`minutesToHHMM`/`hhmmToMinutes`). A new position gets a
+random id (1.58; it used to be a slug of the name, which had to be unique across every
+term), so its name is only compared within its term; `positions/slug.ts` keeps only
+`POSITION_NAME_MAX`. Reads live in `positions/data.ts`
 (server-only): `listPositions`/`positionOptions` (the picker seam every former
 `config/positions.ts` consumer now uses), `listPositionsAdmin` (blocks + reference
 counts), `listGhostTitles` (shared with `roster/status.ts`). The write-side heart is
@@ -2497,7 +2533,9 @@ plan never uses. Dangers mean shifts export nameless and reach the hub as one
 The **alias** case is the sharp one. `setAlias` moves students to the target but the
 source keeps its blocks, so plan rows go on matching them and the plan report still
 counts them as *matched* while nobody can ever be assigned there. v1.11 fixes the cause
-(`repointW2wMappings` follows the students inside the same transaction) and keeps the
+(`repointW2wMappings` follows the students inside the same transaction; since 1.58 it
+matches the source position as well as the W2W id, because every term holds the same
+W2W ids) and keeps the
 check for maps that drifted before it, or via a route that does not go through
 `setAlias`. Aliases are never offered in the target picker and are refused server-side.
 

@@ -129,11 +129,11 @@ export interface PositionChangeRecord {
 export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail | null> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
+  const termId = await workingTermId();
 
-  const student = await findStudentByEmail(email);
+  const student = await findStudentByEmail(email, termId);
   if (!student) return null;
 
-  const termId = await workingTermId();
   const ownGroup = await groupOf(db, email, termId);
   const group = ownGroup?.name ?? null;
 
@@ -225,7 +225,7 @@ export async function loadStudentDetail(emailRaw: string): Promise<StudentDetail
 
   const [evidence, closes] = await Promise.all([
     loadEvidence(email),
-    loadStudentCloseClaims(email, student.positionId),
+    loadStudentCloseClaims(email, student.positionId, termId),
   ]);
 
   return {
@@ -315,8 +315,8 @@ export interface ResponseRow {
  * schedule page's student table and the one-student popup quote, so no two
  * surfaces ever put different hours on the same rows.
  */
-async function scheduledMinutesByStudent(): Promise<Map<string, number>> {
-  const run = await loadCurrentRunRow();
+async function scheduledMinutesByStudent(termId: string): Promise<Map<string, number>> {
+  const run = await loadCurrentRunRow(termId);
   if (!run) return new Map();
 
   const db = getDb();
@@ -413,7 +413,7 @@ export async function listResponses(filters: ResponseFilters = {}): Promise<Resp
     .groupBy(changeRequests.studentEmail);
   const openRequestsByEmail = new Map(openRequests.map((r) => [r.email, Number(r.count)]));
 
-  const scheduledMinutes = await scheduledMinutesByStudent();
+  const scheduledMinutes = await scheduledMinutesByStudent(termId);
 
   const mapped: ResponseRow[] = rows.map((r) => {
     const flagTypes = (r.submissionId && flagTypesBySub.get(r.submissionId)) || [];

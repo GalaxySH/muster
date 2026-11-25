@@ -249,10 +249,14 @@ export interface CellAvailability {
  * "who is on this?" and being shown only the people who volunteered for it was
  * the bug this closes.
  */
-export async function loadCellAvailability(blockId: string, day: Day): Promise<CellAvailability> {
+export async function loadCellAvailability(
+  blockId: string,
+  day: Day,
+  termId: string,
+): Promise<CellAvailability> {
   const db = getDb();
   const eff = effectiveSelections();
-  const currentRun = await loadCurrentRunRow();
+  const currentRun = await loadCurrentRunRow(termId);
   const [rows, assignedRows] = await Promise.all([
     db
       .select({
@@ -264,10 +268,10 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
       })
       .from(eff)
       .innerJoin(submissions, eq(eff.submissionId, submissions.id))
-      .innerJoin(students, submissionOfStudent(await workingTermId()))
-      .leftJoin(termMembers, memberOf(await workingTermId()))
+      .innerJoin(students, submissionOfStudent(termId))
+      .leftJoin(termMembers, memberOf(termId))
       .leftJoin(positions, eq(termMembers.positionId, positions.id))
-      .where(and(eligibleSubmittedFilter(await workingTermId()), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
+      .where(and(eligibleSubmittedFilter(termId), eq(eff.shiftBlockId, blockId), eq(eff.day, day))),
     currentRun
       ? // Students, not submissions: a fill-in can be assigned here without ever
         // having responded, so the submission join has to be optional. The
@@ -285,12 +289,12 @@ export async function loadCellAvailability(blockId: string, day: Day): Promise<C
           })
           .from(scheduleAssignments)
           .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-          .leftJoin(termMembers, memberOf(await workingTermId()))
+          .leftJoin(termMembers, memberOf(termId))
           .leftJoin(positions, eq(termMembers.positionId, positions.id))
-          .leftJoin(submissions, submissionOfStudent(await workingTermId()))
+          .leftJoin(submissions, submissionOfStudent(termId))
           .where(
             and(
-              onRosterStudent(await workingTermId()),
+              onRosterStudent(termId),
               eq(scheduleAssignments.runId, currentRun.id),
               eq(scheduleAssignments.shiftBlockId, blockId),
               eq(scheduleAssignments.day, day),
@@ -470,12 +474,12 @@ const DAY_INDEX = new Map(ALL_DAYS.map((d, i) => [d, i]));
 export type ScheduleRunRow = typeof scheduleRuns.$inferSelect;
 
 /** The term's run marked current (newest wins if a race ever leaves two), or null. */
-export async function loadCurrentRunRow() {
+export async function loadCurrentRunRow(termId: string) {
   const db = getDb();
   const [run] = await db
     .select()
     .from(scheduleRuns)
-    .where(currentRunOf(await workingTermId()))
+    .where(currentRunOf(termId))
     .orderBy(desc(scheduleRuns.generatedAt), desc(scheduleRuns.id))
     .limit(1);
   return run ?? null;
@@ -508,9 +512,10 @@ export interface StudentCurrentAssignments {
  */
 export async function loadStudentCurrentAssignments(
   email: string,
+  termId: string,
 ): Promise<StudentCurrentAssignments | null> {
   const db = getDb();
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return null;
   const cells = await db
     .select({
@@ -528,12 +533,12 @@ export async function loadStudentCurrentAssignments(
 }
 
 /** The current run with its per-student rows, or null before any generation. */
-export async function loadCurrentSchedule(): Promise<CurrentSchedule | null> {
-  const run = await loadCurrentRunRow();
+export async function loadCurrentSchedule(termId: string): Promise<CurrentSchedule | null> {
+  const run = await loadCurrentRunRow(termId);
   return run ? loadScheduleForRun(run) : null;
 }
 
-/** One run (current or historical) with its per-student rows. */
+/** One run (current or historical) with its per-student rows, read in the run's own term. */
 export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSchedule> {
   const db = getDb();
   const storedReport = JSON.parse(run.summaryJson) as StoredRunReport;
@@ -558,7 +563,7 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
     .from(scheduleAssignments)
     .innerJoin(shiftBlocks, eq(scheduleAssignments.shiftBlockId, shiftBlocks.id))
     .innerJoin(students, eq(scheduleAssignments.studentEmail, students.email))
-    .where(and(onRosterStudent(await workingTermId()), eq(scheduleAssignments.runId, run.id)));
+    .where(and(onRosterStudent(run.termId), eq(scheduleAssignments.runId, run.id)));
 
   const assignedCells = tallyAssignedCells(rows);
   const cellsByStudent = new Map<string, AssignedCell[]>();
@@ -632,9 +637,9 @@ export async function loadScheduleForRun(run: ScheduleRunRow): Promise<CurrentSc
         scheduled: submissions.scheduled,
       })
       .from(students)
-      .leftJoin(termMembers, memberOf(await workingTermId()))
+      .leftJoin(termMembers, memberOf(run.termId))
       .leftJoin(positions, eq(termMembers.positionId, positions.id))
-      .leftJoin(submissions, submissionOfStudent(await workingTermId()))
+      .leftJoin(submissions, submissionOfStudent(run.termId))
       .where(inArray(students.email, emails));
     for (const r of infoRows) {
       if (r.onRoster) onRosterEmails.add(r.email);
@@ -912,7 +917,7 @@ export interface FrozenMismatchView {
  */
 export async function loadFrozenMismatches(): Promise<FrozenMismatchView[]> {
   const db = getDb();
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(await workingTermId());
   if (!run) return [];
 
   const frozenEligible = and(eligibleSubmittedFilter(await workingTermId()), eq(submissions.scheduled, true));

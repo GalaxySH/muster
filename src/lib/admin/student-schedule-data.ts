@@ -21,7 +21,6 @@ import {
 import type { Day } from "@/lib/domain/types";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
 import { loadCurrentRunRow } from "@/lib/schedule/data";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
 
 export interface StudentScheduleView {
@@ -46,12 +45,14 @@ export type StudentScheduleLookup =
   | { kind: "unknown-student" };
 
 /** The popup's whole read: student, mark, layout blocks, current-run cells. */
-export async function loadStudentScheduleView(email: string): Promise<StudentScheduleLookup> {
+export async function loadStudentScheduleView(
+  email: string,
+  termId: string,
+): Promise<StudentScheduleLookup> {
   const db = getDb();
-  const run = await loadCurrentRunRow();
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { kind: "no-run" };
 
-  const termId = await workingTermId();
   const [student] = await db
     .select({
       email: students.email,

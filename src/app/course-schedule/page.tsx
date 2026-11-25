@@ -6,6 +6,7 @@ import { findStudentByEmail } from "@/lib/roster/lookup";
 import { loadEvidence } from "@/lib/evidence/data";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { resolveStudentAccess } from "@/lib/groups/data";
+import { workingTermId } from "@/lib/terms/working";
 import { loadWizardNav } from "@/lib/flow/data";
 import { CourseScheduleForm } from "@/components/evidence/CourseScheduleForm";
 import { OnBehalfBanner } from "@/components/evidence/shared";
@@ -30,8 +31,10 @@ export default async function CourseSchedulePage({
   // from the per-student admin page). That path loads the target's evidence and
   // skips the group/window gates: the admin is the authority, not the window.
   const { student: studentParam } = await searchParams;
-  const onBehalf = session.isAdmin && studentParam ? await findStudentByEmail(studentParam) : null;
-  const student = onBehalf ?? (await findStudentByEmail(session.email));
+  const termId = await workingTermId();
+  const onBehalf =
+    session.isAdmin && studentParam ? await findStudentByEmail(studentParam, termId) : null;
+  const student = onBehalf ?? (await findStudentByEmail(session.email, termId));
   if (!student) {
     return (
       <Page>
@@ -62,7 +65,7 @@ export default async function CourseSchedulePage({
   }
 
   const [access, nav] = await Promise.all([
-    resolveStudentAccess(student.email),
+    resolveStudentAccess(student.email, termId),
     loadWizardNav(student.email),
   ]);
 

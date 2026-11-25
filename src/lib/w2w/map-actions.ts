@@ -14,7 +14,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { positions, w2wPositionMap } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAdmin, requireAdminIn } from "@/lib/auth/require-admin";
 import { workingTermId } from "@/lib/terms/working";
 
 export interface ActionResult {
@@ -50,7 +50,7 @@ type Checked = { ok: true; value: MappingInput } | { ok: false; error: string };
  * export (the shifts still look matched but ship with no names), so it is
  * refused at entry rather than only warned about afterwards.
  */
-async function check(input: MappingInput): Promise<Checked> {
+async function check(input: MappingInput, termId: string): Promise<Checked> {
   const w2wPositionId = input.w2wPositionId.trim();
   const w2wPositionName = input.w2wPositionName.trim();
   if (w2wPositionId === "") return { ok: false, error: "Enter the W2W position ID." };
@@ -72,7 +72,7 @@ async function check(input: MappingInput): Promise<Checked> {
   const [target] = await getDb()
     .select({ name: positions.name, mergedIntoId: positions.mergedIntoId })
     .from(positions)
-    .where(and(eq(positions.id, input.musterPositionId), eq(positions.termId, await workingTermId())))
+    .where(and(eq(positions.id, input.musterPositionId), eq(positions.termId, termId)))
     .limit(1);
   if (!target) return { ok: false, error: "Pick a Muster position." };
   if (target.mergedIntoId !== null) {
@@ -107,13 +107,14 @@ function thisTermsMapping(w2wPositionId: string, termId: string) {
 async function findNameClash(
   w2wPositionName: string,
   exceptId: string,
+  termId: string,
 ): Promise<ActionResult | null> {
   const [clash] = await getDb()
     .select({ id: w2wPositionMap.w2wPositionId })
     .from(w2wPositionMap)
     .where(
       and(
-        eq(w2wPositionMap.termId, await workingTermId()),
+        eq(w2wPositionMap.termId, termId),
         eq(w2wPositionMap.w2wPositionName, w2wPositionName),
         ne(w2wPositionMap.w2wPositionId, exceptId),
       ),
@@ -129,12 +130,12 @@ export async function createW2wMapping(input: MappingInput): Promise<ActionResul
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const checked = await check(input);
+  const termId = await workingTermId();
+  const checked = await check(input, termId);
   if (!checked.ok) return checked;
   const value = checked.value;
 
   const db = getDb();
-  const termId = await workingTermId();
   const [existing] = await db
     .select({ name: w2wPositionMap.w2wPositionName })
     .from(w2wPositionMap)
@@ -143,7 +144,7 @@ export async function createW2wMapping(input: MappingInput): Promise<ActionResul
   if (existing) {
     return { ok: false, error: `${existing.name} already uses that W2W position ID.` };
   }
-  const nameClash = await findNameClash(value.w2wPositionName, value.w2wPositionId);
+  const nameClash = await findNameClash(value.w2wPositionName, value.w2wPositionId, termId);
   if (nameClash) return nameClash;
 
   await db.insert(w2wPositionMap).values({ ...value, termId });
@@ -163,12 +164,12 @@ export async function updateW2wMapping(
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const checked = await check({ ...input, w2wPositionId });
+  const termId = await workingTermId();
+  const checked = await check({ ...input, w2wPositionId }, termId);
   if (!checked.ok) return checked;
   const value = checked.value;
 
   const db = getDb();
-  const termId = await workingTermId();
   // Existence is checked directly. affectedRows counts CHANGED rows, so a
   // re-save of values already stored would otherwise be reported as a mapping
   // that no longer exists, and the admin would go add it back.
@@ -179,7 +180,7 @@ export async function updateW2wMapping(
     .limit(1);
   if (!current) return { ok: false, error: "That mapping no longer exists." };
 
-  const nameClash = await findNameClash(value.w2wPositionName, value.w2wPositionId);
+  const nameClash = await findNameClash(value.w2wPositionName, value.w2wPositionId, termId);
   if (nameClash) return nameClash;
 
   await db
@@ -197,15 +198,17 @@ export async function updateW2wMapping(
 
 /**
  * Remove a mapping. Its plan rows stay in the plan and export with no names,
- * which is the same safe-but-lossy outcome as never having mapped it.
+ * which is the same safe-but-lossy outcome as never having mapped it. The W2W
+ * id is the same in every term, so the page names the term it was showing.
  */
-export async function deleteW2wMapping(w2wPositionId: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
+export async function deleteW2wMapping(
+  w2wPositionId: string,
+  termId: string,
+): Promise<ActionResult> {
+  const gate = await requireAdminIn(termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  await getDb()
-    .delete(w2wPositionMap)
-    .where(thisTermsMapping(w2wPositionId, await workingTermId()));
+  await getDb().delete(w2wPositionMap).where(thisTermsMapping(w2wPositionId, termId));
   revalidateMapSurfaces();
   return { ok: true };
 }

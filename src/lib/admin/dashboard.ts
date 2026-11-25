@@ -66,6 +66,7 @@ export const SPARKLINE_DAYS = 14;
 const RECENT_LIMIT = 5;
 
 export async function loadAdminDashboard(now: Date = new Date()): Promise<DashboardSnapshot> {
+  const termId = await workingTermId();
   const [
     studentRows,
     groupRows,
@@ -104,18 +105,18 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
         isTest: sql<number>`${groups.kind} <=> 'test'`.mapWith(Boolean),
       })
       .from(groups)
-      .where(eq(groups.termId, await workingTermId()))
+      .where(eq(groups.termId, termId))
       .orderBy(asc(groups.name)),
     loadChangeRequestCounts(now),
     loadFlagCounts(),
     loadTravel(now),
-    loadCloses(),
+    loadCloses(termId),
     getDriveGrantStatus(),
     getDriveLastOkAt(),
     getDriveLastError(),
-    getSheetUrl(RESPONSES_SHEET),
-    getLastSheetSync(RESPONSES_SHEET),
-    getLastSheetSync(CLOSES_SHEET),
+    getSheetUrl(RESPONSES_SHEET, termId),
+    getLastSheetSync(RESPONSES_SHEET, termId),
+    getLastSheetSync(CLOSES_SHEET, termId),
     getEmailSendingEnabled(),
     getChangeDigestEnabled(),
     getChangeDigestRecipients(),
@@ -123,12 +124,12 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
     getRosterStatus(),
     loadPositionConfigs(),
     loadNonAssignablePositions(),
-    getTravelCutoff().then((r) => r.cutoff),
-    getLateTravelPolicy(),
+    getTravelCutoff(termId).then((r) => r.cutoff),
+    getLateTravelPolicy(termId),
     loadCoverage(),
     loadRecentSubmissions(),
     loadSubmissionsPerDay(now),
-    loadScheduleStatus(),
+    loadScheduleStatus(termId),
     getW2wMapIssues(),
   ]);
 
@@ -181,8 +182,8 @@ export async function loadAdminDashboard(now: Date = new Date()): Promise<Dashbo
  * measured from the run's generation time; restoring an old run does not make
  * its content any newer.
  */
-async function loadScheduleStatus(): Promise<DashboardSnapshot["schedule"]> {
-  const run = await loadCurrentRunRow();
+async function loadScheduleStatus(termId: string): Promise<DashboardSnapshot["schedule"]> {
+  const run = await loadCurrentRunRow(termId);
   if (!run) return { hasRun: false, newSubmissions: 0, edited: 0 };
   const staleness = await loadScheduleStaleness(run.generatedAt);
   return { hasRun: true, ...staleness };
@@ -352,8 +353,8 @@ async function loadTravel(now: Date): Promise<DashboardSnapshot["travel"]> {
   return [...byId.values()];
 }
 
-async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
-  if (!(await hasCloseInventory())) {
+async function loadCloses(termId: string): Promise<DashboardSnapshot["closes"]> {
+  if (!(await hasCloseInventory(termId))) {
     return {
       hasInventory: false,
       leadsTotal: 0,
@@ -363,7 +364,7 @@ async function loadCloses(): Promise<DashboardSnapshot["closes"]> {
       feasible: true,
     };
   }
-  const view = await loadCloseAdmin();
+  const view = await loadCloseAdmin(termId);
   return {
     hasInventory: true,
     leadsTotal: view.leads.length,

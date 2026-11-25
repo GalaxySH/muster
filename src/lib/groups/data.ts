@@ -83,12 +83,12 @@ export async function listGroups(): Promise<GroupRow[]> {
  * (`isDefault` flag; exactly one per term by construction, re-pointable via
  * setDefaultGroup). Null only if the term was never given one.
  */
-export async function getDefaultGroup(): Promise<typeof groups.$inferSelect | null> {
+export async function getDefaultGroup(termId: string): Promise<typeof groups.$inferSelect | null> {
   const db = getDb();
   const [g] = await db
     .select()
     .from(groups)
-    .where(and(eq(groups.isDefault, true), eq(groups.termId, await workingTermId())))
+    .where(and(eq(groups.isDefault, true), eq(groups.termId, termId)))
     .limit(1);
   return g ?? null;
 }
@@ -124,11 +124,11 @@ export type StudentAccess =
  */
 export async function resolveStudentAccess(
   emailRaw: string,
+  termId: string,
   now: Date = new Date(),
 ): Promise<StudentAccess> {
   const db = getDb();
   const email = normalizeEmail(emailRaw);
-  const termId = await workingTermId();
   const grp = await groupOf(db, email, termId);
   if (!grp) return { access: "no-group" };
 
@@ -178,13 +178,15 @@ export interface PickerStudent {
 }
 
 /** Students matching the picker filters, ordered by name (PLAN §13). */
-export async function listStudentsForPicker(filters: PickerFilters = {}): Promise<PickerStudent[]> {
+export async function listStudentsForPicker(
+  filters: PickerFilters,
+  termId: string,
+): Promise<PickerStudent[]> {
   const db = getDb();
   const conds = [];
   if (filters.onRoster !== undefined) conds.push(eq(termMembers.onRoster, filters.onRoster));
   if (filters.positionId === "none") conds.push(isNull(termMembers.positionId));
   else if (filters.positionId) conds.push(eq(termMembers.positionId, filters.positionId));
-  const termId = await workingTermId();
   if (filters.groupId === "none") conds.push(inNoGroup(termId));
   else if (filters.groupId) conds.push(inGroup(filters.groupId));
   if (filters.search?.trim()) {

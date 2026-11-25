@@ -59,7 +59,6 @@ import { countCloseClaims, loadCloseRequirement } from "@/lib/closes/data";
 import { trySyncSheet, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { formatTime } from "@/lib/domain/time";
 import { DAY_LABEL, type Position, type SelectedShift, type ShiftBlock } from "@/lib/domain/types";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionOf } from "@/lib/terms/scope";
 
 /** Drizzle transaction handle (extracted so the selection writer can share a tx). */
@@ -288,22 +287,25 @@ interface SubmissionPatch {
  * internal copy (`saveAvailabilityFor`) and never touches these rows. Never
  * promotes a draft: the status is whatever the row already had. Every save
  * here stamps `updated_at`, which records the student's own edits (PLAN §9).
+ * The caller resolves the term first, so the transaction never waits on a
+ * second pooled connection to look it up.
  */
 async function persistAvailability(args: {
   email: string;
+  termId: string;
   selection: SelectedShift[];
   patch: SubmissionPatch;
   position: Position;
   blocks: ShiftBlock[];
 }): Promise<AutoAssignedShift | null> {
-  const { email, selection, position, blocks } = args;
+  const { email, termId, selection, position, blocks } = args;
   const patch = { ...args.patch, updatedAt: new Date() };
   const db = getDb();
   const { effectiveStatus, autoAssigned } = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: submissions.id, status: submissions.status })
       .from(submissions)
-      .where(submissionOf(email, await workingTermId()))
+      .where(submissionOf(email, termId))
       .limit(1);
 
     // Never promote here; preserve whatever status the submission already has.
@@ -318,7 +320,7 @@ async function persistAvailability(args: {
       await tx.insert(submissions).values({
         id: submissionId,
         studentEmail: email,
-        termId: await workingTermId(),
+        termId,
         status: "draft",
         ...patch,
       });
@@ -336,7 +338,7 @@ async function persistAvailability(args: {
 
   // Keep the running Drive spreadsheet fresh only when an actual response changed
   // (i.e. the form is already submitted). Drafts never trigger it.
-  if (effectiveStatus === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (effectiveStatus === "submitted") await trySyncSheet(RESPONSES_SHEET, termId);
   return autoAssigned;
 }
 
@@ -377,6 +379,7 @@ export async function saveAvailability(input: SaveAvailabilityInput): Promise<Sa
 
   const autoAssigned = await persistAvailability({
     email: gate.email,
+    termId: gate.termId,
     selection,
     patch: { everyWeekendOptIn: input.everyWeekendOptIn, desiredHours, studentNotes },
     position,
@@ -436,7 +439,7 @@ export async function saveAvailabilityFor(
   const [sub] = await db
     .select({ desiredHours: submissions.desiredHours, status: submissions.status })
     .from(submissions)
-    .where(submissionOf(gate.email, await workingTermId()))
+    .where(submissionOf(gate.email, gate.termId))
     .limit(1);
 
   // Same checks the grid previews, so the warn list and the refusal agree.
@@ -452,7 +455,7 @@ export async function saveAvailabilityFor(
     if (failures.length > 0) return { ok: false, errors: failures };
   }
 
-  const submissionId = await ensureSubmissionId(gate.email);
+  const submissionId = await ensureSubmissionId(gate.email, gate.termId);
   const status = sub?.status ?? "draft";
 
   const autoAssigned = await db.transaction(async (tx) => {
@@ -498,7 +501,7 @@ export async function saveAvailabilityFor(
 
   // The export and running sheet carry the "adjusted internally" marker, so a
   // real (submitted) response keeps the sheet fresh here too.
-  if (status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (status === "submitted") await trySyncSheet(RESPONSES_SHEET, gate.termId);
   revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
   return { ok: true, autoAssigned, errors: [] };
 }
@@ -526,7 +529,7 @@ export async function revertInternalAvailability(
   const [sub] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(submissionOf(gate.email, await workingTermId()))
+    .where(submissionOf(gate.email, gate.termId))
     .limit(1);
   if (!sub) return { ok: true };
 
@@ -546,7 +549,7 @@ export async function revertInternalAvailability(
     await syncRevalidationFlag(tx, sub.id);
   });
 
-  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (sub.status === "submitted") await trySyncSheet(RESPONSES_SHEET, gate.termId);
   revalidatePath(`/admin/students/${encodeURIComponent(gate.email)}`);
   return { ok: true };
 }
@@ -568,15 +571,16 @@ export interface AdminAnswerResult {
  */
 async function writeAnswerFor(
   email: string,
+  termId: string,
   patch: { desiredHours: number | null } | { studentNotes: string | null },
 ): Promise<void> {
   const db = getDb();
   const [existing] = await db
     .select({ id: submissions.id, status: submissions.status })
     .from(submissions)
-    .where(submissionOf(email, await workingTermId()))
+    .where(submissionOf(email, termId))
     .limit(1);
-  const submissionId = existing?.id ?? (await ensureSubmissionId(email));
+  const submissionId = existing?.id ?? (await ensureSubmissionId(email, termId));
 
   await db.transaction(async (tx) => {
     await tx.update(submissions).set(patch).where(eq(submissions.id, submissionId));
@@ -585,7 +589,7 @@ async function writeAnswerFor(
 
   // Both answers are columns in the export, so a real response keeps the
   // running sheet fresh.
-  if (existing?.status === "submitted") await trySyncSheet(RESPONSES_SHEET);
+  if (existing?.status === "submitted") await trySyncSheet(RESPONSES_SHEET, termId);
   revalidatePath(`/admin/students/${encodeURIComponent(email)}`);
   revalidatePath("/admin/responses");
 }
@@ -618,7 +622,7 @@ export async function saveDesiredHoursFor(
     }
   }
 
-  await writeAnswerFor(gate.email, { desiredHours: hours });
+  await writeAnswerFor(gate.email, gate.termId, { desiredHours: hours });
   return { ok: true };
 }
 
@@ -636,7 +640,7 @@ export async function saveStudentNotesFor(
   const gate = await requireEditableStudent(student, termId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  await writeAnswerFor(gate.email, { studentNotes: notes.trim() || null });
+  await writeAnswerFor(gate.email, gate.termId, { studentNotes: notes.trim() || null });
   return { ok: true };
 }
 
@@ -649,7 +653,7 @@ export async function saveStudentNotesFor(
 export async function finalizeSubmission(): Promise<FinalizeResult> {
   const gate = await requireEditableStudent();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const email = gate.email;
+  const { email, termId } = gate;
   if (!gate.positionId) return { ok: false, error: "No position is set for your account yet." };
 
   const posWithBlocks = await loadPositionWithBlocks(gate.positionId);
@@ -666,7 +670,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
       submittedAt: submissions.submittedAt,
     })
     .from(submissions)
-    .where(submissionOf(email, await workingTermId()))
+    .where(submissionOf(email, termId))
     .limit(1);
 
   if (!sub) {
@@ -705,9 +709,9 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
   // own number of weekend closes before finalizing. "At least", so a lead whose
   // number was lowered after they picked is not stuck. Dormant until an admin
   // generates the close inventory, and for a lead who owes none.
-  const closes = await loadCloseRequirement(email, gate.positionId);
+  const closes = await loadCloseRequirement(email, gate.positionId, termId);
   if (closes && closeStepApplies(closes.required)) {
-    const claimCount = await countCloseClaims(email);
+    const claimCount = await countCloseClaims(email, termId);
     if (!closeClaimsComplete(claimCount, closes.required)) {
       return {
         ok: false,
@@ -735,7 +739,7 @@ export async function finalizeSubmission(): Promise<FinalizeResult> {
     });
   });
 
-  await trySyncSheet(RESPONSES_SHEET);
+  await trySyncSheet(RESPONSES_SHEET, termId);
   revalidatePath("/availability");
   revalidatePath("/me");
   return { ok: true, autoAssigned };

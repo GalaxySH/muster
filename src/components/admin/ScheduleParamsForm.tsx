@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRenderedTermId } from "@/components/RenderedTerm";
 import {
   ANNEAL_ITERATIONS_MAX,
   ANNEAL_ITERATIONS_MIN,
@@ -36,6 +37,7 @@ export function ScheduleParamsForm({
   /** Never pooled: the statistics measure leads on their own. */
   leadPositionIds: string[];
 }) {
+  const termId = useRenderedTermId();
   const [dayCap, setDayCap] = useState(String(initial.dayCapHours));
   const [night, setNight] = useState(String(initial.nightPriority));
   const [evening, setEvening] = useState(String(initial.eveningPriority));
@@ -56,7 +58,7 @@ export function ScheduleParamsForm({
 
   const submit = () => {
     startTransition(async () => {
-      const res = await saveScheduleParams({
+      const res = await saveScheduleParams(termId, {
         dayCapHours: Number(dayCap),
         nightPriority: Number(night),
         eveningPriority: Number(evening),

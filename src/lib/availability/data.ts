@@ -117,7 +117,8 @@ export interface StudentForm {
  * record (off-roster; onboarding handled separately).
  */
 export async function loadStudentForm(email: string): Promise<StudentForm | null> {
-  const student = await findStudentByEmail(email);
+  const termId = await workingTermId();
+  const student = await findStudentByEmail(email, termId);
   if (!student) return null;
 
   if (!student.positionId) {
@@ -137,7 +138,7 @@ export async function loadStudentForm(email: string): Promise<StudentForm | null
   const [subRow] = await db
     .select()
     .from(submissions)
-    .where(submissionOf(student.email, await workingTermId()))
+    .where(submissionOf(student.email, termId))
     .limit(1);
 
   let selection: SelectedShift[] = [];

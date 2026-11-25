@@ -1,6 +1,6 @@
 # Semester domains (terms): implementation plan
 
-**Status: all seven phases are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54, 1.55, 1.56 and 1.57).** Branch
+**Status: all seven phases are built (PLAN 1.48, 1.49, 1.51, 1.53, 1.54, 1.55, 1.56 and 1.57), and the review before release is done (1.58, §18).** Branch
 `sh/semester-domains`. What Phase 1 did differently from this plan is recorded in
 §10; where the two disagree, §10 and the code are right.
 
@@ -90,7 +90,7 @@ plumbing and stay global.
 | Table | Change | Why |
 |---|---|---|
 | `submissions` | `term_id` NOT NULL; `UNIQUE(student_email, term_id)` replaces `UNIQUE(student_email)`; index on `term_id` | The core split. Children follow. |
-| `close_slots` | `term_id` NOT NULL | Claims scope through their slot. `date` stays globally unique: a calendar date belongs to one term. |
+| `close_slots` | `term_id` NOT NULL | Claims scope through their slot. `date` is unique within a term (`close_slots_term_date_unique`, 1.58). This row first said it stays globally unique, which was wrong: a restarted or overlapping semester holds the same dates. |
 | `schedule_runs` | `term_id` NOT NULL | "Current run" and retention become per term. Assignments follow the run. |
 | `shift_plans` | `term_id` NOT NULL | "Current plan" becomes per term. |
 | `change_requests` | `term_id` NOT NULL | The student's list and the 3 per 24h cap show the current term. The admin queue stays unscoped so open requests are never lost at a flip. |
@@ -274,8 +274,9 @@ goes in `src/lib/domain/terms.ts`, test-first.
 - `getCurrentTermId(db)`: plain function taking a `Database` or `DbTx`. The
   roster import, `apply-change.ts` and `orphans.ts` run from the CLI and inside
   transactions, so they need this form.
-- `currentTerm()`: the request-side wrapper, memoized per request with React
-  `cache` (the first use of it in the repo). One extra query per request.
+- `currentTermId()`: the request-side wrapper, memoized with React `cache` (the
+  first use of it in the repo). The memo holds during a render only; an action
+  or route handler resolves the term once and passes it down (§18).
 - Predicates in the style of `onRosterStudent()` and `liveBlocksOnly()`.
 
 Rule for the data layer: **low-level readers take `termId` explicitly; the edge
@@ -558,10 +559,11 @@ migrate` exits 1 silently on SQL errors. So the schema change is
    `terms.close_requirement` default 3, create `close_requirements`, and insert a
    row of 3 for every current Shift Lead.
 
-The column default stays for now. It means the old container, still serving
-during the build and migrate window, keeps working, and a rollback to the
-previous image is safe: old code against the expanded schema behaves exactly as
-before.
+The column default stays for now. It means a rollback to the previous image is
+safe: old code against the expanded schema behaves exactly as before. (This
+paragraph first said the old container keeps serving during the migrate window.
+It does not: compose stops it before `migrate` runs, so the site is down instead;
+`docs/deploy.md`.)
 
 **Contract (a later release, after soak):** drop the defaults, so an insert that
 forgets `term_id` fails loudly instead of landing in fall, and drop
@@ -983,7 +985,8 @@ term-scoped table lacks the column.
 
 **The one default that does exist is in the database**, on purpose: every
 `term_id` column has `DEFAULT '2026-fall'` so the previous release can keep
-inserting during this deploy and after a rollback. While fall is the only term it
+inserting after a rollback. (This first said "during this deploy" too, which was
+wrong: the old container is stopped before `migrate` runs.) While fall is the only term it
 cannot be wrong. It becomes a silent mis-file the moment another term is current,
 because a write that omits the term (the old release, or hand-written SQL) would
 land in fall. So this changes §5: **the defaults are dropped as soon as dropping
@@ -1006,7 +1009,8 @@ and `late_travel_accept` settings are written and never read. Every `term_id` co
 
 **For Phase 4.** New positions get their id from the name slug, which must be
 unique across every term, so copying positions forward needs generated ids (and
-`createPosition` needs a suffix when the slug is taken by an older term). The
+`createPosition` needs a suffix when the slug is taken by an older term). (1.58:
+every new position gets a random id, and the slug is gone.) The
 first term's test group keeps the id `dev-test`; later terms' groups get their own.
 `students.group_id` will hold the old term's group after a flip unless the contract
 release has already dropped it.
@@ -1210,7 +1214,8 @@ database and migrated.
   before this phase at 0043 and on this phase at 0044, apart from the two retired group
   fields no longer on the student record.
 - The released code (`main`) returns exactly its original output when run against the
-  fully migrated copy, so a rollback of the image is safe.
+  fully migrated copy, so a rollback of the image is safe. (That held at 0044. After
+  0051 it does not; see §17 and §18.)
 
 **Not verified:** the W2W plan import's roster read was changed and reviewed but not
 run (it needs a W2W export file).
@@ -1330,8 +1335,9 @@ Built as §2.9 and §5 describe, with these choices and differences.
   transaction body gained a read (§7 item 4).
 - **Drive.** Keys are `base:termId` for every term, fall included; migration 0046
   copies fall's ids across and sets `drive_root_term`, which is how fall keeps
-  its files at the root. A term's folder is found by cached id, then by name,
-  then created.
+  its files at the root. A term's folder was found by cached id, then by name,
+  then created. 1.58 drops the name lookup, which could adopt another term's
+  folder (§18).
 
 **Known gaps.**
 
@@ -1398,8 +1404,10 @@ Left as they are: actions that only read (a stale tab shows the other term's
 data until it reloads), actions that name a row of the term (already looked up
 inside the working term), and the few that create something in the term and
 name no row (a new group or position, the default sweep, a schedule snapshot,
-engine params, a new test account). The last group is the remaining hole; what
-a stale tab can do there is create something visible in the wrong term.
+engine params, a new test account). The last group was the remaining hole; what
+a stale tab could do there is create something visible in the wrong term. 1.58
+closes it (§18): those actions gate with `requireAdminIn`, and a new test
+account's position is looked up in the working term.
 
 **Not verified.** Nothing was written to a real Drive: the test database has no
 grant, so the per-term folder and sheet paths are covered by reading the code
@@ -1415,11 +1423,10 @@ operation in one transaction; the runbook is `docs/semester-rollover.md`.
 
 - **The column defaults are dropped** (migration 0049), as §5 said, on the
   owner's decision. `ALTER COLUMN ... DROP DEFAULT` is a metadata change: no
-  table is rebuilt and no row is touched. Two consequences, both written into
-  `docs/deploy.md`: for the few seconds of a deploy between `migrate` finishing
-  and the new container starting, the pre-1.48 image still serving cannot insert
-  into the term-scoped tables; and a rollback past 1.48 needs the defaults put
-  back first.
+  table is rebuilt and no row is touched. The consequence, written into
+  `docs/deploy.md`: a rollback past 1.48 needs the defaults put back first. (This
+  also said the pre-1.48 image keeps serving for a few seconds after `migrate`.
+  That was wrong: compose stops the old container before `migrate` runs.)
 - **A stale start is refused by the database, not only the page.** The
   transaction locks the pointer row and compares it with the term the page
   showed as current, so two tabs or a double click cannot start two semesters.
@@ -1434,7 +1441,9 @@ operation in one transaction; the runbook is `docs/semester-rollover.md`.
   column default of 3 that 0045 used to give fall its value, and the schema no
   longer declares one, so a term cannot be inserted without naming the number.
 - **Test accounts** are carried into the new term's test group whatever their
-  roster flag, with their position remapped.
+  roster flag, with their position remapped. Since 1.58 only synthetic test
+  addresses are; a real student in the old test group carries over only if on
+  the roster, with no group.
 - **Engine params** were still one global setting. They are per term now
   (migration 0047), which the copy needed in order to remap the coverage pool.
 - **The retired `students` columns** are rewritten to the new current term at
@@ -1509,13 +1518,14 @@ kept only so a release from before terms could still run.
 - **The column defaults** went in 1.56 (0049, 0050), ahead of this phase.
 - **`CLAUDE.md`**'s current-state section now describes semesters.
 
-**What this costs.** After 1.57 a pre-1.48 image cannot run against the
-database without putting columns back (`docs/deploy.md` has the statements), and
-during the deploy itself such an image fails its roster reads for the seconds
-between `migrate` and the new container. §4 planned the contract as a later
-release for that reason. It is built as its own commit, so 1.56 can be released
-first and this after it has settled; released together they work, with that
-window.
+**What this costs.** After 1.57 no image from before 1.57 runs against the
+database: v1.47 and 1.48 to 1.50 read the dropped columns, and 1.51 to 1.56 still
+write them. v1.47 is the only rollback target, and it needs the columns, defaults
+and settings put back first (`docs/deploy.md` has the rehearsed statements). This
+paragraph first said a pre-1.48 image fails its roster reads during the deploy
+and that releasing 1.56 first avoids that window. Both were wrong: compose stops
+the old container before `migrate` runs, so there is no such window, only the
+downtime every deploy has.
 
 **Verified.**
 
@@ -1540,3 +1550,59 @@ window.
 script `tune-schedule-params` reads an exported snapshot file in the old shape
 (`students.on_roster`, `position_id`); a snapshot exported after 1.57 will need
 those read from `term_members` instead. The script was not changed.
+
+## 18. Review before release (PLAN 1.58)
+
+A security and correctness review of the whole branch before its first deploy.
+The findings, in the order of the changelog, and what the code does now:
+
+1. **Aliases and the W2W map.** Making a position an alias re-pointed the W2W
+   mapping of the same W2W id in every term, since every term holds the same
+   W2W ids. `repointW2wMappings` now also matches the source position.
+2. **One term per action.** React `cache` memoizes only during a render. Inside
+   a server action every `workingTermId()` call read the pointer again, so an
+   action in flight while a semester started could gate in one term and write in
+   the other. Several actions also awaited that pooled read inside an open
+   transaction, holding one connection while waiting for a second, which can
+   starve the 10-connection pool. An action or route handler now resolves the
+   term once, before any transaction, and passes it down
+   (`terms/working.ts`, `positions/actions.ts`, `persistAvailability`).
+3. **Whole-term actions check the page's term.** `createPosition`,
+   `createPositionForTitle`, `createGroup`, `runDefaultAssignmentSweep`,
+   `saveScheduleParams`, `saveScheduleRunSnapshot` and `deleteW2wMapping` gate
+   with `requireAdminIn`. This closes the hole §15 left open. Hand edits to a
+   schedule only accept shift blocks of the run's term.
+4. **Position ids are random**, not a slug of the name, so a name is only
+   compared within its term. `slugifyPositionId` is deleted.
+5. **Test accounts.** Deleting one deletes the person in every term, so it is
+   refused unless the address is a synthetic test address. The per-term
+   schedule check that guarded real addresses is removed with it. Starting a
+   semester carries only synthetic test addresses into the new test group.
+6. **Drive.** A term's folder is no longer looked up by name: a semester
+   restarted under a reused name adopted the earlier one's folder and sheets.
+   Concurrent first writes in a new term share one in-flight creation
+   (`drive/relay.ts`).
+7. **`/api/health`** reads the current-term pointer, so a broken pointer fails
+   the deploy check.
+8. **Migration 0053:** close slot dates are unique per term
+   (`close_slots_term_date_unique`). Generating closes for a restarted or
+   overlapping semester failed on a duplicate key. Migration 0052's fill also
+   covers a term whose config holds an explicit JSON null for the excluded
+   titles; that cannot occur when 0037 to 0053 run in one deploy, and protects
+   databases where the newer code ran first, such as dev databases.
+9. **Deploy and rollback docs** (`docs/deploy.md`). The old image never serves
+   a migrated database: the site is down from the old container stopping until
+   the new one answers. After 0051 no image from before 1.57 works, so v1.47 is
+   the only rollback target. The rollback and roll-forward SQL is written out
+   and was rehearsed on a migrated copy of production on 2026-11-25, and there is
+   now a runbook for a failed or hung `migrate`. The earlier statements in
+   §2.2, §4, §10, §15, §16 and §17 are corrected in place.
+
+**Not fixed, known.**
+
+- Two concurrent syncs that both find a cached sheet deleted can each recreate
+  it.
+- A sync that starts just after a sheet is first created, and before its id is
+  cached, could create a duplicate if Drive search lags.
+- `startNewTerm` still has no unit test of its own.
+- Nothing has yet been written to a real Drive in any phase.

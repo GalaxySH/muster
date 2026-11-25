@@ -100,7 +100,11 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   const applyCapacity = formData.get("applyCapacity") === "1";
   const createRun = formData.get("createRun") === "1";
 
-  const analyzed = await analyzePlanUpload(new Uint8Array(await file.arrayBuffer()), rotationRaw);
+  const analyzed = await analyzePlanUpload(
+    new Uint8Array(await file.arrayBuffer()),
+    rotationRaw,
+    termId,
+  );
   if (!analyzed.ok) return { ok: false, error: analyzed.error };
   const analysis = analyzed.analysis;
   const preview = toPreview(analysis, createRun);
@@ -189,7 +193,7 @@ export async function importShiftPlanFromUpload(formData: FormData): Promise<Pla
   if (capacityUpdated > 0 || createRun) revalidatePath("/admin/schedule");
   if (createRun) {
     revalidatePath("/admin");
-    await trySyncSheet(SCHEDULE_SHEET, 0);
+    await trySyncSheet(SCHEDULE_SHEET, termId, 0);
   }
 
   return {

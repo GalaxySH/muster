@@ -16,7 +16,6 @@ import {
 } from "@/lib/db/schema";
 import type { InternalCopy } from "./effective";
 import type { SelectedShift } from "@/lib/domain/types";
-import { workingTermId } from "@/lib/terms/working";
 import { submissionInTerm } from "@/lib/terms/scope";
 
 /**
@@ -97,12 +96,14 @@ export async function loadInternalDetail(submissionId: string): Promise<Internal
 }
 
 /**
- * Every internal copy in the working term keyed by student email, for the generator's override
+ * Every internal copy in the term keyed by student email, for the generator's override
  * pass. Internal copies are rare (only students an admin adjusted), so this
  * loads them all; the effective merge drops any that don't match an eligible
  * student.
  */
-export async function loadInternalCopiesByEmail(): Promise<Map<string, InternalCopy>> {
+export async function loadInternalCopiesByEmail(
+  termId: string,
+): Promise<Map<string, InternalCopy>> {
   const db = getDb();
   const [headers, cells] = await Promise.all([
     db
@@ -113,7 +114,7 @@ export async function loadInternalCopiesByEmail(): Promise<Map<string, InternalC
       })
       .from(internalAvailability)
       .innerJoin(submissions, eq(internalAvailability.submissionId, submissions.id))
-      .where(submissionInTerm(await workingTermId())),
+      .where(submissionInTerm(termId)),
     db
       .select({
         submissionId: internalSelections.submissionId,
