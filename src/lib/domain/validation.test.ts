@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseTime } from "./time";
-import { checkDesiredHours, validateAvailability } from "./validation";
+import { availabilityNotCollected, checkDesiredHours, validateAvailability } from "./validation";
 import type { ShiftBlock, Position, SelectedShift } from "./types";
 
 function b(id: string, dt: "weekday" | "weekend", start: string, end: string): ShiftBlock {
@@ -138,5 +138,31 @@ describe("checkDesiredHours", () => {
     expect(checkDesiredHours(12, SL).passed).toBe(false);
     expect(checkDesiredHours(12, SL).detail).toContain("15h");
     expect(checkDesiredHours(15, SL).passed).toBe(true);
+  });
+});
+
+describe("availabilityNotCollected", () => {
+  const viaForm = { status: "submitted" as const, submittedVia: "google_form" as const };
+  const pick: SelectedShift[] = [{ blockId: "wd-open", day: "mon" }];
+
+  it("is true for a submitted Google Form response with no availability", () => {
+    expect(availabilityNotCollected(viaForm, [])).toBe(true);
+  });
+
+  it("is false once availability is on file for it", () => {
+    expect(availabilityNotCollected(viaForm, pick)).toBe(false);
+  });
+
+  it("is false for a response submitted in Muster, even with nothing picked", () => {
+    expect(availabilityNotCollected({ status: "submitted", submittedVia: "muster" }, [])).toBe(
+      false,
+    );
+  });
+
+  it("is false for a draft or no submission", () => {
+    expect(availabilityNotCollected({ status: "draft", submittedVia: "google_form" }, [])).toBe(
+      false,
+    );
+    expect(availabilityNotCollected(null, [])).toBe(false);
   });
 });

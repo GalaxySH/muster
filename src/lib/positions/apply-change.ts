@@ -61,7 +61,11 @@ import { effectiveRotation } from "@/lib/availability/effective";
 import { carryOverSelections } from "@/lib/domain/carry-over";
 import { partitionSelection } from "@/lib/domain/orphans";
 import { chicagoToday } from "@/lib/domain/time";
-import { checkDesiredHours, validateAvailability } from "@/lib/domain/validation";
+import {
+  availabilityNotCollected,
+  checkDesiredHours,
+  validateAvailability,
+} from "@/lib/domain/validation";
 import { ensureCloseRequirements } from "@/lib/closes/requirements";
 import { syncOrphanedSelectionFlag } from "./orphans";
 import { currentRunOf, submissionOf, memberOfSubmission, submissionInTerm } from "@/lib/terms/scope";
@@ -504,6 +508,9 @@ function changeDetail(
  * Auto-assigned and out-of-position (orphaned) rows are excluded from either
  * layer. Internal copies are literal and never carry an auto-assigned weekend
  * anyway (PLAN §10a), so the exclusion is a no-op on that side.
+ *
+ * A Google Form response with no availability on file skips the availability
+ * rules and keeps only the desired-hours check (`availabilityNotCollected`).
  */
 export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Promise<boolean> {
   const clear = async () => {
@@ -517,6 +524,8 @@ export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Prom
     .select({
       everyWeekendOptIn: submissions.everyWeekendOptIn,
       desiredHours: submissions.desiredHours,
+      status: submissions.status,
+      submittedVia: submissions.submittedVia,
       positionId: termMembers.positionId,
     })
     .from(submissions)
@@ -555,12 +564,16 @@ export async function syncRevalidationFlag(tx: DbTx, submissionId: string): Prom
   // Orphaned picks are dead data and never count toward the rules.
   const { known: selection } = partitionSelection(selRows, blocks);
 
-  const result = validateAvailability(selection, position, blocks, {
-    everyWeekendOptIn: effectiveRotation(internal?.everyWeekendOptIn ?? null, row.everyWeekendOptIn),
-  });
-  const failures = result.checks
-    .filter((c) => c.severity === "hard" && !c.passed)
-    .map((c) => c.detail);
+  const failures = availabilityNotCollected(row, selection)
+    ? []
+    : validateAvailability(selection, position, blocks, {
+        everyWeekendOptIn: effectiveRotation(
+          internal?.everyWeekendOptIn ?? null,
+          row.everyWeekendOptIn,
+        ),
+      })
+        .checks.filter((c) => c.severity === "hard" && !c.passed)
+        .map((c) => c.detail);
   const desired = checkDesiredHours(row.desiredHours, position);
   if (!desired.passed) failures.push(desired.detail);
   if (failures.length === 0) return clear();

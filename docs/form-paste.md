@@ -163,6 +163,9 @@ How each field maps:
   is set to `google_form`, status to submitted, and the form timestamp becomes the submit
   time. A student who already submitted in Muster keeps their own submission: that step
   starts unchecked and the action refuses it.
+- **No availability checks.** The form carries no shift picks, so until availability is on
+  file for the response, `revalidation_failed` judges it on desired hours only, and the
+  per-student Flags card says no availability is on file instead of listing failed checks.
 - **What starts unchecked:** answers that match what's on file, files the footer says are
   still attached, travel whose exact dates are already on file, notes lines already in
   the notes, and a response already counted with the same timestamp.
