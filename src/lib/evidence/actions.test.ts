@@ -271,7 +271,7 @@ describe("one term per action", () => {
     useDb({ submissions: [{ courseScheduleFileId: null }] });
 
     expect(await uploadCourseSchedule(courseForm(STUDENT))).toEqual({ ok: true, fileId: "DRIVE1" });
-    expect(requireEditableStudent).toHaveBeenCalledWith(STUDENT, "A");
+    expect(requireEditableStudent).toHaveBeenCalledWith(STUDENT, "A", "form");
     expect(workingTermId).toHaveBeenCalledTimes(1);
     expect(relayUpload).toHaveBeenCalledWith(expect.objectContaining({ termId: "A" }));
     expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT, "A");
@@ -283,6 +283,8 @@ describe("one term per action", () => {
 
     expect(await addTravelRequest(travelForm(pngFile()))).toEqual({ ok: true, fileId: "DRIVE1" });
     expect(workingTermId).toHaveBeenCalledTimes(1);
+    // Travel is gated on its own scope, which the term can keep open past the close.
+    expect(vi.mocked(requireEditableStudent).mock.calls[0]?.[2]).toBe("travel");
     expect(getTravelCutoff).toHaveBeenCalledWith("A");
     expect(getLateTravelPolicy).toHaveBeenCalledWith("A");
     expect(ensureSubmissionId).toHaveBeenCalledWith(STUDENT, "A");

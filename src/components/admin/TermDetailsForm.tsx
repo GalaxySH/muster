@@ -11,15 +11,17 @@
  * domain/travel.ts); on, entries stay accepted but are stored late and
  * unexcused ("accept-and-flag"). Reset puts the date back to the term's
  * default, the day before the semester starts. Nothing else moves the cutoff:
- * changing the semester's first day leaves it where it was set. Both travel
- * settings keep their own actions, which Save runs after `saveTermDetails`.
+ * changing the semester's first day leaves it where it was set. The second
+ * toggle keeps the travel step open after a group's form closes, until the
+ * cutoff, when the cutoff is the later of the two. The travel settings keep
+ * their own actions, which Save runs after `saveTermDetails`.
  */
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { ActionButton, SystemMessage } from "@/components/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
-import { setLateTravelAccepted, setTravelCutoff } from "@/lib/admin/actions";
+import { setLateTravelAccepted, setTravelAfterClose, setTravelCutoff } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
 import { defaultTravelCutoff } from "@/lib/domain/travel";
 import { MAX_CLOSE_REQUIREMENT } from "@/lib/domain/close-claims";
@@ -46,6 +48,8 @@ export interface TravelSettings {
   /** False while the cutoff is still the term's default. */
   isCustom: boolean;
   lateAccepted: boolean;
+  /** Keep the travel step open after the form closes, until the cutoff. */
+  afterClose: boolean;
 }
 
 export function TermDetailsForm({
@@ -63,13 +67,15 @@ export function TermDetailsForm({
   // Set by Reset: the save puts the cutoff back to the term's default.
   const [resetCutoff, setResetCutoff] = useState(false);
   const [lateAccepted, setLateAccepted] = useState(travel.lateAccepted);
+  const [afterClose, setAfterClose] = useState(travel.afterClose);
   const [pending, startSave] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const detailsDirty = JSON.stringify(draft) !== JSON.stringify(details);
   const cutoffDirty = resetCutoff || cutoff !== savedCutoff;
   const lateDirty = lateAccepted !== travel.lateAccepted;
-  const dirty = detailsDirty || cutoffDirty || lateDirty;
+  const afterCloseDirty = afterClose !== travel.afterClose;
+  const dirty = detailsDirty || cutoffDirty || lateDirty || afterCloseDirty;
   const set = <K extends keyof TermDetails>(k: K, v: TermDetails[K]) => {
     setMsg(null);
     setDraft((d) => ({ ...d, [k]: v }));
@@ -88,6 +94,7 @@ export function TermDetailsForm({
         detailsDirty ? () => saveTermDetails(termId, draft) : null,
         cutoffDirty ? () => setTravelCutoff(termId, cutoffIso) : null,
         lateDirty ? () => setLateTravelAccepted(termId, lateAccepted) : null,
+        afterCloseDirty ? () => setTravelAfterClose(termId, afterClose) : null,
       ];
       for (const step of steps) {
         if (!step) continue;
@@ -166,8 +173,8 @@ export function TermDetailsForm({
             style={input}
           />
           <span style={hint}>
-            New Shift Leads start with this many weekend closes. Change a lead&apos;s own number
-            on the Closes page.
+            New Shift Leads start with this many weekend closes. Change a lead&apos;s own number on
+            the Closes page.
           </span>
         </label>
         <label style={field}>
@@ -213,6 +220,23 @@ export function TermDetailsForm({
           <span style={{ ...hint, display: "block" }}>
             Students can keep adding travel after the cutoff. Those entries are marked late and are
             not excused.
+          </span>
+        </span>
+      </label>
+      <label style={lateToggle}>
+        <input
+          type="checkbox"
+          checked={afterClose}
+          onChange={(e) => {
+            setMsg(null);
+            setAfterClose(e.target.checked);
+          }}
+        />
+        <span>
+          Keep travel open after the form closes
+          <span style={{ ...hint, display: "block" }}>
+            If the cutoff is after a group&apos;s close date, students in that group can still add
+            travel until the cutoff. The rest of the form stays closed.
           </span>
         </span>
       </label>

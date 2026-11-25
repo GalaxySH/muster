@@ -22,6 +22,10 @@ export type StudentGate =
   | { ok: false; error: string };
 
 /**
+ * `scope: "travel"` is for the travel step's own actions: it also lets a
+ * student through while their window is closed but the term keeps travel open
+ * until the cutoff (`travelOpenUntil`). Every other step passes "form".
+ *
  * `renderedTermId` is the semester the admin's page was showing. It is needed
  * only on behalf of someone: the same person is in every semester, so a tab
  * left on another one would otherwise write this semester's row for them.
@@ -34,6 +38,7 @@ export type StudentGate =
 export async function requireEditableStudent(
   onBehalfOf?: string,
   renderedTermId?: string,
+  scope: "form" | "travel" = "form",
 ): Promise<StudentGate> {
   const session = await getAppSession();
   if (!session) return { ok: false, error: "You are not signed in." };
@@ -65,7 +70,7 @@ export async function requireEditableStudent(
 
   const access = await resolveStudentAccess(student.email, termId);
   if (access.access === "no-group") return { ok: false, error: NO_GROUP_MESSAGE };
-  if (!access.canEdit) {
+  if (!access.canEdit && !(scope === "travel" && access.travelOpenUntil)) {
     return {
       ok: false,
       error: access.lockedAfterSubmit

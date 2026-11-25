@@ -177,6 +177,7 @@ describe("startNewTerm", () => {
         rosterConfig: '{"excludedTitles":["Supervisor"]}',
         closeRequirement: 3,
         lateTravelAccept: false,
+        travelAfterClose: false,
         createdBy: "boss@wisc.edu",
       }),
     ]);

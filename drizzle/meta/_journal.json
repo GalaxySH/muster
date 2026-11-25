@@ -393,6 +393,13 @@
       "when": 1795628004304,
       "tag": "0055_system_message",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "5",
+      "when": 1795636511933,
+      "tag": "0056_travel_after_close",
+      "breakpoints": true
     }
   ]
 }

@@ -557,7 +557,16 @@ keep flowing but store `excused: false` (late) and finalize raises `travel_late`
 pure policy seam is `LATE_TRAVEL_POLICY`/`decideTravelSubmission` in
 `domain/travel.ts`; every gate (`addTravelRequest`, `removeTravelRequest`, the
 `/travel` page) passes the configured policy, and the hub's `travel-cutoff-past`
-warning is suppressed while late travel is accepted. Late entries render a red outline
+warning is suppressed while late travel is accepted. A second toggle,
+**"Keep travel open after the form closes"** (`terms.travel_after_close`, written by
+`setTravelAfterClose`, 1.65), keeps the travel step alone editable after a closed
+window until the cutoff, when the cutoff is after the group's close
+(`travelOpenPastClose` in `domain/window.ts`). `resolveStudentAccess` reports it as
+`travelOpenUntil` (null unless it applies; the post-submit lock still wins);
+`canEdit` stays the whole form's answer, and only the travel actions opt in, via
+`requireEditableStudent(onBehalfOf, termId, "travel")`. The `/travel` page swaps the
+closed banner for a "rest of the form is closed" notice and drops Continue; `/me`
+links to it. Late entries render a red outline
 plus a red late pill on the student list, the upcoming-travel list, and the
 per-student card.
 

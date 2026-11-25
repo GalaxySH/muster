@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.64
+- **Version:** 1.65
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -601,6 +601,12 @@ scheduler (not auto-parsed).
   badges with a red outline (student list, upcoming-travel list, per-student card);
   submit raises the `travel_late` flag. The pure seam is
   `decideTravelSubmission`/`LATE_TRAVEL_POLICY` in `domain/travel.ts`.
+  **Travel past the form's close (1.65):** a second per-term toggle on the Semester
+  page, "Keep travel open after the form closes" (`terms.travel_after_close`, default
+  off), keeps the travel step alone editable after a student's group window closes,
+  until the cutoff, but only when the cutoff is after that group's close. The rest of
+  the form stays closed, and the post-submit lock still applies. Pure seam:
+  `travelOpenPastClose` in `domain/window.ts`.
 
 **Admin entry on a student's behalf (§10).** Travel entries and extracurriculars can also
 be added by an admin from the per-student response page (an *Add* link in each card
@@ -1678,6 +1684,17 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.65 (2026-11-25)** — **Travel can stay open after the form closes.** A new
+  per-term toggle on the Semester page (`/admin/terms`), "Keep travel open after the
+  form closes" (`terms.travel_after_close`, migration `0056`, default off). With it on,
+  a student whose group window has closed can still add, edit and remove travel until
+  the travel cutoff, but only when the cutoff is after their group's close; every
+  other step stays closed, the travel page shows no Continue, and a group's
+  post-submit lock still holds its submitted students. The rule is the pure
+  `travelOpenPastClose` (`domain/window.ts`); `resolveStudentAccess` returns it as
+  `travelOpenUntil`, and `requireEditableStudent(..., "travel")` (the travel actions
+  only) lets it through. `/me` shows a "Travel is still open" notice with a link.
+  New semesters start with it off.
 - **1.64 (2026-11-25)** — **The student form has a new look, built for phones.**
   Presentation only: no rule, route, step order, server action or stored data
   changed. Every student page (`/`, `/signin`, `/me`, `/intro`, `/course-schedule`,
