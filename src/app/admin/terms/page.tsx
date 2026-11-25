@@ -6,7 +6,7 @@ import { InfoCard, Page } from "@/components/ui";
 import { TermDetailsForm } from "@/components/admin/TermDetailsForm";
 import { TravelCutoffPanel } from "@/components/admin/TravelCutoffPanel";
 import { MakeCurrentPanel, StartSemesterPanel } from "@/components/admin/StartSemesterPanel";
-import { termNamesIn } from "@/lib/domain/terms";
+import { systemMessageTone, termNamesIn } from "@/lib/domain/terms";
 import { getLateTravelPolicy, getScheduleEmailConfig, getTravelCutoff } from "@/lib/settings";
 import {
   currentTermId,
@@ -18,7 +18,7 @@ import {
 
 /**
  * Admin: the working semester's own details (docs/semester-domains-plan.md
- * §2.1): its name, dates, new hire date, schedule note and travel cutoff. Below
+ * §2.1): its name, dates, new hire date, schedule note, system message and travel cutoff. Below
  * them, starting a new semester, which always acts on the current one.
  */
 export default async function AdminTermPage() {
@@ -74,6 +74,8 @@ export default async function AdminTermPage() {
           endsOn: term.endsOn,
           newHireCutoff: term.newHireCutoff,
           scheduleNote: term.scheduleNote,
+          systemMessage: term.systemMessage,
+          systemMessageTone: systemMessageTone(term.systemMessageTone),
           closeRequirement: term.closeRequirement,
         }}
       />

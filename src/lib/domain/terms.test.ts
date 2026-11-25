@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   chooseWorkingTerm,
   newTermDefaults,
+  SYSTEM_MESSAGE_TONES,
+  systemMessageTone,
   TERM_ID_MAX,
   termSlug,
   validateNewTerm,
@@ -18,6 +20,8 @@ const fall: TermDetails = {
   endsOn: "2026-12-12",
   newHireCutoff: "2026-06-01",
   scheduleNote: "Expect your schedule a week before the semester starts.",
+  systemMessage: "",
+  systemMessageTone: "info",
   closeRequirement: 3,
 };
 
@@ -30,6 +34,21 @@ describe("cleanTermDetails", () => {
     });
     expect(cleaned.name).toBe("Spring 2027");
     expect(cleaned.scheduleNote).toBe("Soon.");
+  });
+
+  it("trims the system message, so one of only spaces is no message", () => {
+    expect(cleanTermDetails({ ...fall, systemMessage: " Closed Friday.\n" }).systemMessage).toBe(
+      "Closed Friday.",
+    );
+    expect(cleanTermDetails({ ...fall, systemMessage: "  \n " }).systemMessage).toBe("");
+  });
+});
+
+describe("systemMessageTone", () => {
+  it("keeps a known tone and falls back to blue", () => {
+    expect(systemMessageTone("warning")).toBe("warning");
+    expect(systemMessageTone("purple")).toBe("info");
+    expect(systemMessageTone("")).toBe("info");
   });
 });
 
@@ -64,6 +83,21 @@ describe("validateTermDetails", () => {
   it("needs a schedule note that fits", () => {
     expect(validateTermDetails({ ...fall, scheduleNote: "" })).toMatch(/schedule note/);
     expect(validateTermDetails({ ...fall, scheduleNote: "x".repeat(501) })).toMatch(/under 500/);
+  });
+
+  it("takes no system message, or one that fits, in a known color", () => {
+    expect(validateTermDetails({ ...fall, systemMessage: "" })).toBeNull();
+    for (const systemMessageTone of SYSTEM_MESSAGE_TONES) {
+      expect(
+        validateTermDetails({ ...fall, systemMessage: "Closed Friday.", systemMessageTone }),
+      ).toBeNull();
+    }
+    expect(validateTermDetails({ ...fall, systemMessage: "x".repeat(1001) })).toMatch(
+      /under 1000/,
+    );
+    expect(
+      validateTermDetails({ ...fall, systemMessageTone: "purple" as TermDetails["systemMessageTone"] }),
+    ).toMatch(/color/);
   });
 
   it("takes a whole number of closes per Shift Lead, zero included", () => {

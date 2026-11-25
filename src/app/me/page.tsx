@@ -6,20 +6,25 @@ import { confirmRosterInfo } from "@/lib/flow/actions";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AppHeader } from "@/components/AppHeader";
 import { AdminHomeRedirect } from "@/components/AdminHomeRedirect";
-import { InfoCard, Page, PrimaryLink } from "@/components/ui";
+import { InfoCard, Page, PrimaryLink, SystemMessage } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { FormWindowBanner, NoGroupNotice, ReadOnlyNotice } from "@/components/FormWindowBanner";
 import { contactLabel } from "@/lib/env";
 import { getChangeRequestsEnabled } from "@/lib/settings";
 import { currentTermId } from "@/lib/terms/working";
+import { getTerm } from "@/lib/terms/term-id";
+import { getDb } from "@/lib/db";
+import { systemMessageTone } from "@/lib/domain/terms";
 
 export default async function MePage() {
   const session = await getAppSession();
   if (!session) redirect("/signin?callbackUrl=/me");
 
-  const [flow, changeRequestsEnabled] = await Promise.all([
-    loadFlowState(session.email, await currentTermId()),
+  const termId = await currentTermId();
+  const [flow, changeRequestsEnabled, term] = await Promise.all([
+    loadFlowState(session.email, termId),
     getChangeRequestsEnabled(),
+    getTerm(getDb(), termId),
   ]);
   // Admins are staff, so they have no roster row and no form to fill out. Give them the
   // dashboard rather than the off-roster notice meant for students, and take them there
@@ -33,6 +38,13 @@ export default async function MePage() {
         {session.name ? `${session.name} · ` : ""}
         {session.email}
       </p>
+
+      {flow.onRoster && term.systemMessage && (
+        <SystemMessage
+          text={term.systemMessage}
+          tone={systemMessageTone(term.systemMessageTone)}
+        />
+      )}
 
       {adminHome ? (
         <InfoCard title="You're signed in as an admin">

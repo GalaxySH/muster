@@ -13,9 +13,22 @@ export interface TermDetails {
   endsOn: string;
   newHireCutoff: string;
   scheduleNote: string;
+  /** Shown at the top of /me. Empty means no message. */
+  systemMessage: string;
+  systemMessageTone: SystemMessageTone;
   /** How many weekend closes a new Shift Lead starts on (PLAN §18a). */
   closeRequirement: number;
 }
+
+/** The card colours a system message can take: blue, green, yellow, red. */
+export const SYSTEM_MESSAGE_TONES = ["info", "success", "warning", "danger"] as const;
+export type SystemMessageTone = (typeof SYSTEM_MESSAGE_TONES)[number];
+
+/** A stored tone, or blue when the value is not one of the four. */
+export const systemMessageTone = (value: string): SystemMessageTone =>
+  (SYSTEM_MESSAGE_TONES as readonly string[]).includes(value)
+    ? (value as SystemMessageTone)
+    : "info";
 
 /**
  * The term a request works in (docs/semester-domains-plan.md §2.9). A selection
@@ -40,6 +53,8 @@ export const termSettingKey = (base: string, termId: string): string => `${base}
 
 export const TERM_NAME_MAX = 64;
 export const SCHEDULE_NOTE_MAX = 500;
+/** The column's width. */
+export const SYSTEM_MESSAGE_MAX = 1000;
 
 const isIsoDate = (value: string): boolean =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -53,6 +68,8 @@ export function cleanTermDetails(input: TermDetails): TermDetails {
     endsOn: input.endsOn,
     newHireCutoff: input.newHireCutoff,
     scheduleNote: input.scheduleNote.trim(),
+    systemMessage: input.systemMessage.trim(),
+    systemMessageTone: input.systemMessageTone,
     closeRequirement: input.closeRequirement,
   };
 }
@@ -73,6 +90,12 @@ export function validateTermDetails(details: TermDetails): string | null {
   if (!details.scheduleNote) return "Write the schedule note students see when they finish.";
   if (details.scheduleNote.length > SCHEDULE_NOTE_MAX) {
     return `Keep the schedule note under ${SCHEDULE_NOTE_MAX} characters.`;
+  }
+  if (details.systemMessage.length > SYSTEM_MESSAGE_MAX) {
+    return `Keep the system message under ${SYSTEM_MESSAGE_MAX} characters.`;
+  }
+  if (!SYSTEM_MESSAGE_TONES.includes(details.systemMessageTone)) {
+    return "Pick a color for the system message.";
   }
   if (!isValidCloseRequirement(details.closeRequirement)) {
     return `Closes per Shift Lead must be a whole number from 0 to ${MAX_CLOSE_REQUIREMENT}.`;

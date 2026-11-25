@@ -98,6 +98,10 @@ export const terms = mysqlTable("terms", {
   newHireCutoff: date("new_hire_cutoff", { mode: "string" }).notNull(),
   // The exit page's sentence about when to expect a schedule.
   scheduleNote: text("schedule_note").notNull(),
+  // The message at the top of /me, and which card colour it takes
+  // (domain/terms.ts). An empty message shows nothing.
+  systemMessage: varchar("system_message", { length: 1000 }).notNull().default(""),
+  systemMessageTone: varchar("system_message_tone", { length: 16 }).notNull().default("info"),
   // How this term's roster tracker is read, as JSON (lib/roster/config.ts):
   // which sheets, which titles mean admin, which titles are skipped. Null
   // means the built-in defaults.

@@ -30,7 +30,9 @@ only the order to do things in.
    lists what starts empty and what is copied.
 3. **Check the dates.** On the same page: the travel cutoff (set to the day
    before the first day), the new hire date (three months before the first
-   day), and the schedule note students see when they finish. Closes per Shift
+   day), and the schedule note students see when they finish. The system
+   message starts empty; write one here if students should see it on their
+   home page. Closes per Shift
    Lead is carried over from the last semester, and every lead starts on it;
    change it here before generating closes if this semester should differ.
 4. **Positions.** Rename, add, remove and re-time positions and shift blocks for

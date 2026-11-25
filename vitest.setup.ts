@@ -18,6 +18,8 @@ vi.mock("@/lib/terms/working", () => ({
     lateTravelAccept: false,
     newHireCutoff: "2026-06-01",
     scheduleNote: "Expect to see your schedule a week before the semester starts.",
+    systemMessage: "",
+    systemMessageTone: "info",
     rosterConfig: null,
     activatedAt: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
