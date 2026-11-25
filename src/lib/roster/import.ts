@@ -106,6 +106,8 @@ export interface ImportSummary {
    * SL close claims given back to the pool: held by someone this import took
    * off the roster, on a close after their People Leaving Resignation
    * Effective Date, or from today on when undated and the admin said to.
+   * Also the upcoming closes of a Shift Lead the sheet moved to another
+   * position, which are freed without asking and listed here.
    * One entry per claim (slot date `yyyy-mm-dd`).
    */
   closesReleased: { email: string; date: string }[];

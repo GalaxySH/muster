@@ -8,6 +8,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  customType,
   date,
   datetime,
   foreignKey,
@@ -22,6 +23,19 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
+import { calendarDate, localDay } from "../domain/calendar-day";
+
+/**
+ * A `date` column held as a Date at midnight LOCAL time, in both directions
+ * (domain/calendar-day.ts). Drizzle's own date column reads the day back as
+ * midnight UTC while the driver writes it from the local frame, so a day read
+ * with the local getters came back one early on a host west of UTC.
+ */
+const calendarDay = customType<{ data: Date; driverData: string }>({
+  dataType: () => "date",
+  fromDriver: (value) => calendarDate(value.slice(0, 10)),
+  toDriver: (value) => localDay(value),
+});
 
 export const dayTypeEnum = ["weekday", "weekend"] as const;
 export const dayEnum = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
@@ -212,7 +226,7 @@ export const students = mysqlTable("students", {
   international: boolean("international").notNull().default(false),
   // Hire date from the People Coming sheet (PLAN §9); null when the workbook
   // omits it or the date is unparseable.
-  hiredOn: date("hired_on", { mode: "date" }),
+  hiredOn: calendarDay("hired_on"),
   // Most recent authenticated activity for this person (any signed-in page load,
   // throttled write via lib/auth/last-seen.ts). Null = never signed in, which is
   // what the analytics surface reads to tell who has yet to log in. Set from the
@@ -405,8 +419,8 @@ export const travelRequests = mysqlTable("travel_requests", {
    * recorded on their behalf, where the admin is the excusal.
    */
   proofFileId: varchar("proof_file_id", { length: 255 }),
-  startDate: date("start_date").notNull(),
-  endDate: date("end_date").notNull(),
+  startDate: calendarDay("start_date").notNull(),
+  endDate: calendarDay("end_date").notNull(),
   note: text("note"),
   excused: boolean("excused").notNull(),
   /**

@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.58
+- **Version:** 1.59
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -1668,6 +1668,37 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.59 (2026-11-25)** — **What the 1.58 review left open (issue #40).** No schema
+  change and no migration.
+  - **Calls out of the app have a time limit.** No call to Drive, Sheets or Resend
+    had one, so a hung call held its request open, and with it every upload or
+    sync sharing its folder or sheet resolution. `driveFetch` (`drive/api.ts`)
+    gives each Drive and Sheets call 30 seconds, 120 for one carrying file bytes;
+    the access-token refresh gets the same 30 through the auth client's
+    `transporterOptions`; a Resend send gets 30. A call that runs out throws, and
+    the caller's existing failure path handles it.
+  - **Duplicate sheets.** A managed sheet's id was cached only after its first
+    write, so a sync starting in between searched Drive by name and could miss a
+    sheet made a moment earlier. The id is now cached inside the shared
+    resolution, before any write. A sheet found deleted is replaced through the
+    same shared step: two syncs that find it gone together make one replacement,
+    and one that arrives later uses it (`upsertManagedSheet`, `drive/relay.ts`).
+  - **Calendar days read a day early west of UTC.** Drizzle's `date` column reads
+    the stored day as midnight UTC, while the app writes and reads these days in
+    the local frame, so `students.hired_on` showed the day before on a host west
+    of UTC. Production runs in UTC and was never affected. `hired_on` and the
+    travel `start_date` and `end_date` now use a `calendarDay` column type
+    (`db/schema.ts`) that is local midnight in both directions, and the three
+    copies of the travel readers' `toIsoDate` are `localDay`. Checked on a real
+    MariaDB in UTC, Los Angeles, Tokyo and Kiritimati; the old type failed the
+    same check in Los Angeles.
+  - **`startNewTerm` has a unit test** (`admin/start-term.test.ts`): the four
+    refusals, the id choice, what is copied under new ids, aliases followed to
+    their target in mappings, the W2W map, the params and the roster, the two
+    groups, and who is carried into which group.
+  - The roster import summary already lists every close it freed, including those
+    of a Shift Lead the sheet moved to another position, which are freed without
+    a prompt. The `closesReleased` comment now says so.
 - **1.58 (2026-11-25)** — **Semester domains: review fixes before release (issue #40;
   `docs/semester-domains-plan.md` §18).** A security and correctness review of the
   branch before its first deploy. What it found, and what the code does now:

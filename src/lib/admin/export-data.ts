@@ -15,9 +15,7 @@ import { toDomainBlock } from "@/lib/db/mappers";
 import type { Position, SelectedShift, ShiftBlock } from "@/lib/domain/types";
 import type { ExportAggregate, ExportTravel } from "./export";
 import { submissionOfStudent, memberOf } from "@/lib/terms/scope";
-
-const toIsoDate = (d: Date | string): string =>
-  typeof d === "string" ? d : d.toISOString().slice(0, 10);
+import { localDay } from "@/lib/domain/calendar-day";
 
 export async function loadExportData(termId: string): Promise<ExportAggregate[]> {
   const db = getDb();
@@ -111,8 +109,8 @@ export async function loadExportData(termId: string): Promise<ExportAggregate[]>
   for (const t of travelRows) {
     const list = travelBySub.get(t.submissionId) ?? [];
     list.push({
-      startDate: toIsoDate(t.startDate),
-      endDate: toIsoDate(t.endDate),
+      startDate: localDay(t.startDate),
+      endDate: localDay(t.endDate),
       excused: t.excused,
       note: t.note ?? null,
       proofFileId: t.proofFileId,

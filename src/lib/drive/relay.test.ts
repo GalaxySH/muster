@@ -56,6 +56,7 @@ import {
   createFolder,
   createSpreadsheet,
   findChildByName,
+  SheetWriteError,
   uploadFile,
   writeSheetValues,
 } from "./api";
@@ -164,5 +165,82 @@ describe("upsertManagedSheet", () => {
     expect(b.spreadsheetId).toBe("sheet-1");
     expect(writeSheetValues).toHaveBeenCalledTimes(2);
     expect(store.get("responses_sheet_id:test-term")).toBe("sheet-1");
+  });
+
+  it("caches a new sheet's id before writing to it", async () => {
+    store.set("drive_root_term", "2026-fall");
+    vi.mocked(writeSheetValues).mockImplementationOnce(async () => {
+      expect(store.get("responses_sheet_id:test-term")).toBe("sheet-1");
+    });
+    await upsertManagedSheet(sheet, [["h"]]);
+    expect(writeSheetValues).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not search Drive again for a sheet it has already made", async () => {
+    store.set("drive_root_term", "2026-fall");
+    await upsertManagedSheet(sheet, [["h"]]);
+    await upsertManagedSheet(sheet, [["h"]]);
+    expect(findChildByName).toHaveBeenCalledTimes(1);
+    expect(createSpreadsheet).toHaveBeenCalledTimes(1);
+  });
+
+  it("adopts a sheet of that name already in the term's folder", async () => {
+    store.set("drive_root_term", "2026-fall");
+    vi.mocked(findChildByName).mockResolvedValueOnce("found-1");
+    const result = await upsertManagedSheet(sheet, [["h"]]);
+    expect(result.spreadsheetId).toBe("found-1");
+    expect(createSpreadsheet).not.toHaveBeenCalled();
+    expect(store.get("responses_sheet_id:test-term")).toBe("found-1");
+  });
+
+  describe("when the cached sheet was deleted", () => {
+    const gone = () =>
+      Object.assign(new SheetWriteError(404, "gone"), { status: 404, message: "gone" });
+    beforeEach(() => {
+      store.set("drive_root_term", "test-term");
+      store.set("responses_sheet_id:test-term", "old");
+      vi.mocked(createSpreadsheet).mockImplementation(async () => {
+        await tick();
+        return "new";
+      });
+      vi.mocked(writeSheetValues).mockImplementation(async ({ spreadsheetId }) => {
+        await tick();
+        if (spreadsheetId === "old") throw gone();
+      });
+    });
+
+    it("replaces it without looking for one by name", async () => {
+      const result = await upsertManagedSheet(sheet, [["h"]]);
+      expect(result.spreadsheetId).toBe("new");
+      expect(findChildByName).not.toHaveBeenCalled();
+      expect(store.get("responses_sheet_id:test-term")).toBe("new");
+    });
+
+    it("replaces it once when two syncs find it gone together", async () => {
+      const [a, b] = await Promise.all([
+        upsertManagedSheet(sheet, [["h"]]),
+        upsertManagedSheet(sheet, [["h"]]),
+      ]);
+      expect(createSpreadsheet).toHaveBeenCalledTimes(1);
+      expect(a.spreadsheetId).toBe("new");
+      expect(b.spreadsheetId).toBe("new");
+    });
+
+    it("uses the replacement a sync that finished earlier already made", async () => {
+      // This sync read "old" before the other one replaced it.
+      vi.mocked(writeSheetValues).mockImplementationOnce(async () => {
+        store.set("responses_sheet_id:test-term", "new");
+        throw gone();
+      });
+      const result = await upsertManagedSheet(sheet, [["h"]]);
+      expect(result.spreadsheetId).toBe("new");
+      expect(createSpreadsheet).not.toHaveBeenCalled();
+    });
+
+    it("gives up when the replacement cannot be written either", async () => {
+      vi.mocked(writeSheetValues).mockRejectedValue(gone());
+      await expect(upsertManagedSheet(sheet, [["h"]])).rejects.toThrow("gone");
+      expect(createSpreadsheet).toHaveBeenCalledTimes(1);
+    });
   });
 });

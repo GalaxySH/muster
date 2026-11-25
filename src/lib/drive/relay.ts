@@ -202,41 +202,38 @@ export async function upsertManagedSheet(
   try {
     const accessToken = await getAccessToken(grant.refreshToken);
     const idKey = termSettingKey(sheet.idSettingKey, sheet.termId);
-    // The folder is only needed to find or create the sheet, never to write one
-    // whose id is cached.
-    const create = async () =>
-      createSpreadsheet({
-        accessToken,
-        name: sheet.name,
-        parentId: await termFolder(accessToken, sheet.termId),
+    // The id is cached inside the shared resolution, before any write to the
+    // sheet, so a caller arriving later reads it and never searches Drive for a
+    // sheet that was only just created.
+    const resolveSheet = (replacing?: string) =>
+      singleFlight(idKey, async () => {
+        const cached = await getSetting(idKey);
+        if (cached && cached !== replacing) return cached;
+        const parentId = await termFolder(accessToken, sheet.termId);
+        const found = replacing
+          ? null
+          : await findChildByName({
+              accessToken,
+              parentId,
+              name: sheet.name,
+              mimeType: SPREADSHEET_MIME,
+            });
+        const id = found ?? (await createSpreadsheet({ accessToken, name: sheet.name, parentId }));
+        await setSetting(idKey, id);
+        return id;
       });
 
-    let sheetId = await singleFlight(
-      idKey,
-      async () =>
-        (await getSetting(idKey)) ??
-        (await findChildByName({
-          accessToken,
-          parentId: await termFolder(accessToken, sheet.termId),
-          name: sheet.name,
-          mimeType: SPREADSHEET_MIME,
-        })) ??
-        (await create()),
-    );
-
+    let sheetId = await resolveSheet();
     try {
       await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     } catch (e) {
-      // The cached/found sheet was deleted out from under us; recreate once.
-      if (e instanceof SheetWriteError && e.status === 404) {
-        sheetId = await create();
-        await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
-      } else {
-        throw e;
-      }
+      // The sheet was deleted out from under us. Replace it once, unless another
+      // sync already has.
+      if (!(e instanceof SheetWriteError && e.status === 404)) throw e;
+      sheetId = await resolveSheet(sheetId);
+      await writeSheetValues({ accessToken, spreadsheetId: sheetId, values });
     }
 
-    await setSetting(idKey, sheetId);
     await markDriveOk();
     return {
       spreadsheetId: sheetId,

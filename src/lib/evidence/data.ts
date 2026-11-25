@@ -10,6 +10,7 @@ import { getDb } from "@/lib/db";
 import { submissions, extracurricularFiles, travelRequests } from "@/lib/db/schema";
 import { workingTermId } from "@/lib/terms/working";
 import { submissionOf } from "@/lib/terms/scope";
+import { localDay } from "@/lib/domain/calendar-day";
 
 export interface ExtracurricularFile {
   id: string;
@@ -37,9 +38,6 @@ export interface EvidenceView {
   extracurricularFiles: ExtracurricularFile[];
   travel: TravelEntry[];
 }
-
-const toIsoDate = (d: Date | string): string =>
-  typeof d === "string" ? d : d.toISOString().slice(0, 10);
 
 export async function loadEvidence(studentEmail: string): Promise<EvidenceView> {
   const db = getDb();
@@ -80,8 +78,8 @@ export async function loadEvidence(studentEmail: string): Promise<EvidenceView> 
     travel: travelRows.map((t) => ({
       id: t.id,
       proofFileId: t.proofFileId,
-      startDate: toIsoDate(t.startDate),
-      endDate: toIsoDate(t.endDate),
+      startDate: localDay(t.startDate),
+      endDate: localDay(t.endDate),
       note: t.note ?? null,
       excused: t.excused,
       resolved: t.resolved,

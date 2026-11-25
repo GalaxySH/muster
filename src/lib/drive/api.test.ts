@@ -23,6 +23,24 @@ describe("deleteFile", () => {
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer tok");
   });
 
+  it("gives the call a 30 second limit", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    await deleteFile("tok", "file/1");
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    expect(fetchMock.mock.calls[0]![1]?.signal).toBe(timeout.mock.results[0]!.value);
+    timeout.mockRestore();
+  });
+
+  it("fails when the limit passes instead of waiting", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(AbortSignal.abort("late"));
+    fetchMock.mockImplementationOnce(async (_url, init) => {
+      init!.signal!.throwIfAborted();
+      return new Response("{}");
+    });
+    await expect(deleteFile("tok", "hung")).rejects.toBe("late");
+    timeout.mockRestore();
+  });
+
   it("treats a file that is already gone as done", async () => {
     fetchMock.mockResolvedValueOnce(new Response("", { status: 404 }));
     await expect(deleteFile("tok", "gone")).resolves.toBeUndefined();

@@ -144,6 +144,14 @@ someone with no row was never part of that term.
   then reused. Concurrent first writes for the same key share one in-flight creation
   (`singleFlight`, which holds because the app is one Node process). Sheets are
   still found by cached id, then by name inside the term's folder, then created.
+  A sheet's id is cached inside that shared resolution, before the first write
+  to it, so a later sync never searches Drive for a sheet that was only just
+  made; and a sheet found deleted (404) is replaced through the same shared
+  step, which returns the replacement another sync already made instead of
+  making a second (1.59). Every call to Google has a time limit
+  (`driveFetch` in `drive/api.ts`: 30 s, 120 s for a call carrying file bytes;
+  the token refresh through `transporterOptions`), so a hung call fails its
+  request instead of holding it, and everyone sharing its result, open.
   Proofs and the three sheets live in it, and every cached id and sync stamp
   is stored under `termSettingKey(base, termId)`. `admin/sheet-sync.ts` acts on the
   working term.
@@ -236,9 +244,11 @@ backlog behind the allowlist entries above.
 (1) **hire-date ingest** — the import reads an optional Hire Date column from People
 Coming into `students.hiredOn`, driving a **welcome-back** greeting on `/me` for
 returners (hired before the term's new-hire date; pure `flow/returner.ts`). The
-hire date is a calendar day end to end: `parseHireDate` builds local midnight (the
-frame the driver writes a `date` column in), and every reader takes the day off
-`localDay` (`domain/calendar-day.ts`), never off a UTC instant or a timezone
+hire date is a calendar day end to end: `parseHireDate` builds local midnight, the
+`calendarDay` column type in `db/schema.ts` writes and reads it as local midnight
+(Drizzle's own `date` column reads midnight UTC, which came back a day early west
+of UTC until 1.59; the travel dates use the same type), and every reader takes the
+day off `localDay` (`domain/calendar-day.ts`), never off a UTC instant or a timezone
 conversion (PLAN 1.50); (2)
 **URL-driven group + position + flag filters** on `/admin/responses` that follow you
 into the per-student view (pure `admin/response-filters.ts`; `listResponses(filters)`

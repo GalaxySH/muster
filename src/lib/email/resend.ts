@@ -47,6 +47,8 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const SEND_TIMEOUT_MS = 30_000;
+
 const testRecipients =
   process.env.NODE_ENV === "production" ? null : parseTestRecipients(env.EMAIL_TEST_RECIPIENTS);
 
@@ -93,6 +95,8 @@ ${text}`);
       ...(cc.length ? { cc } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
     }),
+    // A hung send must not hold a sign-in request or the digest run open.
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

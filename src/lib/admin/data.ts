@@ -50,6 +50,7 @@ import { workingTermId } from "@/lib/terms/working";
 import { memberOf, submissionOf, submissionOfStudent } from "@/lib/terms/scope";
 import { groupOf, inTestGroup } from "@/lib/groups/membership";
 import { findStudentByEmail } from "@/lib/roster/lookup";
+import { localDay } from "@/lib/domain/calendar-day";
 
 export interface StudentDetail {
   email: string;
@@ -590,9 +591,6 @@ export interface UpcomingTravelEntry {
   resolved: boolean;
 }
 
-const toIsoDate = (d: Date | string): string =>
-  typeof d === "string" ? d : d.toISOString().slice(0, 10);
-
 /**
  * On-roster students' travel grouped into the current + next weeks (roadmap 2.3),
  * so the scheduler can see who is away each week. Entries added past the cutoff
@@ -631,8 +629,8 @@ export async function loadUpcomingTravel(
     studentEmail: r.studentEmail,
     studentName: r.studentName,
     positionName: r.positionName ?? null,
-    startDate: toIsoDate(r.startDate),
-    endDate: toIsoDate(r.endDate),
+    startDate: localDay(r.startDate),
+    endDate: localDay(r.endDate),
     note: r.note ?? null,
     excused: r.excused,
     proofFileId: r.proofFileId ?? null,

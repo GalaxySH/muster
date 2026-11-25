@@ -14,6 +14,17 @@ const UPLOAD_URL =
 const FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets";
 
+/**
+ * No call to Google waits forever: a hung one would hold its request open, and
+ * every caller sharing its result with it. The limit covers reading the body.
+ */
+export const DRIVE_TIMEOUT_MS = 30_000;
+/** Calls that carry a file's bytes get longer. */
+const DRIVE_TRANSFER_TIMEOUT_MS = 120_000;
+
+const driveFetch = (url: string, init: RequestInit = {}, ms = DRIVE_TIMEOUT_MS) =>
+  fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
 export const SPREADSHEET_MIME = "application/vnd.google-apps.spreadsheet";
 
@@ -41,14 +52,18 @@ export async function uploadFile(p: UploadParams): Promise<string> {
   const tail = `\r\n--${boundary}--`;
   const body = Buffer.concat([Buffer.from(head, "utf8"), p.bytes, Buffer.from(tail, "utf8")]);
 
-  const res = await fetch(UPLOAD_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${p.accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
+  const res = await driveFetch(
+    UPLOAD_URL,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${p.accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
     },
-    body,
-  });
+    DRIVE_TRANSFER_TIMEOUT_MS,
+  );
   if (!res.ok) {
     throw new Error(`Drive upload failed (${res.status}): ${await safeText(res)}`);
   }
@@ -65,11 +80,7 @@ export async function findChildByName(p: {
   mimeType?: string;
 }): Promise<string | null> {
   const parent = p.parentId ?? "root";
-  const clauses = [
-    `'${parent}' in parents`,
-    `name = '${escapeQuery(p.name)}'`,
-    "trashed = false",
-  ];
+  const clauses = [`'${parent}' in parents`, `name = '${escapeQuery(p.name)}'`, "trashed = false"];
   if (p.mimeType) clauses.push(`mimeType = '${p.mimeType}'`);
   const params = new URLSearchParams({
     q: clauses.join(" and "),
@@ -78,7 +89,7 @@ export async function findChildByName(p: {
     supportsAllDrives: "true",
     includeItemsFromAllDrives: "true",
   });
-  const res = await fetch(`${FILES_URL}?${params}`, {
+  const res = await driveFetch(`${FILES_URL}?${params}`, {
     headers: { Authorization: `Bearer ${p.accessToken}` },
   });
   if (!res.ok) throw new Error(`Drive list failed (${res.status}): ${await safeText(res)}`);
@@ -95,7 +106,7 @@ async function createMetaFile(p: {
 }): Promise<string> {
   const metadata: Record<string, unknown> = { name: p.name, mimeType: p.mimeType };
   if (p.parentId) metadata.parents = [p.parentId];
-  const res = await fetch(`${FILES_URL}?supportsAllDrives=true&fields=id`, {
+  const res = await driveFetch(`${FILES_URL}?supportsAllDrives=true&fields=id`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${p.accessToken}`,
@@ -150,7 +161,7 @@ export async function writeSheetValues(p: {
   const auth = { Authorization: `Bearer ${p.accessToken}` };
 
   // a. Read the first sheet's title + numeric sheetId (needed for clear/format).
-  const metaRes = await fetch(`${SHEETS_URL}/${id}?fields=sheets(properties(sheetId,title))`, {
+  const metaRes = await driveFetch(`${SHEETS_URL}/${id}?fields=sheets(properties(sheetId,title))`, {
     headers: auth,
   });
   if (!metaRes.ok) {
@@ -167,17 +178,20 @@ export async function writeSheetValues(p: {
   }
 
   // b. Clear stale content so a shorter rebuild doesn't leave orphan rows.
-  const clearRes = await fetch(`${SHEETS_URL}/${id}/values/${encodeURIComponent(title)}:clear`, {
-    method: "POST",
-    headers: { ...auth, "Content-Type": "application/json" },
-    body: "{}",
-  });
+  const clearRes = await driveFetch(
+    `${SHEETS_URL}/${id}/values/${encodeURIComponent(title)}:clear`,
+    {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: "{}",
+    },
+  );
   if (!clearRes.ok) {
     throw new SheetWriteError(clearRes.status, `Sheet clear failed: ${await safeText(clearRes)}`);
   }
 
   // c. Write the new values RAW (no formula/number coercion).
-  const updateRes = await fetch(
+  const updateRes = await driveFetch(
     `${SHEETS_URL}/${id}/values/${encodeURIComponent(`${title}!A1`)}?valueInputOption=RAW`,
     {
       method: "PUT",
@@ -190,7 +204,7 @@ export async function writeSheetValues(p: {
   }
 
   // d. Freeze + bold the header row (modest styling; best-effort after values).
-  const batchRes = await fetch(`${SHEETS_URL}/${id}:batchUpdate`, {
+  const batchRes = await driveFetch(`${SHEETS_URL}/${id}:batchUpdate`, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -242,7 +256,7 @@ export async function downloadFile(accessToken: string, fileId: string): Promise
   const id = encodeURIComponent(fileId);
   const headers = { Authorization: `Bearer ${accessToken}` };
 
-  const metaRes = await fetch(`${FILES_URL}/${id}?fields=mimeType&supportsAllDrives=true`, {
+  const metaRes = await driveFetch(`${FILES_URL}/${id}?fields=mimeType&supportsAllDrives=true`, {
     headers,
   });
   if (!metaRes.ok) {
@@ -250,7 +264,11 @@ export async function downloadFile(accessToken: string, fileId: string): Promise
   }
   const meta = (await metaRes.json()) as { mimeType?: string };
 
-  const mediaRes = await fetch(`${FILES_URL}/${id}?alt=media&supportsAllDrives=true`, { headers });
+  const mediaRes = await driveFetch(
+    `${FILES_URL}/${id}?alt=media&supportsAllDrives=true`,
+    { headers },
+    DRIVE_TRANSFER_TIMEOUT_MS,
+  );
   if (!mediaRes.ok) {
     throw new Error(`Drive media fetch failed (${mediaRes.status}): ${await safeText(mediaRes)}`);
   }
@@ -263,7 +281,7 @@ export async function downloadFile(accessToken: string, fileId: string): Promise
  * restored until Drive empties it (30 days). Never a permanent delete.
  */
 export async function deleteFile(accessToken: string, fileId: string): Promise<void> {
-  const res = await fetch(
+  const res = await driveFetch(
     `${FILES_URL}/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id`,
     {
       method: "PATCH",
