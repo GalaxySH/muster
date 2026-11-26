@@ -321,7 +321,9 @@ export default async function StudentDetailPage({
     !evidence.extracurricularNotes && evidence.extracurricularFiles.length === 0;
 
   return (
-    <AdminPage rail="icons" back={{ href: `/admin/responses${suffix}`, label: "Responses" }}>
+    // No back link: the rail's Responses link is the way back, and the
+    // vertical space goes to the cards.
+    <AdminPage rail="icons">
       <div className="ad-stack">
         {/* The header: who this is, the walk through the list, where the response
             stands, then the actions. Barred red until the student has actually

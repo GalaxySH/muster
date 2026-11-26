@@ -1516,7 +1516,11 @@ or auth check changed with it.
   or the backdrop closes it and returns focus to the button. On a wide screen a button
   at its foot folds it to icons for as long as the page is open (it is component
   state, not remembered between pages); the labels stay in the markup, so each link
-  keeps its name. A new admin page is added to the `NAV` list there.
+  keeps its name. Folded, the item under the pointer or focus slides its label out
+  past the rail's edge (`.ad-rail-tip`, about 110ms, none under reduced motion): one
+  element fixed to the viewport, placed from the item's box, so the rail's scrolling
+  box never clips it, and hidden when the rail scrolls. It is `aria-hidden`, since
+  the item already has its name. A new admin page is added to the `NAV` list there.
 - **Primitives.** `components/admin/ui.tsx` (no hooks, usable from server pages and
   client components, and it knows no module): `Panel`, `Notice`, `Pill`, `Button`
   (with a `pending` label swap), `ButtonLink`, `ExternalLink`, `Disclosure`,

@@ -126,6 +126,34 @@ export function AdminNav({
   const current = currentHref(usePathname() ?? "");
   const arrange = useArrangeState();
 
+  // The folded rail's labels: the item under the pointer (or focus) slides its
+  // name out of the rail, like a key pulled out of a keyboard. Fixed to the
+  // viewport so the rail's own scrolling box does not clip it; hidden again
+  // when the rail scrolls. Sighted help only: each item keeps its own name.
+  const [tip, setTip] = useState<{
+    label: string;
+    top: number;
+    left: number;
+    height: number;
+  } | null>(null);
+  const tipFor = (label: string) =>
+    icons
+      ? {
+          onMouseEnter: (e: React.MouseEvent<HTMLElement>) => showTip(e.currentTarget, label),
+          onFocus: (e: React.FocusEvent<HTMLElement>) => showTip(e.currentTarget, label),
+          onMouseLeave: () => setTip(null),
+          onBlur: () => setTip(null),
+        }
+      : {};
+  function showTip(el: HTMLElement, label: string) {
+    if (!window.matchMedia?.("(min-width: 960px)").matches) return;
+    const r = el.getBoundingClientRect();
+    setTip({ label, top: r.top, left: r.right, height: r.height });
+  }
+  useEffect(() => {
+    if (!icons) setTip(null);
+  }, [icons]);
+
   useEffect(() => {
     if (!open) return;
     // The page behind the drawer (the top bar and the content) takes no focus
@@ -171,8 +199,12 @@ export function AdminNav({
         ref={railRef}
         className={"ad-rail" + (open ? " ad-rail--open" : "") + (icons ? " ad-rail--icons" : "")}
         aria-label="Admin sections"
+        onScroll={() => setTip(null)}
       >
         <Link href="/admin" className="ad-brand">
+          <span aria-hidden className="ad-brand-mark">
+            M
+          </span>
           <span className="ad-brand-name">Muster</span>
           <span className="ad-brand-role">Admin</span>
         </Link>
@@ -187,7 +219,7 @@ export function AdminNav({
                     <Link
                       href={item.href}
                       className="ad-rail-link"
-                      title={icons ? item.label : undefined}
+                      {...tipFor(c ? `${item.label} · ${c.count}` : item.label)}
                       aria-current={item.href === current ? "page" : undefined}
                       onClick={() => setOpen(false)}
                     >
@@ -216,7 +248,7 @@ export function AdminNav({
               type="button"
               className="ad-rail-link ad-rail-fold ad-rail-arrange"
               aria-pressed={arrange.arranging}
-              title={icons ? "Arrange cards" : undefined}
+              {...tipFor("Arrange cards")}
               onClick={() => setArranging(!arrange.arranging)}
             >
               <FontAwesomeIcon icon={faPenToSquare} aria-hidden className="ad-rail-icon" />
@@ -226,7 +258,7 @@ export function AdminNav({
           <Link
             href="/me"
             className="ad-rail-link"
-            title={icons ? "Student home" : undefined}
+            {...tipFor("Student home")}
             onClick={() => setOpen(false)}
           >
             <FontAwesomeIcon icon={faHouse} aria-hidden className="ad-rail-icon" />
@@ -236,7 +268,7 @@ export function AdminNav({
             type="button"
             className="ad-rail-link ad-rail-fold"
             aria-pressed={icons}
-            title={icons ? "Show menu labels" : undefined}
+            {...tipFor("Show menu labels")}
             onClick={() => setIcons(!icons)}
           >
             <FontAwesomeIcon
@@ -248,6 +280,16 @@ export function AdminNav({
           </button>
         </div>
       </nav>
+      {tip && (
+        <span
+          key={tip.label}
+          aria-hidden
+          className="ad-rail-tip"
+          style={{ top: tip.top, left: tip.left, height: tip.height }}
+        >
+          {tip.label}
+        </span>
+      )}
     </>
   );
 }

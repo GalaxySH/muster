@@ -354,6 +354,15 @@ html:has(.ad) {
   font-weight: 600;
   text-decoration: none;
 }
+/* The folded rail's mark (see the icons rules below); hidden otherwise. */
+.ad-brand-mark {
+  display: none;
+  border-bottom: 3px solid var(--ad-accent);
+  color: var(--ad-ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
 .ad-brand-name {
   border-bottom: 3px solid var(--ad-accent);
   color: var(--ad-ink);
@@ -529,11 +538,18 @@ html:has(.ad) {
     justify-content: center;
     padding: 0;
   }
-  /* The wordmark shows its first letter. */
+  /* Folded, the wordmark gives way to its mark: the M on its own, underlined
+     like the full name. The name stays for the link's accessible name. */
   .ad-rail--icons .ad-brand-name {
-    width: 1ch;
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
-    letter-spacing: 0.5ch;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .ad-rail--icons .ad-brand-mark {
+    display: inline-block;
   }
 }
 @media (max-width: 959.98px) {
@@ -595,6 +611,40 @@ html:has(.ad) {
 @media (max-width: 1199.98px) {
   .ad-rail-arrange {
     display: none;
+  }
+}
+/* The folded rail's label: the hovered item's name slides out past the rail's
+   edge, one key at a time. It starts under the item's rounded right edge, in
+   the item's hover fill, so the item and its label read as one piece. AdminNav
+   sets its top, left and height from the item. */
+.ad-rail-tip {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  margin-left: calc(-1 * var(--ad-radius-sm));
+  padding: 0 0.75rem 0 calc(0.5rem + var(--ad-radius-sm));
+  border-radius: 0 var(--ad-radius-sm) var(--ad-radius-sm) 0;
+  background: var(--ad-sunken);
+  box-shadow: var(--ad-shadow-float);
+  color: var(--ad-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: ad-rail-tip-in 110ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes ad-rail-tip-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 -1rem -1rem 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-rail-tip {
+    animation: none;
   }
 }
 
