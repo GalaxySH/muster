@@ -9,6 +9,23 @@ vi.mock("@/lib/admin/preferences-actions", () => ({
 }));
 
 import { StudentBoard, type BoardCard } from "./StudentBoard";
+import { ARRANGE_BUTTON_ID, setArranging, useArrangeState } from "./arrange-store";
+
+/** The rail's Arrange cards button (AdminNav), reduced to what the board talks to. */
+function Rail() {
+  const { available, arranging } = useArrangeState();
+  if (!available) return null;
+  return (
+    <button
+      id={ARRANGE_BUTTON_ID}
+      type="button"
+      aria-pressed={arranging}
+      onClick={() => setArranging(!arranging)}
+    >
+      Arrange cards
+    </button>
+  );
+}
 
 const defaults: StudentLayout = {
   columns: [["grid", "flags"], ["course", "travel"], ["notes"]],
@@ -48,6 +65,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   save.mockReset();
   save.mockResolvedValue({ ok: true });
+  // A root of its own, as the rail is outside the page's tree.
+  render(<Rail />);
 });
 afterEach(() => {
   vi.useRealTimers();

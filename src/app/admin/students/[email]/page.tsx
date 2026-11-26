@@ -70,7 +70,8 @@ import { buildFromAddress } from "@/lib/email/schedule-email";
 import { env } from "@/lib/env";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronLeft, faChevronRight } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
-import { ButtonLink, Disclosure, Notice, Panel, Pill, Status } from "@/components/admin/ui";
+import { ButtonLink, Notice, Panel, Pill, Status } from "@/components/admin/ui";
+import { RememberedDisclosure } from "@/components/admin/RememberedDisclosure";
 import { shortFlagDetail } from "@/lib/admin/flag-copy";
 import { workingTerm, workingTermId } from "@/lib/terms/working";
 import { getAdminPrefsCached } from "@/lib/admin/preferences";
@@ -312,8 +313,10 @@ export default async function StudentDetailPage({
   const scheduleCohort = schedule ? weekendCohortOf(schedule.cells) : null;
 
   const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}${suffix}`;
-  // How this admin arranged the cards below; null is the default arrangement.
+  // How this admin arranged the cards below (null is the default arrangement),
+  // and which of the foldable ones they keep closed.
   const prefs = await getAdminPrefsCached(session.email);
+  const folded = new Set<string>(prefs.foldedCards);
   const extracurricularsEmpty =
     !evidence.extracurricularNotes && evidence.extracurricularFiles.length === 0;
 
@@ -616,14 +619,19 @@ export default async function StudentDetailPage({
               },
 
             /* Coverage for this student's position, the same grid the schedule
-                  page shows, closed until asked for: the two tables stack to fit
-                  the column and each scrolls sideways inside it. */
+                  page shows, open unless the admin closed it (remembered on their
+                  account). The two tables wrap to fit the column and each
+                  scrolls sideways inside it. */
             coverageRows &&
               position && {
                 id: "coverage",
                 title: "Coverage",
                 node: (
-                  <Disclosure title={`${position.name} coverage`}>
+                  <RememberedDisclosure
+                    cardId="coverage"
+                    open={!folded.has("coverage")}
+                    title={`${position.name} coverage`}
+                  >
                     <div className="ad-stack">
                       <div className="ad-row ad-row--between">
                         <span>
@@ -638,7 +646,7 @@ export default async function StudentDetailPage({
                         compact
                       />
                     </div>
-                  </Disclosure>
+                  </RememberedDisclosure>
                 ),
               },
 
@@ -923,15 +931,17 @@ export default async function StudentDetailPage({
 
             /* Student details: last authenticated activity, hire date, when the
                 schedule email went out (once it has), and the position and group
-                controls. Closed until needed, except for a student with no
-                position, who is exactly who needs one set. */
+                controls. Open unless the admin closed it (remembered on their
+                account); always open for a student with no position, who is
+                exactly who needs one set. */
             {
               id: "details",
               title: "Student details",
               node: (
-                <Disclosure
+                <RememberedDisclosure
+                  cardId="details"
                   title="Student details"
-                  open={!position}
+                  open={!position || !folded.has("details")}
                   summary={
                     detail.lastSeenAt
                       ? `Last seen ${fmtStamp(detail.lastSeenAt)}`
@@ -1001,7 +1011,7 @@ export default async function StudentDetailPage({
                       </div>
                     )}
                   </div>
-                </Disclosure>
+                </RememberedDisclosure>
               ),
             },
           ].filter(isCard)}

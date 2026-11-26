@@ -19,7 +19,15 @@ describe("parseAdminPrefs", () => {
 
   it("keeps a good field when another is bad", () => {
     const prefs = parseAdminPrefs(JSON.stringify({ theme: "dark", studentLayout: { columns: 3 } }));
-    expect(prefs).toEqual({ theme: "dark", studentLayout: null });
+    expect(prefs).toEqual({ theme: "dark", studentLayout: null, foldedCards: [] });
+  });
+
+  it("keeps only the known foldable cards", () => {
+    const prefs = parseAdminPrefs(
+      JSON.stringify({ foldedCards: ["details", "grid", "details", 4] }),
+    );
+    expect(prefs.foldedCards).toEqual(["details"]);
+    expect(parseAdminPrefs(JSON.stringify({ foldedCards: "coverage" })).foldedCards).toEqual([]);
   });
 
   it("drops an unknown theme", () => {

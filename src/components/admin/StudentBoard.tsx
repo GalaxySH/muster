@@ -22,8 +22,13 @@ import {
   faArrowRight,
   faArrowUp,
   faGripVertical,
-  faTableColumns,
 } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
+import {
+  ARRANGE_BUTTON_ID,
+  setArrangeAvailable,
+  setArranging,
+  useArrangeState,
+} from "./arrange-store";
 import { ActionMessage, Button, cx } from "@/components/admin/ui";
 import { saveStudentLayout } from "@/lib/admin/preferences-actions";
 import type { StudentLayout } from "@/lib/admin/preferences-shape";
@@ -66,7 +71,12 @@ export function StudentBoard({
   savedLayout: StudentLayout | null;
 }) {
   const [layout, setLayout] = useState(() => completeLayout(savedLayout, defaultLayout));
-  const [arranging, setArranging] = useState(false);
+  // Arranging is switched from the rail (AdminNav), through the shared store.
+  const { arranging } = useArrangeState();
+  useEffect(() => {
+    setArrangeAvailable(true);
+    return () => setArrangeAvailable(false);
+  }, []);
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ column: number; index: number } | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -106,26 +116,24 @@ export function StudentBoard({
   };
 
   // ---- arrange mode, and the focus that follows it ----
-  const arrangeButton = useRef<HTMLButtonElement>(null);
+  // Starting moves focus to Done; ending (from Done or the rail) saves at once
+  // and hands focus back to the rail's button.
   const doneButton = useRef<HTMLButtonElement>(null);
-  const focusOnToggle = useRef(false);
+  const wasArranging = useRef(arranging);
   useEffect(() => {
-    if (!focusOnToggle.current) return;
-    focusOnToggle.current = false;
-    (arranging ? doneButton : arrangeButton).current?.focus();
-  }, [arranging]);
-
-  const startArranging = () => {
-    focusOnToggle.current = true;
-    setArranging(true);
-  };
-  const stopArranging = useCallback(() => {
-    focusOnToggle.current = true;
-    setArranging(false);
+    if (wasArranging.current === arranging) return;
+    wasArranging.current = arranging;
+    if (arranging) {
+      doneButton.current?.focus();
+      return;
+    }
     setDragId(null);
     setDrop(null);
     flush();
-  }, [flush]);
+    document.getElementById(ARRANGE_BUTTON_ID)?.focus();
+  }, [arranging, flush]);
+
+  const stopArranging = useCallback(() => setArranging(false), []);
 
   useEffect(() => {
     if (!arranging || typeof window.matchMedia !== "function") return;
@@ -395,34 +403,29 @@ export function StudentBoard({
 
   return (
     <div className="ad-stack">
-      <div className="ad-st-board-bar">
-        {saveError && <ActionMessage ok={false}>{saveError}</ActionMessage>}
-        {arranging ? (
-          <>
-            <span className="ad-st-board-hint">
-              Drag cards to move them. Drag the lines between columns to resize.
-            </span>
-            <Button onClick={reset}>Reset</Button>
-            <button
-              ref={doneButton}
-              type="button"
-              className="ad-btn ad-btn--primary"
-              onClick={stopArranging}
-            >
-              Done
-            </button>
-          </>
-        ) : (
-          <button
-            ref={arrangeButton}
-            type="button"
-            className="ad-btn ad-btn--quiet"
-            onClick={startArranging}
-          >
-            <FontAwesomeIcon icon={faTableColumns} aria-hidden /> Arrange cards
-          </button>
-        )}
-      </div>
+      {/* Only while arranging (or when a save failed): the page spends no
+          room on it otherwise. The way in is the rail's Arrange cards button. */}
+      {(arranging || saveError) && (
+        <div className="ad-st-board-bar">
+          {saveError && <ActionMessage ok={false}>{saveError}</ActionMessage>}
+          {arranging && (
+            <>
+              <span className="ad-st-board-hint">
+                Drag cards to move them. Drag the lines between columns to resize.
+              </span>
+              <Button onClick={reset}>Reset</Button>
+              <button
+                ref={doneButton}
+                type="button"
+                className="ad-btn ad-btn--primary"
+                onClick={stopArranging}
+              >
+                Done
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <div
         style={style}
         className={cx(

@@ -1744,9 +1744,10 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   one strip, and Least staffed shifts, Recent submissions and System status are
   closed under "More"; the lists share one toolbar-and-table pattern and Missing
   responses is a table with a section per bucket; a student's page is three columns
-  with Student details, coverage and the legend closed and the rail folded, and from
-  1200px "Arrange cards" lets an admin drag its cards between columns and resize the
-  columns (each 20% to 60%), saved to their account; the console has a **dark mode**
+  with the legend closed and the rail folded; coverage and Student details start open
+  and stay the way the admin last left them (saved to their account); and from 1200px
+  the pen button in the rail ("Arrange cards") lets an admin drag the cards between
+  columns and resize the columns (each 20% to 60%), saved to their account; the console has a **dark mode**
   (the moon button in the top bar, saved to the admin's account, following the device
   until set); a stored flag on a student's page shows a short line (what the grid or
   the check lines already show is left out; the stored detail is unchanged); the

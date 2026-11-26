@@ -19,9 +19,15 @@ export type AdminPrefs = {
   theme: AdminTheme | null;
   /** Null is the default arrangement. */
   studentLayout: StudentLayout | null;
+  /** The foldable cards (FOLDABLE_CARDS) the admin closed; the rest are open. */
+  foldedCards: FoldableCard[];
 };
 
-export const EMPTY_PREFS: AdminPrefs = { theme: null, studentLayout: null };
+/** The student page cards whose open or closed state is remembered. */
+export const FOLDABLE_CARDS = ["coverage", "details"] as const;
+export type FoldableCard = (typeof FOLDABLE_CARDS)[number];
+
+export const EMPTY_PREFS: AdminPrefs = { theme: null, studentLayout: null, foldedCards: [] };
 
 /** A column never gets narrower or wider than this share of the row. */
 export const COLUMN_SHARE_MIN = 0.2;
@@ -38,6 +44,11 @@ export const studentLayoutSchema = z.object({
 const prefsSchema = z.object({
   theme: z.enum(["light", "dark"]).nullable().catch(null).default(null),
   studentLayout: studentLayoutSchema.nullable().catch(null).default(null),
+  foldedCards: z
+    .array(z.unknown())
+    .catch([])
+    .default([])
+    .transform((ids) => FOLDABLE_CARDS.filter((id) => ids.includes(id))),
 });
 
 /** What is stored, read leniently: anything unreadable falls back to the default. */
@@ -51,10 +62,11 @@ export function parseAdminPrefs(raw: string | null): AdminPrefs {
   }
   const parsed = prefsSchema.safeParse(json);
   if (!parsed.success) return EMPTY_PREFS;
-  const { theme, studentLayout } = parsed.data;
+  const { theme, studentLayout, foldedCards } = parsed.data;
   return {
     theme,
     studentLayout: studentLayout ? normalizeStudentLayout(studentLayout) : null,
+    foldedCards,
   };
 }
 

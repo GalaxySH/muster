@@ -243,6 +243,7 @@ export function Disclosure({
   panel = true,
   open = false,
   id,
+  onToggle,
   children,
 }: {
   title: React.ReactNode;
@@ -251,12 +252,15 @@ export function Disclosure({
   panel?: boolean;
   open?: boolean;
   id?: string;
+  /** Client callers only: told the new state each time it opens or closes. */
+  onToggle?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
   return (
     <details
       id={id}
       open={open}
+      onToggle={onToggle && ((e) => onToggle(e.currentTarget.open))}
       className={cx("ad-disclosure", panel && "ad-disclosure--panel", id && "ad-anchor")}
     >
       <summary>

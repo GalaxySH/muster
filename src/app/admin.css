@@ -585,6 +585,18 @@ html:has(.ad) {
     transition: none;
   }
 }
+/* A student page's Arrange cards switch, above Student home. Arranging needs
+   the three columns side by side, so only from 1200px. */
+.ad-rail-arrange[aria-pressed="true"] {
+  border-left-color: var(--ad-accent);
+  background: var(--ad-sunken);
+  font-weight: 600;
+}
+@media (max-width: 1199.98px) {
+  .ad-rail-arrange {
+    display: none;
+  }
+}
 
 /* ---- Page header -------------------------------------------------------- */
 .ad-back {

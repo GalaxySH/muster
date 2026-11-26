@@ -444,10 +444,17 @@ so a long history never stretches the page below the other cards. Since 1.67 the
 same place on every student. By default: the grid, the automatic **flags** and the
 position's coverage on the left; what the student sent in the middle (course schedule,
 extracurriculars, travel, weekend closes); what came after on the right (change
-requests, the two notes, Student details). From 1200px an admin can **Arrange cards**
+requests, the two notes, Student details). From 1200px the pen button in the rail (**Arrange cards**, shown only on this page;
+the board and `AdminNav` share its state through `components/admin/arrange-store.ts`,
+since the rail is outside the page's tree) lets an admin move cards
 (drag, or the move buttons on each card's bar) and resize the columns (separators,
 each column 20% to 60%); the arrangement is saved to their account (`saveStudentLayout`,
-below) and comes back from the server, so the page never flashes the default. The page
+below) and comes back from the server, so the page never flashes the default. The
+Reset / Done bar shows only while arranging. Coverage and Student details are
+`RememberedDisclosure`s: open by default, and each toggle saves the admin's choice
+(`foldedCards` in the preferences, `saveCardFolded`), so the server renders them the
+way that admin left them. Student details is always open for a student with no
+position. The page
 gives each card a stable id (`grid`, `flags`, `coverage`, `course`, `extracurriculars`,
 `travel`, `closes`, `changes`, `scheduler-notes`, `student-notes`, `details`), and
 `arrangeCards` in `lib/admin/student-board.ts` merges the saved order with the cards
@@ -461,7 +468,7 @@ front; fixed columns replaced it because a card's position moved with the conten
 the others.)
 
 **Admin preferences (1.67).** An admin's own console settings, the theme and the
-student page layout, are one `app_settings` row per admin keyed `admin_prefs:<sha256 of
+student page layout and which foldable cards are closed, are one `app_settings` row per admin keyed `admin_prefs:<sha256 of
 the email, 40 hex>` (the key column is 64 characters), JSON parsed leniently by
 `parseAdminPrefs` in `lib/admin/preferences-shape.ts` (anything unreadable falls back
 to the default). `lib/admin/preferences.ts` reads (`getAdminPrefsCached`, once per
@@ -1562,8 +1569,8 @@ or auth check changed with it.
   needs a dark value too; a grid-only colour gets its dark override in `admin-grid.css`.
 - **Page patterns.** Lists share one pattern, a toolbar over a dense table
   (`ResponseList` is the model); Missing responses is one table with a heading row per
-  bucket. A student's page is three arrangeable columns with Student details, coverage
-  and the grid's legend closed by default. The schedule page uses the full width with its
+  bucket. A student's page is three arrangeable columns with the grid's legend closed
+  and coverage and Student details open unless the admin closed them. The schedule page uses the full width with its
   settings, run history and compare closed. A position is a closed card
   (`PositionCard`) that opens when it has warnings, unsaved edits or a result to show.
 - **Accessibility (WCAG 2.2 AA) by construction.** Colours are used in the tested

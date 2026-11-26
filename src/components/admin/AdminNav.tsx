@@ -19,6 +19,7 @@ import {
   faInbox,
   faList,
   faMoon,
+  faPenToSquare,
   faPlaneDeparture,
   faRightLeft,
   faTableList,
@@ -28,6 +29,7 @@ import {
   faXmark,
 } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
 import { faGoogleDrive } from "@awesome.me/kit-925f6dce39/icons/classic/brands";
+import { ARRANGE_BUTTON_ID, setArranging, useArrangeState } from "./arrange-store";
 
 type Icon = React.ComponentProps<typeof FontAwesomeIcon>["icon"];
 
@@ -122,6 +124,7 @@ export function AdminNav({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const railRef = useRef<HTMLElement>(null);
   const current = currentHref(usePathname() ?? "");
+  const arrange = useArrangeState();
 
   useEffect(() => {
     if (!open) return;
@@ -207,6 +210,19 @@ export function AdminNav({
           </div>
         ))}
         <div className="ad-rail-foot">
+          {arrange.available && (
+            <button
+              id={ARRANGE_BUTTON_ID}
+              type="button"
+              className="ad-rail-link ad-rail-fold ad-rail-arrange"
+              aria-pressed={arrange.arranging}
+              title={icons ? "Arrange cards" : undefined}
+              onClick={() => setArranging(!arrange.arranging)}
+            >
+              <FontAwesomeIcon icon={faPenToSquare} aria-hidden className="ad-rail-icon" />
+              <span className="ad-rail-label">Arrange cards</span>
+            </button>
+          )}
           <Link
             href="/me"
             className="ad-rail-link"
