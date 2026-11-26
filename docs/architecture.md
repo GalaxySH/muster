@@ -43,8 +43,11 @@ someone with no row was never part of that term.
     costs nothing extra, and it is imported lazily because `auth/session` reads the
     roster, which reads this file. `cookies()` throws where there is no request (the
     digest scheduler, a script); that falls back to the current term, and Next's own
-    control-flow errors are passed on with `unstable_rethrow`. `selectTerm`
-    (`select-action.ts`) is the only writer of the cookie. `workingTerm()`
+    control-flow errors are passed on with `unstable_rethrow`. The route
+    handler `POST /api/term` (`app/api/term/route.ts`) is the only writer of the
+    cookie. It is not a server action because a server action that sets a cookie
+    re-renders the open page in place with the new term's data before the reload,
+    and a client component holding the old term's state can throw in that render. `workingTerm()`
     is the row itself, for the code that needs the term's dates and rules: the travel
     cutoff and late-travel switch (through `getTravelCutoff` / `getLateTravelPolicy`
     in `lib/settings.ts`), the new-hire cutoff (`isReturningStudent`), the start date

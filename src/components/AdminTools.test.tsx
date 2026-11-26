@@ -6,7 +6,6 @@ import userEvent from "@testing-library/user-event";
 const push = vi.fn();
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
-vi.mock("@/lib/terms/select-action", () => ({ selectTerm: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/auth/session", () => ({ getAppSession: vi.fn() }));
 vi.mock("@/lib/roster/lookup", () => ({ listRosterNames: vi.fn() }));
 vi.mock("@/lib/auth/actions", () => ({ signOutAction: vi.fn() }));
@@ -14,7 +13,6 @@ vi.mock("@/lib/auth/actions", () => ({ signOutAction: vi.fn() }));
 import { AdminTools } from "./AdminTools";
 import { getAppSession } from "@/lib/auth/session";
 import { listRosterNames } from "@/lib/roster/lookup";
-import { selectTerm } from "@/lib/terms/select-action";
 import { listTerms, workingTermId } from "@/lib/terms/working";
 
 const roster = [
@@ -101,10 +99,17 @@ describe("AdminTools", () => {
 
   describe("with an earlier semester", () => {
     const reload = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    /** The semester the switch asked the server to select. */
+    const selected = () => {
+      const [, init] = fetchMock.mock.calls.at(-1) as unknown as [string, RequestInit];
+      return JSON.parse(String(init.body)).termId;
+    };
     beforeEach(() => {
       // jsdom cannot navigate; the switch reloads the page so no form keeps
       // the other semester's values.
       vi.stubGlobal("location", { ...window.location, reload });
+      vi.stubGlobal("fetch", fetchMock);
       vi.mocked(listTerms).mockResolvedValue([
         { id: "test-term", name: "Spring 2027" },
         { id: "fall", name: "Fall 2026" },
@@ -118,8 +123,22 @@ describe("AdminTools", () => {
       await userEvent
         .setup()
         .selectOptions(screen.getByRole("combobox", { name: "Semester" }), "Fall 2026");
-      expect(selectTerm).toHaveBeenCalledWith("fall");
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/term",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(selected()).toBe("fall");
       await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+    });
+
+    it("stays on the page when the server refuses the switch", async () => {
+      fetchMock.mockResolvedValueOnce(new Response("{}", { status: 403 }));
+      signIn(true);
+      await renderHeader();
+      const select = screen.getByRole("combobox", { name: "Semester" });
+      await userEvent.setup().selectOptions(select, "Fall 2026");
+      await vi.waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
+      expect(reload).not.toHaveBeenCalled();
     });
 
     it("says so on every page while it is selected, with a way back", async () => {
@@ -130,7 +149,7 @@ describe("AdminTools", () => {
         "You are working in Fall 2026. Students are filling in Spring 2027.",
       );
       await userEvent.setup().click(screen.getByRole("button", { name: "Back to Spring 2027" }));
-      expect(selectTerm).toHaveBeenCalledWith("test-term");
+      await vi.waitFor(() => expect(selected()).toBe("test-term"));
     });
 
     it("shows a student none of it", async () => {

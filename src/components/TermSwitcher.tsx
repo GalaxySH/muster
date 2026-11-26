@@ -13,9 +13,26 @@
  * admin from meeting that refusal.
  */
 import { useEffect, useTransition } from "react";
-import { selectTerm } from "@/lib/terms/select-action";
 
 const SHOWN_TERM_KEY = "muster-term";
+
+/**
+ * Ask the server to select a semester. A plain request to a route handler, not
+ * a server action, so the page is not re-rendered in place before the reload
+ * (see app/api/term/route.ts).
+ */
+async function selectTerm(termId: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/term", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ termId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function useTabsOnOneTerm(workingId: string) {
   useEffect(() => {
@@ -54,10 +71,9 @@ function useSelectTerm() {
   const [pending, startTransition] = useTransition();
   const select = (termId: string) =>
     startTransition(async () => {
-      const res = await selectTerm(termId);
       // A full reload, not a refresh: a form on the page may be holding the
       // other semester's values in its state, and a refresh would keep them.
-      if (res.ok) window.location.reload();
+      if (await selectTerm(termId)) window.location.reload();
     });
   return { pending, select };
 }

@@ -1753,6 +1753,19 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   shifts". The system-message preview on the Semester page now shows the notice
   students actually see. See §10b and "Admin design system" in
   `docs/architecture.md`.
+- **1.66 (2026-11-25)** — **Switching semesters no longer flashes an error, and a
+  crash shows a friendly page.** The header's semester control selected through a
+  server action that set the selection cookie and revalidated the layout, so Next
+  re-rendered the open page in place with the other semester's data before the
+  reload ran; a client component still holding the old semester's state could throw
+  there, which showed "a client-side exception has occurred" for a moment. The
+  selection is now a route handler, `POST /api/term` (`app/api/term/route.ts`,
+  replacing `lib/terms/select-action.ts`, same rules: admins only, the current term
+  clears the cookie, an unknown term is refused), and the page reloads only after it
+  answers. Separately, the app now has error boundaries (`app/error.tsx`,
+  `app/global-error.tsx`, both rendering `components/ErrorScreen.tsx`): any page that
+  throws shows "Something went wrong" with Try again (a full reload) and a link home,
+  instead of Next's bare error text. The error still goes to the browser console.
 - **1.65 (2026-11-25)** — **Travel can stay open after the form closes.** A new
   per-term toggle on the Semester page (`/admin/terms`), "Keep travel open after the
   form closes" (`terms.travel_after_close`, migration `0056`, default off). With it on,
