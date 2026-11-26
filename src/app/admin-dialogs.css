@@ -116,6 +116,60 @@
   gap: 0.25rem 0.5rem;
 }
 
+/* ---- The shared Modal inside the console --------------------------------- */
+/* components/Modal.tsx is styled by `.modal-*` in globals.css. Inside `.ad` its
+   chrome joins the console: a title row over a rule, a quiet close button. The
+   panel also sets its own text, because a modal can open from inside a table
+   cell (the coverage grid's) and would otherwise take that cell's colour,
+   weight, centring and nowrap. These name the shared classes, which is why
+   they are not `ad-` classes; they load after globals.css, so they win at the
+   same specificity. */
+:where(.ad) .modal-panel {
+  gap: 0.625rem;
+  padding: 0.875rem 1rem 1rem;
+  border-radius: var(--ad-radius-lg);
+  background: var(--ad-surface);
+  box-shadow: var(--ad-shadow-modal);
+  color: var(--ad-ink);
+  font-size: 0.875rem;
+  font-variant-numeric: normal;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+:where(.ad) .modal-head {
+  align-items: flex-start;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ad-border-soft);
+}
+:where(.ad) .modal-label {
+  min-width: 0;
+  padding-top: 0.125rem;
+  color: var(--ad-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+:where(.ad) .modal-close {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ad-text-2);
+  font-size: 0.875rem;
+}
+:where(.ad) .modal-close:hover {
+  background: var(--ad-sunken);
+  color: var(--ad-ink);
+}
+/* globals.css takes the panel edge to edge under 720px; this keeps that. */
+@media (max-width: 719.98px) {
+  :where(.ad) .modal-panel {
+    padding: 0.625rem 0.75rem 0.75rem;
+    border-radius: 0;
+  }
+}
+
 /* A dialog's content. It opens from inside a small or muted line of the page,
    so it sets its own text rather than inheriting that line's. */
 .ad-dg-body {

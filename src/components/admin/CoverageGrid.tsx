@@ -31,17 +31,11 @@ const DAY_TYPES: { dayType: DayType; label: string }[] = [
 export function CoverageGrid({
   rows,
   assignedCells,
-  stacked = false,
   compact = false,
   positionName,
 }: {
   rows: readonly CoverageRow[];
   assignedCells: AssignedCellMap;
-  /**
-   * Weekdays above Weekends instead of side by side, for a narrow card. Each
-   * table still scrolls sideways on its own when it is wider than the card.
-   */
-  stacked?: boolean;
   /**
    * Tighter columns for the per-student card: no Target column and no
    * tier/close pills on the Shift column, so the grid needs less horizontal
@@ -55,17 +49,15 @@ export function CoverageGrid({
     return <p className="ad-muted">No blocks configured.</p>;
   }
 
-  const tableClass = cx(
-    "ad-table ad-gr-cov-table",
-    stacked && "ad-gr-cov-table--fill",
-    compact && "ad-gr-cov-table--compact",
-  );
+  // Sized to its numbers, never stretched to the card: in a narrow card the two
+  // tables wrap, one above the other, and each scrolls sideways if it must.
+  const tableClass = cx("ad-table ad-gr-cov-table", compact && "ad-gr-cov-table--compact");
   // On the schedule page each grid sits in a panel with its own heading. The
   // compact one, on a student page, opens from a disclosure with none above it.
   const Heading = compact ? "h2" : "h3";
 
   return (
-    <div className={stacked ? "ad-gr-cov-layout ad-gr-cov-layout--stacked" : "ad-gr-cov-layout"}>
+    <div className="ad-gr-cov-layout">
       {DAY_TYPES.map(({ dayType, label }) => {
         const dayRows = rows.filter((r) => r.dayType === dayType);
         if (dayRows.length === 0) return null;

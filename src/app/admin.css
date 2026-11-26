@@ -26,8 +26,22 @@
      manual  #5b3fa8 on its tint 6.6, surface 7.7
      auto    #9d2463 on its tint 6.3, surface 7.3
      warn-mark #b45309 on surface 5.0 (icons only)
-     draft   #d9a520 is a bar segment and its key dot, always beside its label */
+     draft   #d9a520 is a bar segment and its key dot, always beside its label
+
+   Dark has the same pairs, in the same warm family (admin-theme.test.ts checks
+   every pair in both themes):
+     ink     #f2eee9 on page 15.9, surface 14.5, sunken 13.0, zebra 13.7
+     text-2  #c9c1b7 on page 10.3, surface 9.4, sunken 8.4, on disabled 6.9
+     text-3  #a69d93 on page 6.9, surface 6.3, sunken 5.6
+     link    #8cb8f2 on surface 8.2, sunken 7.3, info tint 7.5
+     on-ink  #1c1917 on ink 15.1, ink-hover 11.3, accent 4.7, danger 7.2,
+             danger-hover 9.4, success 9.4, info 8.5, manual 8.2, auto 7.8
+     border-strong #8a8279 on surface 4.4, page 4.9, sunken 4.0
+     accent  #e8504f on surface 4.5, sunken 4.1
+     success, warning, danger, info, manual, auto each 6.2 or better on
+     their tint and on every surface */
 .ad {
+  color-scheme: light;
   --ad-page: #f7f5f2;
   --ad-surface: #ffffff;
   --ad-sunken: #efebe5;
@@ -47,6 +61,7 @@
   --ad-success-tint: #eaf6ee;
   --ad-warning: #7a4a00;
   --ad-warning-tint: #fff4d6;
+  --ad-warning-edge: #e0c060;
   --ad-warn-mark: #b45309;
   --ad-danger: #b42318;
   --ad-danger-tint: #fdecea;
@@ -64,6 +79,7 @@
   --ad-radius-lg: 8px;
   --ad-shadow-float: 0 4px 16px rgb(28 25 23 / 0.12);
   --ad-shadow-modal: 0 12px 40px rgb(28 25 23 / 0.25);
+  --ad-backdrop: rgb(28 25 23 / 0.5);
   --ad-rail-w: 13.5rem;
   --ad-topbar-h: 2.75rem;
   --ad-gutter: 1.5rem;
@@ -83,6 +99,7 @@
   --color-border-secondary: var(--ad-border);
   --color-border-tertiary: var(--ad-border-soft);
   --color-border-control: var(--ad-border-strong);
+  --color-border-warning: var(--ad-warning-edge);
   --border-radius-md: var(--ad-radius);
   --border-radius-lg: var(--ad-radius-lg);
 
@@ -95,16 +112,101 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/* Dark: the admin's own choice (`data-theme="dark"`, set by AdminPage), or the
+   device's when they have not chosen (no attribute). The two blocks below must
+   stay identical; admin-theme.test.ts fails if they drift. The document takes
+   the tokens too, so what shows past the end of the page is dark as well. */
+.ad[data-theme="dark"],
+html:has(.ad[data-theme="dark"]) {
+  color-scheme: dark;
+  --ad-page: #171412;
+  --ad-surface: #211d1a;
+  --ad-sunken: #2b2622;
+  --ad-zebra: #262220;
+  --ad-ink: #f2eee9;
+  --ad-ink-hover: #d6cfc6;
+  --ad-on-ink: #1c1917;
+  --ad-text-2: #c9c1b7;
+  --ad-text-3: #a69d93;
+  --ad-link: #8cb8f2;
+  --ad-border: #3d3732;
+  --ad-border-soft: #322d29;
+  --ad-border-strong: #8a8279;
+  --ad-disabled: #3a3430;
+  --ad-accent: #e8504f;
+  --ad-success: #74d197;
+  --ad-success-tint: #16301f;
+  --ad-warning: #f2c46b;
+  --ad-warning-tint: #332710;
+  --ad-warning-edge: #6b5520;
+  --ad-warn-mark: #eda33c;
+  --ad-danger: #f4877c;
+  --ad-danger-tint: #3b1d1a;
+  --ad-danger-hover: #f8aaa2;
+  --ad-draft: #d9a520;
+  --ad-info: #8cb8f2;
+  --ad-info-tint: #182638;
+  --ad-manual: #bba6f2;
+  --ad-manual-tint: #29223f;
+  --ad-auto: #f08fc0;
+  --ad-auto-tint: #3a1b2b;
+  --ad-shadow-float: 0 4px 16px rgb(0 0 0 / 0.45);
+  --ad-shadow-modal: 0 12px 40px rgb(0 0 0 / 0.6);
+  --ad-backdrop: rgb(0 0 0 / 0.6);
+}
+@media (prefers-color-scheme: dark) {
+  .ad:not([data-theme="light"]),
+  html:has(.ad:not([data-theme="light"])) {
+    color-scheme: dark;
+    --ad-page: #171412;
+    --ad-surface: #211d1a;
+    --ad-sunken: #2b2622;
+    --ad-zebra: #262220;
+    --ad-ink: #f2eee9;
+    --ad-ink-hover: #d6cfc6;
+    --ad-on-ink: #1c1917;
+    --ad-text-2: #c9c1b7;
+    --ad-text-3: #a69d93;
+    --ad-link: #8cb8f2;
+    --ad-border: #3d3732;
+    --ad-border-soft: #322d29;
+    --ad-border-strong: #8a8279;
+    --ad-disabled: #3a3430;
+    --ad-accent: #e8504f;
+    --ad-success: #74d197;
+    --ad-success-tint: #16301f;
+    --ad-warning: #f2c46b;
+    --ad-warning-tint: #332710;
+    --ad-warning-edge: #6b5520;
+    --ad-warn-mark: #eda33c;
+    --ad-danger: #f4877c;
+    --ad-danger-tint: #3b1d1a;
+    --ad-danger-hover: #f8aaa2;
+    --ad-draft: #d9a520;
+    --ad-info: #8cb8f2;
+    --ad-info-tint: #182638;
+    --ad-manual: #bba6f2;
+    --ad-manual-tint: #29223f;
+    --ad-auto: #f08fc0;
+    --ad-auto-tint: #3a1b2b;
+    --ad-shadow-float: 0 4px 16px rgb(0 0 0 / 0.45);
+    --ad-shadow-modal: 0 12px 40px rgb(0 0 0 / 0.6);
+    --ad-backdrop: rgb(0 0 0 / 0.6);
+  }
+}
+
 /* A focused control scrolls into view clear of the sticky top bar. Scroll
-   padding only works on the scroller, which is the document. */
+   padding only works on the scroller, which is the document. In dark the
+   document is the page colour (it has no tokens in light, so stays as it was). */
 html:has(.ad) {
   scroll-padding-top: 4rem;
+  background: var(--ad-page, transparent);
 }
 
 /* ---- Base elements ------------------------------------------------------ */
 /* One focus ring for every control: an ink outline, set off from the control
    by a 2px gap. The gap shows the surface behind (page, panel, tint or
-   toolbar, all light: ink is 14.7:1 or better on each), so the ring also reads
+   toolbar: ink is 12.3:1 or better on each, in either theme), so the ring also reads
    around a filled ink or red button. It is an outline only: a box-shadow here
    would replace the state bars drawn with one (ad-entry, table rows). */
 :where(.ad) :focus-visible {
@@ -475,7 +577,7 @@ html:has(.ad) {
     position: fixed;
     inset: 0;
     z-index: 55;
-    background: rgb(28 25 23 / 0.5);
+    background: var(--ad-backdrop);
   }
 }
 @media (prefers-reduced-motion: reduce) {

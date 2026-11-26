@@ -440,17 +440,41 @@ request in another semester the card says which, with a switch button, instead o
 silently missing (`requestInOtherTerm` in `data.ts`). It is the first card of the
 page's right column, and the request list is the card's own scroll container (max 48vh)
 so a long history never stretches the page below the other cards. Since 1.67 the page is
-**three fixed columns** (`.ad-st-cols` in `admin-student.css`), so a card is in the same
-place on every student: the grid, the automatic **flags** and the position's coverage on
-the left; what the student sent in the middle (course schedule, extracurriculars,
-travel, weekend closes); what came after on the right (change requests, the two notes,
-Student details). Under 1200px the middle and right columns stack beside the grid, and
-under 960px everything stacks in that order. (From v0.68 to 1.66 this was a CSS
-multi-column masonry with three cards pinned to the front; the fixed order replaced it
-because a card's position moved with the content of the others.) The columns
-render unconditionally and the submission-dependent cards are conditional
-children of them, not the other way around. A student with no position has no left
-column (`ad-st-cols--noleft`). The queue at
+**three columns** rendered by `components/admin/StudentBoard.tsx`, so a card is in the
+same place on every student. By default: the grid, the automatic **flags** and the
+position's coverage on the left; what the student sent in the middle (course schedule,
+extracurriculars, travel, weekend closes); what came after on the right (change
+requests, the two notes, Student details). From 1200px an admin can **Arrange cards**
+(drag, or the move buttons on each card's bar) and resize the columns (separators,
+each column 20% to 60%); the arrangement is saved to their account (`saveStudentLayout`,
+below) and comes back from the server, so the page never flashes the default. The page
+gives each card a stable id (`grid`, `flags`, `coverage`, `course`, `extracurriculars`,
+`travel`, `closes`, `changes`, `scheduler-notes`, `student-notes`, `details`), and
+`arrangeCards` in `lib/admin/student-board.ts` merges the saved order with the cards
+this student has: a card the saved layout lacks goes to its default column, a card that
+is not rendering keeps its saved place for students who have it. A column with no cards
+collapses outside arrange mode. Under 1200px the second and third columns stack beside
+the first, and under 960px everything stacks in column order. Moving a card to another
+column remounts it, so unsaved state inside it (trial picks on the grid) is lost.
+(From v0.68 to 1.66 this was a CSS multi-column masonry with three cards pinned to the
+front; fixed columns replaced it because a card's position moved with the content of
+the others.)
+
+**Admin preferences (1.67).** An admin's own console settings, the theme and the
+student page layout, are one `app_settings` row per admin keyed `admin_prefs:<sha256 of
+the email, 40 hex>` (the key column is 64 characters), JSON parsed leniently by
+`parseAdminPrefs` in `lib/admin/preferences-shape.ts` (anything unreadable falls back
+to the default). `lib/admin/preferences.ts` reads (`getAdminPrefsCached`, once per
+request) and merges writes; the actions in `preferences-actions.ts` take the email from
+the session, so an admin only ever writes their own row.
+
+**Stored flags read short (1.67).** The page shows a stored lifecycle flag through
+`shortFlagDetail` (`lib/admin/flag-copy.ts`), which shortens the stored `detail` at
+display time, so rows written in older words read the same way: a position change keeps
+its outcomes ("Shift Lead to Cashier. 16 picks left on the old position."), an
+orphaned-pick flag drops its shift list (the grid marks them), and a failed-validation
+flag shows its list only when an internal copy exists (otherwise the check lines under
+it say the same). The stored text is the record and is not changed. The queue at
 `/admin/change-requests` lists the working term's open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -888,10 +912,10 @@ cards). The rest:
   the student's group (`StudentDetail.groupId`) plus "No group", saved through the
   existing `assignStudents` / `unassignStudents`.
 - **Coverage is a card like the rest.** The position's coverage grid moved from a
-  full-width panel under the dashboard into the masonry as its last card;
-  `CoverageGrid`'s opt-in `stacked` prop stacks Weekdays over Weekends so they fit a
-  column, each table scrolling sideways inside the card. `/admin/schedule` keeps the
-  side-by-side default. The card also opts into `compact` (v1.38): no Target column and
+  full-width panel under the dashboard into the masonry as its last card. The tables
+  are sized to their numbers, never stretched to the card (1.67 dropped the `stacked`
+  prop that did): side by side when they fit, Weekends wrapping under Weekdays when
+  not, each scrolling sideways inside the card. The card also opts into `compact` (v1.38): no Target column and
   no tier/close pills on the Shift column, so the grid needs less horizontal scrolling
   next to the card's own narrow width. `/admin/schedule` keeps the full columns.
 - **Availability and schedule card.** It opens on **Edit schedule** whenever a current
@@ -1529,10 +1553,17 @@ or auth check changed with it.
   A hex colour belongs in a token block (`admin.css`, or the few grid-only ones at the
   top of `admin-grid.css`, which lists its own pairs), not in a rule or an inline
   style. Inline `style` is kept for values that are data (a bar's width).
+- **Dark mode.** Every colour token has a dark value in `admin.css`, applied under
+  `.ad[data-theme="dark"]` and, when the admin has not chosen, under
+  `prefers-color-scheme: dark`; the two copies are kept identical by
+  `app/admin-theme.test.ts`, which also checks the contrast pairs in both themes.
+  `AdminPage` renders `data-theme` from the admin's saved preference (no flash), and
+  `ThemeToggle` in the top bar flips it and saves it (`saveAdminTheme`). A new colour
+  needs a dark value too; a grid-only colour gets its dark override in `admin-grid.css`.
 - **Page patterns.** Lists share one pattern, a toolbar over a dense table
   (`ResponseList` is the model); Missing responses is one table with a heading row per
-  bucket. A student's page is three fixed columns with Student details, coverage and
-  the grid's legend closed by default. The schedule page uses the full width with its
+  bucket. A student's page is three arrangeable columns with Student details, coverage
+  and the grid's legend closed by default. The schedule page uses the full width with its
   settings, run history and compare closed. A position is a closed card
   (`PositionCard`) that opens when it has warnings, unsaved edits or a result to show.
 - **Accessibility (WCAG 2.2 AA) by construction.** Colours are used in the tested

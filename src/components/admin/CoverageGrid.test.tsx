@@ -88,15 +88,9 @@ describe("CoverageGrid", () => {
   /** The flex box holding both day-type tables: table → scroll wrapper → layout. */
   const layoutOf = () => weekdayTable().parentElement!.parentElement!;
 
-  it("sets the two tables side by side by default", () => {
+  it("sets the two tables side by side, each scrolling on its own", () => {
     render(<CoverageGrid rows={rows()} assignedCells={null} />);
     expect(layoutOf()).toHaveClass("ad-gr-cov-layout");
-    expect(layoutOf()).not.toHaveClass("ad-gr-cov-layout--stacked");
-  });
-
-  it("stacks weekdays above weekends when asked, each table scrolling on its own", () => {
-    render(<CoverageGrid rows={rows()} assignedCells={null} stacked />);
-    expect(layoutOf()).toHaveClass("ad-gr-cov-layout--stacked");
     expect(weekendTable().parentElement!.parentElement).toBe(layoutOf());
     const headings = within(layoutOf())
       .getAllByRole("heading")

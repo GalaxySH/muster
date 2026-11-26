@@ -1721,8 +1721,9 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 
 ## Changelog
 - **1.67 (2026-11-25)** — **The admin console has a new look and one layout.**
-  Presentation only: no loader, query, server action, form field name, auth check or
-  stored data changed, and there is no migration. Every admin page renders in a new
+  Presentation only: no loader, query, existing server action, form field name, auth
+  check or stored data changed, and there is no migration. The one new write is an
+  admin's own console preferences (below), one `app_settings` row per admin. Every admin page renders in a new
   shell, `components/admin/AdminPage.tsx`: the section rail (`AdminNav`, grouped
   Daily / Schedule / Setup / Settings / Tools, a drawer under 960px, foldable to icons
   on a wide screen), a top bar that stays in view, and the page's one heading. The
@@ -1742,9 +1743,15 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   (six shown, the rest behind "Show N more") beside Response progress, the queues are
   one strip, and Least staffed shifts, Recent submissions and System status are
   closed under "More"; the lists share one toolbar-and-table pattern and Missing
-  responses is a table with a section per bucket; a student's page has a fixed
-  three-column order with Student details, coverage and the legend closed and the
-  rail folded; the schedule page uses the full width with its settings, run history
+  responses is a table with a section per bucket; a student's page is three columns
+  with Student details, coverage and the legend closed and the rail folded, and from
+  1200px "Arrange cards" lets an admin drag its cards between columns and resize the
+  columns (each 20% to 60%), saved to their account; the console has a **dark mode**
+  (the moon button in the top bar, saved to the admin's account, following the device
+  until set); a stored flag on a student's page shows a short line (what the grid or
+  the check lines already show is left out; the stored detail is unchanged); the
+  coverage card sizes its tables to their numbers instead of stretching them; the
+  coverage cell dialog is restyled as an aligned list; the schedule page uses the full width with its settings, run history
   and compare closed; a position is a closed card that opens when it has warnings.
   Every admin tab now has its own title, and page headings were aligned with the rail:
   "Admin" is "Overview", "Non-responses" is "Missing responses", "SL weekend closes"

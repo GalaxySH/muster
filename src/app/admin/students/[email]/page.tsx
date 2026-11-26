@@ -71,7 +71,11 @@ import { env } from "@/lib/env";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronLeft, faChevronRight } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import { ButtonLink, Disclosure, Notice, Panel, Pill, Status } from "@/components/admin/ui";
+import { shortFlagDetail } from "@/lib/admin/flag-copy";
 import { workingTerm, workingTermId } from "@/lib/terms/working";
+import { getAdminPrefsCached } from "@/lib/admin/preferences";
+import { DEFAULT_STUDENT_LAYOUT } from "@/lib/admin/student-board";
+import { StudentBoard, type BoardCard } from "@/components/admin/StudentBoard";
 
 /** The tab is named for the student: the address in the URL, nothing loaded. */
 export async function generateMetadata({
@@ -308,9 +312,8 @@ export default async function StudentDetailPage({
   const scheduleCohort = schedule ? weekendCohortOf(schedule.cells) : null;
 
   const studentHref = (e: string) => `/admin/students/${encodeURIComponent(e)}${suffix}`;
-  // The left column holds only what a position brings (the grid, its checks,
-  // coverage) and the bare flags card, so it drops out when none of them render.
-  const hasLeft = Boolean(position) || Boolean(submission && storedAlerts.length > 0);
+  // How this admin arranged the cards below; null is the default arrangement.
+  const prefs = await getAdminPrefsCached(session.email);
   const extracurricularsEmpty =
     !evidence.extracurricularNotes && evidence.extracurricularFiles.length === 0;
 
@@ -485,460 +488,531 @@ export default async function StudentDetailPage({
           </Notice>
         )}
 
-        {/* The response in three fixed columns, so a card is in the same place on
-            every student: the grid and its checks on the left, what the student
-            sent in the middle, what came after on the right. Under 960px they
-            stack in that order. */}
-        <div className={hasLeft ? "ad-st-cols" : "ad-st-cols ad-st-cols--noleft"}>
-          {hasLeft && (
-            <div className="ad-stack ad-st-col-left">
-              {/* Availability preferences + click-to-try hours calculator, saveable on
+        {/* The response as cards in three columns, arranged the way this admin
+            set them (StudentBoard). By default the grid and its checks are on the
+            left, what the student sent in the middle, what came after on the
+            right. A card that does not render for this student is left out. */}
+        <StudentBoard
+          defaultLayout={DEFAULT_STUDENT_LAYOUT}
+          savedLayout={prefs.studentLayout}
+          cards={[
+            /* Availability preferences + click-to-try hours calculator, saveable on
                   the student's behalf. With no submission every cell starts empty and
                   the scheduler can still try shifts against the position's floor and
-                  cap. */}
-              {grid && validation && (
-                <Panel>
-                  <div className="ad-stack">
-                    {internal && (
-                      <Notice action={<RevertInternalButton studentEmail={detail.email} />}>
-                        Adjusted internally by {internal.editedBy} on {fmtStamp(internal.editedAt)}.
-                        The student&apos;s own answers are kept.
-                        {internalDiff && ` ${describeDiff(internalDiff)}`}
-                      </Notice>
-                    )}
-                    <PrefGridCalculator
-                      grid={grid}
-                      studentEmail={detail.email}
-                      blocks={blocks}
-                      position={position!}
-                      desiredHours={submission?.desiredHours ?? null}
-                      everyWeekendOptIn={gridOptIn}
-                      cap={cap}
-                      scheduledMinutes={scheduledMinutes}
-                      scheduleCohort={scheduleCohort}
-                      hasCurrentRun={schedule !== null}
-                      hasSchedule={(schedule?.cells.length ?? 0) > 0}
-                      isInternal={internal !== null}
-                      studentCells={internal ? [...selection, ...autoAssigned] : null}
-                      orphans={detail.orphaned}
-                    />
-                  </div>
-                </Panel>
-              )}
+                  cap. */
+            grid &&
+              validation && {
+                id: "grid",
+                title: "Availability and schedule",
+                node: (
+                  <Panel>
+                    <div className="ad-stack">
+                      {internal && (
+                        <Notice action={<RevertInternalButton studentEmail={detail.email} />}>
+                          Adjusted internally by {internal.editedBy} on{" "}
+                          {fmtStamp(internal.editedAt)}. The student&apos;s own answers are kept.
+                          {internalDiff && ` ${describeDiff(internalDiff)}`}
+                        </Notice>
+                      )}
+                      <PrefGridCalculator
+                        grid={grid}
+                        studentEmail={detail.email}
+                        blocks={blocks}
+                        position={position!}
+                        desiredHours={submission?.desiredHours ?? null}
+                        everyWeekendOptIn={gridOptIn}
+                        cap={cap}
+                        scheduledMinutes={scheduledMinutes}
+                        scheduleCohort={scheduleCohort}
+                        hasCurrentRun={schedule !== null}
+                        hasSchedule={(schedule?.cells.length ?? 0) > 0}
+                        isInternal={internal !== null}
+                        studentCells={internal ? [...selection, ...autoAssigned] : null}
+                        orphans={detail.orphaned}
+                      />
+                    </div>
+                  </Panel>
+                ),
+              },
 
-              {/* Flags & checks, right under the grid they judge. Only meaningful once
+            /* Flags & checks, right under the grid they judge. Only meaningful once
                   the student has actually filled something in: against an empty
                   selection every check would "fail", so this drops out for an
-                  unstarted response. */}
-              {started && submission && validation && (
+                  unstarted response. */
+            started &&
+              submission &&
+              validation && {
+                id: "flags",
+                title: "Flags",
+                node: (
+                  <Panel
+                    title={
+                      <>
+                        Flags <span className="ad-st-titlenote">(automatic)</span>
+                      </>
+                    }
+                  >
+                    <div className="ad-stack ad-stack--tight">
+                      <StoredFlagAlerts
+                        alerts={storedAlerts}
+                        submissionId={submission.id}
+                        hasInternalCopy={internal !== null}
+                      />
+                      {noFormAvailability ? (
+                        <CheckLine ok={null} text="No availability on file from the Google Form" />
+                      ) : (
+                        validation.checks
+                          .filter((c) => c.id !== "weekend")
+                          .map((c) => <CheckLine key={c.id} ok={c.passed} text={c.detail} />)
+                      )}
+                      {!noFormAvailability &&
+                        !position!.weekendExempt &&
+                        (autoAssigned.length > 0 ? (
+                          <CheckLine
+                            ok={false}
+                            text={`No weekend shift selected. Auto-assigned ${autoAssigned
+                              .map((c) => describeCell(c, blocks))
+                              .join(", ")}`}
+                          />
+                        ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
+                          <CheckLine ok text="Weekend shift selected" />
+                        ) : (
+                          <CheckLine
+                            ok={false}
+                            text="No weekend shift selected. Will auto-assign on submit."
+                          />
+                        ))}
+                      {lateTravelCount > 0 && (
+                        <CheckLine
+                          ok={false}
+                          text={`${lateTravelCount} travel entr${
+                            lateTravelCount === 1 ? "y" : "ies"
+                          } added after the cutoff, not excused (late)`}
+                        />
+                      )}
+                    </div>
+                  </Panel>
+                ),
+              },
+
+            /* A responder whose position is unset has no validation to show, but a
+                  position_change flag must stay visible and dismissible (roadmap 3.3). */
+            submission &&
+              !validation &&
+              storedAlerts.length > 0 && {
+                id: "flags",
+                title: "Flags",
+                node: (
+                  <Panel title="Flags">
+                    <div className="ad-stack ad-stack--tight">
+                      <StoredFlagAlerts
+                        alerts={storedAlerts}
+                        submissionId={submission.id}
+                        hasInternalCopy={internal !== null}
+                      />
+                    </div>
+                  </Panel>
+                ),
+              },
+
+            /* Coverage for this student's position, the same grid the schedule
+                  page shows, closed until asked for: the two tables stack to fit
+                  the column and each scrolls sideways inside it. */
+            coverageRows &&
+              position && {
+                id: "coverage",
+                title: "Coverage",
+                node: (
+                  <Disclosure title={`${position.name} coverage`}>
+                    <div className="ad-stack">
+                      <div className="ad-row ad-row--between">
+                        <span>
+                          <CoverageLegend />
+                        </span>
+                        <Link href="/admin/schedule">Open the schedule</Link>
+                      </div>
+                      <CoverageGrid
+                        rows={coverageRows}
+                        assignedCells={assignedCells}
+                        positionName={position.name}
+                        compact
+                      />
+                    </div>
+                  </Disclosure>
+                ),
+              },
+
+            /* Course schedule. It renders for everyone on the roster, not just
+                responders: the scheduler can record details, and adding one starts
+                the student's submission. */
+            {
+              id: "course",
+              title: "Course schedule",
+              node: evidence.courseScheduleFileId ? (
                 <Panel
-                  title={
+                  title="Course schedule"
+                  aside={
                     <>
-                      Flags <span className="ad-st-titlenote">(automatic)</span>
+                      <AddEvidenceButton kind="course" studentEmail={detail.email} replaces />
+                      <RemoveEvidenceButton kind="course" studentEmail={detail.email} />
                     </>
                   }
                 >
-                  <div className="ad-stack ad-stack--tight">
-                    <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-                    {noFormAvailability ? (
-                      <CheckLine ok={null} text="No availability on file from the Google Form" />
-                    ) : (
-                      validation.checks
-                        .filter((c) => c.id !== "weekend")
-                        .map((c) => <CheckLine key={c.id} ok={c.passed} text={c.detail} />)
-                    )}
-                    {!noFormAvailability &&
-                      !position!.weekendExempt &&
-                      (autoAssigned.length > 0 ? (
-                        <CheckLine
-                          ok={false}
-                          text={`No weekend shift selected. Auto-assigned ${autoAssigned
-                            .map((c) => describeCell(c, blocks))
-                            .join(", ")}`}
-                        />
-                      ) : selection.some((s) => s.day === "sat" || s.day === "sun") ? (
-                        <CheckLine ok text="Weekend shift selected" />
-                      ) : (
-                        <CheckLine
-                          ok={false}
-                          text="No weekend shift selected. Will auto-assign on submit."
-                        />
-                      ))}
-                    {lateTravelCount > 0 && (
-                      <CheckLine
-                        ok={false}
-                        text={`${lateTravelCount} travel entr${
-                          lateTravelCount === 1 ? "y" : "ies"
-                        } added after the cutoff, not excused (late)`}
-                      />
-                    )}
-                  </div>
+                  <EvidenceThumb
+                    fileId={evidence.courseScheduleFileId}
+                    label="Course schedule"
+                    fill
+                    fillHeight={320}
+                  />
                 </Panel>
-              )}
+              ) : (
+                <EmptyCard
+                  title="Course schedule"
+                  action={
+                    <AddEvidenceButton kind="course" studentEmail={detail.email} replaces={false} />
+                  }
+                >
+                  <Status tone="warning">No course schedule uploaded.</Status>
+                </EmptyCard>
+              ),
+            },
 
-              {/* A responder whose position is unset has no validation to show, but a
-                  position_change flag must stay visible and dismissible (roadmap 3.3). */}
-              {submission && !validation && storedAlerts.length > 0 && (
-                <Panel title="Flags">
-                  <div className="ad-stack ad-stack--tight">
-                    <StoredFlagAlerts alerts={storedAlerts} submissionId={submission.id} />
-                  </div>
-                </Panel>
-              )}
-
-              {/* Coverage for this student's position, the same grid the schedule
-                  page shows, closed until asked for: the two tables stack to fit
-                  the column and each scrolls sideways inside it. */}
-              {coverageRows && position && (
-                <Disclosure title={`${position.name} coverage`}>
-                  <div className="ad-stack">
-                    <div className="ad-row ad-row--between">
-                      <span>
-                        <CoverageLegend />
-                      </span>
-                      <Link href="/admin/schedule">Open the schedule</Link>
-                    </div>
-                    <CoverageGrid
-                      rows={coverageRows}
-                      assignedCells={assignedCells}
-                      positionName={position.name}
-                      stacked
-                      compact
+            {
+              id: "extracurriculars",
+              title: "Extracurriculars",
+              node: extracurricularsEmpty ? (
+                <EmptyCard
+                  title="Extracurriculars"
+                  action={
+                    <AddEvidenceButton
+                      kind="extracurricular"
+                      studentEmail={detail.email}
+                      currentNotes={evidence.extracurricularNotes}
                     />
-                  </div>
-                </Disclosure>
-              )}
-            </div>
-          )}
-
-          <div className="ad-stack ad-st-col-mid">
-            {/* Course schedule. It renders for everyone on the roster, not just
-                responders: the scheduler can record details, and adding one starts
-                the student's submission. */}
-            {evidence.courseScheduleFileId ? (
-              <Panel
-                title="Course schedule"
-                aside={
-                  <>
-                    <AddEvidenceButton kind="course" studentEmail={detail.email} replaces />
-                    <RemoveEvidenceButton kind="course" studentEmail={detail.email} />
-                  </>
-                }
-              >
-                <EvidenceThumb
-                  fileId={evidence.courseScheduleFileId}
-                  label="Course schedule"
-                  fill
-                  fillHeight={320}
-                />
-              </Panel>
-            ) : (
-              <EmptyCard
-                title="Course schedule"
-                action={
-                  <AddEvidenceButton kind="course" studentEmail={detail.email} replaces={false} />
-                }
-              >
-                <Status tone="warning">No course schedule uploaded.</Status>
-              </EmptyCard>
-            )}
-
-            {/* Extracurriculars */}
-            {extracurricularsEmpty ? (
-              <EmptyCard
-                title="Extracurriculars"
-                action={
-                  <AddEvidenceButton
-                    kind="extracurricular"
-                    studentEmail={detail.email}
-                    currentNotes={evidence.extracurricularNotes}
-                  />
-                }
-              >
-                No details provided. No proof attached.
-              </EmptyCard>
-            ) : (
-              <Panel
-                title="Extracurriculars"
-                aside={
-                  <AddEvidenceButton
-                    kind="extracurricular"
-                    studentEmail={detail.email}
-                    currentNotes={evidence.extracurricularNotes}
-                  />
-                }
-              >
-                {evidence.extracurricularNotes ? (
-                  <p className="ad-prewrap">
-                    <span className="ad-muted">details: </span>
-                    &ldquo;{evidence.extracurricularNotes}&rdquo;
-                  </p>
-                ) : (
-                  <p className="ad-muted">No details provided.</p>
-                )}
-                {evidence.extracurricularFiles.length > 0 ? (
-                  <div className="ad-st-proofs">
-                    {evidence.extracurricularFiles.map((f, i) => (
-                      <div key={f.id} className="ad-st-proof">
-                        <EvidenceThumb
-                          fileId={f.fileId}
-                          label="Extracurricular proof"
-                          caption={`proof ${i + 1}`}
-                        />
-                        <RemoveEvidenceButton
-                          kind="extracurricular"
-                          rowId={f.id}
-                          studentEmail={detail.email}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="ad-muted ad-st-last">No proof attached.</p>
-                )}
-              </Panel>
-            )}
-
-            {/* Travel */}
-            {evidence.travel.length > 0 ? (
-              <Panel
-                title="Travel"
-                aside={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
-              >
-                <ul className="ad-list-reset ad-stack ad-stack--tight">
-                  {evidence.travel.map((t) => (
-                    <li
-                      key={t.id}
-                      className={`ad-entry ad-st-entry${t.excused ? "" : " ad-entry--danger"}${
-                        t.resolved ? " ad-entry--success" : ""
-                      }`}
-                    >
-                      {t.proofFileId ? (
-                        <div className="ad-st-entry-thumb">
-                          <EvidenceThumb fileId={t.proofFileId} label="Travel proof" size={56} />
-                        </div>
-                      ) : (
-                        <span className="ad-st-noproof">No proof</span>
-                      )}
-                      <div className="ad-st-entry-body">
-                        <div>
-                          {t.startDate} → {t.endDate}{" "}
-                          <Pill tone={t.excused ? "success" : "danger"}>
-                            {TRAVEL_STANDING_LABEL[travelStanding(t)]}
-                          </Pill>
-                        </div>
-                        {t.note && <div className="ad-muted">{t.note}</div>}
-                        <div className="ad-st-entry-controls">
-                          <TravelResolvedCheckbox id={t.id} resolved={t.resolved} />
-                          <TravelEntryActions
-                            id={t.id}
+                  }
+                >
+                  No details provided. No proof attached.
+                </EmptyCard>
+              ) : (
+                <Panel
+                  title="Extracurriculars"
+                  aside={
+                    <AddEvidenceButton
+                      kind="extracurricular"
+                      studentEmail={detail.email}
+                      currentNotes={evidence.extracurricularNotes}
+                    />
+                  }
+                >
+                  {evidence.extracurricularNotes ? (
+                    <p className="ad-prewrap">
+                      <span className="ad-muted">details: </span>
+                      &ldquo;{evidence.extracurricularNotes}&rdquo;
+                    </p>
+                  ) : (
+                    <p className="ad-muted">No details provided.</p>
+                  )}
+                  {evidence.extracurricularFiles.length > 0 ? (
+                    <div className="ad-st-proofs">
+                      {evidence.extracurricularFiles.map((f, i) => (
+                        <div key={f.id} className="ad-st-proof">
+                          <EvidenceThumb
+                            fileId={f.fileId}
+                            label="Extracurricular proof"
+                            caption={`proof ${i + 1}`}
+                          />
+                          <RemoveEvidenceButton
+                            kind="extracurricular"
+                            rowId={f.id}
                             studentEmail={detail.email}
-                            startDate={t.startDate}
-                            endDate={t.endDate}
-                            note={t.note}
                           />
                         </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
-            ) : (
-              <EmptyCard
-                title="Travel"
-                action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
-              >
-                No travel entries.
-              </EmptyCard>
-            )}
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="ad-muted ad-st-last">No proof attached.</p>
+                  )}
+                </Panel>
+              ),
+            },
 
-            {/* SL weekend closes: the one extra hard requirement the position carries.
-                Claims can be admin-assigned before a lead fills the form, so this shows
-                whether or not there's a submission to sit under. */}
-            {closes && <CloseClaimsCard closes={closes} />}
-          </div>
-
-          <div className="ad-stack ad-st-col-right">
-            {/* Schedule change requests (roadmap 3.1): independent of the submission,
-                so they render even for students without one. The card grows with
-                its entries: every one is shown whole. */}
-            {(changeRequests.length > 0 || otherTermRequest) && (
-              <Panel title="Schedule change requests">
-                {otherTermRequest && (
-                  <p id={changeRequestAnchor(sp.request!)} className="ad-anchor ad-row">
-                    <span>This request is from {otherTermRequest.name}.</span>
-                    <SelectTermButton
-                      termId={otherTermRequest.id}
-                      label={`Switch to ${otherTermRequest.name}`}
-                    />
-                  </p>
-                )}
-                <div className="ad-st-reqs">
-                  {changeRequests.map((r) => {
-                    const files = changeFiles.get(r.id) ?? [];
-                    return (
-                      <div
-                        key={r.id}
-                        id={changeRequestAnchor(r.id)}
-                        className={
-                          r.status === "resolved"
-                            ? "ad-anchor ad-st-req ad-entry--success"
-                            : "ad-anchor ad-st-req"
-                        }
-                      >
-                        <div className="ad-st-req-head">
-                          <span className="ad-st-req-title">
-                            {changeRequestDayLabel(r.day)} · {r.shiftText}
-                          </span>
-                          <span className="ad-st-req-status">
-                            <ChangeStatusBadge status={r.status} />
-                            <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
-                          </span>
-                        </div>
-                        <div className="ad-muted ad-small">
-                          {r.permanent ? "permanent" : "one time"} · {fmtStamp(r.createdAt)}
-                          <ChangeRequestEntryActions
-                            id={r.id}
-                            day={r.day}
-                            shiftText={r.shiftText}
-                            comment={r.comment}
-                            permanent={r.permanent}
-                            fileCount={files.length}
-                          />
-                        </div>
-                        <p className="ad-prewrap ad-st-req-comment">{r.comment}</p>
-                        {files.length > 0 &&
-                          (previewIds.has(r.id) ? (
-                            <div className="ad-row ad-st-req-files">
-                              {files.map((fileId) => (
-                                <EvidenceThumb
-                                  key={fileId}
-                                  fileId={fileId}
-                                  label="Change request proof"
-                                  size={56}
-                                />
-                              ))}
+            {
+              id: "travel",
+              title: "Travel",
+              node:
+                evidence.travel.length > 0 ? (
+                  <Panel
+                    title="Travel"
+                    aside={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
+                  >
+                    <ul className="ad-list-reset ad-stack ad-stack--tight">
+                      {evidence.travel.map((t) => (
+                        <li
+                          key={t.id}
+                          className={`ad-entry ad-st-entry${t.excused ? "" : " ad-entry--danger"}${
+                            t.resolved ? " ad-entry--success" : ""
+                          }`}
+                        >
+                          {t.proofFileId ? (
+                            <div className="ad-st-entry-thumb">
+                              <EvidenceThumb
+                                fileId={t.proofFileId}
+                                label="Travel proof"
+                                size={56}
+                              />
                             </div>
                           ) : (
-                            <div className="ad-row ad-st-req-files">
-                              {files.map((fileId, i) => (
-                                <a
-                                  key={fileId}
-                                  href={`/api/evidence/${encodeURIComponent(fileId)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  proof {i + 1}
-                                </a>
-                              ))}
+                            <span className="ad-st-noproof">No proof</span>
+                          )}
+                          <div className="ad-st-entry-body">
+                            <div>
+                              {t.startDate} → {t.endDate}{" "}
+                              <Pill tone={t.excused ? "success" : "danger"}>
+                                {TRAVEL_STANDING_LABEL[travelStanding(t)]}
+                              </Pill>
                             </div>
-                          ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </Panel>
-            )}
-
-            {/* Notes render for everyone on the roster, not just responders: the
-                scheduler can record details, and adding any starts the student's
-                submission. */}
-            <NotesCard
-              kind="scheduling"
-              studentEmail={detail.email}
-              notes={submission?.schedulerNotes ?? ""}
-            />
-
-            {/* Student's own note about their requested schedule. Always shown, so
-                the scheduler can write one in for them; saving starts a submission
-                like everything else here. */}
-            <NotesCard
-              kind="student"
-              studentEmail={detail.email}
-              notes={submission?.studentNotes ?? ""}
-            />
-
-            {/* Student details: last authenticated activity, hire date, when the
-                schedule email went out (once it has), and the position and group
-                controls. Closed until needed, except for a student with no
-                position, who is exactly who needs one set. */}
-            <Disclosure
-              title="Student details"
-              open={!position}
-              summary={
-                detail.lastSeenAt ? `Last seen ${fmtStamp(detail.lastSeenAt)}` : "Never logged in"
-              }
-            >
-              <div className="ad-stack">
-                <dl className="ad-dl">
-                  <div>
-                    <dt>Last seen</dt>
-                    {detail.lastSeenAt ? (
-                      <dd>{fmtStamp(detail.lastSeenAt)}</dd>
-                    ) : (
-                      <dd className="ad-danger-text">Never logged in</dd>
-                    )}
-                  </div>
-                  <div>
-                    <dt>Hire date</dt>
-                    {detail.hiredOn ? (
-                      <dd>{fmtHireDay(detail.hiredOn)}</dd>
-                    ) : (
-                      <dd className="ad-muted">Unknown</dd>
-                    )}
-                  </div>
-                  {submission?.scheduleEmailSentAt && (
-                    <div>
-                      <dt>Schedule email sent</dt>
-                      <dd>{fmtStamp(submission.scheduleEmailSentAt)}</dd>
-                    </div>
-                  )}
-                </dl>
-                {/* Position history, oldest first. Absent until somebody actually
-                    moves, so a student who never changed position sees nothing. */}
-                {detail.positionHistory.length > 0 && (
-                  <div>
-                    <div className="ad-faint ad-small">Position history</div>
-                    <ul className="ad-list-reset">
-                      {detail.positionHistory.map((h, i) => (
-                        <li key={i}>
-                          {h.from ? `${h.from} to ${h.to ?? "no position"}` : `Set to ${h.to}`}
-                          <span className="ad-faint"> · {fmtDay(h.changedAt)}</span>
+                            {t.note && <div className="ad-muted">{t.note}</div>}
+                            <div className="ad-st-entry-controls">
+                              <TravelResolvedCheckbox id={t.id} resolved={t.resolved} />
+                              <TravelEntryActions
+                                id={t.id}
+                                studentEmail={detail.email}
+                                startDate={t.startDate}
+                                endDate={t.endDate}
+                                note={t.note}
+                              />
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>
+                  </Panel>
+                ) : (
+                  <EmptyCard
+                    title="Travel"
+                    action={<AddEvidenceButton kind="travel" studentEmail={detail.email} />}
+                  >
+                    No travel entries.
+                  </EmptyCard>
+                ),
+            },
+
+            /* SL weekend closes: the one extra hard requirement the position carries.
+                Claims can be admin-assigned before a lead fills the form, so this shows
+                whether or not there's a submission to sit under. */
+            closes && {
+              id: "closes",
+              title: "Weekend closes",
+              node: <CloseClaimsCard closes={closes} />,
+            },
+
+            /* Schedule change requests (roadmap 3.1): independent of the submission,
+                so they render even for students without one. The card grows with
+                its entries: every one is shown whole. */
+            (changeRequests.length > 0 || otherTermRequest) && {
+              id: "changes",
+              title: "Schedule change requests",
+              node: (
+                <Panel title="Schedule change requests">
+                  {otherTermRequest && (
+                    <p id={changeRequestAnchor(sp.request!)} className="ad-anchor ad-row">
+                      <span>This request is from {otherTermRequest.name}.</span>
+                      <SelectTermButton
+                        termId={otherTermRequest.id}
+                        label={`Switch to ${otherTermRequest.name}`}
+                      />
+                    </p>
+                  )}
+                  <div className="ad-st-reqs">
+                    {changeRequests.map((r) => {
+                      const files = changeFiles.get(r.id) ?? [];
+                      return (
+                        <div
+                          key={r.id}
+                          id={changeRequestAnchor(r.id)}
+                          className={
+                            r.status === "resolved"
+                              ? "ad-anchor ad-st-req ad-entry--success"
+                              : "ad-anchor ad-st-req"
+                          }
+                        >
+                          <div className="ad-st-req-head">
+                            <span className="ad-st-req-title">
+                              {changeRequestDayLabel(r.day)} · {r.shiftText}
+                            </span>
+                            <span className="ad-st-req-status">
+                              <ChangeStatusBadge status={r.status} />
+                              <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
+                            </span>
+                          </div>
+                          <div className="ad-muted ad-small">
+                            {r.permanent ? "permanent" : "one time"} · {fmtStamp(r.createdAt)}
+                            <ChangeRequestEntryActions
+                              id={r.id}
+                              day={r.day}
+                              shiftText={r.shiftText}
+                              comment={r.comment}
+                              permanent={r.permanent}
+                              fileCount={files.length}
+                            />
+                          </div>
+                          <p className="ad-prewrap ad-st-req-comment">{r.comment}</p>
+                          {files.length > 0 &&
+                            (previewIds.has(r.id) ? (
+                              <div className="ad-row ad-st-req-files">
+                                {files.map((fileId) => (
+                                  <EvidenceThumb
+                                    key={fileId}
+                                    fileId={fileId}
+                                    label="Change request proof"
+                                    size={56}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="ad-row ad-st-req-files">
+                                {files.map((fileId, i) => (
+                                  <a
+                                    key={fileId}
+                                    href={`/api/evidence/${encodeURIComponent(fileId)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    proof {i + 1}
+                                  </a>
+                                ))}
+                              </div>
+                            ))}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-                <StudentPositionChanger
+                </Panel>
+              ),
+            },
+
+            /* Notes render for everyone on the roster, not just responders: the
+                scheduler can record details, and adding any starts the student's
+                submission. */
+            {
+              id: "scheduler-notes",
+              title: "Scheduling notes",
+              node: (
+                <NotesCard
+                  kind="scheduling"
                   studentEmail={detail.email}
-                  currentPositionId={position?.id ?? null}
-                  options={allPositions}
+                  notes={submission?.schedulerNotes ?? ""}
                 />
-                <StudentGroupChanger
+              ),
+            },
+
+            /* Student's own note about their requested schedule. Always shown, so
+                the scheduler can write one in for them; saving starts a submission
+                like everything else here. */
+            {
+              id: "student-notes",
+              title: "Student notes",
+              node: (
+                <NotesCard
+                  kind="student"
                   studentEmail={detail.email}
-                  currentGroupId={detail.groupId}
-                  options={allGroups}
+                  notes={submission?.studentNotes ?? ""}
                 />
-                {/* Last resort: wipe this student's rows from the current run
+              ),
+            },
+
+            /* Student details: last authenticated activity, hire date, when the
+                schedule email went out (once it has), and the position and group
+                controls. Closed until needed, except for a student with no
+                position, who is exactly who needs one set. */
+            {
+              id: "details",
+              title: "Student details",
+              node: (
+                <Disclosure
+                  title="Student details"
+                  open={!position}
+                  summary={
+                    detail.lastSeenAt
+                      ? `Last seen ${fmtStamp(detail.lastSeenAt)}`
+                      : "Never logged in"
+                  }
+                >
+                  <div className="ad-stack">
+                    <dl className="ad-dl">
+                      <div>
+                        <dt>Last seen</dt>
+                        {detail.lastSeenAt ? (
+                          <dd>{fmtStamp(detail.lastSeenAt)}</dd>
+                        ) : (
+                          <dd className="ad-danger-text">Never logged in</dd>
+                        )}
+                      </div>
+                      <div>
+                        <dt>Hire date</dt>
+                        {detail.hiredOn ? (
+                          <dd>{fmtHireDay(detail.hiredOn)}</dd>
+                        ) : (
+                          <dd className="ad-muted">Unknown</dd>
+                        )}
+                      </div>
+                      {submission?.scheduleEmailSentAt && (
+                        <div>
+                          <dt>Schedule email sent</dt>
+                          <dd>{fmtStamp(submission.scheduleEmailSentAt)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    {/* Position history, oldest first. Absent until somebody actually
+                    moves, so a student who never changed position sees nothing. */}
+                    {detail.positionHistory.length > 0 && (
+                      <div>
+                        <div className="ad-faint ad-small">Position history</div>
+                        <ul className="ad-list-reset">
+                          {detail.positionHistory.map((h, i) => (
+                            <li key={i}>
+                              {h.from ? `${h.from} to ${h.to ?? "no position"}` : `Set to ${h.to}`}
+                              <span className="ad-faint"> · {fmtDay(h.changedAt)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <StudentPositionChanger
+                      studentEmail={detail.email}
+                      currentPositionId={position?.id ?? null}
+                      options={allPositions}
+                    />
+                    <StudentGroupChanger
+                      studentEmail={detail.email}
+                      currentGroupId={detail.groupId}
+                      options={allGroups}
+                    />
+                    {/* Last resort: wipe this student's rows from the current run
                     outright, for when they're wrong in a way editing the grid
                     cell by cell isn't worth it. Only shown when there's
                     something there to clear. */}
-                {schedule && schedule.cells.length > 0 && (
-                  <div className="ad-subhead--ruled">
-                    <ClearStudentScheduleButton
-                      studentEmail={detail.email}
-                      count={schedule.cells.length}
-                    />
+                    {schedule && schedule.cells.length > 0 && (
+                      <div className="ad-subhead--ruled">
+                        <ClearStudentScheduleButton
+                          studentEmail={detail.email}
+                          count={schedule.cells.length}
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </Disclosure>
-          </div>
-        </div>
+                </Disclosure>
+              ),
+            },
+          ].filter(isCard)}
+        />
       </div>
     </AdminPage>
   );
 }
+
+/** A card that renders for this student (the others are `false` in the list). */
+const isCard = <T extends BoardCard>(c: T | false | null | undefined | ""): c is T => Boolean(c);
 
 /** Only the newest few file-bearing requests render thumbnail previews. */
 const CHANGE_PREVIEW_ROWS = 3;
@@ -1038,29 +1112,34 @@ function CloseClaimsCard({ closes }: { closes: StudentCloseClaims }) {
 function StoredFlagAlerts({
   alerts,
   submissionId,
+  hasInternalCopy,
 }: {
   alerts: { type: DbFlagType; detail: string }[];
   submissionId: string;
+  hasInternalCopy: boolean;
 }) {
   return (
     <>
-      {alerts.map((f, i) => (
-        <div key={`${f.type}-${i}`} className="ad-st-flag">
-          <Pill tone="danger">{FLAG_LABELS[f.type]}</Pill>
-          <span className="ad-st-flag-detail">{f.detail}</span>
-          {f.type === "position_change" && (
-            <DismissFlagButton submissionId={submissionId} type="position_change" label="Clear" />
-          )}
-          {f.type === "student_changed_after_internal_edit" && (
-            <DismissFlagButton
-              submissionId={submissionId}
-              type="student_changed_after_internal_edit"
-              label="Keep this copy"
-              title="Clears this flag and keeps the internal copy as it is."
-            />
-          )}
-        </div>
-      ))}
+      {alerts.map((f, i) => {
+        const line = shortFlagDetail(f.type, f.detail, { hasInternalCopy });
+        return (
+          <div key={`${f.type}-${i}`} className="ad-st-flag">
+            <Pill tone="danger">{FLAG_LABELS[f.type]}</Pill>
+            {line && <span className="ad-st-flag-detail">{line}</span>}
+            {f.type === "position_change" && (
+              <DismissFlagButton submissionId={submissionId} type="position_change" label="Clear" />
+            )}
+            {f.type === "student_changed_after_internal_edit" && (
+              <DismissFlagButton
+                submissionId={submissionId}
+                type="student_changed_after_internal_edit"
+                label="Keep this copy"
+                title="Clears this flag and keeps the internal copy as it is."
+              />
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }

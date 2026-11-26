@@ -15,10 +15,12 @@
  * to a couple of hundred cells, and only the one an admin clicks is ever
  * needed. It is fetched once per cell and kept, so reopening is instant.
  */
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 
 import { Modal } from "@/components/Modal";
-import { ActionMessage, Pill, ROTATION_TAG_LABEL } from "@/components/admin/ui";
+import { ActionMessage, EmptyState, Pill, ROTATION_TAG_LABEL } from "@/components/admin/ui";
 import { StudentScheduleHover } from "@/components/admin/StudentSchedulePopup";
 import type { Day } from "@/lib/domain/types";
 import { fetchCellAvailability } from "@/lib/schedule/actions";
@@ -56,6 +58,7 @@ export function SlotCell({
   const [people, setPeople] = useState<CellPerson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const moreId = useId();
 
   const label = `${shiftLabel} on ${dayLabel}`;
   const could = `${supply} could work this shift`;
@@ -63,8 +66,19 @@ export function SlotCell({
   const name = `${[positionName, dayLabel, shiftLabel].filter(Boolean).join(", ")}: ${
     value === undefined ? "" : `${value}. `
   }${could}`;
-  const offered = people?.filter((p) => p.offered) ?? [];
+  // The people the run put here come first; the rest only offered it.
+  const offered = (people?.filter((p) => p.offered) ?? []).sort(
+    (a, b) => Number(b.assignedHere) - Number(a.assignedHere),
+  );
   const alsoScheduled = people?.filter((p) => !p.offered) ?? [];
+  const onShift = people?.filter((p) => p.assignedHere).length ?? 0;
+  const summary = [
+    positionName,
+    supply > 0 && `${supply} can work it`,
+    onShift > 0 && `${onShift} on this shift`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const openDialog = () => {
     setOpen(true);
@@ -90,25 +104,33 @@ export function SlotCell({
       {open && (
         <Modal label={label} onClose={() => setOpen(false)} maxWidth="440px">
           <div className="ad-gr-dialog">
-            <strong className="ad-gr-dialog-title">
-              {supply === 1
-                ? "1 person can work this shift"
-                : `${supply} people can work this shift`}
-            </strong>
-            {pending && !people && <span className="ad-muted">Loading…</span>}
-            {error && <ActionMessage ok={false}>{error}</ActionMessage>}
-            {people && offered.length === 0 && (
-              <span className="ad-muted">Nobody has offered this shift.</span>
+            {summary && <p className="ad-gr-dialog-sum">{summary}</p>}
+            {pending && !people && (
+              <p role="status" className="ad-gr-dialog-note ad-muted">
+                Loading…
+              </p>
             )}
-            {offered.length > 0 && <PersonList people={offered} />}
-            {alsoScheduled.length > 0 && (
-              <div className="ad-gr-more">
-                <strong>
-                  {alsoScheduled.length === 1
-                    ? "1 more person is on this shift"
-                    : `${alsoScheduled.length} more people are on this shift`}
-                </strong>
-                <PersonList people={alsoScheduled} />
+            {error && (
+              <ActionMessage ok={false} as="p" className="ad-gr-dialog-note">
+                {error}
+              </ActionMessage>
+            )}
+            {people && offered.length === 0 && (
+              <EmptyState>Nobody has offered this shift.</EmptyState>
+            )}
+            {(offered.length > 0 || alsoScheduled.length > 0) && (
+              <div className="ad-gr-roster">
+                {offered.length > 0 && <PersonList people={offered} />}
+                {alsoScheduled.length > 0 && (
+                  <>
+                    <p id={moreId} className="ad-gr-more">
+                      {alsoScheduled.length === 1
+                        ? "1 more person is on this shift"
+                        : `${alsoScheduled.length} more people are on this shift`}
+                    </p>
+                    <PersonList people={alsoScheduled} labelledBy={moreId} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -122,27 +144,37 @@ export function SlotCell({
 const ROTATION_TONE = { a: "info", b: "warning", every: "success" } as const;
 
 /**
- * One group of people in the dialog. "on this shift" is only worth saying for
- * someone who offered it; in the also-scheduled group the heading already said
- * it, so the row would just repeat itself.
+ * One group of people in the dialog, as rows of name, rotation week and
+ * status. "on this shift" is only worth saying for someone who offered it; in
+ * the also-scheduled group the heading already said it, so the row would just
+ * repeat itself.
  */
-function PersonList({ people }: { people: CellPerson[] }) {
+function PersonList({ people, labelledBy }: { people: CellPerson[]; labelledBy?: string }) {
   return (
-    <ul className="ad-gr-people">
+    <ul className="ad-gr-people" aria-labelledby={labelledBy}>
       {people.map((p) => (
         <li key={p.email} className="ad-gr-person">
-          <StudentScheduleHover email={p.email}>
-            <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
-          </StudentScheduleHover>
-          <span className="ad-gr-person-tags">
+          <span className="ad-gr-person-name">
+            <StudentScheduleHover email={p.email}>
+              <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
+            </StudentScheduleHover>
+          </span>
+          <span className="ad-gr-person-week">
             {/* Weekday assignments run every week, so only a weekend one is worth tagging. */}
             {p.cohort !== null && p.cohort !== "weekday" && (
               <Pill tone={ROTATION_TONE[p.cohort]}>{ROTATION_TAG_LABEL[p.cohort]}</Pill>
             )}
+          </span>
+          <span className="ad-gr-person-state">
+            {p.offered && p.assignedHere && <span className="ad-gr-person-on">on this shift</span>}
             {p.source === "manual" && <Pill tone="manual">manual</Pill>}
-            {p.autoAssigned && <span className="ad-gr-auto-text">auto weekend</span>}
-            {p.offered && p.assignedHere && <span className="ad-success-text">on this shift</span>}
-            {p.scheduled && <span className="ad-success-text">✓ scheduled</span>}
+            {p.autoAssigned && <Pill tone="auto">auto weekend</Pill>}
+            {p.scheduled && (
+              <span className="ad-gr-person-done">
+                <FontAwesomeIcon icon={faCheck} aria-hidden />
+                scheduled
+              </span>
+            )}
           </span>
         </li>
       ))}

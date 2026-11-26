@@ -65,7 +65,7 @@ describe("SlotCell dialog", () => {
     renderCell([person({ email: "amy@wisc.edu", displayName: "Amy Ames" })]);
     await userEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(screen.getByText("Amy Ames")).toBeTruthy());
-    expect(screen.getByText("1 person can work this shift")).toBeTruthy();
+    expect(screen.getByText("1 can work it")).toBeTruthy();
   });
 
   it("shows someone scheduled here who never offered the shift", async () => {
@@ -136,7 +136,7 @@ describe("SlotCell dialog", () => {
     );
     await userEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(screen.getByText("Cyd Cole")).toBeTruthy());
-    expect(screen.getByText("2 people can work this shift")).toBeTruthy();
+    expect(screen.getByText("2 can work it · 1 on this shift")).toBeTruthy();
   });
 
   it("says nobody offered it while still showing who is on it", async () => {
@@ -195,6 +195,96 @@ describe("SlotCell dialog", () => {
     expect(within(rows[0]!).queryByText("week A")).toBeTruthy();
     expect(within(rows[1]!).queryByText("week B")).toBeTruthy();
     expect(within(rows[2]!).queryByText("every weekend")).toBeTruthy();
+  });
+
+  it("lists the people the run put on the shift first", async () => {
+    renderCell([
+      person({ email: "amy@wisc.edu", displayName: "Amy Ames" }),
+      person({ email: "boyd@wisc.edu", displayName: "Boyd Bell", assignedHere: true }),
+      person({ email: "cyd@wisc.edu", displayName: "Cyd Cole" }),
+    ]);
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByText("Cyd Cole")).toBeTruthy());
+    const rows = screen.getAllByRole("listitem");
+    expect(rows.map((r) => within(r).getByRole("link").textContent)).toEqual([
+      "Boyd Bell",
+      "Amy Ames",
+      "Cyd Cole",
+    ]);
+    expect(within(rows[0]!).getByRole("link")).toHaveAttribute(
+      "href",
+      "/admin/students/boyd%40wisc.edu",
+    );
+  });
+
+  it("names the position and marks who is scheduled and auto-assigned", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      data: {
+        blockId: "b",
+        day: "sat",
+        people: [person({ email: "amy@wisc.edu", scheduled: true, autoAssigned: true })],
+      },
+    });
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <SlotCell
+              blockId="b"
+              day="sat"
+              dayLabel="Sat"
+              shiftLabel="8:45a to 12:30p"
+              supply={1}
+              positionName="Cashier"
+            >
+              1
+            </SlotCell>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    await userEvent.click(screen.getByRole("button"));
+    const dialog = screen.getByRole("dialog", { name: "8:45a to 12:30p on Sat" });
+    expect(within(dialog).getByText("Cashier · 1 can work it")).toBeTruthy();
+    await waitFor(() => expect(within(dialog).getByText("scheduled")).toBeTruthy());
+    expect(within(dialog).getByText("auto weekend")).toBeTruthy();
+  });
+
+  it("shows the error the fetch came back with", async () => {
+    fetchMock.mockResolvedValue({ ok: false, error: "Could not load that shift." });
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <SlotCell blockId="b" day="mon" dayLabel="Mon" shiftLabel="8a to 12p" supply={2}>
+              2
+            </SlotCell>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load that shift.");
+  });
+
+  it("labels the group of people who are on the shift without offering it", async () => {
+    renderCell([
+      person({ email: "amy@wisc.edu", displayName: "Amy Ames" }),
+      person({
+        email: "cyd@wisc.edu",
+        displayName: "Cyd Cole",
+        offered: false,
+        assignedHere: true,
+        source: "manual",
+      }),
+    ]);
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByText("Cyd Cole")).toBeTruthy());
+    const more = screen.getByRole("list", { name: "1 more person is on this shift" });
+    expect(within(more).getByText("Cyd Cole")).toBeTruthy();
+    expect(within(more).queryByText("Amy Ames")).toBeNull();
   });
 
   it("tags no rotation on a weekday cell, or on someone the run does not place", async () => {
