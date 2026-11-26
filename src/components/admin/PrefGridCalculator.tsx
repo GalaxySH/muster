@@ -553,7 +553,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       ? "no shifts picked"
       : dirty
         ? "trial schedule"
-        : "preferred";
+        : "available";
   const tone: ReadoutTone = belowFloor ? "warning" : "info";
 
   /**
@@ -625,8 +625,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // Mini form of the preferred figure: the auto-weekend range survives, since
   // dropping it here would quietly restate an upper bound as a single number.
   const preferredMini = showAutoRange
-    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} preferred`
-    : `${fmtHours(hours)} preferred`;
+    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} available`
+    : `${fmtHours(hours)} available`;
   // Schedule mode without a run cannot happen (the button is disabled), but the
   // fallback keeps the preferred readout big rather than rendering nothing.
   const scheduleIsBig = mode === "schedule" && scheduledHours !== null;

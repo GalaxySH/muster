@@ -1750,7 +1750,8 @@ live in `README.md` § "Before you start" as a pre-send checklist.
   "Admin" is "Overview", "Non-responses" is "Missing responses", "SL weekend closes"
   is "Weekend closes", "Google Drive connection" is "Google Drive", "Groups & form
   windows" is "Groups and windows", "Positions and shift blocks" is "Positions and
-  shifts". The system-message preview on the Semester page now shows the notice
+  shifts". On a student's page the hours readout over the grid says "available", not
+  "preferred": it totals every shift the student would accept. The system-message preview on the Semester page now shows the notice
   students actually see. See §10b and "Admin design system" in
   `docs/architecture.md`.
 - **1.66 (2026-11-25)** — **Switching semesters no longer flashes an error, and a

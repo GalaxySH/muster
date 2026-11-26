@@ -122,7 +122,7 @@ describe("PrefGridCalculator", () => {
     expect(screen.getByText("10h")).toBeInTheDocument();
     // Untouched, this is their own selection, not a trial schedule yet. Anchored so
     // the "in trial schedule" legend entry doesn't satisfy it.
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
     expect(screen.queryByText(/^trial schedule$/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
       "aria-pressed",
@@ -137,13 +137,13 @@ describe("PrefGridCalculator", () => {
     await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add a cell
     expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
 
     // The rotation alone is enough to make it a trial.
     await user.click(screen.getByRole("button", { name: /alternating/i }));
     expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
   });
 
   it("recomputes the hours live as cells are toggled, flagging the floor", async () => {
@@ -425,7 +425,7 @@ describe("PrefGridCalculator", () => {
       renderCalc({ hasCurrentRun: true, scheduledMinutes: 12.5 * 60 });
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
       expect(sizeOf("10h")).toContain("ad-gr-figure");
-      expect(screen.getByText("preferred")).toBeInTheDocument();
+      expect(screen.getByText("available")).toBeInTheDocument();
       expect(sizeOf("12.5h scheduled")).toContain("ad-gr-mini");
     });
 
@@ -440,7 +440,7 @@ describe("PrefGridCalculator", () => {
       expect(figure.className).toContain("ad-gr-figure");
       // Scoped to the readout: the legend says "scheduled" too, about a swatch.
       expect(within(figure.parentElement!).getByText("scheduled")).toBeInTheDocument();
-      expect(sizeOf("10h preferred")).toContain("ad-gr-mini");
+      expect(sizeOf("10h available")).toContain("ad-gr-mini");
     });
 
     it("keeps the auto-weekend range in the miniature preferred form", () => {
@@ -457,7 +457,7 @@ describe("PrefGridCalculator", () => {
       // Schedule is the tab a run opens on, so preferred starts as the miniature.
       // 8h picked, up to 10h with the auto weekend: a single number would state
       // an upper bound as a fact.
-      expect(screen.getByText("8–10h preferred")).toBeInTheDocument();
+      expect(screen.getByText("8–10h available")).toBeInTheDocument();
     });
 
     it("flags a scheduled week over the cap, in either size", async () => {
@@ -512,14 +512,14 @@ describe("PrefGridCalculator", () => {
       const order = () => container.querySelector('[aria-live="polite"]')!.textContent ?? "";
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
 
-      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
+      expect(order().indexOf("available")).toBeLessThan(order().indexOf("scheduled"));
       expect(sizeOf("10h")).toContain("ad-gr-figure");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
 
-      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
+      expect(order().indexOf("available")).toBeLessThan(order().indexOf("scheduled"));
       expect(sizeOf("12h")).toContain("ad-gr-figure");
-      expect(sizeOf("10h preferred")).toContain("ad-gr-mini");
+      expect(sizeOf("10h available")).toContain("ad-gr-mini");
     });
 
     it("says so when the run holds nothing for the student", async () => {
@@ -608,7 +608,7 @@ describe("PrefGridCalculator", () => {
           orphans={[]}
         />,
       );
-      expect(screen.getByText("preferred")).toBeInTheDocument();
+      expect(screen.getByText("available")).toBeInTheDocument();
       await waitFor(() => expect(save()).not.toBeInTheDocument(), { timeout: 3000 });
     });
 
@@ -1072,10 +1072,10 @@ describe("PrefGridCalculator", () => {
       it("leaves the preferred figure alone, since it answers a different question", async () => {
         const user = userEvent.setup();
         inScheduleMode({ ...withWeekend("a"), scheduledMinutes: 12 * 60 });
-        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+        expect(screen.getByText("10h available")).toBeInTheDocument();
 
         await user.click(pill());
-        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+        expect(screen.getByText("10h available")).toBeInTheDocument();
       });
 
       it("saves the rotation with the batch and rings the pill until it lands", async () => {
