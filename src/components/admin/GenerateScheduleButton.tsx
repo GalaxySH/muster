@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
+import { Button, CheckRow, Disclosure } from "@/components/admin/ui";
 import { generateSchedule } from "@/lib/schedule/actions";
 
 /**
@@ -54,125 +55,118 @@ export function GenerateScheduleButton({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <details style={{ fontSize: 13 }}>
-        <summary style={{ cursor: "pointer" }}>
-          Positions to update: {scoped ? listNames(scopeNames) : "all"}
-        </summary>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "6px 16px",
-            margin: "8px 0 4px",
-          }}
-        >
-          {positions.map((p) => (
-            <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={scopeIds.includes(p.id)}
-                onChange={() => toggleScope(p.id)}
-                disabled={pending}
-              />
-              {p.name}
-            </label>
-          ))}
-          {scoped && (
-            <button type="button" onClick={() => setScopeIds([])} disabled={pending}>
-              Clear
-            </button>
+    <div className="ad-sc-gen">
+      <div className="ad-sc-gen-row">
+        <div className="ad-sc-inline">
+          {!confirming ? (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setRepairOnly(false);
+                setConfirming(true);
+              }}
+              pending={pending}
+            >
+              {label}
+            </Button>
+          ) : (
+            <>
+              <span>
+                <strong>{termName}.</strong>{" "}
+                {scoped
+                  ? `${hasRun ? "Rebuild" : "Generate"} recommendations for ${listNames(scopeNames)} only?`
+                  : includeNonResponders
+                    ? `${hasRun ? "Rebuild" : "Generate"} recommendations, including people who did not respond?`
+                    : hasRun
+                      ? "Rebuild recommendations for everyone not marked scheduled?"
+                      : "Generate recommendations for every submitted response?"}
+              </span>
+              {hasPlan && (
+                <CheckRow label="Repair only: keep everyone the imported W2W plan already places, fill gaps">
+                  <input
+                    type="checkbox"
+                    checked={repairOnly}
+                    onChange={(e) => setRepairOnly(e.target.checked)}
+                  />
+                </CheckRow>
+              )}
+              <Button variant="primary" onClick={submit}>
+                Yes, {hasRun ? "update" : "generate"}
+              </Button>
+              <Button onClick={() => setConfirming(false)}>Cancel</Button>
+            </>
           )}
         </div>
-        <p style={{ margin: 0, color: "var(--color-text-secondary)", maxWidth: 640 }}>
-          {scoped
-            ? "Everyone in the other positions keeps the shifts they already have. Mark them scheduled to keep those shifts through a full update too."
-            : "Pick one or more positions to update just those. Leave all unchecked to update everyone."}
-        </p>
-      </details>
-      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
-        <input
-          type="checkbox"
-          checked={includeNonResponders}
-          onChange={(e) => setIncludeNonResponders(e.target.checked)}
-          disabled={pending}
-          style={{ marginTop: 2 }}
-        />
-        <span>
-          Also schedule people who did not respond
-          <span style={{ display: "block", color: "var(--color-text-secondary)" }}>
-            Fills leftover shifts with roster members who never submitted, as if they are available
-            anytime.
-          </span>
-        </span>
-      </label>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {!confirming ? (
-          <button
-            type="button"
-            onClick={() => {
-              setRepairOnly(false);
-              setConfirming(true);
-            }}
-            disabled={pending}
+        <div className="ad-sc-gen-option">
+          <CheckRow
+            label="Also schedule people who did not respond"
+            help="Fills leftover shifts with roster members who never submitted, as if they are available anytime."
           >
-            {pending ? "Working…" : label}
-          </button>
-        ) : (
-          <>
-            <span style={{ fontSize: 13 }}>
-              <strong>{termName}.</strong>{" "}
+            <input
+              type="checkbox"
+              checked={includeNonResponders}
+              onChange={(e) => setIncludeNonResponders(e.target.checked)}
+              disabled={pending}
+            />
+          </CheckRow>
+        </div>
+        <div className="ad-sc-gen-option">
+          <Disclosure
+            panel={false}
+            title={<>Positions to update: {scoped ? listNames(scopeNames) : "all"}</>}
+          >
+            <div className="ad-sc-checks">
+              {positions.map((p) => (
+                <CheckRow key={p.id} label={p.name}>
+                  <input
+                    type="checkbox"
+                    checked={scopeIds.includes(p.id)}
+                    onChange={() => toggleScope(p.id)}
+                    disabled={pending}
+                  />
+                </CheckRow>
+              ))}
+              {scoped && (
+                <Button onClick={() => setScopeIds([])} disabled={pending}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            <p className="ad-help">
               {scoped
-                ? `${hasRun ? "Rebuild" : "Generate"} recommendations for ${listNames(scopeNames)} only?`
-                : includeNonResponders
-                  ? `${hasRun ? "Rebuild" : "Generate"} recommendations, including people who did not respond?`
-                  : hasRun
-                    ? "Rebuild recommendations for everyone not marked scheduled?"
-                    : "Generate recommendations for every submitted response?"}
-            </span>
-            {hasPlan && (
-              <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={repairOnly}
-                  onChange={(e) => setRepairOnly(e.target.checked)}
-                />
-                Repair only: keep everyone the imported W2W plan already places, fill gaps
-              </label>
-            )}
-            <button type="button" onClick={submit}>
-              Yes, {hasRun ? "update" : "generate"}
-            </button>
-            <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </>
-        )}
-        {msg && !confirming && (
-          <span role="status" style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-            {msg}
-          </span>
-        )}
+                ? "Everyone in the other positions keeps the shifts they already have. Mark them scheduled to keep those shifts through a full update too."
+                : "Pick one or more positions to update just those. Leave all unchecked to update everyone."}
+            </p>
+          </Disclosure>
+        </div>
       </div>
+      {msg && !confirming && (
+        <p role="status" className="ad-sc-summary">
+          {msg}
+        </p>
+      )}
       {hasPlan && (
-        <details style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          <summary style={{ cursor: "pointer" }}>What normal and repair updates do</summary>
-          <p style={{ margin: "6px 0 4px", maxWidth: 640 }}>
-            <strong>Normal update</strong> rebuilds the recommendation from scratch for everyone not
-            marked scheduled, using the current responses and staffing targets. Any placement can
-            move.
-          </p>
-          <p style={{ margin: 0, maxWidth: 640 }}>
-            <strong>Repair only</strong> starts from the imported W2W plan instead. Every placement
-            named on the plan that still works is kept exactly where it is, and the engine only
-            fills open seats. If one of a student&apos;s kept placements no longer works, that
-            student is re-solved completely. The keep lasts for this run; the next normal update can
-            move them again.
-          </p>
-          <p style={{ margin: "4px 0 0", maxWidth: 640 }}>
-            The option above to include people who did not respond applies to either kind of update.
-          </p>
-        </details>
+        <Disclosure panel={false} title="What normal and repair updates do">
+          <div className="ad-sc-prose ad-muted">
+            <p>
+              <strong>Normal update</strong> rebuilds the recommendation from scratch for everyone
+              not marked scheduled, using the current responses and staffing targets. Any placement
+              can move.
+            </p>
+            <p>
+              <strong>Repair only</strong> starts from the imported W2W plan instead. Every
+              placement named on the plan that still works is kept exactly where it is, and the
+              engine only fills open seats. If one of a student&apos;s kept placements no longer
+              works, that student is re-solved completely. The keep lasts for this run; the next
+              normal update can move them again.
+            </p>
+            <p>
+              The option above to include people who did not respond applies to either kind of
+              update.
+            </p>
+          </div>
+        </Disclosure>
       )}
     </div>
   );

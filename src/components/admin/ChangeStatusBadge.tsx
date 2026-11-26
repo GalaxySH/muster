@@ -6,27 +6,15 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import type { ChangeRequestStatus } from "@/lib/changes/data";
+import { Pill } from "./ui";
+
+const TONE = { open: "info", resolved: "success", withdrawn: undefined } as const;
 
 export function ChangeStatusBadge({ status }: { status: ChangeRequestStatus }) {
   return (
-    <span style={badge(status)}>
-      {status === "resolved" && (
-        <FontAwesomeIcon icon={faCircleCheck} style={{ marginRight: 4 }} />
-      )}
+    <Pill tone={TONE[status]}>
+      {status === "resolved" && <FontAwesomeIcon icon={faCircleCheck} aria-hidden />}
       {status}
-    </span>
+    </Pill>
   );
 }
-
-const badge = (status: ChangeRequestStatus): React.CSSProperties => ({
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  fontWeight: 600,
-  whiteSpace: "nowrap",
-  ...(status === "open"
-    ? { background: "var(--color-background-info)", color: "var(--color-text-info)" }
-    : status === "resolved"
-      ? { background: "#e6f4ea", color: "var(--color-text-success)" }
-      : { background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }),
-});

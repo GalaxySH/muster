@@ -10,7 +10,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { importW2wEmployeesFromUpload, type EmployeesImportResult } from "@/lib/w2w/actions";
 import { validateW2wCsvUpload } from "@/lib/w2w/upload-validation";
-import { ActionButton } from "@/components/ui";
+import { Button, Notice, Status } from "@/components/admin/ui";
 
 export function W2wEmployeesPanel() {
   const router = useRouter();
@@ -48,32 +48,34 @@ export function W2wEmployeesPanel() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div className="ad-stack">
+      <div className="ad-row">
         <input
           ref={fileRef}
           type="file"
           accept=".csv,text/csv"
+          aria-label="W2W Employee Details export (.csv)"
           disabled={pending}
           onChange={() => setError(null)}
-          style={{ fontSize: 14 }}
         />
-        <ActionButton onClick={runImport} pending={pending} pendingLabel="Updating…">
+        <Button onClick={runImport} pending={pending} pendingLabel="Updating…">
           Update names
-        </ActionButton>
+        </Button>
       </div>
 
       {error && (
-        <p role="status" style={{ color: "#b00", margin: 0, fontSize: 14 }}>
-          ✗ {error}
-        </p>
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
       )}
       {summary && (
-        <p role="status" style={{ margin: 0, fontSize: 14, color: "#196127" }}>
-          ✓ {summary.total} W2W names on file ({summary.added} new, {summary.updated} changed,{" "}
-          {summary.removed} removed
-          {summary.skipped > 0 && <>, {summary.skipped} rows without an email skipped</>}
-          ).
+        <p role="status">
+          <Status tone="ok">
+            {summary.total} W2W names on file ({summary.added} new, {summary.updated} changed,{" "}
+            {summary.removed} removed
+            {summary.skipped > 0 && <>, {summary.skipped} rows without an email skipped</>}
+            ).
+          </Status>
         </p>
       )}
     </div>

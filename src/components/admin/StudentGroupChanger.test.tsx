@@ -74,6 +74,6 @@ describe("StudentGroupChanger", () => {
     const { select, save } = setup(null);
     fireEvent.change(select, { target: { value: "g1" } });
     fireEvent.click(save);
-    expect(await screen.findByRole("status")).toHaveTextContent("Group not found.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Group not found.");
   });
 });

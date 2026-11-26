@@ -1,10 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listNonResponses, type RosterPerson } from "@/lib/admin/data";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Panel, Pill, Status } from "@/components/admin/ui";
+
+export const metadata: Metadata = { title: "Missing responses" };
 
 /**
  * Non-response tracking (PLAN §10): who on the roster still owes a submission,
@@ -23,98 +26,114 @@ export default async function NonResponsesPage() {
     report.rosterTotal > 0 ? Math.round((report.respondedCount / report.rosterTotal) * 100) : 0;
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-        <Crumb href="/admin/responses" label="Responses" />
-      </AppHeader>
-      <h1 style={{ marginTop: 0 }}>Non-responses</h1>
-      <p style={{ color: "var(--color-text-secondary)" }}>
-        <strong>{report.respondedCount}</strong> of <strong>{report.rosterTotal}</strong> roster
-        students submitted ({pct}%). <strong>{outstanding}</strong> outstanding.
-      </p>
-      {outstanding > 0 && (
-        <p>
-          <CopyEmailsButton
-            emails={outstandingEmails}
-            label={`Copy ${outstanding} outstanding email${outstanding === 1 ? "" : "s"}`}
+    <AdminPage title="Missing responses">
+      <Panel flush as="div">
+        <div className="ad-toolbar">
+          <span>
+            <strong>{report.respondedCount}</strong> of <strong>{report.rosterTotal}</strong> roster
+            students submitted ({pct}%). <strong>{outstanding}</strong> outstanding.
+          </span>
+          {outstanding > 0 && (
+            <div className="ad-toolbar-end">
+              <CopyEmailsButton
+                emails={outstandingEmails}
+                label={`Copy ${outstanding} outstanding email${outstanding === 1 ? "" : "s"}`}
+              />
+            </div>
+          )}
+        </div>
+        <table className="ad-table ad-table--stack ad-table--middle">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Position</th>
+            </tr>
+          </thead>
+          <Group
+            title={`No response (${report.noResponse.length})`}
+            hint="On the roster, hasn't started a submission."
+            people={report.noResponse}
           />
-        </p>
-      )}
-
-      <Group
-        title={`No response (${report.noResponse.length})`}
-        hint="On the roster, hasn't started a submission."
-        people={report.noResponse}
-      />
-      <Group
-        title={`Started, not submitted (${report.draftOnly.length})`}
-        hint="Has a draft but hasn't submitted yet."
-        people={report.draftOnly}
-      />
-      {report.offRoster.length > 0 && (
-        <Group
-          title={`Off-roster responders (${report.offRoster.length})`}
-          hint="Submitted but not on the current roster. Position and international status may be self-reported."
-          people={report.offRoster}
-        />
-      )}
-    </Page>
+          <Group
+            title={`Started, not submitted (${report.draftOnly.length})`}
+            hint="Has a draft but hasn't submitted yet."
+            people={report.draftOnly}
+          />
+          {report.offRoster.length > 0 && (
+            <Group
+              copy={false}
+              title={`Off-roster responders (${report.offRoster.length})`}
+              hint="Submitted but not on the current roster. Position and international status may be self-reported."
+              people={report.offRoster}
+            />
+          )}
+        </table>
+      </Panel>
+    </AdminPage>
   );
 }
 
-function Group({ title, hint, people }: { title: string; hint: string; people: RosterPerson[] }) {
+/**
+ * One bucket: a heading row, then a row for each person. The heading has a Copy
+ * emails button when the bucket has people (never for the off-roster bucket).
+ */
+function Group({
+  title,
+  hint,
+  people,
+  copy = true,
+}: {
+  title: string;
+  hint: string;
+  people: RosterPerson[];
+  copy?: boolean;
+}) {
   return (
-    <section style={card}>
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "2px 0 10px" }}>
-        {hint}
-      </div>
-      {people.length === 0 ? (
-        <p style={{ fontSize: 13, color: "var(--color-text-success)", margin: 0 }}>None ✓</p>
-      ) : (
-        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
-          {people.map((p) => (
-            <li key={p.email} style={{ fontSize: 14 }}>
-              <Link href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</Link>{" "}
-              <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
-                {p.email}
-                {p.positionName ? ` · ${p.positionName}` : ""}
+    <tbody>
+      <tr className="ad-tr-group ad-ls-group">
+        <th scope="colgroup" colSpan={3}>
+          <div className="ad-ls-grouphead">
+            <span>{title}</span>
+            <span className="ad-ls-grouphint">{hint}</span>
+            {copy && people.length > 0 && (
+              <span className="ad-ls-groupend">
+                <CopyEmailsButton emails={people.map((p) => p.email)} />
               </span>
+            )}
+          </div>
+        </th>
+      </tr>
+      {people.length === 0 ? (
+        <tr>
+          <td colSpan={3}>
+            <Status tone="ok">None</Status>
+          </td>
+        </tr>
+      ) : (
+        people.map((p) => (
+          <tr key={p.email}>
+            <td data-label="Name">
+              <Link href={`/admin/students/${encodeURIComponent(p.email)}`} className="ad-ls-name">
+                {p.displayName}
+              </Link>
+            </td>
+            <td data-label="Email" className="ad-muted">
+              {p.email}
+            </td>
+            <td data-label="Position">
+              {/* Derived from positionId being unset (a ghosted roster title), not a stored flag. */}
+              {p.positionName}
               {p.positionId === null && (
-                <>
-                  {" "}
-                  <span style={noPositionPill}>No position</span>
-                  {p.rosterTitle && (
-                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
-                      {" "}
-                      {p.rosterTitle}
-                    </span>
-                  )}
-                </>
+                <span className="ad-ls-marks">
+                  <Pill tone="danger">No position</Pill>
+                  {p.rosterTitle && <span className="ad-faint">{p.rosterTitle}</span>}
+                </span>
               )}
-            </li>
-          ))}
-        </ul>
+            </td>
+          </tr>
+        ))
       )}
-    </section>
+    </tbody>
   );
 }
-
-/** Derived from positionId being unset (a ghosted roster title), not a stored flag. */
-const noPositionPill: React.CSSProperties = {
-  background: "#fce8e6",
-  color: "var(--color-text-danger)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-};
-
-const card: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "0.5px solid var(--color-border-tertiary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  marginTop: 14,
-};

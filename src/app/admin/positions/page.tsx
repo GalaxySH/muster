@@ -1,13 +1,16 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Disclosure } from "@/components/admin/ui";
 import { listGhostTitles, listPositionsAdmin, positionOptions } from "@/lib/positions/data";
 import { getSchedulingParams } from "@/lib/settings";
 import { workingTermId } from "@/lib/terms/working";
 import { GhostTitleSection } from "@/components/admin/GhostTitleCard";
 import { PositionCard } from "@/components/admin/PositionCard";
 import { AddPositionForm } from "@/components/admin/AddPositionForm";
+
+export const metadata: Metadata = { title: "Positions and shifts" };
 
 /**
  * Admin: positions & shift blocks (roadmap 3.3). Resolve ghost roster titles,
@@ -39,30 +42,30 @@ export default async function AdminPositionsPage() {
   }
 
   return (
-    <Page width="full">
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>Positions and shift blocks</h1>
-      <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        These positions and their shift blocks are what students pick from on the availability form.
-        The Open and Close tags mark the earliest and latest block of each day type and move as you
-        edit times. Changes apply to new form loads right away.
-      </p>
+    <AdminPage title="Positions and shifts">
+      <div className="ad-stack">
+        <Disclosure title="About this page">
+          <p className="ad-su-prose">
+            These positions and their shift blocks are what students pick from on the availability
+            form. The Open and Close tags mark the earliest and latest block of each day type and
+            move as you edit times. Changes apply to new form loads right away.
+          </p>
+        </Disclosure>
 
-      <GhostTitleSection ghosts={ghosts} options={options} />
+        <GhostTitleSection ghosts={ghosts} options={options} />
 
-      {sorted.map((p) => (
-        <PositionCard
-          key={p.id}
-          position={p}
-          aliasTargets={options}
-          titleOwners={titleOwners}
-          dayCapHours={params.dayCapHours}
-        />
-      ))}
+        {sorted.map((p) => (
+          <PositionCard
+            key={p.id}
+            position={p}
+            aliasTargets={options}
+            titleOwners={titleOwners}
+            dayCapHours={params.dayCapHours}
+          />
+        ))}
 
-      <AddPositionForm />
-    </Page>
+        <AddPositionForm />
+      </div>
+    </AdminPage>
   );
 }

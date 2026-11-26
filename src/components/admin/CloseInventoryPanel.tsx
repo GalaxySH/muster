@@ -10,7 +10,7 @@ import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { generateCloseInventory } from "@/lib/closes/admin-actions";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button, Field, Notice } from "@/components/admin/ui";
 
 export function CloseInventoryPanel({
   defaults,
@@ -43,68 +43,49 @@ export function CloseInventoryPanel({
       ];
       if (s.keptWithClaims.length)
         parts.push(`kept outside the range because of claims: ${s.keptWithClaims.join(", ")}`);
-      if (s.overClaimed.length)
-        parts.push(`now over capacity: ${s.overClaimed.join(", ")}`);
+      if (s.overClaimed.length) parts.push(`now over capacity: ${s.overClaimed.join(", ")}`);
       setMsg({ ok: true, text: `Inventory updated: ${parts.join("; ")}.` });
       router.refresh();
     });
   }
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <label style={field}>
-          From
-          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} style={input} />
-        </label>
-        <label style={field}>
-          To
-          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} style={input} />
-        </label>
-        <label style={field}>
-          Spots per shift
+    <div className="ad-stack ad-stack--tight">
+      <div className="ad-row ad-row--end">
+        <Field label="From">
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+        </Field>
+        <Field label="To">
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </Field>
+        <Field label="Spots per shift">
           <input
             type="number"
             min={1}
             max={20}
             value={capacity}
             onChange={(e) => setCapacity(e.target.value)}
-            style={{ ...input, width: 90 }}
+            className="ad-pl-spots-input"
           />
-        </label>
-        <ActionButton pending={pending} pendingLabel="Saving…" onClick={run}>
+        </Field>
+        <Button variant="primary" pending={pending} pendingLabel="Saving…" onClick={run}>
           {hasSlots ? "Update inventory" : "Generate inventory"}
-        </ActionButton>
+        </Button>
       </div>
-      <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "8px 0 0" }}>
-        Creates a Fri/Sat close shift for every weekend in range. Assignments will remain even if the range is changed.
+      <p className="ad-help">
+        Creates a Fri/Sat close shift for every weekend in range. Assignments will remain even if
+        the range is changed.
       </p>
-      {msg && (
-        <p
-          role="status"
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
-          {msg.text}
-        </p>
-      )}
+      {msg &&
+        (msg.ok ? (
+          <ActionMessage ok as="p">
+            {msg.text}
+          </ActionMessage>
+        ) : (
+          <Notice tone="danger" role="alert">
+            {msg.text}
+          </Notice>
+        ))}
     </div>
   );
 }
-
-const field: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  fontSize: 13,
-  fontWeight: 600,
-};
-const input: React.CSSProperties = {
-  padding: "6px 8px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-};

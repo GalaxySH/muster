@@ -1,12 +1,33 @@
 # Admin UI overhaul runbook
 
+> **Carried out in 1.67.** The result is described in "Admin design system" in
+> `docs/architecture.md` and PLAN §10b; this file stays as the record of the plan and
+> its traps. What differed from the plan below:
+>
+> - **One release, not five.** The owner chose a single release over the slices in
+>   section 7.
+> - **The laptop (1280px) led.** Phones were kept usable (the drawer, stacking tables)
+>   but were not the design viewport.
+> - **Eight conversion slices plus a cleanup pass**, after the foundation: the work was
+>   still done area by area, one stylesheet per area, then one pass to delete what the
+>   conversion orphaned.
+> - **The existing vocabulary was replaced, not evolved.** The style objects in
+>   `components/admin/ui.tsx` became class-based primitives and `components/ui.tsx` was
+>   deleted.
+> - **The live accessibility evaluation was lost.** Source was being edited while the
+>   evaluator drove the dev server, so what it measured kept changing under it. Run a
+>   live audit before any code is touched, or against a second server on its own
+>   checkout.
+>
+> Sections 1 and 7 are annotated where the code has since moved.
+
 For the agent (and its subagents) redesigning the admin console. It follows the same
 phases as the student form redesign (PLAN 1.64, PR 45) and records what that run got
 wrong or did slowly, so this one goes faster. It does not prescribe the admin's look:
 phase 1 and phase 2 decide that.
 
-Read first: `CLAUDE.md`, then "Admin-views layering", "Admin hub" and "Student design
-system" in `docs/architecture.md`, then `src/app/student.css` and
+Read first: `CLAUDE.md`, then "Admin-views layering", "Admin overview" (then titled
+"Admin hub") and "Student design system" in `docs/architecture.md`, then `src/app/student.css` and
 `src/components/student/` as the worked example of a scoped design system in this repo.
 
 ## 1. What is different about the admin console
@@ -20,27 +41,32 @@ system" in `docs/architecture.md`, then `src/app/student.css` and
   primary viewport. Ask the owner which viewport leads before phase 2.
 - **Performance is a production risk.** A quadratic roster read caused a same-day outage
   (v0.96). Presentation only: do not touch loaders, queries or what a page fetches.
-- **It already has a partial vocabulary.** Tokens `--color-*`, `--border-radius-*` in
+- **It already had a partial vocabulary.** Tokens `--color-*`, `--border-radius-*` in
   `src/app/globals.css`; style objects in `src/components/admin/ui.tsx` (`panelStyle`,
   `cardStyle`, pills, `StatTile`, table styles); `Page`, `InfoCard`, `ActionButton` in
-  `src/components/ui.tsx`; wireframes in `docs/wireframes/`. Decide in phase 2 whether to
-  evolve these in place or replace them, and say which.
+  `src/components/ui.tsx`; wireframes in `docs/wireframes/`. The plan left "evolve or
+  replace" to phase 2. It was replaced: `components/admin/ui.tsx` is now class-based
+  primitives over `app/admin.css`, `src/components/ui.tsx` is deleted, and the
+  `--color-*` names survive only for the shared pieces (remapped inside `.ad`).
 - **Admin actions have real side effects.** Generate schedule, roster import, Drive
   connect, sheet resync, emails. With a real Drive grant a local dev server writes the
   live Google Sheet. Use a fresh throwaway database with no grant (section 2).
 
 ### Seams shared with the student pages (do not break)
 
-| Shared thing | Why it matters |
+The left column is the seam as the plan found it; the right says where it stands after
+1.67.
+
+| Shared thing | As of 1.67 |
 | --- | --- |
-| `components/AppHeader.tsx` | `StudentPage` renders it for admins inside `.sf-admin-tools`. `student.css` hides `.app-header > nav` there with `!important` and resets colour and font. If the header's markup or class names change, update those rules and re-check an admin viewing `/course-schedule?student=<email>`. |
-| `components/evidence/EvidenceThumb.tsx` | Rendered on student pages too. It still has px sizes and hard-coded borders. Restyling it changes both sides. |
-| `components/evidence/TravelDateRange.tsx` | Admin uses `layout="stacked"` (`AddEvidenceButton`), students use `"field"`. |
-| `components/Modal.tsx` | Admin uses it 11 times. No focus trap or focus return today (an open accessibility finding). |
-| `components/ui.tsx` `SystemMessage` | The Semester page's preview of the student system message. Students now see a `Notice` from `components/student/ui.tsx`; the preview no longer matches. Fixing that is in scope here. |
-| `components/AdminHomeRedirect.tsx` | Renders inside the new student `/me` card with the old blue button style. |
-| `globals.css` `.avail-grid*` | Only `StudentSchedulePopup.tsx` uses them now. |
-| `app/layout.tsx` title template | `%s | Muster`. No admin page exports `metadata` yet, so every admin tab reads "Muster". Per-page titles are a cheap win. |
+| `components/AppHeader.tsx` | Now `components/AdminTools.tsx`, with no breadcrumbs. `StudentPage` still renders it for admins inside `.sf-admin-tools`; `student.css` resets colour and font there and no longer needs to hide a nav. If its markup or class names change (`.admin-tools`, `.student-search-*` in `globals.css`), re-check an admin viewing `/course-schedule?student=<email>`. |
+| `components/evidence/EvidenceThumb.tsx` | Unchanged in kind: rendered on both sides, inline styles from the `--color-*` tokens, which `.ad` remaps. Restyling it changes both sides. |
+| `components/evidence/TravelDateRange.tsx` | Unchanged: admin uses `layout="stacked"` (`AddEvidenceButton`), students use `"field"`. |
+| `components/Modal.tsx` | Fixed: it moves focus in, keeps Tab inside and returns focus to the opener, on the student pages too. |
+| `components/ui.tsx` `SystemMessage` | Gone with the file. The Semester page's preview renders the student `Notice` itself, so it matches what students see. |
+| `components/AdminHomeRedirect.tsx` | Uses the student button classes inside the `/me` card. |
+| `globals.css` `.avail-grid*` | Deleted; `StudentSchedulePopup.tsx` uses `ad-` classes like the rest of the console. |
+| `app/layout.tsx` title template | `%s | Muster`. Every admin page now exports `metadata` with its own title. |
 
 ## 2. Environment setup (about ten minutes if done in this order)
 
@@ -195,6 +221,9 @@ CSS traps already hit once:
   change.
 
 ## 7. Suggested slicing (one PR and one deploy each)
+
+This was the suggestion. The owner chose one release, built as a foundation, eight
+conversion slices and a cleanup pass (see the note at the top).
 
 1. **Foundation**: tokens, shell (`AppHeader`, nav rail and drawer), primitives, page
    titles, `Modal` focus handling. Re-check the student pages' admin header.

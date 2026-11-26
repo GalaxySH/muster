@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createPosition } from "@/lib/positions/actions";
+import { ActionMessage, Button } from "@/components/admin/ui";
 
 /**
  * Bottom-of-page add-position form on /admin/positions (roadmap 3.3). New
@@ -31,25 +32,17 @@ export function AddPositionForm() {
   }
 
   return (
-    <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="ad-row">
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="New position name"
-        style={input}
+        aria-label="New position name"
       />
-      <button type="button" onClick={create} disabled={pending || !name.trim()}>
+      <Button onClick={create} disabled={pending || !name.trim()}>
         Add position
-      </button>
-      {error && <span style={{ color: "var(--color-text-danger)", fontSize: 13 }}>{error}</span>}
+      </Button>
+      {error && <ActionMessage ok={false}>{error}</ActionMessage>}
     </div>
   );
 }
-
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};

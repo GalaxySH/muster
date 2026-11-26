@@ -20,7 +20,7 @@ export function SelectableEmail({ email }: { email: string }) {
   }
 
   return (
-    <span ref={ref} onClick={selectAll} title="Click to select" style={{ cursor: "pointer" }}>
+    <span ref={ref} onClick={selectAll} title="Click to select" className="ad-st-email">
       {email}
     </span>
   );

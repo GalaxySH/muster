@@ -4,7 +4,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCaretDown, faCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import { setScheduled } from "@/lib/admin/actions";
+import { Button } from "@/components/admin/ui";
 import type { ScheduleEmailDialogProps } from "@/components/admin/SendScheduleEmailDialog";
 
 // Liquid and the sanitizer ride along with the dialog, so load it only when opened.
@@ -35,14 +38,41 @@ export function MarkScheduledButton({
   const [dialogOpen, setDialogOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // A click anywhere outside, or Escape, closes the menu.
+  const caret = () => menuRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+
+  // Opening the menu puts focus on its first item. A click anywhere outside
+  // closes it; Escape closes it and hands focus back to the caret. The arrow
+  // keys, Home and End move between the items.
   useEffect(() => {
     if (!menuOpen) return;
+    const items = () => [
+      ...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+    ];
+    items()[0]?.focus();
     function onPointerDown(e: PointerEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        caret()?.focus();
+        return;
+      }
+      const all = items();
+      const at = all.indexOf(document.activeElement as HTMLElement);
+      const to =
+        e.key === "ArrowDown"
+          ? (at + 1) % all.length
+          : e.key === "ArrowUp"
+            ? (at - 1 + all.length) % all.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? all.length - 1
+                : -1;
+      if (to < 0 || all.length === 0) return;
+      e.preventDefault();
+      all[to]?.focus();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -60,62 +90,45 @@ export function MarkScheduledButton({
     });
   }
 
-  // Longhand border properties: React warns when the `border` shorthand
-  // changes while the caret's left-border override is set.
-  const look: React.CSSProperties = {
-    fontSize: 13,
-    padding: "5px 12px",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderColor: scheduled ? "var(--color-text-success)" : "var(--color-border-secondary)",
-    background: scheduled ? "#e6f4ea" : "var(--color-background-primary)",
-    color: scheduled ? "var(--color-text-success)" : "var(--color-text-primary)",
-    cursor: pending ? "default" : "pointer",
-  };
-
   return (
-    <div ref={menuRef} style={{ position: "relative", display: "inline-flex" }}>
-      <button
-        type="button"
-        className="btn-hover"
+    <div ref={menuRef} className={scheduled ? "ad-dg-split ad-dg-split--on" : "ad-dg-split"}>
+      <Button
         onClick={toggle}
-        disabled={pending}
+        pending={pending}
+        pendingLabel="saving…"
         aria-pressed={scheduled}
-        style={{
-          ...look,
-          borderRadius: "var(--border-radius-md) 0 0 var(--border-radius-md)",
-        }}
+        className="ad-dg-split-main"
       >
-        {pending ? "saving…" : scheduled ? "✓ scheduled" : "mark scheduled"}
-      </button>
-      <button
-        type="button"
-        className="btn-hover"
+        {scheduled ? (
+          <>
+            <FontAwesomeIcon icon={faCheck} aria-hidden /> scheduled
+          </>
+        ) : (
+          "mark scheduled"
+        )}
+      </Button>
+      <Button
         aria-label="More scheduling actions"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((o) => !o)}
-        style={{
-          ...look,
-          padding: "5px 8px",
-          borderLeftWidth: 0,
-          borderRadius: "0 var(--border-radius-md) var(--border-radius-md) 0",
-          cursor: "pointer",
-        }}
+        className="ad-dg-split-caret"
       >
-        ▾
-      </button>
+        <FontAwesomeIcon icon={faCaretDown} aria-hidden />
+      </Button>
       {menuOpen && (
-        <div role="menu" style={menuStyle}>
+        <div role="menu" className="ad-menu ad-menu--below">
           <button
             type="button"
             role="menuitem"
-            className="btn-hover"
+            className="ad-menu-item"
             onClick={() => {
+              // Focus goes back to the caret first, so the dialog returns it
+              // there when it closes (this item is gone by then).
+              caret()?.focus();
               setMenuOpen(false);
               setDialogOpen(true);
             }}
-            style={menuItemStyle}
           >
             Send schedule email…
           </button>
@@ -125,28 +138,3 @@ export function MarkScheduledButton({
     </div>
   );
 }
-
-const menuStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 4px)",
-  right: 0,
-  zIndex: 20,
-  minWidth: 190,
-  padding: 4,
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
-};
-const menuItemStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  fontSize: 13,
-  padding: "6px 10px",
-  border: "none",
-  borderRadius: "var(--border-radius-md)",
-  background: "transparent",
-  color: "var(--color-text-primary)",
-  cursor: "pointer",
-};

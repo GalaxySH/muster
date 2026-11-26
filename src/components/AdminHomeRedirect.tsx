@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { primaryButtonStyle } from "./ui";
 
 /** How long the fill takes to cross the button; globals.css reads it from --redirect-ms. */
 export const ADMIN_REDIRECT_MS = 4000;
@@ -39,13 +38,8 @@ export function AdminHomeRedirect({ href }: { href: string }) {
       <Link
         ref={linkRef}
         href={href}
-        className="admin-redirect"
-        style={
-          {
-            ...primaryButtonStyle,
-            "--redirect-ms": `${ADMIN_REDIRECT_MS}ms`,
-          } as React.CSSProperties
-        }
+        className="sf-btn sf-btn--primary admin-redirect"
+        style={{ "--redirect-ms": `${ADMIN_REDIRECT_MS}ms` } as React.CSSProperties}
       >
         {running && (
           <span
@@ -57,7 +51,7 @@ export function AdminHomeRedirect({ href }: { href: string }) {
         )}
         <span className="admin-redirect-label">Open the admin dashboard</span>
       </Link>
-      <p aria-live="polite" style={{ margin: "8px 0 0", fontSize: 13, color: "#555" }}>
+      <p aria-live="polite" className="sf-hint admin-redirect-status">
         {running ? "Opening it in a few seconds." : " "}
       </p>
     </div>

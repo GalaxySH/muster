@@ -1,13 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ActionMessage, Button } from "@/components/admin/ui";
 import { setRunPinned } from "@/lib/schedule/actions";
 
 /**
- * Pin or unpin a run from the run history table. No confirm step: both
- * directions are trivially reversible and neither touches the live schedule.
+ * Pin or unpin a run. No confirm step: both directions are trivially
+ * reversible and neither touches the live schedule. `current` is for the copy
+ * beside Save run, which names the run it acts on so it reads apart from the
+ * history rows.
  */
-export function PinRunButton({ runId, pinned }: { runId: string; pinned: boolean }) {
+export function PinRunButton({
+  runId,
+  pinned,
+  current = false,
+}: {
+  runId: string;
+  pinned: boolean;
+  current?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -19,15 +30,15 @@ export function PinRunButton({ runId, pinned }: { runId: string; pinned: boolean
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-      <button type="button" onClick={toggle} disabled={pending}>
-        {pending ? "Working…" : pinned ? "Unpin" : "Pin"}
-      </button>
-      {error && (
-        <span role="status" style={{ fontSize: 13, color: "var(--color-text-danger)" }}>
-          {error}
-        </span>
-      )}
+    <span className="ad-sc-inline">
+      <Button
+        onClick={toggle}
+        pending={pending}
+        aria-label={current ? `${pinned ? "Unpin" : "Pin"} the current run` : undefined}
+      >
+        {pinned ? "Unpin" : "Pin"}
+      </Button>
+      {error && <ActionMessage ok={false}>{error}</ActionMessage>}
     </span>
   );
 }

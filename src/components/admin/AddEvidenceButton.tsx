@@ -21,7 +21,8 @@ import {
 import { ACCEPT, FORMAT_HINT } from "@/components/evidence/shared";
 import { TravelDateRange } from "@/components/evidence/TravelDateRange";
 import { Modal } from "@/components/Modal";
-import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
+import { submitOnCtrlEnter } from "@/components/form-keys";
+import { ActionMessage, Button, Field } from "@/components/admin/ui";
 
 export type EvidenceKind = "course" | "travel" | "extracurricular";
 
@@ -99,79 +100,69 @@ export function AddEvidenceButton({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} style={addLink} aria-label={title}>
+      <button type="button" onClick={() => setOpen(true)} className="ad-linkbtn" aria-label={title}>
         {replaces ? "Replace" : kind === "extracurricular" ? "Edit" : "Add"}
       </button>
 
       {open && (
         <Modal label={title} onClose={close} maxWidth="420px">
-          <form onSubmit={submit} style={formStyle(kind)}>
+          <form onSubmit={submit} className="ad-stack ad-dg-body">
             <input type="hidden" name="student" value={studentEmail} />
             <input type="hidden" name="termId" value={termId} />
 
-            <div style={fieldArea}>
-              {kind === "course" ? (
-                replaces && (
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-                    This replaces the schedule already on file.
-                  </p>
-                )
-              ) : kind === "travel" ? (
-                <>
-                  <TravelDateRange />
-                  <label style={field}>
-                    Note (optional)
-                    <input type="text" name="note" style={{ padding: 6 }} />
-                  </label>
-                </>
-              ) : (
-                // The details box takes the room travel spends on its date fields.
-                <label style={{ ...field, flex: 1, minHeight: 0, gridTemplateRows: "auto 1fr" }}>
-                  Details
-                  <textarea
-                    name="notes"
-                    defaultValue={currentNotes}
-                    placeholder="The activity, including dates and times"
-                    onKeyDown={submitOnCtrlEnter}
-                    style={{ padding: 8, width: "100%", boxSizing: "border-box", resize: "none" }}
-                  />
-                </label>
-              )}
-
-              <label style={field}>
-                {kind === "course" ? "Proof" : "Proof (optional)"}
-                {/* Students must attach travel proof. An admin entering an
-                    excusal for someone is the excusal, so theirs may go in
-                    without one, and extracurricular details stand on their own. */}
-                <input
-                  type="file"
-                  name="file"
-                  accept={ACCEPT}
-                  required={kind === "course"}
-                  onChange={(e) => setHasFile(Boolean(e.currentTarget.files?.length))}
+            {kind === "course" ? (
+              replaces && <p className="ad-muted">This replaces the schedule already on file.</p>
+            ) : kind === "travel" ? (
+              <>
+                <TravelDateRange />
+                <Field label="Note (optional)">
+                  <input type="text" name="note" className="ad-input--block" />
+                </Field>
+              </>
+            ) : (
+              <Field label="Details">
+                <textarea
+                  name="notes"
+                  defaultValue={currentNotes}
+                  placeholder="The activity, including dates and times"
+                  rows={5}
+                  onKeyDown={submitOnCtrlEnter}
+                  className="ad-input--block"
                 />
-                <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                  {FORMAT_HINT}
-                </span>
-              </label>
-            </div>
+              </Field>
+            )}
 
-            {/* Always rendered, so an error appears in space the box already holds. */}
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
+            {/* Students must attach travel proof. An admin entering an
+                excusal for someone is the excusal, so theirs may go in
+                without one, and extracurricular details stand on their own. */}
+            <Field label={kind === "course" ? "Proof" : "Proof (optional)"} help={FORMAT_HINT}>
+              <input
+                type="file"
+                name="file"
+                accept={ACCEPT}
+                required={kind === "course"}
+                onChange={(e) => setHasFile(Boolean(e.currentTarget.files?.length))}
+              />
+            </Field>
 
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              <ActionButton
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+
+            <div className="ad-actions">
+              <Button
                 type="submit"
+                variant="primary"
                 pending={pending}
                 pendingLabel={hasFile ? "Uploading…" : "Saving…"}
               >
                 {submitLabel}
-              </ActionButton>
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </form>
         </Modal>
@@ -179,50 +170,3 @@ export function AddEvidenceButton({
     </>
   );
 }
-
-/** A quiet text link sitting in the card header, next to the section title. */
-const addLink: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  fontSize: 13,
-  fontWeight: 500,
-  color: "var(--color-text-info)",
-  cursor: "pointer",
-};
-
-/**
- * The box holds one size for its whole life: an error, a long file name, or a
- * pending button label never move the controls under the pointer. Travel and
- * extracurricular share a footprint, so those two modals open identically; the
- * course schedule is only a file picker, so it gets its own smaller one rather
- * than opening mostly empty. Width comes from the panel (full width on a phone,
- * capped on a desktop), height is ours.
- */
-const formStyle = (kind: EvidenceKind): React.CSSProperties => ({
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  width: "100%",
-  height: kind === "course" ? 210 : 300,
-  fontSize: 14,
-});
-/** The fields take whatever the reserved rows below them leave, and scroll if they need more. */
-const fieldArea: React.CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  overflowY: "auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-};
-/** Reserved room for the longest error we raise (the Drive-not-connected one). */
-const errorSlot: React.CSSProperties = {
-  margin: 0,
-  height: 46,
-  overflowY: "auto",
-  fontSize: 13,
-  color: "var(--color-text-danger)",
-};
-
-const field: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13 };

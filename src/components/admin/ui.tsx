@@ -1,135 +1,23 @@
 /**
- * The admin design vocabulary: the card/panel/tile primitives the per-student
- * view established, lifted out of that page so the hub speaks the same language
- * instead of re-inventing one.
+ * The admin console's primitives: the panel, notice, pill, button, field and
+ * figure pieces every admin page is built from. They are class-based (the
+ * classes are in app/admin.css), so a stylesheet can restyle them and a media
+ * query can reach them.
  *
  * Everything here is hook-free, so server pages and client components can both
- * import it. Colors go through the globals.css tokens.
- *
- * Everything here is presentational and knows no module: a page can import it
+ * import it. It is presentational and knows no module: a page can import it
  * without taking on a dependency it has no use for. Anything shaped by the
  * generator goes in ./schedule-ui.tsx instead.
  */
 import Link from "next/link";
-
-export const panelStyle: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  breakInside: "avoid",
-  marginBottom: 14,
-};
-
-export const cardStyle: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-/**
- * Balanced multi-column packing. The browser equalizes column heights, so the
- * panels fill whatever width the screen gives instead of leaving a ragged empty
- * column, and collapse to fewer columns as the viewport narrows.
- */
-export const masonryStyle: React.CSSProperties = {
-  columnWidth: 360,
-  columnGap: 14,
-  marginTop: 14,
-};
-
-export const cardsGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: 12,
-  marginTop: 12,
-};
-
-export const chipStyle: React.CSSProperties = {
-  background: "var(--color-background-secondary)",
-  padding: "1px 8px",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 12,
-};
-
-export const bannerStyle: React.CSSProperties = {
-  background: "var(--color-background-warning)",
-  color: "var(--color-text-warning)",
-  padding: "0.6rem 0.9rem",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-};
-
-/** Green pill: a thing that is fine (an excused absence, a healthy subsystem). */
-export const successPillStyle: React.CSSProperties = {
-  background: "#e6f4ea",
-  color: "var(--color-text-success)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-};
-
-/** Red pill for anything needing scheduler attention: late travel, stored flags. */
-export const dangerPillStyle: React.CSSProperties = {
-  background: "#fce8e6",
-  color: "var(--color-text-danger)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-};
-
-export const warningPillStyle: React.CSSProperties = {
-  background: "var(--color-background-warning)",
-  color: "var(--color-text-warning)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-};
-
-/**
- * The small tag that rides after a shift list or a warning line. The two
- * schedule surfaces share these so a run reads the same in both places: green
- * for a row nothing moved, purple for one a person placed by hand (the same
- * purple the preference grid paints manual cells).
- */
-const tagStyle: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-  marginLeft: 6,
-  whiteSpace: "nowrap",
-};
-
-export const keptTagStyle: React.CSSProperties = {
-  ...tagStyle,
-  background: "#e6f4ea",
-  color: "#196127",
-};
-
-export const manualTagStyle: React.CSSProperties = {
-  ...tagStyle,
-  background: "#f3ecfb",
-  color: "#8a4fd3",
-};
-
-/**
- * Which weekend rotation an assignment sits in. A and B are colored apart on
- * purpose: a weekend cell mixes both, and its count already reads "a·b", so
- * the list under it has to be scannable the same way.
- */
-export const rotationTagStyles = {
-  a: { ...tagStyle, background: "#e7f0fb", color: "#1a66cc" },
-  b: { ...tagStyle, background: "#fff4e0", color: "#8a5a00" },
-  every: { ...tagStyle, background: "#e6f4ea", color: "#196127" },
-} as const;
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faArrowUpRightFromSquare,
+  faCircleCheck,
+  faCircleExclamation,
+  faCircleInfo,
+  faTriangleExclamation,
+} from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 
 /** What each rotation tag says. */
 export const ROTATION_TAG_LABEL = {
@@ -149,122 +37,468 @@ export const formatDayLabel = (iso: string) =>
     timeZone: "UTC",
   });
 
-const tileStyle: React.CSSProperties = {
-  display: "block",
-  background: "var(--color-background-secondary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  padding: "0.8rem 0.9rem",
-  color: "inherit",
-  textDecoration: "none",
-};
+type Tone = "success" | "warning" | "danger" | "info";
+
+/** Join class names, skipping the falsy ones. */
+export const cx = (...parts: (string | false | null | undefined)[]) =>
+  parts.filter(Boolean).join(" ");
 
 /**
- * The number-first summary tile: a quiet label, the figure, and one line of
- * context. Pass `href` to make the whole tile the link to the list the number
- * came from; a count you cannot click is a decoration.
+ * A white, bordered block. With `title` it gets a heading row; `aside` sits on
+ * its right. With `line` it is one line instead: the heading, that text, and
+ * `aside` at the end (what a card with nothing in it collapses to).
  */
-export function StatTile({
+export function Panel({
+  title,
+  aside,
+  line,
+  flush = false,
+  as: Tag = "section",
+  id,
+  className,
+  children,
+}: {
+  title?: React.ReactNode;
+  aside?: React.ReactNode;
+  line?: React.ReactNode;
+  /** The content runs edge to edge (a table). */
+  flush?: boolean;
+  as?: "section" | "div";
+  id?: string;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  if (line != null) {
+    return (
+      <Tag id={id} className={cx("ad-panel ad-panel--line", id && "ad-anchor", className)}>
+        {title != null && <h2 className="ad-panel-title">{title}</h2>}
+        <span className="ad-panel-line-text">{line}</span>
+        {aside != null && <span className="ad-panel-line-end">{aside}</span>}
+        {children}
+      </Tag>
+    );
+  }
+  return (
+    <Tag
+      id={id}
+      className={cx("ad-panel", flush && "ad-panel--flush", id && "ad-anchor", className)}
+    >
+      {(title != null || aside != null) && (
+        <div className="ad-panel-head">
+          {title != null && <h2 className="ad-panel-title">{title}</h2>}
+          {aside != null && <div className="ad-panel-aside">{aside}</div>}
+        </div>
+      )}
+      {children}
+    </Tag>
+  );
+}
+
+const NOTICE_ICON = {
+  info: faCircleInfo,
+  success: faCircleCheck,
+  warning: faTriangleExclamation,
+  danger: faCircleExclamation,
+} as const;
+
+/**
+ * Something the reader should notice: tinted, with an icon so the tone never
+ * rests on colour. Pass `role="alert"` for an error an action returned and
+ * `role="status"` for a success.
+ */
+export function Notice({
+  tone = "info",
+  title,
+  role,
+  action,
+  children,
+}: {
+  tone?: Tone;
+  title?: React.ReactNode;
+  role?: "alert" | "status" | "note";
+  /** A control on the right: the way to fix what the notice says. */
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div role={role} className={cx("ad-notice", tone !== "info" && `ad-notice--${tone}`)}>
+      <FontAwesomeIcon icon={NOTICE_ICON[tone]} aria-hidden className="ad-notice-icon" />
+      <div className="ad-notice-body">
+        {title != null && <div className="ad-notice-title">{title}</div>}
+        {children}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/** A short state label. Neutral unless a tone says otherwise; the text carries the meaning. */
+export function Pill({
+  tone,
+  title,
+  children,
+}: {
+  tone?: Tone | "manual" | "auto";
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span title={title} className={cx("ad-pill", tone && `ad-pill--${tone}`)}>
+      {children}
+    </span>
+  );
+}
+
+type ButtonLook = {
+  variant?: "secondary" | "primary" | "quiet" | "quiet-danger" | "danger" | "danger-fill";
+  /** `md` for a page header or a form's submit; `sm` everywhere else. */
+  size?: "sm" | "md";
+};
+
+const buttonClass = ({ variant = "secondary", size = "sm" }: ButtonLook, extra?: string) =>
+  cx(
+    "ad-btn",
+    variant !== "secondary" && `ad-btn--${variant}`,
+    size === "md" && "ad-btn--md",
+    extra,
+  );
+
+/**
+ * The console's button. `pending` disables it and swaps the label, so a slow
+ * server action always gives feedback; pass it from useTransition.
+ */
+export function Button({
+  variant,
+  size,
+  pending = false,
+  pendingLabel = "Working…",
+  className,
+  type = "button",
+  disabled,
+  children,
+  ...rest
+}: ButtonLook & {
+  pending?: boolean;
+  pendingLabel?: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      type={type}
+      disabled={pending || disabled}
+      className={buttonClass({ variant, size }, className)}
+    >
+      {pending ? pendingLabel : children}
+    </button>
+  );
+}
+
+/**
+ * A link that looks like a button: navigation that deserves a button's weight.
+ * `download` makes it a plain link to a file the server sends. A link that
+ * leaves Muster is a plain `<a className="ad-btn">` at its one call site.
+ */
+export function ButtonLink({
+  variant,
+  size,
+  href,
+  download = false,
+  children,
+}: ButtonLook & {
+  href: string;
+  download?: boolean;
+  children: React.ReactNode;
+}) {
+  if (download) {
+    return (
+      <a href={href} download className={buttonClass({ variant, size })}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={buttonClass({ variant, size })}>
+      {children}
+    </Link>
+  );
+}
+
+/** A link that leaves Muster, opened in a new tab and marked as such. */
+export function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children} <FontAwesomeIcon icon={faArrowUpRightFromSquare} aria-hidden />
+      <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+    </a>
+  );
+}
+
+/**
+ * A section that starts closed. `summary` is the one line that says what is
+ * inside while it is closed (the current values of the settings in it).
+ */
+export function Disclosure({
+  title,
+  summary,
+  panel = true,
+  open = false,
+  id,
+  onToggle,
+  children,
+}: {
+  title: React.ReactNode;
+  summary?: React.ReactNode;
+  /** Draw it as a panel. Off for a disclosure inside a panel. */
+  panel?: boolean;
+  open?: boolean;
+  id?: string;
+  /** Client callers only: told the new state each time it opens or closes. */
+  onToggle?: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      id={id}
+      open={open}
+      onToggle={onToggle && ((e) => onToggle(e.currentTarget.open))}
+      className={cx("ad-disclosure", panel && "ad-disclosure--panel", id && "ad-anchor")}
+    >
+      <summary>
+        <span>{title}</span>
+        {summary != null && <span className="ad-disclosure-summary">{summary}</span>}
+      </summary>
+      <div className="ad-disclosure-body">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * Where a page keeps its settings: one closed section named Settings, the last
+ * thing before the page's content, so a setting is always in the same place.
+ */
+export function PageSettings({
+  summary,
+  open,
+  children,
+}: {
+  summary?: React.ReactNode;
+  open?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Disclosure id="settings" title="Settings" summary={summary} open={open}>
+      {children}
+    </Disclosure>
+  );
+}
+
+/** One setting in a run: its name and a line about it on the left, its control on the right. */
+export function SettingRow({
+  name,
+  help,
+  children,
+}: {
+  name: React.ReactNode;
+  help?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="ad-setting">
+      <div className="ad-setting-text">
+        <div className="ad-setting-name">{name}</div>
+        {help != null && <div className="ad-help">{help}</div>}
+      </div>
+      <div className="ad-setting-control">{children}</div>
+    </div>
+  );
+}
+
+/** A label above its control, with an optional line of help under it. */
+export function Field({
+  label,
+  htmlFor,
+  help,
+  children,
+}: {
+  label: React.ReactNode;
+  /** The control's id. Leave it out to wrap the control in the label itself. */
+  htmlFor?: string;
+  help?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (htmlFor) {
+    return (
+      <div className="ad-field">
+        <label htmlFor={htmlFor} className="ad-label">
+          {label}
+        </label>
+        {children}
+        {help != null && <p className="ad-help">{help}</p>}
+      </div>
+    );
+  }
+  return (
+    <label className="ad-field">
+      <span className="ad-label">{label}</span>
+      {children}
+      {help != null && <span className="ad-help">{help}</span>}
+    </label>
+  );
+}
+
+/** A checkbox or radio (the child) with its label and an optional line under it. */
+export function CheckRow({
+  label,
+  help,
+  children,
+}: {
+  label: React.ReactNode;
+  help?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="ad-check">
+      {children}
+      <span>{label}</span>
+      {help != null && <span className="ad-check-help">{help}</span>}
+    </label>
+  );
+}
+
+/** A row of figures. Each `Stat` with an `href` is the link to the list it counts. */
+export function StatStrip({ children }: { children: React.ReactNode }) {
+  return <div className="ad-stats">{children}</div>;
+}
+
+export function Stat({
   label,
   value,
+  of,
   sub,
   subTone,
   href,
 }: {
   label: string;
   value: React.ReactNode;
+  /** The quiet part after the figure ("of 35"). */
+  of?: React.ReactNode;
   sub?: React.ReactNode;
   subTone?: "warning" | "danger";
   href?: string;
 }) {
-  const subColor =
-    subTone === "danger"
-      ? "var(--color-text-danger)"
-      : subTone === "warning"
-        ? "var(--color-text-warning)"
-        : "var(--color-text-secondary)";
-
   const body = (
     <>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)" }}>
-        {label}
+      <div className="ad-stat-label">{label}</div>
+      <div className="ad-stat-value">
+        {value} {of != null && <span className="ad-stat-of">{of}</span>}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 600, color: "var(--color-text-primary)" }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 12, color: subColor, minHeight: 16 }}>{sub}</div>
+      {sub != null && (
+        <div className={cx("ad-stat-sub", subTone && `ad-stat-sub--${subTone}`)}>{sub}</div>
+      )}
     </>
   );
-
-  if (!href) return <div style={tileStyle}>{body}</div>;
+  if (!href) return <div className="ad-stat">{body}</div>;
   return (
-    <Link href={href} style={tileStyle}>
+    <Link href={href} className="ad-stat">
       {body}
     </Link>
   );
 }
 
-/** A dense admin table's header cell: centered, quiet, ruled off from the body. */
-export const tableThStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  fontWeight: 600,
-  color: "var(--color-text-secondary)",
-  borderBottom: "1px solid var(--color-border-secondary)",
-  textAlign: "center",
-};
+/**
+ * A count per day as small bars, the last day (today) marked, with a line
+ * under it saying what is counted. Nothing when every day is zero.
+ */
+export function Spark({
+  days,
+  caption,
+}: {
+  days: { date: string; count: number }[];
+  caption: string;
+}) {
+  const max = days.reduce((n, d) => Math.max(n, d.count), 0);
+  if (max === 0) return null;
+  return (
+    <>
+      <div className="ad-spark" aria-hidden>
+        {days.map((d, i) => (
+          <div
+            key={d.date}
+            title={`${d.date}: ${d.count}`}
+            className={i === days.length - 1 ? "ad-spark-today" : undefined}
+            style={{ height: `${Math.max(4, (d.count / max) * 100)}%` }}
+          />
+        ))}
+      </div>
+      <p className="ad-help">
+        {caption}, last {days.length} days
+      </p>
+    </>
+  );
+}
 
-/** Its body cell. Rows that read as text override `textAlign` to the left. */
-export const tableTdStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  textAlign: "center",
-  borderBottom: "1px solid var(--color-border-secondary)",
-};
-
-/** The groove a bar's fill sits in; the fill paints over it at its own width. */
-export const barTrackStyle: React.CSSProperties = {
-  height: 6,
-  borderRadius: 3,
-  overflow: "hidden",
-  background: "var(--color-background-secondary)",
-};
-
-/** The quiet aside a SectionLabel parks on the right to explain its figures. */
-export const hintStyle: React.CSSProperties = {
-  fontWeight: 400,
-  fontSize: 12,
-  color: "var(--color-text-tertiary)",
-};
-
-/** The smallest line on a panel: provenance, caveats, "nothing to show here". */
-export const footnoteStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--color-text-tertiary)",
-  margin: 0,
-};
-
-/** A panel's heading, with an optional control parked on the right. */
-export function SectionLabel({
-  action,
+/** Whether a thing is fine, as an icon and a line of text. */
+export function Status({
+  tone,
   children,
 }: {
-  action?: React.ReactNode;
+  tone: "ok" | "warning" | "danger";
+  children: React.ReactNode;
+}) {
+  const icon =
+    tone === "ok"
+      ? faCircleCheck
+      : tone === "warning"
+        ? faTriangleExclamation
+        : faCircleExclamation;
+  return (
+    <span className={`ad-status ad-status--${tone}`}>
+      <FontAwesomeIcon icon={icon} aria-hidden />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+/**
+ * What an action came back with, beside or under the control that ran it: a
+ * status for a success, an alert for an error.
+ */
+export function ActionMessage({
+  ok,
+  as: Tag = "span",
+  className,
+  children,
+}: {
+  ok: boolean;
+  as?: "span" | "p" | "div";
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        gap: 8,
-        fontSize: 14,
-        fontWeight: 700,
-        color: "var(--color-text-primary)",
-        marginBottom: 10,
-      }}
-    >
-      <span>{children}</span>
-      {action}
-    </div>
+    <Tag role={ok ? "status" : "alert"} className={className}>
+      <Status tone={ok ? "ok" : "danger"}>{children}</Status>
+    </Tag>
+  );
+}
+
+/** What a list or table says when it has nothing to show. */
+export function EmptyState({ children }: { children: React.ReactNode }) {
+  return <p className="ad-empty">{children}</p>;
+}
+
+/** Text for a screen reader only. */
+export function VisuallyHidden({ children }: { children: React.ReactNode }) {
+  return <span className="ad-visually-hidden">{children}</span>;
+}
+
+/** A table cell with nothing in it: a quiet mark to see, "none" to hear. */
+export function EmptyMark() {
+  return (
+    <>
+      <span aria-hidden className="ad-faint">
+        -
+      </span>
+      <VisuallyHidden>none</VisuallyHidden>
+    </>
   );
 }

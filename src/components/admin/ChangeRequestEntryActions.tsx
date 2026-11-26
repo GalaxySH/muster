@@ -13,7 +13,8 @@ import { deleteChangeRequest, updateChangeRequest } from "@/lib/changes/admin-ac
 import { CHANGE_REQUEST_DAY_OPTIONS, type ChangeRequestDay } from "@/lib/domain/change-requests";
 import { Modal } from "@/components/Modal";
 import { useRenderedTermId } from "@/components/RenderedTerm";
-import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
+import { submitOnCtrlEnter } from "@/components/form-keys";
+import { ActionMessage, Button, CheckRow, Field } from "@/components/admin/ui";
 
 export function ChangeRequestEntryActions({
   id,
@@ -82,63 +83,59 @@ export function ChangeRequestEntryActions({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen("edit")} style={link}>
+      <button type="button" onClick={() => setOpen("edit")} className="ad-linkbtn ad-dg-inline">
         Edit
       </button>
-      <button type="button" onClick={() => setOpen("delete")} style={{ ...link, ...danger }}>
+      <button
+        type="button"
+        onClick={() => setOpen("delete")}
+        className="ad-linkbtn ad-linkbtn--danger ad-dg-inline"
+      >
         Delete
       </button>
 
       {open === "edit" && (
         <Modal label="Edit change request" onClose={close} maxWidth="460px">
-          <form onSubmit={save} style={formStyle}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <label style={field}>
-                Day
-                <select name="day" defaultValue={day} style={{ padding: 6 }}>
+          <form onSubmit={save} className="ad-stack ad-dg-body">
+            <div className="ad-fields">
+              <Field label="Day">
+                <select name="day" defaultValue={day}>
                   {CHANGE_REQUEST_DAY_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
                   ))}
                 </select>
-              </label>
-              <label style={{ ...field, flex: 1, minWidth: 160 }}>
-                Shift time
-                <input
-                  type="text"
-                  name="shiftText"
-                  defaultValue={shiftText}
-                  required
-                  style={{ padding: 6 }}
-                />
-              </label>
+              </Field>
+              <Field label="Shift time">
+                <input type="text" name="shiftText" defaultValue={shiftText} required />
+              </Field>
             </div>
-            <label style={checkboxRow}>
+            <CheckRow label="Permanent change">
               <input type="checkbox" name="permanent" value="1" defaultChecked={permanent} />
-              Permanent change
-            </label>
-            <label style={field}>
-              Comment
+            </CheckRow>
+            <Field label="Comment">
               <textarea
                 name="comment"
                 defaultValue={comment}
                 required
                 rows={4}
                 onKeyDown={submitOnCtrlEnter}
-                style={{ padding: 6, fontFamily: "inherit" }}
+                className="ad-input--block"
               />
-            </label>
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={buttonRow}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              <ActionButton type="submit" pending={pending} pendingLabel="Saving…">
+            </Field>
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+            <div className="ad-actions">
+              <Button type="submit" variant="primary" pending={pending} pendingLabel="Saving…">
                 Save
-              </ActionButton>
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </form>
         </Modal>
@@ -146,30 +143,29 @@ export function ChangeRequestEntryActions({
 
       {open === "delete" && (
         <Modal label="Delete change request" onClose={close} maxWidth="420px">
-          <div style={formStyle}>
-            <p style={{ margin: 0, fontSize: 14 }}>
+          <div className="ad-stack ad-dg-body">
+            <p>
               Delete this request for good?
               {fileCount > 0 &&
                 (fileCount === 1 ? " Its proof file goes too." : " Its proof files go too.")}
             </p>
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={buttonRow}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              {/* Destructive, so it takes the outlined danger button the
-                  travel entry's Remove uses rather than the primary one. */}
-              <button
-                type="button"
-                className="btn-hover"
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+            <div className="ad-actions">
+              <Button
+                variant="danger-fill"
                 onClick={remove}
-                disabled={pending}
-                style={dangerButton(pending)}
+                pending={pending}
+                pendingLabel="Deleting…"
               >
-                {pending ? "Deleting…" : "Delete"}
-              </button>
+                Delete
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </div>
         </Modal>
@@ -177,54 +173,3 @@ export function ChangeRequestEntryActions({
     </>
   );
 }
-
-/** Quiet text links, sized to sit in the request's small meta line. */
-const link: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  marginLeft: 10,
-  fontSize: 12,
-  fontWeight: 500,
-  color: "var(--color-text-info)",
-  cursor: "pointer",
-};
-const danger: React.CSSProperties = { color: "var(--color-text-danger)" };
-
-/** One size for the box's whole life, so an error never moves the buttons. */
-const formStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  width: "100%",
-  fontSize: 14,
-};
-const field: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13 };
-const checkboxRow: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  fontSize: 13,
-  cursor: "pointer",
-};
-const errorSlot: React.CSSProperties = {
-  margin: 0,
-  minHeight: 32,
-  fontSize: 13,
-  color: "var(--color-text-danger)",
-};
-const buttonRow: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "flex-end",
-};
-const dangerButton = (pending: boolean): React.CSSProperties => ({
-  fontSize: 13,
-  padding: "5px 12px",
-  borderRadius: "var(--border-radius-md)",
-  cursor: pending ? "default" : "pointer",
-  border: "1px solid var(--color-border-danger, #d93025)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-danger)",
-  opacity: pending ? 0.5 : 1,
-});

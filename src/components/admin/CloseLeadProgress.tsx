@@ -7,7 +7,7 @@
  * (admin gate, that each person holds a closes position in the term, the
  * range), and the router refreshes afterwards so the page re-reads the truth.
  *
- * A <details>, so the one-line summary stays visible when collapsed. It starts
+ * A disclosure, so the one-line summary stays visible when collapsed. It starts
  * open when anyone is short or over and closed when every lead is done.
  */
 import { useState, useTransition } from "react";
@@ -22,7 +22,7 @@ import {
   isValidCloseRequirement,
   type CloseLeadStatus,
 } from "@/lib/domain/close-claims";
-import { ActionButton } from "@/components/ui";
+import { Button, Disclosure, Notice, Pill } from "@/components/admin/ui";
 
 type Filter = "all" | "short" | "over";
 
@@ -67,7 +67,7 @@ export function CloseLeadProgress({
 
   const count = (status: CloseLeadStatus) => leads.filter((l) => l.status === status).length;
   // Starts open when someone needs attention; after that the admin decides.
-  const [open, setOpen] = useState(() => count("short") + count("over") > 0);
+  const [startOpen] = useState(() => count("short") + count("over") > 0);
   const shown = filter === "all" ? leads : leads.filter((l) => l.status === filter);
   // A lead filtered out of view is not acted on, even if still ticked.
   const chosen = shown.filter((l) => selected.has(l.email)).map((l) => l.email);
@@ -109,137 +109,142 @@ export function CloseLeadProgress({
   ];
 
   return (
-    <details style={panel} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary style={summaryRow}>
-        <span aria-hidden style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
-          {open ? "▾" : "▸"}
-        </span>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>Shift Lead progress</span>
-        <span style={{ color: "var(--color-text-secondary)" }}>
-          {summarize(leads, defaultRequirement)}
-        </span>
-      </summary>
-
-      <div style={toolbar}>
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            aria-pressed={filter === f.key}
-            onClick={() => setFilter(f.key)}
-            style={filter === f.key ? segOn : seg}
-          >
-            {f.label}
-          </button>
-        ))}
-        {chosen.length > 0 && (
-          <span style={batchBar}>
-            <span>{chosen.length} selected</span>
-            <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-              Set closes to
-              <input
-                type="number"
-                min={0}
-                max={MAX_CLOSE_REQUIREMENT}
-                step={1}
-                value={batchValue}
-                onChange={(e) => setBatchValue(e.target.value)}
-                style={numberInput}
-              />
-            </label>
-            <ActionButton
-              pending={pendingKey === "batch"}
-              pendingLabel="Saving…"
-              disabled={pendingKey !== null || batchValue.trim() === ""}
-              onClick={() =>
-                save("batch", chosen, Number(batchValue), () => setSelected(new Set()))
-              }
-              style={{ padding: "0.2rem 0.7rem", fontSize: 13 }}
-            >
-              Apply
-            </ActionButton>
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <p role="status" style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-danger)" }}>
-          ✗ {error}
-        </p>
-      )}
-
-      {shown.length === 0 ? (
-        <p style={{ margin: "4px 0 0", color: "var(--color-text-secondary)" }}>
-          No leads are {filter}.
-        </p>
-      ) : (
-        <table className="stack-table stack-table--fit">
-          <thead>
-            <tr>
-              <th style={{ width: 34 }}>
+    <Disclosure
+      title="Shift Lead progress"
+      summary={summarize(leads, defaultRequirement)}
+      open={startOpen}
+    >
+      <div className="ad-stack">
+        <div className="ad-row">
+          <div className="ad-seg" role="group" aria-label="Show leads">
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={filter === f.key}
+                onClick={() => setFilter(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {chosen.length > 0 && (
+            <span className="ad-toolbar-end ad-pl-batch">
+              <span>{chosen.length} selected</span>
+              <label>
+                Set closes to
                 <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  checked={allChosen}
-                  onChange={() =>
-                    setSelected(allChosen ? new Set() : new Set(shown.map((l) => l.email)))
-                  }
+                  type="number"
+                  min={0}
+                  max={MAX_CLOSE_REQUIREMENT}
+                  step={1}
+                  value={batchValue}
+                  onChange={(e) => setBatchValue(e.target.value)}
+                  className="ad-pl-count-input"
                 />
-              </th>
-              <th>Shift Lead</th>
-              <th>Required</th>
-              <th>Picked</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((l) => (
-              <tr
-                key={l.email}
-                style={
-                  selected.has(l.email) ? { background: "var(--color-background-info)" } : undefined
+              </label>
+              <Button
+                variant="primary"
+                pending={pendingKey === "batch"}
+                pendingLabel="Saving…"
+                disabled={pendingKey !== null || batchValue.trim() === ""}
+                onClick={() =>
+                  save("batch", chosen, Number(batchValue), () => setSelected(new Set()))
                 }
               >
-                <td style={{ verticalAlign: "middle" }}>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${l.displayName}`}
-                    checked={selected.has(l.email)}
-                    onChange={() => toggle(l.email)}
-                  />
-                </td>
-                <td data-label="Shift Lead" style={{ verticalAlign: "middle" }}>
-                  <Link href={`/admin/students/${encodeURIComponent(l.email)}`}>{l.displayName}</Link>
-                </td>
-                <td data-label="Required" style={{ whiteSpace: "nowrap" }}>
-                  <RequirementInput
-                    // Remount on a new stored number so the box shows what was saved.
-                    key={l.required}
-                    name={l.displayName}
-                    required={l.required}
-                    disabled={pendingKey !== null}
-                    onSave={(n) => save(`one:${l.email}`, [l.email], n)}
-                  />
-                  {l.required !== defaultRequirement && <span style={ownTag}>own number</span>}
-                </td>
-                <td data-label="Picked" style={{ verticalAlign: "middle" }}>
-                  {l.claimCount}
-                </td>
-                <td data-label="Status" style={{ verticalAlign: "middle" }}>
-                  <span style={{ ...pill, ...STATUS_PILL[l.status] }}>
-                    {closeLeadStatusLabel(l.claimCount, l.required)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--color-text-tertiary)" }}>
-        A changed number saves when you leave the box. It never removes a close a lead already
-        has.
-      </p>
-    </details>
+                Apply
+              </Button>
+            </span>
+          )}
+        </div>
+
+        {error && (
+          <Notice tone="danger" role="alert">
+            {error}
+          </Notice>
+        )}
+
+        {shown.length === 0 ? (
+          <p className="ad-muted">No leads are {filter}.</p>
+        ) : (
+          <div className="ad-scroll-x">
+            <table className="ad-table ad-table--stack ad-table--middle">
+              <thead>
+                <tr>
+                  <th scope="col" className="ad-check-col">
+                    <label className="ad-check-hit">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={allChosen}
+                        onChange={() =>
+                          setSelected(allChosen ? new Set() : new Set(shown.map((l) => l.email)))
+                        }
+                      />
+                    </label>
+                  </th>
+                  <th scope="col">Shift Lead</th>
+                  <th scope="col">Required</th>
+                  <th scope="col" className="ad-num">
+                    Picked
+                  </th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((l) => (
+                  <tr
+                    key={l.email}
+                    className={selected.has(l.email) ? "ad-pl-tr--selected" : undefined}
+                  >
+                    <td>
+                      <label className="ad-check-hit">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${l.displayName}`}
+                          checked={selected.has(l.email)}
+                          onChange={() => toggle(l.email)}
+                        />
+                      </label>
+                    </td>
+                    <td data-label="Shift Lead">
+                      <Link href={`/admin/students/${encodeURIComponent(l.email)}`}>
+                        {l.displayName}
+                      </Link>
+                    </td>
+                    <td data-label="Required">
+                      <span className="ad-pl-required">
+                        <RequirementInput
+                          // Remount on a new stored number so the box shows what was saved.
+                          key={l.required}
+                          name={l.displayName}
+                          required={l.required}
+                          disabled={pendingKey !== null}
+                          onSave={(n) => save(`one:${l.email}`, [l.email], n)}
+                        />
+                        {l.required !== defaultRequirement && <Pill>own number</Pill>}
+                      </span>
+                    </td>
+                    <td data-label="Picked" className="ad-num">
+                      {l.claimCount}
+                    </td>
+                    <td data-label="Status">
+                      <Pill tone={STATUS_TONE[l.status]}>
+                        {closeLeadStatusLabel(l.claimCount, l.required)}
+                      </Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="ad-help">
+          A changed number saves when you leave the box. It never removes a close a lead already
+          has.
+        </p>
+      </div>
+    </Disclosure>
   );
 }
 
@@ -278,82 +283,14 @@ function RequirementInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      style={numberInput}
+      className="ad-pl-count-input"
     />
   );
 }
 
-const STATUS_PILL: Record<CloseLeadStatus, React.CSSProperties> = {
-  short: { background: "#fdecef", color: "var(--color-text-danger)" },
-  done: { background: "#e6f4ea", color: "var(--color-text-success)" },
-  over: { background: "var(--color-background-warning)", color: "var(--color-text-warning)" },
-};
-
-const panel: React.CSSProperties = {
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.85rem 1rem",
-  marginBottom: 16,
-};
-const summaryRow: React.CSSProperties = {
-  cursor: "pointer",
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "baseline",
-  gap: "4px 12px",
-};
-const toolbar: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: 8,
-  margin: "12px 0 10px",
-};
-const seg: React.CSSProperties = {
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-secondary)",
-  borderRadius: 999,
-  padding: "3px 12px",
-  fontSize: 13,
-  cursor: "pointer",
-};
-const segOn: React.CSSProperties = {
-  ...seg,
-  background: "var(--color-text-primary)",
-  border: "1px solid var(--color-text-primary)",
-  color: "#fff",
-};
-const batchBar: React.CSSProperties = {
-  marginLeft: "auto",
-  display: "inline-flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: 8,
-  background: "var(--color-background-info)",
-  borderRadius: "var(--border-radius-md)",
-  padding: "5px 10px",
-  fontSize: 13,
-};
-const numberInput: React.CSSProperties = {
-  width: 58,
-  padding: "3px 6px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-  textAlign: "center",
-};
-const ownTag: React.CSSProperties = {
-  marginLeft: 8,
-  fontSize: 11,
-  color: "var(--color-text-tertiary)",
-};
-const pill: React.CSSProperties = {
-  display: "inline-block",
-  fontSize: 12,
-  fontWeight: 600,
-  padding: "2px 9px",
-  borderRadius: 999,
-  whiteSpace: "nowrap",
+/** Short of the number is the one to notice; the text carries the count. */
+const STATUS_TONE: Record<CloseLeadStatus, "warning" | "success" | "info"> = {
+  short: "warning",
+  done: "success",
+  over: "info",
 };

@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * The requested-hours figure on the response page's REQUESTED tile, editable in
- * place. It reads as plain text until hovered (a dotted underline is the only
- * hint), turns into a small number box on click, and saves on Enter or blur;
+ * The requested-hours figure in the fact strip of a student's page, editable in
+ * place. It reads as the figure with a dotted underline, turns into a small
+ * number box on click, and saves on Enter or blur;
  * Escape backs out. An empty box clears the answer.
  *
  * The save overwrites the student's own desired hours (`saveDesiredHoursFor`),
@@ -14,6 +14,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { saveDesiredHoursFor } from "@/lib/availability/actions";
+import { ActionMessage } from "@/components/admin/ui";
 
 export function RequestedHoursEditor({
   studentEmail,
@@ -33,7 +34,6 @@ export function RequestedHoursEditor({
   const [value, setValue] = useState(desiredHours);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const [hover, setHover] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // Enter saves and then the box goes away, which can blur it too. One save
@@ -80,7 +80,7 @@ export function RequestedHoursEditor({
 
   if (editing) {
     return (
-      <span style={{ display: "inline-flex", flexDirection: "column", verticalAlign: "top" }}>
+      <span className="ad-st-hours">
         <input
           type="number"
           min={minHours}
@@ -103,62 +103,16 @@ export function RequestedHoursEditor({
               cancel();
             }
           }}
-          style={input}
+          className="ad-st-hours-input"
         />
-        {error && (
-          <span role="alert" style={errorText}>
-            {error}
-          </span>
-        )}
+        {error && <ActionMessage ok={false}>{error}</ActionMessage>}
       </span>
     );
   }
 
   return (
-    <button
-      type="button"
-      title="Click to edit"
-      onClick={open}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onFocus={() => setHover(true)}
-      onBlur={() => setHover(false)}
-      style={hover ? { ...figure, ...figureHover } : figure}
-    >
+    <button type="button" title="Click to edit" onClick={open} className="ad-st-figure">
       {value ? `${value}h` : "D"}
     </button>
   );
 }
-
-/** Looks exactly like the tile's other text until hovered. */
-const figure: React.CSSProperties = {
-  font: "inherit",
-  color: "inherit",
-  background: "none",
-  border: "none",
-  padding: "0 2px",
-  margin: "0 -2px",
-  borderRadius: 4,
-  cursor: "pointer",
-  textDecoration: "underline dotted transparent",
-  textUnderlineOffset: 4,
-};
-const figureHover: React.CSSProperties = {
-  textDecorationColor: "var(--color-text-tertiary)",
-  background: "var(--color-background-primary)",
-};
-
-const input: React.CSSProperties = {
-  width: "4.5em",
-  font: "inherit",
-  padding: "0 4px",
-  borderRadius: 4,
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-primary)",
-};
-const errorText: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 400,
-  color: "var(--color-text-danger)",
-};

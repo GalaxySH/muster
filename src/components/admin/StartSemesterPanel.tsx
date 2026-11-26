@@ -10,7 +10,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button, Disclosure, Field, Notice, Panel } from "@/components/admin/ui";
 import { makeSemesterCurrent, startSemester } from "@/lib/admin/term-actions";
 import { TERM_NAME_MAX } from "@/lib/domain/terms";
 
@@ -70,88 +70,67 @@ export function StartSemesterPanel({ current }: { current: TermRef }) {
   }
 
   return (
-    <details style={card}>
-      <summary style={{ cursor: "pointer", fontSize: 16, fontWeight: 700 }}>
-        Start a new semester
-      </summary>
-      <p style={{ ...hint, maxWidth: 680 }}>
+    <Disclosure title="Start a new semester">
+      <p className="ad-su-prose">
         Students move to the new semester right away. {current.name} stays as it is, and you can
         still select it at the top of the page to keep working on it.
       </p>
 
-      <div style={grid}>
-        <label style={field}>
-          <span style={labelText}>Name</span>
+      <div className="ad-fields ad-su-below">
+        <Field label="Name">
           <input
             type="text"
             value={name}
             maxLength={TERM_NAME_MAX}
             placeholder="Spring 2027"
             onChange={(e) => setName(e.target.value)}
-            style={input}
           />
-        </label>
-        <label style={field}>
-          <span style={labelText}>First day</span>
-          <input
-            type="date"
-            value={startsOn}
-            onChange={(e) => setStartsOn(e.target.value)}
-            style={input}
-          />
-        </label>
-        <label style={field}>
-          <span style={labelText}>Last day</span>
-          <input
-            type="date"
-            value={endsOn}
-            onChange={(e) => setEndsOn(e.target.value)}
-            style={input}
-          />
-        </label>
+        </Field>
+        <Field label="First day">
+          <input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+        </Field>
+        <Field label="Last day">
+          <input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+        </Field>
       </div>
 
-      <div style={{ ...grid, marginTop: 16 }}>
+      <div className="ad-fields ad-su-below">
         <Outcome title="Starts empty" items={STARTS_EMPTY} />
         <Outcome title={`Copied from ${current.name}`} items={COPIED} />
         <Outcome title="Not affected" items={NOT_AFFECTED} />
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end", marginTop: 16 }}>
-        <label style={field}>
-          <span style={labelText}>Type the new name to confirm</span>
-          <input
-            type="text"
-            value={confirmName}
-            onChange={(e) => setConfirmName(e.target.value)}
-            style={input}
-          />
-        </label>
-        <ActionButton onClick={start} pending={pending} pendingLabel="Starting…" disabled={!ready}>
+      <div className="ad-su-medium ad-su-below">
+        <Field label="Type the new name to confirm">
+          <input type="text" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} />
+        </Field>
+      </div>
+      <div className="ad-actions">
+        <Button
+          variant="primary"
+          size="md"
+          onClick={start}
+          pending={pending}
+          pendingLabel="Starting…"
+          disabled={!ready}
+        >
           {cleanName ? `Start ${cleanName}` : "Start the semester"}
-        </ActionButton>
+        </Button>
       </div>
       {msg && (
-        <p
-          role="status"
-          style={{
-            margin: "10px 0 0",
-            fontSize: 14,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓" : "✗"} {msg.text}
-        </p>
+        <ActionMessage ok={msg.ok} as="p" className="ad-su-below">
+          {msg.text}
+        </ActionMessage>
       )}
-    </details>
+    </Disclosure>
   );
 }
 
 function Outcome({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
-      <div style={labelText}>{title}</div>
-      <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>
+      <div className="ad-label">{title}</div>
+      <ul className="ad-bullets ad-su-outcome">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -180,66 +159,45 @@ export function MakeCurrentPanel({ working, current }: { working: TermRef; curre
   }
 
   return (
-    <section style={card}>
-      <h2 style={{ fontSize: 16, margin: 0 }}>Current semester</h2>
-      <p style={{ ...hint, maxWidth: 680 }}>
-        Students are filling in {current.name}. Making {working.name} current sends them back to
-        it. Nothing in either semester is deleted.
+    <Panel title="Current semester">
+      <p className="ad-su-prose">
+        Students are filling in {current.name}. Making {working.name} current sends them back to it.
+        Nothing in either semester is deleted.
       </p>
       {responses === null ? (
-        <ActionButton
-          variant="secondary"
-          onClick={() => run(false)}
-          pending={pending}
-          pendingLabel="Changing…"
-        >
-          Make {working.name} current
-        </ActionButton>
+        <div className="ad-actions">
+          <Button onClick={() => run(false)} pending={pending} pendingLabel="Changing…">
+            Make {working.name} current
+          </Button>
+        </div>
       ) : (
-        <div role="status" style={{ fontSize: 14 }}>
-          <p style={{ margin: "0 0 8px", color: "var(--color-text-danger)" }}>
-            {current.name} already has {responses} {responses === 1 ? "response" : "responses"}.
-            Students will not see them while {working.name} is current.
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <ActionButton onClick={() => run(true)} pending={pending} pendingLabel="Changing…">
+        <div className="ad-su-below">
+          <Notice tone="danger" role="status">
+            <p>
+              {current.name} already has {responses} {responses === 1 ? "response" : "responses"}.
+              Students will not see them while {working.name} is current.
+            </p>
+          </Notice>
+          <div className="ad-actions">
+            <Button
+              variant="primary"
+              onClick={() => run(true)}
+              pending={pending}
+              pendingLabel="Changing…"
+            >
               Make {working.name} current anyway
-            </ActionButton>
-            <ActionButton variant="secondary" onClick={() => setResponses(null)} disabled={pending}>
+            </Button>
+            <Button onClick={() => setResponses(null)} disabled={pending}>
               Cancel
-            </ActionButton>
+            </Button>
           </div>
         </div>
       )}
       {error && (
-        <p role="status" style={{ margin: "10px 0 0", fontSize: 14, color: "var(--color-text-danger)" }}>
-          ✗ {error}
-        </p>
+        <ActionMessage ok={false} as="p" className="ad-su-below">
+          {error}
+        </ActionMessage>
       )}
-    </section>
+    </Panel>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};
-const grid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: 14,
-  alignItems: "start",
-};
-const field: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
-const labelText: React.CSSProperties = { fontSize: 13, fontWeight: 600 };
-const hint: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)" };
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 14,
-  boxSizing: "border-box",
-};

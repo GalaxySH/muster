@@ -17,9 +17,12 @@ import {
 import { hoursLabel } from "@/lib/domain/config-validation";
 import { DeleteResponseButton } from "./DeleteResponseButton";
 import { StudentScheduleModalLink } from "./StudentSchedulePopup";
+import { EmptyMark, EmptyState, Panel, Pill, VisuallyHidden } from "./ui";
 
 /** Flag types that keep their own red pill even in the compact count view. */
 const ALERT_FLAGS = ["position_change", "revalidation_failed", "orphaned_selection"] as const;
+
+const STATUS_TONE = { submitted: "success", draft: undefined, missing: "danger" } as const;
 
 /**
  * The response dashboard table (PLAN §10): the students the filters selected,
@@ -29,12 +32,13 @@ const ALERT_FLAGS = ["position_change", "revalidation_failed", "orphaned_selecti
  * roster scale (~400 rows); the server hands the full list once.
  *
  * The page's URL filters ride in as `filters` rather than being rendered
- * alongside: filtering and searching are one job, so they share one panel above
- * the table instead of stacking as two loose rows of controls.
+ * alongside: filtering and searching are one job, so they share the one toolbar
+ * above the table.
  *
- * Renders as a `.stack-table` (full-bleed like the groups table): rows stack
- * into labeled blocks under 720px, and the flags cell swaps between individual
- * pills and a compact count by width (`.flags-expanded` / `.flags-count`).
+ * Rows stack into labeled blocks under 720px. The flags cell names every flag
+ * as its own pill, except between 720px and 1100px where there is no room: there
+ * it is a count, with the names in its title and for a screen reader
+ * (`.ad-ls-flags-full` / `.ad-ls-flags-count`).
  */
 export function ResponseList({
   rows,
@@ -49,7 +53,7 @@ export function ResponseList({
   filterQuery?: string;
   /** The order from the URL, so a link back into the list restores it. */
   initialSort: ResponseSort;
-  /** The URL-backed filter controls, rendered into this table's control panel. */
+  /** The URL-backed filter controls, rendered into this table's toolbar. */
   filters?: React.ReactNode;
   /** Shown in place of the table when the server handed over no rows at all. */
   emptyMessage?: string;
@@ -89,219 +93,176 @@ export function ResponseList({
     }
   }
 
-  const arrow = (key: SortKey) => (key === sort ? (dir === 1 ? " ▲" : " ▼") : "");
+  const sortTh = (key: SortKey, label: string, className?: string, title?: string) => (
+    <th
+      scope="col"
+      className={className}
+      aria-sort={key === sort ? (dir === 1 ? "ascending" : "descending") : undefined}
+    >
+      <button type="button" className="ad-sortbtn" title={title} onClick={() => toggleSort(key)}>
+        {label}
+        {/* The th says the order (aria-sort); the glyph is for the eye. */}
+        {key === sort && <span aria-hidden>{dir === 1 ? " ▲" : " ▼"}</span>}
+      </button>
+    </th>
+  );
 
   return (
-    <div>
-      <div style={controlPanel}>
-        {filters && (
-          <>
-            <div style={panelLegend}>Filters</div>
-            {filters}
-            <div style={panelDivider} />
-          </>
-        )}
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              flex: "1 1 320px",
-              maxWidth: 480,
-              fontSize: 13,
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            Search
-            <input
-              type="search"
-              placeholder="Search name, email, position or group"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{
-                flex: 1,
-                minWidth: 240,
-                padding: "8px 10px",
-                borderRadius: "var(--border-radius-md)",
-                border: "0.5px solid var(--color-border-secondary)",
-                background: "var(--color-background-primary)",
-                fontFamily: "var(--font-sans)",
-                fontSize: 14,
-              }}
-            />
-          </label>
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+    <Panel flush as="div">
+      <div className="ad-toolbar">
+        {filters}
+        <label className="ad-ls-search">
+          Search
+          <input
+            type="search"
+            placeholder="Search name, email, position or group"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <div className="ad-toolbar-end">
+          {/* Announced, politely, when a search or sort changes the count. */}
+          <span role="status" className="ad-ls-count">
             {filtered.length} of {rows.length} · {scheduledCount} scheduled · {flaggedCount} flagged
           </span>
         </div>
       </div>
 
       {rows.length === 0 ? (
-        <p style={{ color: "var(--color-text-secondary)" }}>{emptyMessage}</p>
+        <EmptyState>{emptyMessage}</EmptyState>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            className="stack-table zebra-table ruled-table hover-table"
-            style={{ fontSize: 14 }}
-          >
-            <thead>
-              <tr>
-                <Th onClick={() => toggleSort("name")}>Name{arrow("name")}</Th>
-                <Th onClick={() => toggleSort("group")}>Group{arrow("group")}</Th>
-                <Th onClick={() => toggleSort("position")}>Position{arrow("position")}</Th>
-                <Th onClick={() => toggleSort("status")}>Status{arrow("status")}</Th>
-                <Th
-                  onClick={() => toggleSort("requested")}
-                  className="cell-right"
-                  title="Scheduled hours of the hours they asked for. Sorts by the hours they asked for."
-                >
-                  Hours{arrow("requested")}
-                </Th>
-                <Th onClick={() => toggleSort("flags")} className="cell-center">
-                  Flags{arrow("flags")}
-                </Th>
-                <Th onClick={() => toggleSort("scheduled")} className="cell-center">
-                  Scheduled{arrow("scheduled")}
-                </Th>
-                <Th onClick={() => toggleSort("updated")} className="cell-right">
-                  Updated{arrow("updated")}
-                </Th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr
-                  key={r.email}
-                  onClick={() =>
-                    router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)
-                  }
-                  style={{ cursor: "pointer" }}
-                >
-                  <td data-label="Name">
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
-                    >
-                      <span style={{ fontWeight: 500 }}>{r.displayName}</span>
-                      <StudentScheduleModalLink
-                        email={r.email}
-                        displayName={r.displayName}
-                        label={`Scheduled shifts for ${r.displayName}`}
-                      >
-                        <span style={iconButton} className="btn-hover">
-                          <FontAwesomeIcon icon={faCalendarDays} />
-                        </span>
-                      </StudentScheduleModalLink>
-                      {r.openChangeRequests > 0 && (
-                        <span
-                          style={changeRequestPill}
-                          title={
-                            r.openChangeRequests === 1
-                              ? "1 open change request"
-                              : `${r.openChangeRequests} open change requests`
-                          }
-                        >
-                          {r.openChangeRequests}
-                        </span>
-                      )}
-                      {!r.onRoster && <span style={offRosterBadge}>off roster</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                      {r.email}
-                    </div>
-                  </td>
-                  <td data-label="Group">
-                    {r.groupName ?? <span style={noGroupText}>no group</span>}
-                  </td>
-                  <td data-label="Position">{r.positionName ?? "—"}</td>
-                  <td data-label="Status">
-                    <span style={STATUS_BADGE[r.status]}>{r.status}</span>
-                    {r.status === "submitted" && r.viaGoogleForm && (
-                      <span style={viaFormBadge}>via Google Form</span>
-                    )}
-                  </td>
-                  <td data-label="Hours" className="cell-right" style={{ whiteSpace: "nowrap" }}>
-                    <HoursCell
-                      scheduledMinutes={r.scheduledMinutes}
-                      desiredHours={r.desiredHours}
-                    />
-                  </td>
-                  <td data-label="Flags" className="cell-center">
-                    {r.flagCount === 0 ? (
-                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
-                    ) : (
-                      <>
-                        <span className="flags-expanded">
-                          {r.flagTypes.map((t, i) => (
-                            <span key={`${t}-${i}`} style={alertBadge}>
-                              {FLAG_LABELS[t]}
-                            </span>
-                          ))}
-                        </span>
-                        <span className="flags-count">
-                          <span style={flagBadge}>⚠ {r.flagCount}</span>
-                          {ALERT_FLAGS.filter((t) => r.flagTypes.includes(t)).map((t) => (
-                            <div key={t} style={{ marginTop: 3 }}>
-                              <span style={alertBadge}>{FLAG_LABELS[t]}</span>
-                            </div>
-                          ))}
-                        </span>
-                      </>
-                    )}
-                  </td>
-                  <td data-label="Scheduled" className="cell-center">
-                    {r.scheduled ? (
-                      <span style={scheduledPill}>Scheduled</span>
-                    ) : (
-                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
-                    )}
-                  </td>
-                  <td
-                    data-label="Updated"
-                    className="cell-right"
-                    style={{
-                      color: "var(--color-text-tertiary)",
-                      fontSize: 13,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {fmtDate(r.submittedAt ?? r.updatedAt)}
-                  </td>
-                  <td className="cell-right">
-                    {/* Nothing to delete for a student who never started. */}
-                    {r.status !== "missing" && (
-                      <DeleteResponseButton
-                        studentEmail={r.email}
-                        displayName={r.displayName}
-                        variant="icon"
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={9}
-                    style={{ color: "var(--color-text-tertiary)", textAlign: "center" }}
-                  >
-                    Nothing matches your search.
-                  </td>
-                </tr>
+        <table className="ad-table ad-table--stack ad-table--zebra ad-table--hover ad-table--middle">
+          <thead>
+            <tr>
+              {sortTh("name", "Name")}
+              {sortTh("position", "Position")}
+              {sortTh("group", "Group")}
+              {sortTh("status", "Status")}
+              {sortTh(
+                "requested",
+                "Hours",
+                "ad-num",
+                "Scheduled hours of the hours they asked for. Sorts by the hours they asked for.",
               )}
-            </tbody>
-          </table>
-        </div>
+              {sortTh("flags", "Flags", "ad-center")}
+              {sortTh("scheduled", "Scheduled", "ad-center")}
+              {sortTh("updated", "Updated", "ad-num")}
+              <th scope="col" aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r) => (
+              <tr
+                key={r.email}
+                className="ad-ls-rowlink"
+                onClick={() =>
+                  router.push(`/admin/students/${encodeURIComponent(r.email)}${suffix}`)
+                }
+              >
+                <td data-label="Name">
+                  <div className="ad-ls-who">
+                    <span className="ad-ls-name ad-ls-name--clip" title={r.displayName}>
+                      {r.displayName}
+                    </span>
+                    <StudentScheduleModalLink
+                      email={r.email}
+                      displayName={r.displayName}
+                      label={`Scheduled shifts for ${r.displayName}`}
+                    >
+                      <span className="ad-btn ad-btn--icon ad-ls-iconbtn">
+                        <FontAwesomeIcon icon={faCalendarDays} aria-hidden />
+                      </span>
+                    </StudentScheduleModalLink>
+                    {r.openChangeRequests > 0 && (
+                      <Pill
+                        tone="info"
+                        title={
+                          r.openChangeRequests === 1
+                            ? "1 open change request"
+                            : `${r.openChangeRequests} open change requests`
+                        }
+                      >
+                        {r.openChangeRequests}
+                      </Pill>
+                    )}
+                    {!r.onRoster && <Pill>off roster</Pill>}
+                  </div>
+                  <div className="ad-email">{r.email}</div>
+                </td>
+                <td data-label="Position">{r.positionName ?? <EmptyMark />}</td>
+                <td data-label="Group">
+                  {r.groupName ?? <span className="ad-danger-text">no group</span>}
+                </td>
+                <td data-label="Status">
+                  <span className="ad-ls-marks">
+                    <Pill tone={STATUS_TONE[r.status]}>{r.status}</Pill>
+                    {r.status === "submitted" && r.viaGoogleForm && <Pill>via Google Form</Pill>}
+                  </span>
+                </td>
+                <td data-label="Hours" className="ad-num ad-nowrap">
+                  <HoursCell scheduledMinutes={r.scheduledMinutes} desiredHours={r.desiredHours} />
+                </td>
+                <td data-label="Flags" className="ad-center">
+                  {r.flagCount === 0 ? (
+                    <EmptyMark />
+                  ) : (
+                    <>
+                      <span className="ad-ls-flags-full">
+                        {r.flagTypes.map((t, i) => (
+                          <Pill key={`${t}-${i}`} tone="danger">
+                            {FLAG_LABELS[t]}
+                          </Pill>
+                        ))}
+                      </span>
+                      <span
+                        className="ad-ls-flags-count"
+                        title={r.flagTypes.map((t) => FLAG_LABELS[t]).join(", ")}
+                      >
+                        <Pill tone="warning">
+                          <span aria-hidden>⚠</span> {r.flagCount}
+                          <VisuallyHidden>
+                            {" "}
+                            flags: {r.flagTypes.map((t) => FLAG_LABELS[t]).join(", ")}
+                          </VisuallyHidden>
+                        </Pill>
+                        {ALERT_FLAGS.filter((t) => r.flagTypes.includes(t)).map((t) => (
+                          <Pill key={t} tone="danger">
+                            {FLAG_LABELS[t]}
+                          </Pill>
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </td>
+                <td data-label="Scheduled" className="ad-center">
+                  {r.scheduled ? <Pill tone="success">Scheduled</Pill> : <EmptyMark />}
+                </td>
+                <td data-label="Updated" className="ad-num ad-nowrap ad-faint">
+                  {fmtDate(r.submittedAt ?? r.updatedAt)}
+                </td>
+                <td className="ad-num">
+                  {/* Nothing to delete for a student who never started. */}
+                  {r.status !== "missing" && (
+                    <DeleteResponseButton
+                      studentEmail={r.email}
+                      displayName={r.displayName}
+                      variant="icon"
+                    />
+                  )}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} className="ad-center ad-faint">
+                  Nothing matches your search.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -317,150 +278,30 @@ function HoursCell({
   scheduledMinutes: number | null;
   desiredHours: number | null;
 }) {
-  const requested = desiredHours === null ? "—" : `${desiredHours}h`;
-  if (scheduledMinutes === null) {
-    return (
-      <span style={{ color: desiredHours === null ? "var(--color-text-tertiary)" : undefined }}>
-        {requested}
-      </span>
-    );
-  }
+  const requested = desiredHours === null ? <EmptyMark /> : `${desiredHours}h`;
+  if (scheduledMinutes === null) return <span>{requested}</span>;
+  const title =
+    desiredHours === null
+      ? `${hoursLabel(scheduledMinutes)}h scheduled, no hours requested`
+      : `${hoursLabel(scheduledMinutes)}h scheduled of ${desiredHours}h requested`;
   return (
-    <span title={`${hoursLabel(scheduledMinutes)}h scheduled of ${requested} requested`}>
-      <strong style={{ color: "var(--color-text-info)" }}>{hoursLabel(scheduledMinutes)}</strong>
-      <span style={{ color: "var(--color-text-tertiary)" }}>/</span>
+    <span title={title}>
+      <strong className="ad-ls-hours-got">{hoursLabel(scheduledMinutes)}</strong>
+      <span className="ad-faint">/</span>
       {requested}
     </span>
   );
 }
 
 const fmtDate = (d: Date | null) =>
-  d
-    ? new Date(d).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "—";
-
-function Th({
-  children,
-  onClick,
-  className,
-  title,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  className?: string;
-  title?: string;
-}) {
-  return (
-    <th
-      onClick={onClick}
-      className={className}
-      title={title}
-      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-    >
-      {children}
-    </th>
+  d ? (
+    new Date(d).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+  ) : (
+    <EmptyMark />
   );
-}
-
-const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontSize: 12 };
-const submittedBadge: React.CSSProperties = {
-  ...badge,
-  background: "#e6f4ea",
-  color: "var(--color-text-success)",
-};
-const draftBadge: React.CSSProperties = {
-  ...badge,
-  background: "var(--color-background-secondary)",
-  color: "var(--color-text-secondary)",
-};
-const flagBadge: React.CSSProperties = {
-  ...badge,
-  background: "var(--color-background-warning)",
-  color: "var(--color-text-warning)",
-};
-const alertBadge: React.CSSProperties = {
-  ...badge,
-  background: "#fce8e6",
-  color: "var(--color-text-danger)",
-  whiteSpace: "nowrap",
-};
-const STATUS_BADGE: Record<ResponseRow["status"], React.CSSProperties> = {
-  submitted: submittedBadge,
-  draft: draftBadge,
-  missing: alertBadge,
-};
-const offRosterBadge: React.CSSProperties = {
-  ...badge,
-  background: "var(--color-background-secondary)",
-  color: "var(--color-text-secondary)",
-  fontWeight: 400,
-};
-const viaFormBadge: React.CSSProperties = {
-  ...offRosterBadge,
-  marginLeft: 4,
-  whiteSpace: "nowrap",
-};
-const changeRequestPill: React.CSSProperties = {
-  ...badge,
-  background: "#e8f0fe",
-  color: "var(--color-text-link, #1a66cc)",
-  fontWeight: 600,
-  padding: "1px 7px",
-};
-
-/** Solid, not a tick: the mark has to be readable at a glance down the column. */
-const scheduledPill: React.CSSProperties = {
-  ...badge,
-  background: "var(--color-text-success)",
-  color: "#fff",
-  fontWeight: 600,
-  whiteSpace: "nowrap",
-};
-
-/** Ungrouped is a gap somebody has to close, so it reads as one. */
-const noGroupText: React.CSSProperties = {
-  color: "var(--color-text-danger)",
-  fontSize: 13,
-};
-
-const iconButton: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: 22,
-  height: 22,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-secondary)",
-  fontSize: 11,
-};
-
-/** The filters and the search share one bordered block above the table. */
-const controlPanel: React.CSSProperties = {
-  background: "var(--color-background-secondary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.7rem 0.85rem",
-  margin: "0 0 14px",
-};
-
-const panelLegend: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: 0.4,
-  textTransform: "uppercase",
-  color: "var(--color-text-tertiary)",
-  marginBottom: 8,
-};
-
-const panelDivider: React.CSSProperties = {
-  borderTop: "1px solid var(--color-border-tertiary)",
-  margin: "10px 0",
-};

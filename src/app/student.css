@@ -16,7 +16,8 @@
      success #166534 on its tint 6.4; warning #7a4a00 on its tint 6.8;
      danger #b42318 on its tint 5.8; info #1d4e89 on its tint 7.4;
      auto #5b3fa8 on its tint 6.6; hot #b45309 on surface 5.0 */
-.sf {
+.sf,
+.sf-scope {
   --sf-page: #f7f5f2;
   --sf-surface: #ffffff;
   --sf-sunken: #efebe5;
@@ -46,7 +47,10 @@
   --sf-radius-lg: 14px;
   --sf-gutter: 1rem;
   --sf-topbar-h: 3.25rem;
-
+}
+/* `.sf-scope` is the tokens alone, for one student component shown outside a
+   student page (the console previews the system message). The page itself: */
+.sf {
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -71,7 +75,7 @@ html:has(.sf-actionbar) {
 
 /* One focus ring for every control: a dark ring with a white halo, so it holds
    3:1 on the page, on tints and on the red button. Listed by region, not as
-   `.sf :focus-visible`, so the admin header inside .sf-admin-tools keeps the
+   `.sf :focus-visible`, so the admin tools inside .sf-admin-tools keep the
    console's own focus style. */
 .sf-skip:focus-visible,
 .sf-topbar :focus-visible,
@@ -185,7 +189,7 @@ html:has(.sf-actionbar) {
 .sf-topbar-link:hover {
   background: var(--sf-sunken);
 }
-/* The console's own header (AppHeader), shown to an admin. It keeps the look
+/* The console's tools (AdminTools), shown to an admin. It keeps the look
    it has on admin pages: the student text styles are reset here, and the
    student focus ring above leaves it out. It sits above the action bar so the
    student finder's dropdown is not covered. */
@@ -197,13 +201,13 @@ html:has(.sf-actionbar) {
   font-size: 1rem;
   line-height: normal;
 }
-.sf-admin-tools .app-header {
-  margin: 0;
+/* Here the row sits against the right edge, the finder last. */
+.sf-admin-tools .admin-tools {
+  justify-content: flex-end;
 }
-/* The header's Home breadcrumb repeats the top bar's Home link. The nav sets
-   its display inline, hence !important. */
-.sf-admin-tools .app-header > nav {
-  display: none !important;
+.sf-admin-tools .student-search {
+  order: 1;
+  margin-right: 0;
 }
 .sf-main {
   flex: 1;

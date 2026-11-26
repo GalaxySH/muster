@@ -1,16 +1,5 @@
-import {
-  SectionLabel,
-  StatTile,
-  barTrackStyle,
-  cardsGridStyle,
-  dangerPillStyle,
-  footnoteStyle,
-  hintStyle,
-  panelStyle,
-  successPillStyle,
-  warningPillStyle,
-} from "@/components/admin/ui";
-import { Bar, barColor, toneColor } from "@/components/admin/schedule-ui";
+import { Disclosure, Pill, Stat, StatStrip, Status, VisuallyHidden } from "@/components/admin/ui";
+import { Bar } from "@/components/admin/schedule-ui";
 import { buildScheduleHealthView, type HealthTone } from "@/lib/admin/schedule-health-view";
 import type { RunStats } from "@/lib/domain/scheduling/stats";
 
@@ -24,8 +13,8 @@ import type { RunStats } from "@/lib/domain/scheduling/stats";
  * now. Server-rendered, no client state: the pure view builder decides all of
  * it (lib/admin/schedule-health-view.ts).
  *
- * A native <details> that starts closed on every load, so the figures stay out
- * of the way until the admin opens them.
+ * A disclosure that starts closed on every load, so the figures stay out of the
+ * way until the admin opens them.
  */
 export function ScheduleHealth({
   stats,
@@ -37,253 +26,184 @@ export function ScheduleHealth({
   const view = buildScheduleHealthView(stats, positionNames);
 
   return (
-    <details style={{ ...panelStyle, marginTop: 14 }}>
-      <summary style={summaryStyle}>Schedule health</summary>
-      <p style={{ ...footnoteStyle, marginTop: 10 }}>Computed when this run was generated.</p>
+    <Disclosure title="Schedule health">
+      <div className="ad-stack">
+        <p className="ad-help">Computed when this run was generated.</p>
 
-      {view.people === 0 ? (
-        <p style={{ ...footnoteStyle, marginTop: 8 }}>
-          This run placed nobody, so there is nothing to measure.
-        </p>
-      ) : (
-        <>
-          <div style={cardsGridStyle}>
-            {view.tiles.map((tile) => (
-              <StatTile
-                key={tile.label}
-                label={tile.label}
-                value={tile.value}
-                sub={tile.sub}
-                subTone={tile.tone ?? undefined}
-              />
-            ))}
-          </div>
+        {view.people === 0 ? (
+          <p className="ad-help">This run placed nobody, so there is nothing to measure.</p>
+        ) : (
+          <>
+            <StatStrip>
+              {view.tiles.map((tile) => (
+                <Stat
+                  key={tile.label}
+                  label={tile.label}
+                  value={tile.value}
+                  sub={tile.sub}
+                  subTone={tile.tone ?? undefined}
+                />
+              ))}
+            </StatStrip>
 
-          {view.notes.length > 0 && (
-            <ul style={{ margin: "10px 0 0", paddingLeft: 20, fontSize: 13 }}>
-              {view.notes.map((note) => (
-                <li key={note.text} style={{ color: toneColor(note.tone) }}>
-                  {note.text}
-                </li>
-              ))}
-            </ul>
-          )}
+            {view.notes.length > 0 && (
+              <ul className="ad-list-reset ad-sc-notes">
+                {view.notes.map((note) => (
+                  <li key={note.text}>
+                    {note.tone ? <Status tone={note.tone}>{note.text}</Status> : note.text}
+                  </li>
+                ))}
+              </ul>
+            )}
 
-          <div style={barsGrid}>
-            <div>
-              <SectionLabel>Days in a row</SectionLabel>
-              {view.consecutiveDays.map((bar) => (
-                <Bar key={bar.label} bar={bar} />
-              ))}
-              {view.cohortLines.length > 0 && (
-                <div style={cohortList}>
-                  {view.cohortLines.map((line) => (
-                    <div key={line}>{line}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <SectionLabel>Days worked</SectionLabel>
-              {view.daysWorked.map((bar) => (
-                <Bar key={bar.label} bar={bar} />
-              ))}
-            </div>
-            <div>
-              <SectionLabel>Weekly hours</SectionLabel>
-              {view.hours.map((bar) => (
-                <Bar key={bar.label} bar={bar} />
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <SectionLabel
-              action={<span style={hintStyle}>people on, and the hours they cover</span>}
-            >
-              Day by day
-            </SectionLabel>
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th} />
-                    {view.perDay.days.map((day) => (
-                      <th key={day} style={th}>
-                        {day}
-                      </th>
+            <div className="ad-sc-bars">
+              <div>
+                <h3>Days in a row</h3>
+                {view.consecutiveDays.map((bar) => (
+                  <Bar key={bar.label} bar={bar} />
+                ))}
+                {view.cohortLines.length > 0 && (
+                  <div className="ad-sc-cohorts">
+                    {view.cohortLines.map((line) => (
+                      <div key={line}>{line}</div>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.perDay.rows.map((row) => (
-                    <tr key={row.week}>
-                      <td style={{ ...td, color: "var(--color-text-secondary)" }}>{row.week}</td>
-                      {row.cells.map((cell, i) => (
-                        <td key={view.perDay.days[i]} style={td}>
-                          {cell}
-                        </td>
+                  </div>
+                )}
+              </div>
+              <div>
+                <h3>Days worked</h3>
+                {view.daysWorked.map((bar) => (
+                  <Bar key={bar.label} bar={bar} />
+                ))}
+              </div>
+              <div>
+                <h3>Weekly hours</h3>
+                {view.hours.map((bar) => (
+                  <Bar key={bar.label} bar={bar} />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="ad-subhead ad-row--between">
+                <h3>Day by day</h3>
+                <span className="ad-help">people on, and the hours they cover</span>
+              </div>
+              <div className="ad-scroll-x">
+                <table className="ad-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">
+                        <VisuallyHidden>Week</VisuallyHidden>
+                      </th>
+                      {view.perDay.days.map((day) => (
+                        <th key={day} scope="col">
+                          {day}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {view.perDay.rows.map((row) => (
+                      <tr key={row.week}>
+                        <td className="ad-muted ad-nowrap">{row.week}</td>
+                        {row.cells.map((cell, i) => (
+                          <td key={view.perDay.days[i]} className="ad-nowrap">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
 
-          <div style={{ marginTop: 14 }}>
-            <SectionLabel>By position</SectionLabel>
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Position</th>
-                    <th style={th}>Placed</th>
-                    <th style={th}>Target filled</th>
-                    <th style={th}>Empty shifts</th>
-                    <th style={th}>Weekly hours</th>
-                    <th style={th}>Hours a day</th>
-                    <th style={th}>Open to close</th>
-                    <th style={th}>Average day</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.positions.map((row) => (
-                    <tr key={row.positionId}>
-                      <td style={td}>{row.name}</td>
-                      <td style={td}>{row.staff}</td>
-                      <td style={td}>{row.fill}</td>
-                      <td style={td}>{row.emptyShifts}</td>
-                      <td style={td}>{row.hours}</td>
-                      <td style={td}>{row.perDay}</td>
-                      <td style={td}>{row.span}</td>
-                      <td style={td}>{row.load}</td>
+            <div>
+              <h3>By position</h3>
+              <div className="ad-scroll-x">
+                <table className="ad-table ad-table--stack ad-table--zebra">
+                  <thead>
+                    <tr>
+                      <th scope="col">Position</th>
+                      <th scope="col">Placed</th>
+                      <th scope="col">Target filled</th>
+                      <th scope="col">Empty shifts</th>
+                      <th scope="col">Weekly hours</th>
+                      <th scope="col">Hours a day</th>
+                      <th scope="col">Open to close</th>
+                      <th scope="col">Average day</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {view.positions.map((row) => (
+                      <tr key={row.positionId}>
+                        <td data-label="Position">{row.name}</td>
+                        <td data-label="Placed">{row.staff}</td>
+                        <td data-label="Target filled">{row.fill}</td>
+                        <td data-label="Empty shifts">{row.emptyShifts}</td>
+                        <td data-label="Weekly hours">{row.hours}</td>
+                        <td data-label="Hours a day">{row.perDay}</td>
+                        <td data-label="Open to close">{row.span}</td>
+                        <td data-label="Average day">{row.load}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
 
-          <div style={{ marginTop: 14 }}>
-            <SectionLabel
-              action={
-                <span style={hintStyle}>
+            <div>
+              <div className="ad-subhead ad-row--between">
+                <h3>Cover</h3>
+                <span className="ad-help">
                   bars show staffed share of scheduled open time; the right column is time with no
                   returner on
                 </span>
-              }
-            >
-              Cover
-            </SectionLabel>
-            {view.fragilityNote && (
-              <p
-                style={{
-                  ...footnoteStyle,
-                  color: toneColor(view.fragilityNote.tone),
-                  margin: "0 0 8px",
-                }}
-              >
-                {view.fragilityNote.text}
-              </p>
-            )}
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <tbody>
-                  {view.fragility.map((row) => (
-                    <tr key={row.key}>
-                      <td style={td}>{row.label}</td>
-                      {/* Coverage is a measurement, not a verdict, so it stays
-                          neutral: the tone lives on the returner column. */}
-                      <td style={{ ...td, fontWeight: 600 }}>{row.coverage}</td>
-                      <td style={{ ...td, width: "40%" }}>
-                        {row.coveragePercent !== null && (
-                          <div style={barTrackStyle}>
-                            <div
-                              style={{
-                                width: `${row.coveragePercent}%`,
-                                height: "100%",
-                                borderRadius: 3,
-                                background: barColor(null),
-                              }}
-                            />
-                          </div>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          ...td,
-                          color: row.tone ? toneColor(row.tone) : "var(--color-text-secondary)",
-                        }}
-                      >
-                        {row.detail}
-                      </td>
-                      <td style={td}>
-                        {row.pill && <span style={pillStyle(row.tone)}>{row.pill}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              </div>
+              {view.fragilityNote && (
+                <p className={`ad-small ${toneClass(view.fragilityNote.tone)}`}>
+                  {view.fragilityNote.text}
+                </p>
+              )}
+              <div className="ad-scroll-x">
+                <table className="ad-table ad-table--middle">
+                  <tbody>
+                    {view.fragility.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.label}</td>
+                        {/* Coverage is a measurement, not a verdict, so it stays
+                            neutral: the tone lives on the returner column. */}
+                        <td className="ad-strong">{row.coverage}</td>
+                        <td className="ad-sc-barcell">
+                          {row.coveragePercent !== null && (
+                            <div className="ad-bar">
+                              <div
+                                className="ad-bar-fill"
+                                style={{ width: `${row.coveragePercent}%` }}
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className={toneClass(row.tone)}>{row.detail}</td>
+                        <td>
+                          {row.pill && <Pill tone={PILL_TONE[row.tone ?? "ok"]}>{row.pill}</Pill>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        </>
-      )}
-    </details>
+          </>
+        )}
+      </div>
+    </Disclosure>
   );
 }
 
-const pillStyle = (tone: HealthTone): React.CSSProperties =>
-  tone === "danger" ? dangerPillStyle : tone === "warning" ? warningPillStyle : successPillStyle;
+/** The text colour for a tone. The words beside it carry the meaning. */
+const toneClass = (tone: HealthTone): string =>
+  tone === "danger" ? "ad-danger-text" : tone === "warning" ? "ad-warning-text" : "ad-muted";
 
-// --- styles ---
-
-/** The heading that stays visible when closed, sized like a SectionLabel. */
-const summaryStyle: React.CSSProperties = {
-  cursor: "pointer",
-  fontSize: 14,
-  fontWeight: 700,
-  color: "var(--color-text-primary)",
-};
-
-/**
- * The stretch and hours bar columns. Auto-fit, so the three drop to two and then
- * to one as the window narrows rather than being pinned to a count.
- */
-const barsGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
-  gap: 14,
-  marginTop: 14,
-};
-
-/** The per-rotation summary lines under the days-in-a-row bars. */
-const cohortList: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  marginTop: 8,
-  fontSize: 12,
-  color: "var(--color-text-secondary)",
-};
-
-const tableStyle: React.CSSProperties = {
-  borderCollapse: "collapse",
-  fontSize: 13,
-  width: "100%",
-};
-
-const th: React.CSSProperties = {
-  textAlign: "left",
-  fontWeight: 600,
-  color: "var(--color-text-secondary)",
-  padding: "4px 8px 4px 0",
-  borderBottom: "0.5px solid var(--color-border-tertiary)",
-  whiteSpace: "nowrap",
-};
-
-const td: React.CSSProperties = {
-  textAlign: "left",
-  padding: "5px 8px 5px 0",
-  borderBottom: "0.5px solid var(--color-border-tertiary)",
-};
+const PILL_TONE = { danger: "danger", warning: "warning", ok: "success" } as const;

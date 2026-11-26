@@ -20,8 +20,8 @@ import { useRouter } from "next/navigation";
 import { saveSchedulerNotes } from "@/lib/admin/actions";
 import { saveStudentNotesFor } from "@/lib/availability/actions";
 import { Modal } from "@/components/Modal";
-import { ActionButton, submitOnCtrlEnter } from "@/components/ui";
-import { SectionLabel, panelStyle } from "@/components/admin/ui";
+import { submitOnCtrlEnter } from "@/components/form-keys";
+import { ActionMessage, Button, Field, Panel } from "@/components/admin/ui";
 
 export type NotesKind = "scheduling" | "student";
 
@@ -30,7 +30,11 @@ const KINDS: Record<
   {
     title: string;
     placeholder: string;
-    save: (email: string, notes: string, termId: string) => Promise<{ ok: boolean; error?: string }>;
+    save: (
+      email: string,
+      notes: string,
+      termId: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
   }
 > = {
   scheduling: {
@@ -85,106 +89,64 @@ export function NotesCard({
     });
   }
 
-  return (
-    <section style={panelStyle}>
-      <SectionLabel
-        action={
-          <button
-            type="button"
-            onClick={edit}
-            style={link}
-            aria-label={`Edit ${title.toLowerCase()}`}
-          >
-            Edit
-          </button>
-        }
-      >
-        {title}
-      </SectionLabel>
-      <p onDoubleClick={edit} title="Double-click to edit" style={notes ? body : empty}>
-        {notes || "No notes."}
-      </p>
+  const editLink = (
+    <button
+      type="button"
+      onClick={edit}
+      className="ad-linkbtn"
+      aria-label={`Edit ${title.toLowerCase()}`}
+    >
+      Edit
+    </button>
+  );
 
-      {open && (
-        <Modal label={`Edit ${title.toLowerCase()}`} onClose={close} maxWidth="480px">
-          <form onSubmit={submit} style={formStyle}>
-            <textarea
-              name="notes"
-              defaultValue={notes}
-              placeholder={placeholder}
-              rows={6}
-              autoFocus
-              onKeyDown={submitOnCtrlEnter}
-              aria-label={title}
-              style={textarea}
-            />
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={buttonRow}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              <ActionButton type="submit" pending={pending} pendingLabel="Saving…">
-                Save
-              </ActionButton>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </section>
+  const editor = open && (
+    <Modal label={`Edit ${title.toLowerCase()}`} onClose={close} maxWidth="480px">
+      <form onSubmit={submit} className="ad-stack ad-dg-body">
+        <Field label={title}>
+          <textarea
+            name="notes"
+            defaultValue={notes}
+            placeholder={placeholder}
+            rows={6}
+            autoFocus
+            onKeyDown={submitOnCtrlEnter}
+            className="ad-input--block"
+          />
+        </Field>
+        {error && (
+          <ActionMessage ok={false} as="p">
+            {error}
+          </ActionMessage>
+        )}
+        <div className="ad-actions">
+          <Button type="submit" variant="primary" pending={pending} pendingLabel="Saving…">
+            Save
+          </Button>
+          <Button disabled={pending} onClick={close}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  // With nothing written the card is a single line.
+  if (!notes) {
+    return (
+      <Panel title={title} line={<span onDoubleClick={edit}>No notes.</span>} aside={editLink}>
+        {editor}
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title={title} aside={editLink}>
+      {/* The whole note, line breaks kept. */}
+      <p onDoubleClick={edit} className="ad-prewrap ad-dg-notes-body">
+        {notes}
+      </p>
+      {editor}
+    </Panel>
   );
 }
-
-/** Matches the other cards' "Add" in the header slot. */
-const link: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  fontSize: 13,
-  fontWeight: 500,
-  color: "var(--color-text-info)",
-  cursor: "pointer",
-};
-
-/** The whole note, line breaks kept; long unbroken strings wrap instead of overflowing. */
-const body: React.CSSProperties = {
-  margin: 0,
-  fontSize: 14,
-  whiteSpace: "pre-wrap",
-  overflowWrap: "anywhere",
-};
-const empty: React.CSSProperties = {
-  margin: 0,
-  fontSize: 13,
-  color: "var(--color-text-secondary)",
-};
-
-const formStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  width: "100%",
-  fontSize: 14,
-};
-const textarea: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: 8,
-  resize: "vertical",
-  borderRadius: "var(--border-radius-md)",
-  border: "1px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 14,
-};
-const errorSlot: React.CSSProperties = {
-  margin: 0,
-  minHeight: 20,
-  fontSize: 13,
-  color: "var(--color-text-danger)",
-};
-const buttonRow: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "flex-end",
-};

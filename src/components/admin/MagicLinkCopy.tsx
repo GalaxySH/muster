@@ -1,59 +1,58 @@
 "use client";
 
 import { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
+import { ActionMessage, Button } from "@/components/admin/ui";
 
 /**
- * Readonly URL field + copy button for an admin-minted test-account magic
- * link (/admin/test-users "Get link"): the admin pastes it into a private
- * window to walk the student flow while keeping their admin session.
+ * A minted magic link, shown whole, with a copy button (/admin/test-users
+ * "Get link" and the per-student Sign-in link dialog): the admin pastes it into
+ * a private window to walk the student flow while keeping their admin session,
+ * or sends it to the student.
  */
 export function MagicLinkCopy({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
+      setFailed(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+      setFailed(true);
     }
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-      <input
-        readOnly
-        value={url}
-        aria-label="Magic link"
-        onFocus={(e) => e.currentTarget.select()}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: 8,
-          borderRadius: 6,
-          border: "1px solid #ccc",
-          fontSize: 13,
-          fontFamily: "var(--font-mono, monospace)",
-          color: "var(--color-text-secondary, #555)",
-        }}
-      />
-      <button
-        type="button"
-        onClick={copy}
-        style={{
-          fontSize: 13,
-          padding: "0.4rem 0.8rem",
-          borderRadius: "var(--border-radius-md, 6px)",
-          border: "0.5px solid var(--color-border-tertiary, #ccc)",
-          background: copied ? "var(--color-background-success, #e6f4ea)" : "var(--color-background-primary, #fff)",
-          color: copied ? "var(--color-text-success, #196127)" : "var(--color-text-primary, #222)",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {copied ? "✓ Copied" : "Copy link"}
-      </button>
+    <div className="ad-stack ad-stack--tight">
+      <div className="ad-dg-link">
+        {/* Focusing the field selects the whole link. */}
+        <input
+          readOnly
+          value={url}
+          aria-label="Magic link"
+          onFocus={(e) => e.currentTarget.select()}
+          className="ad-input--block ad-input--mono"
+        />
+        <Button onClick={copy}>
+          {copied ? (
+            <>
+              <FontAwesomeIcon icon={faCheck} aria-hidden /> Copied
+            </>
+          ) : (
+            "Copy link"
+          )}
+        </Button>
+      </div>
+      {failed && (
+        <ActionMessage ok={false} as="p">
+          Could not copy. Select the link and copy it yourself.
+        </ActionMessage>
+      )}
     </div>
   );
 }

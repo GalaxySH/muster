@@ -1,17 +1,20 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import { getDriveGrantStatus } from "@/lib/drive/grants";
 import { driveRedirectUri } from "@/lib/drive/oauth";
 import { env } from "@/lib/env";
 import { DriveControls } from "@/components/DriveControls";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { ButtonLink, Notice, PageSettings, Panel, Pill, Status } from "@/components/admin/ui";
 import { getSheetUrl, getLastSheetSync, RESPONSES_SHEET } from "@/lib/admin/sheet-sync";
 import { rebuildResponsesSheet } from "@/lib/admin/actions";
 import { workingTermId } from "@/lib/terms/working";
-import { SheetControls, btnLink } from "@/components/admin/SheetControls";
+import { SheetControls } from "@/components/admin/SheetControls";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
+
+export const metadata: Metadata = { title: "Google Drive" };
 
 const ERROR_TEXT: Record<string, string> = {
   state: "The sign-in state didn't match (possible expired link). Please try connecting again.",
@@ -39,95 +42,86 @@ export default async function AdminDrivePage({
   const folderSet = Boolean(env.DRIVE_FOLDER_ID);
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-        <Crumb href="/admin/responses" label="Responses" />
-      </AppHeader>
-      <h1>Google Drive connection</h1>
-      <p style={{ color: "#555" }}>
-        Proof files (course schedules, extracurricular proof, travel proof) are relayed into
-        UW-managed Google Drive using an admin grant. The database stores only the Drive file id, no
-        image bytes.
-      </p>
+    <AdminPage
+      title="Google Drive"
+      width="form"
+      description="Proof files (course schedules, extracurricular proof, travel proof) are relayed into UW-managed Google Drive using an admin grant. The database stores only the Drive file id, no image bytes."
+    >
+      <div className="ad-stack">
+        {connected && (
+          <Notice tone="success" role="status">
+            Drive connected.
+          </Notice>
+        )}
+        {error && (
+          <Notice tone="danger" role="alert">
+            {ERROR_TEXT[error] ?? `Could not connect Drive (${error}).`}
+          </Notice>
+        )}
 
-      {connected && (
-        <p role="status" style={banner("#e6f4ea", "#196127")}>
-          ✓ Drive connected.
-        </p>
-      )}
-      {error && (
-        <p role="status" style={banner("#fce8e6", "#b00")}>
-          {ERROR_TEXT[error] ?? `Could not connect Drive (${error}).`}
-        </p>
-      )}
+        <Panel
+          title="Connection"
+          aside={
+            status.connected ? (
+              <Pill tone="success">Connected</Pill>
+            ) : (
+              <Pill tone="warning">Not connected</Pill>
+            )
+          }
+        >
+          <div className="ad-stack ad-stack--tight">
+            {status.connected ? (
+              <Status tone="ok">
+                Connected as <strong>{status.email}</strong>
+                {status.updatedAt && (
+                  <span className="ad-faint"> · since {status.updatedAt.toLocaleString()}</span>
+                )}
+              </Status>
+            ) : (
+              <Status tone="warning">Not connected yet.</Status>
+            )}
+            <div>
+              <DriveControls connected={status.connected} />
+            </div>
+          </div>
+        </Panel>
 
-      <section style={card}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Status</h2>
-        {status.connected ? (
-          <p style={{ margin: "0 0 12px" }}>
-            Connected as <strong>{status.email}</strong>
-            {status.updatedAt && (
-              <span style={{ color: "#777" }}> · since {status.updatedAt.toLocaleString()}</span>
+        <Panel title="Export">
+          <p className="ad-muted">
+            Every response as a spreadsheet: a one-off CSV download, or the running{" "}
+            <strong>Muster Responses</strong> sheet in the Drive folder.
+          </p>
+          <SheetControls
+            sheetUrl={responsesSheetUrl}
+            lastSyncedAtMs={responsesLastSync ? responsesLastSync.getTime() : null}
+            rebuild={rebuildResponsesSheet}
+            leading={
+              <ButtonLink href="/admin/responses/export" download>
+                Download CSV <FontAwesomeIcon icon={faDownload} aria-hidden />
+              </ButtonLink>
+            }
+          />
+        </Panel>
+
+        <PageSettings summary={folderSet ? "Destination folder set" : "Destination folder not set"}>
+          <p>
+            <strong>Destination folder:</strong>{" "}
+            {folderSet ? (
+              <code>{env.DRIVE_FOLDER_ID}</code>
+            ) : (
+              <span className="ad-warning-text">
+                not set. Set <code>DRIVE_FOLDER_ID</code> to a Shared Drive folder id, otherwise
+                uploads land in the connected account&apos;s My Drive root.
+              </span>
             )}
           </p>
-        ) : (
-          <p style={{ margin: "0 0 12px", color: "#946c00" }}>Not connected yet.</p>
-        )}
-        <DriveControls connected={status.connected} />
-      </section>
-
-      <section style={card}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Responses</h2>
-        <p style={{ margin: "0 0 12px", fontSize: 14, color: "#555" }}>
-          Every response as a spreadsheet: a one-off CSV download, or the running{" "}
-          <strong>Muster Responses</strong> sheet in the Drive folder.
-        </p>
-        <SheetControls
-          sheetUrl={responsesSheetUrl}
-          lastSyncedAtMs={responsesLastSync ? responsesLastSync.getTime() : null}
-          rebuild={rebuildResponsesSheet}
-          leading={
-            <a href="/admin/responses/export" style={btnLink} download>
-              Download CSV <FontAwesomeIcon icon={faDownload} />
-            </a>
-          }
-        />
-      </section>
-
-      <section style={card}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Configuration</h2>
-        <p style={{ margin: "0 0 6px", fontSize: 14 }}>
-          <strong>Destination folder:</strong>{" "}
-          {folderSet ? (
-            <code>{env.DRIVE_FOLDER_ID}</code>
-          ) : (
-            <span style={{ color: "#946c00" }}>
-              not set. Set <code>DRIVE_FOLDER_ID</code> to a Shared Drive folder id, otherwise
-              uploads land in the connected account&apos;s My Drive root.
-            </span>
-          )}
-        </p>
-        <p style={{ margin: "10px 0 4px", fontSize: 14 }}>
-          <strong>Authorized redirect URI</strong> (must be registered on the Google OAuth client):
-        </p>
-        <code
-          style={{ display: "block", padding: "6px 8px", background: "#f5f5f5", borderRadius: 4 }}
-        >
-          {driveRedirectUri()}
-        </code>
-      </section>
-    </Page>
+          <p>
+            <strong>Authorized redirect URI</strong> (must be registered on the Google OAuth
+            client):
+          </p>
+          <code className="ad-code">{driveRedirectUri()}</code>
+        </PageSettings>
+      </div>
+    </AdminPage>
   );
-}
-
-const card: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-  marginTop: "1.2rem",
-};
-
-function banner(bg: string, color: string): React.CSSProperties {
-  return { background: bg, color, padding: "0.6rem 0.9rem", borderRadius: 6, fontSize: 14 };
 }

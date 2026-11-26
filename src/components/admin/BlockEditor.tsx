@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { InfoCard } from "@/components/ui";
+import { ActionMessage, Button, Notice, Pill, VisuallyHidden } from "@/components/admin/ui";
 import { deriveOpenClose } from "@/lib/domain/blocks";
 import {
   DESIRED_CAPACITY_MAX,
@@ -68,6 +68,50 @@ export function parseBlockRow(
 }
 
 /**
+ * What a position's blocks add up to with the unsaved edits applied: the live
+ * block set, its warnings, and the weekly capacity check against the roster.
+ * The editor shows them, and the card counts them for its closed summary.
+ *
+ * Retired shifts are config history, not config: they are excluded from the
+ * derived open/close, the warnings, and the capacity check, exactly as every
+ * other read excludes them. They only render so the admin can put one back.
+ */
+export function blockChecks(
+  position: Position,
+  allBlocks: AdminBlockItem[],
+  edits: Record<string, BlockRowEdit>,
+  onRosterCount: number,
+  dayCapHours: number,
+) {
+  // The live view the Open/Close tags, warnings, and capacity check derive from.
+  const liveBlocks: ShiftBlock[] = allBlocks
+    .filter((b) => !b.retired)
+    .map((b) => {
+      const v = edits[b.id] ?? savedBlockRow(b);
+      const cap = v.cap.trim() === "" ? null : Number(v.cap);
+      return {
+        id: b.id,
+        positionId: b.positionId,
+        dayType: b.dayType,
+        start: hhmmToMinutes(v.start) ?? b.start,
+        end: hhmmToMinutes(v.end) ?? b.end,
+        desiredCapacity: cap === null || Number.isFinite(cap) ? cap : b.desiredCapacity,
+      };
+    });
+  const capacity = positionCapacityCheck(liveBlocks, onRosterCount, position.minHours);
+  // Supply side alone (no roster needed): what this position can seat each week.
+  const seatHours = seatHoursPerWeek(liveBlocks);
+  return {
+    liveBlocks,
+    warnings: blockSetWarnings(position, liveBlocks, dayCapHours),
+    capacity,
+    seatHours,
+    /** The capacity check is shown as a warning: targets are set and fall short of the roster. */
+    capacityShort: seatHours > 0 && onRosterCount > 0 && capacity.kind === "short",
+  };
+}
+
+/**
  * Per-position block editor (roadmap 3.3): two columns (weekdays/weekends) of
  * HH:MM time rows with add/remove, live derived Open/Close tags, live
  * block-set warnings, and the weekly capacity check against the roster. Times
@@ -108,35 +152,21 @@ export function BlockEditor({
 
   const valueOf = (b: AdminBlockItem) => edits[b.id] ?? savedBlockRow(b);
 
-  // Retired shifts are config history, not config: they are excluded from the
-  // derived open/close, the warnings, and the capacity check, exactly as every
-  // other read excludes them. They only render so the admin can put one back.
   const blocks = allBlocks.filter((b) => !b.retired);
   const retiredBlocks = allBlocks.filter((b) => b.retired);
-
-  // The live view the Open/Close tags, warnings, and capacity check derive from.
-  const liveBlocks: ShiftBlock[] = blocks.map((b) => {
-    const v = valueOf(b);
-    const cap = v.cap.trim() === "" ? null : Number(v.cap);
-    return {
-      id: b.id,
-      positionId: b.positionId,
-      dayType: b.dayType,
-      start: hhmmToMinutes(v.start) ?? b.start,
-      end: hhmmToMinutes(v.end) ?? b.end,
-      desiredCapacity: cap === null || Number.isFinite(cap) ? cap : b.desiredCapacity,
-    };
-  });
+  const { liveBlocks, warnings, capacity, seatHours } = blockChecks(
+    position,
+    allBlocks,
+    edits,
+    onRosterCount,
+    dayCapHours,
+  );
   const openClose = Object.fromEntries(
     DAY_TYPES.map(({ dayType }) => [
       dayType,
       deriveOpenClose(liveBlocks.filter((b) => b.dayType === dayType)),
     ]),
   );
-  const warnings = blockSetWarnings(position, liveBlocks, dayCapHours);
-  const capacity = positionCapacityCheck(liveBlocks, onRosterCount, position.minHours);
-  // Supply side alone (no roster needed): what this position can seat each week.
-  const seatHours = seatHoursPerWeek(liveBlocks);
 
   function removeBlock(b: AdminBlockItem) {
     const picks = b.realPickCount;
@@ -194,240 +224,207 @@ export function BlockEditor({
     });
   }
 
+  const setAdd = (dayType: DayType, patch: Partial<BlockRowEdit>) =>
+    setAdds((prev) => ({ ...prev, [dayType]: { ...prev[dayType], ...patch } }));
+
   return (
-    <div>
-      <div style={columns}>
+    <div className="ad-stack">
+      <div className="ad-cols">
         {DAY_TYPES.map(({ dayType, label }) => {
           const dayBlocks = blocks.filter((b) => b.dayType === dayType);
           const oc = openClose[dayType]!;
+          const add = adds[dayType];
           return (
             <div key={dayType}>
-              <h3 style={h3}>{label}</h3>
-              {dayBlocks.length === 0 && (
-                <p
-                  style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}
-                >
-                  No blocks yet.
-                </p>
-              )}
-              {dayBlocks.map((b) => {
-                const v = valueOf(b);
-                return (
-                  <div key={b.id} style={row}>
-                    <input
-                      type="time"
-                      value={v.start}
-                      disabled={busy}
-                      onChange={(e) => onEdit(b.id, { ...v, start: e.target.value })}
-                      style={timeInput}
-                    />
-                    <span style={{ fontSize: 13 }}>to</span>
-                    <input
-                      type="time"
-                      value={v.end}
-                      disabled={busy}
-                      onChange={(e) => onEdit(b.id, { ...v, end: e.target.value })}
-                      style={timeInput}
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      max={DESIRED_CAPACITY_MAX}
-                      value={v.cap}
-                      disabled={busy}
-                      aria-label="Target staffing"
-                      title="How many students this shift needs each day. Leave blank for no target."
-                      onChange={(e) => onEdit(b.id, { ...v, cap: e.target.value })}
-                      style={capInput}
-                    />
-                    <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-                      staff
-                    </span>
-                    {oc.openId === b.id && <span style={openTag}>Open</span>}
-                    {oc.closeId === b.id && <span style={closeTag}>Close</span>}
-                    {b.realPickCount > 0 && (
-                      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                        {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      title={
-                        b.selectionCount > 0
-                          ? "Take this shift out of scheduling. Picks already on it stay on each response for you to clear."
-                          : "Remove this shift."
-                      }
-                      style={{ color: "var(--color-text-danger)" }}
-                      onClick={() => removeBlock(b)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                );
-              })}
-              <div style={row}>
-                <input
-                  type="time"
-                  value={adds[dayType].start}
-                  disabled={busy}
-                  onChange={(e) =>
-                    setAdds((prev) => ({
-                      ...prev,
-                      [dayType]: { ...prev[dayType], start: e.target.value },
-                    }))
-                  }
-                  style={timeInput}
-                />
-                <span style={{ fontSize: 13 }}>to</span>
-                <input
-                  type="time"
-                  value={adds[dayType].end}
-                  disabled={busy}
-                  onChange={(e) =>
-                    setAdds((prev) => ({
-                      ...prev,
-                      [dayType]: { ...prev[dayType], end: e.target.value },
-                    }))
-                  }
-                  style={timeInput}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={DESIRED_CAPACITY_MAX}
-                  value={adds[dayType].cap}
-                  disabled={busy}
-                  aria-label="Target staffing"
-                  title="How many students this shift needs each day. Leave blank for no target."
-                  onChange={(e) =>
-                    setAdds((prev) => ({
-                      ...prev,
-                      [dayType]: { ...prev[dayType], cap: e.target.value },
-                    }))
-                  }
-                  style={capInput}
-                />
-                <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>staff</span>
-                <button
-                  type="button"
-                  disabled={busy || !adds[dayType].start || !adds[dayType].end}
-                  onClick={() => addBlock(dayType)}
-                >
-                  Add block
-                </button>
-              </div>
+              <h3>{label}</h3>
+              {dayBlocks.length === 0 && <p className="ad-muted">No blocks yet.</p>}
+              <table className="ad-table ad-table--stack ad-table--middle ad-table--plain">
+                <thead>
+                  <tr>
+                    <th scope="col">Start</th>
+                    <th scope="col">End</th>
+                    <th scope="col">Staff</th>
+                    <th scope="col">
+                      <VisuallyHidden>Tags and picks</VisuallyHidden>
+                    </th>
+                    <th scope="col">
+                      <VisuallyHidden>Actions</VisuallyHidden>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayBlocks.map((b) => {
+                    const v = valueOf(b);
+                    return (
+                      <tr key={b.id}>
+                        <td data-label="Start">
+                          <input
+                            type="time"
+                            value={v.start}
+                            disabled={busy}
+                            aria-label="Start"
+                            onChange={(e) => onEdit(b.id, { ...v, start: e.target.value })}
+                          />
+                        </td>
+                        <td data-label="End">
+                          <input
+                            type="time"
+                            value={v.end}
+                            disabled={busy}
+                            aria-label="End"
+                            onChange={(e) => onEdit(b.id, { ...v, end: e.target.value })}
+                          />
+                        </td>
+                        <td data-label="Staff">
+                          <input
+                            type="number"
+                            className="ad-su-blocks-cap"
+                            min={1}
+                            max={DESIRED_CAPACITY_MAX}
+                            value={v.cap}
+                            disabled={busy}
+                            aria-label="Target staffing"
+                            title="How many students this shift needs each day. Leave blank for no target."
+                            onChange={(e) => onEdit(b.id, { ...v, cap: e.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <span className="ad-su-tags">
+                            {oc.openId === b.id && <Pill tone="success">Open</Pill>}
+                            {oc.closeId === b.id && <Pill tone="info">Close</Pill>}
+                            {b.realPickCount > 0 && (
+                              <span className="ad-muted ad-small">
+                                {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td>
+                          <Button
+                            variant="danger"
+                            disabled={busy}
+                            title={
+                              b.selectionCount > 0
+                                ? "Take this shift out of scheduling. Picks already on it stay on each response for you to clear."
+                                : "Remove this shift."
+                            }
+                            onClick={() => removeBlock(b)}
+                          >
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <td data-label="Start">
+                      <input
+                        type="time"
+                        value={add.start}
+                        disabled={busy}
+                        aria-label="New block start"
+                        onChange={(e) => setAdd(dayType, { start: e.target.value })}
+                      />
+                    </td>
+                    <td data-label="End">
+                      <input
+                        type="time"
+                        value={add.end}
+                        disabled={busy}
+                        aria-label="New block end"
+                        onChange={(e) => setAdd(dayType, { end: e.target.value })}
+                      />
+                    </td>
+                    <td data-label="Staff">
+                      <input
+                        type="number"
+                        className="ad-su-blocks-cap"
+                        min={1}
+                        max={DESIRED_CAPACITY_MAX}
+                        value={add.cap}
+                        disabled={busy}
+                        aria-label="Target staffing"
+                        title="How many students this shift needs each day. Leave blank for no target."
+                        onChange={(e) => setAdd(dayType, { cap: e.target.value })}
+                      />
+                    </td>
+                    <td />
+                    <td>
+                      <Button
+                        disabled={busy || !add.start || !add.end}
+                        onClick={() => addBlock(dayType)}
+                      >
+                        Add block
+                      </Button>
+                    </td>
+                  </tr>
 
-              {/* Removed shifts students had already picked. Kept visible so the
-                  admin can undo a removal; putting one back makes those picks
-                  count again. */}
-              {retiredBlocks
-                .filter((b) => b.dayType === dayType)
-                .map((b) => (
-                  <div key={b.id} style={{ ...row, opacity: 0.75 }}>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        textDecoration: "line-through",
-                        color: "var(--color-text-tertiary)",
-                      }}
-                    >
-                      {minutesToHHMM(b.start)} to {minutesToHHMM(b.end)}
-                    </span>
-                    <span style={removedTag}>removed</span>
-                    {b.realPickCount > 0 && (
-                      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                        {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"} left to clear
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      title="Put this shift back. Picks still on it count again."
-                      onClick={() => putBackBlock(b)}
-                    >
-                      Put back
-                    </button>
-                  </div>
-                ))}
+                  {/* Removed shifts students had already picked. Kept visible so the
+                      admin can undo a removal; putting one back makes those picks
+                      count again. */}
+                  {retiredBlocks
+                    .filter((b) => b.dayType === dayType)
+                    .map((b) => (
+                      <tr key={b.id}>
+                        <td colSpan={3}>
+                          <span className="ad-struck">
+                            {minutesToHHMM(b.start)} to {minutesToHHMM(b.end)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="ad-su-tags">
+                            <Pill tone="danger">removed</Pill>
+                            {b.realPickCount > 0 && (
+                              <span className="ad-muted ad-small">
+                                {b.realPickCount} pick{b.realPickCount === 1 ? "" : "s"} left to
+                                clear
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td>
+                          <Button
+                            disabled={busy}
+                            title="Put this shift back. Picks still on it count again."
+                            onClick={() => putBackBlock(b)}
+                          >
+                            Put back
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           );
         })}
       </div>
       {msg && (
-        <p
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
+        <ActionMessage ok={msg.ok} as="p">
           {msg.text}
-        </p>
+        </ActionMessage>
       )}
       {warnings.map((w) => (
-        <InfoCard
-          key={w.kind}
-          tone="danger"
-          style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}
-        >
-          <p style={{ margin: 0, fontSize: 14 }}>{w.message}</p>
-        </InfoCard>
+        <Notice key={w.kind} tone="danger">
+          <p>{w.message}</p>
+        </Notice>
       ))}
       {/* Seat hours, once any block has a target. A shortfall against the roster
           reads as a warning (and already names the seat hours); otherwise the
           total shows as a plain line, roster or not. */}
       {seatHours > 0 &&
         (onRosterCount > 0 && capacity.kind === "short" ? (
-          <InfoCard tone="warning" style={{ margin: "10px 0 0", padding: "0.6rem 1.2rem" }}>
-            <p style={{ margin: 0, fontSize: 14 }}>{capacity.message}</p>
-          </InfoCard>
+          <Notice tone="warning">
+            <p>{capacity.message}</p>
+          </Notice>
         ) : (
-          <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+          <p className="ad-help">
             Shift targets add up to about {Math.round(seatHours)} seat hours a week.
           </p>
         ))}
       {onRosterCount > 0 && blocks.length > 0 && capacity.kind === "no_targets" && (
-        <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-          Set staffing targets to check weekly capacity against the roster.
-        </p>
+        <p className="ad-help">Set staffing targets to check weekly capacity against the roster.</p>
       )}
     </div>
   );
 }
-
-const columns: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: "12px 24px",
-};
-const h3: React.CSSProperties = { fontSize: 14, margin: "0 0 8px" };
-const row: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  flexWrap: "wrap",
-  marginBottom: 8,
-};
-const timeInput: React.CSSProperties = {
-  padding: 4,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};
-const capInput: React.CSSProperties = { ...timeInput, width: 56 };
-const tagBase: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-  whiteSpace: "nowrap",
-};
-const openTag: React.CSSProperties = { ...tagBase, background: "#e6f4ea", color: "#196127" };
-const closeTag: React.CSSProperties = { ...tagBase, background: "#e7f0fb", color: "#1a66cc" };
-const removedTag: React.CSSProperties = {
-  ...tagBase,
-  background: "#fdecec",
-  color: "var(--color-text-danger)",
-};

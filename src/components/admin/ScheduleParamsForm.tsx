@@ -21,6 +21,7 @@ import {
   REPEAT_START_PENALTY_MIN,
   type SchedulingParams,
 } from "@/lib/domain/scheduling/params";
+import { Button, CheckRow, Field } from "@/components/admin/ui";
 import { saveScheduleParams } from "@/lib/schedule/actions";
 
 /**
@@ -92,8 +93,8 @@ export function ScheduleParamsForm({
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
-        <Field
+      <div className="ad-fields">
+        <NumberField
           label="Max hours per day"
           help="The most hours one student works in a single day."
           value={dayCap}
@@ -101,7 +102,7 @@ export function ScheduleParamsForm({
           min={DAY_CAP_HOURS_MIN}
           max={DAY_CAP_HOURS_MAX}
         />
-        <Field
+        <NumberField
           label="Night priority"
           help="0 fills all shifts evenly. 100 fills night shifts to target first."
           value={night}
@@ -109,7 +110,7 @@ export function ScheduleParamsForm({
           min={0}
           max={100}
         />
-        <Field
+        <NumberField
           label="Evening priority"
           help="Same scale for shifts ending 5pm to 8pm."
           value={evening}
@@ -117,7 +118,7 @@ export function ScheduleParamsForm({
           min={0}
           max={100}
         />
-        <Field
+        <NumberField
           label="Repeat start penalty"
           help="0 ignores repeats. 100 pushes hardest against giving one student the same start time again."
           value={repeatPenalty}
@@ -125,7 +126,7 @@ export function ScheduleParamsForm({
           min={REPEAT_START_PENALTY_MIN}
           max={REPEAT_START_PENALTY_MAX}
         />
-        <Field
+        <NumberField
           label="Minimum rest hours"
           help="The least rest between one day's last shift and the next day's first."
           value={minRest}
@@ -133,7 +134,7 @@ export function ScheduleParamsForm({
           min={MIN_REST_HOURS_MIN}
           max={MIN_REST_HOURS_MAX}
         />
-        <Field
+        <NumberField
           label="Preferred rest hours"
           help="The rest the engine aims for between days. At least the minimum."
           value={preferredRest}
@@ -141,7 +142,7 @@ export function ScheduleParamsForm({
           min={MIN_REST_HOURS_MIN}
           max={PREFERRED_REST_HOURS_MAX}
         />
-        <Field
+        <NumberField
           label="Max consecutive days"
           help="The most days in a row one student works."
           value={maxRun}
@@ -149,7 +150,7 @@ export function ScheduleParamsForm({
           min={MAX_CONSECUTIVE_DAYS_MIN}
           max={MAX_CONSECUTIVE_DAYS_MAX}
         />
-        <Field
+        <NumberField
           label="Max days per week"
           help="The most working days in one week."
           value={maxDays}
@@ -157,7 +158,7 @@ export function ScheduleParamsForm({
           min={MAX_DAYS_PER_WEEK_MIN}
           max={MAX_DAYS_PER_WEEK_MAX}
         />
-        <Field
+        <NumberField
           label="Preferred days per week"
           help="The days per week the engine aims for. At most the max."
           value={preferredDays}
@@ -165,7 +166,7 @@ export function ScheduleParamsForm({
           min={PREFERRED_DAYS_PER_WEEK_MIN}
           max={MAX_DAYS_PER_WEEK_MAX}
         />
-        <Field
+        <NumberField
           label="Optimizer rounds"
           help="0 turns the optimizer off. Higher numbers search longer for better coverage."
           value={annealRounds}
@@ -173,7 +174,7 @@ export function ScheduleParamsForm({
           min={ANNEAL_ITERATIONS_MIN}
           max={ANNEAL_ITERATIONS_MAX}
         />
-        <Field
+        <NumberField
           label="Optimizer seed"
           help="The same seed always builds the same schedule. Change it to try a different search."
           value={annealSeed}
@@ -181,62 +182,45 @@ export function ScheduleParamsForm({
           min={ANNEAL_SEED_MIN}
           max={ANNEAL_SEED_MAX}
         />
-        <fieldset style={fieldsetStyle}>
-          <legend style={{ fontWeight: 600, fontSize: 13, padding: 0 }}>
-            Cross-coverage positions
-          </legend>
-          <span style={{ color: "var(--color-text-secondary)", fontSize: 13, flexGrow: 1 }}>
-            Positions that cover for each other. Schedule health counts them as one. Does not change
-            generation.
-          </span>
+        <fieldset className="ad-fieldset ad-field">
+          <legend className="ad-label">Cross-coverage positions</legend>
           {positions.map((p) => (
-            <label key={p.id} style={checkboxRowStyle}>
+            <CheckRow key={p.id} label={p.name}>
               <input
                 type="checkbox"
                 checked={pool.includes(p.id)}
                 onChange={(e) => togglePool(p.id, e.target.checked)}
               />
-              {p.name}
-            </label>
+            </CheckRow>
           ))}
+          <p className="ad-help">
+            Positions that cover for each other. Schedule health counts them as one. Does not change
+            generation.
+          </p>
         </fieldset>
-        <div style={{ display: "flex", alignItems: "flex-end" }}>
-          <button type="button" onClick={submit} disabled={pending}>
-            {pending ? "Saving…" : "Save settings"}
-          </button>
-        </div>
       </div>
-      {msg && (
-        <p
-          role="status"
-          style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}
+      <div className="ad-actions">
+        <Button
+          variant="primary"
+          size="md"
+          onClick={submit}
+          pending={pending}
+          pendingLabel="Saving…"
         >
-          {msg}
-        </p>
-      )}
+          Save settings
+        </Button>
+        {msg && (
+          <span role="status" className="ad-muted">
+            {msg}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-const fieldsetStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 13,
-  flex: "1 1 200px",
-  minWidth: 180,
-  border: 0,
-  margin: 0,
-  padding: 0,
-};
-
-const checkboxRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-};
-
-function Field({
+/** One whole-number knob: its name, the box, and a line on what it does. */
+function NumberField({
   label,
   help,
   value,
@@ -252,34 +236,15 @@ function Field({
   max: number;
 }) {
   return (
-    <label
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        fontSize: 13,
-        flex: "1 1 160px",
-        minWidth: 150,
-      }}
-    >
-      <span style={{ fontWeight: 600 }}>{label}</span>
-      <span style={{ color: "var(--color-text-secondary)", flexGrow: 1 }}>{help}</span>
+    <Field label={label} help={help}>
       <input
         type="number"
+        className="ad-sc-num"
         value={value}
         min={min}
         max={max}
         onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: 90,
-          padding: "6px 8px",
-          borderRadius: "var(--border-radius-md)",
-          border: "0.5px solid var(--color-border-secondary)",
-          background: "var(--color-background-primary)",
-          fontFamily: "var(--font-sans)",
-          fontSize: 14,
-        }}
       />
-    </label>
+    </Field>
   );
 }

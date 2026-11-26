@@ -1,7 +1,7 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listChangeRequestQueue } from "@/lib/changes/data";
 import { changeRequestAdminPath } from "@/lib/changes/links";
 import { ChangeRequestResolvedCheckbox } from "@/components/admin/ChangeRequestResolvedCheckbox";
@@ -11,7 +11,10 @@ import { ChangeRequestsEnabledToggle } from "@/components/admin/ChangeRequestsEn
 import { changeRequestDayLabel } from "@/lib/domain/change-requests";
 import { getChangeRequestsEnabled } from "@/lib/settings";
 import { workingTermId } from "@/lib/terms/working";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { ButtonLink, EmptyState, PageSettings, Panel } from "@/components/admin/ui";
+
+export const metadata: Metadata = { title: "Change requests" };
 
 /**
  * The change-request queue (roadmap 3.1): the working term's open requests
@@ -36,89 +39,84 @@ export default async function AdminChangeRequestsPage({
   ]);
 
   return (
-    <Page width="wide">
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-        <Crumb href="/admin/responses" label="Responses" />
-        <Crumb href="/change-requests" label="Request form" />
-      </AppHeader>
-      <h1 style={{ marginTop: 0 }}>Change requests</h1>
-      <div style={{ maxWidth: 720, marginBottom: 18 }}>
-        <ChangeRequestsEnabledToggle enabled={formEnabled} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 14,
-          flexWrap: "wrap",
-          maxWidth: 720,
-        }}
-      >
-        <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-          Unresolved schedule change request queue. Click a row to view the request in context on the student&apos;s response page. Use the checkbox to mark it resolved.
-        </p>
-        <ShowResolvedToggle showResolved={showResolved} />
-      </div>
+    <AdminPage
+      title="Change requests"
+      description={
+        <>
+          Unresolved schedule change request queue. Click a name to view the request in context on
+          the student&apos;s response page. Use the checkbox to mark it resolved.
+        </>
+      }
+      actions={<ButtonLink href="/change-requests">Request form</ButtonLink>}
+    >
+      <div className="ad-stack">
+        <PageSettings summary={formEnabled ? "Request form on" : "Request form off"}>
+          <ChangeRequestsEnabledToggle enabled={formEnabled} />
+        </PageSettings>
 
-      {requests.length === 0 ? (
-        <p style={{ color: "var(--color-text-secondary)" }}>
-          {showResolved ? "No requests yet." : "No unresolved requests. 😁😁😁"}
-        </p>
-      ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10, maxWidth: 720 }}>
-          {requests.map((r) => (
-            <li key={r.id} style={r.status === "resolved" ? { ...row, ...resolvedRow } : row}>
-              <Link href={changeRequestAdminPath(r.studentEmail, r.id)} style={rowLink}>
-                <div style={{ fontSize: 14 }}>
-                  <span style={{ fontWeight: 600 }}>{r.studentName}</span>
-                  <span style={{ color: "var(--color-text-secondary)" }}>
-                    {" "}
-                    {r.studentEmail} · {changeRequestDayLabel(r.day)} · {r.shiftText} ·{" "}
-                    {r.permanent ? "permanent" : "one time"}
-                  </span>
-                </div>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-primary)", whiteSpace: "pre-wrap" }}>
-                  {r.comment}
-                </p>
-              </Link>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  {r.status === "resolved" && <ChangeStatusBadge status={r.status} />}
-                  <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
-                    {fmtDay(r.createdAt)}
-                  </span>
-                </span>
-                <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Page>
+        <Panel flush as="div">
+          <div className="ad-toolbar">
+            <ShowResolvedToggle showResolved={showResolved} />
+            <div className="ad-toolbar-end">
+              <span className="ad-ls-count">
+                {requests.length} {showResolved ? "shown" : "unresolved"}
+              </span>
+            </div>
+          </div>
+
+          {requests.length === 0 ? (
+            <EmptyState>
+              {showResolved ? "No requests yet." : "No unresolved requests. 😁😁😁"}
+            </EmptyState>
+          ) : (
+            <table className="ad-table ad-table--stack">
+              <thead>
+                <tr>
+                  <th scope="col">Student</th>
+                  <th scope="col">Shift</th>
+                  <th scope="col">Comment</th>
+                  <th scope="col">Requested</th>
+                  <th scope="col">Resolved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id} className={r.status === "resolved" ? "ad-tr--success" : undefined}>
+                    <td data-label="Student">
+                      <Link
+                        href={changeRequestAdminPath(r.studentEmail, r.id)}
+                        className="ad-ls-name"
+                      >
+                        {r.studentName}
+                      </Link>
+                      <div className="ad-email">{r.studentEmail}</div>
+                    </td>
+                    <td data-label="Shift">
+                      {changeRequestDayLabel(r.day)} · {r.shiftText} ·{" "}
+                      {r.permanent ? "permanent" : "one time"}
+                    </td>
+                    <td data-label="Comment">
+                      <div className="ad-prewrap ad-ls-comment">{r.comment}</div>
+                    </td>
+                    <td data-label="Requested" className="ad-nowrap ad-faint">
+                      {fmtDay(r.createdAt)}
+                    </td>
+                    <td data-label="Resolved">
+                      <span className="ad-ls-marks">
+                        <ChangeRequestResolvedCheckbox id={r.id} status={r.status} />
+                        {r.status === "resolved" && <ChangeStatusBadge status={r.status} />}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
+    </AdminPage>
   );
 }
 
 const fmtDay = (d: Date) =>
   new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-const row: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 14,
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "0.7rem 0.9rem",
-};
-const resolvedRow: React.CSSProperties = {
-  background: "#f3faf5",
-  borderColor: "#cbe6d3",
-};
-const rowLink: React.CSSProperties = {
-  flex: 1,
-  textDecoration: "none",
-  color: "inherit",
-};

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { computeRunStats, type StatsStudent } from "@/lib/domain/scheduling/stats";
 import type { ScheduleAssignment } from "@/lib/domain/scheduling/types";
 import type { Day, ShiftBlock } from "@/lib/domain/types";
+import { Bar } from "./schedule-ui";
 import { ScheduleHealth } from "./ScheduleHealth";
 
 const LEAD = "shift-lead";
@@ -65,7 +66,7 @@ describe("the collapsed section", () => {
   it("starts closed with only its heading showing, and opens on click", async () => {
     render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
     const heading = screen.getByText("Schedule health");
-    expect(heading.tagName).toBe("SUMMARY");
+    expect(heading.closest("summary")).not.toBeNull();
     expect(heading.closest("details")).not.toHaveAttribute("open");
     expect(screen.getByText("By position")).not.toBeVisible();
 
@@ -83,8 +84,45 @@ describe("the Cover table's bars", () => {
     const { container } = render(<ScheduleHealth stats={stats} positionNames={NAMES} />);
     const bars = coverBars(container);
     expect(bars.length).toBeGreaterThan(0);
-    const colors = new Set(bars.map((bar) => bar.style.background));
-    expect([...colors]).toEqual(["var(--color-text-info)"]);
+    for (const bar of bars) {
+      expect(bar).toHaveClass("ad-bar-fill");
+      expect(bar.className).not.toMatch(/ad-bar-fill--/);
+      expect(bar.style.background).toBe("");
+    }
+  });
+});
+
+describe("a health bar", () => {
+  const fillOf = (tone: "danger" | "warning" | null) => {
+    const { container } = render(
+      <Bar bar={{ label: "Fill", caption: "3 of 4", percent: 75, tone }} />,
+    );
+    return container.querySelector<HTMLElement>(".ad-bar > div")!;
+  };
+
+  it.each([
+    ["danger", "ad-bar-fill--danger"],
+    ["warning", "ad-bar-fill--warning"],
+  ] as const)("fills a %s bar with its own class", (tone, cls) => {
+    const fill = fillOf(tone);
+    expect(fill).toHaveClass("ad-bar-fill", cls);
+    expect(fill.style.width).toBe("75%");
+  });
+
+  it("fills a bar with no tone in the neutral class alone", () => {
+    const fill = fillOf(null);
+    expect(fill.className).toBe("ad-bar-fill");
+  });
+
+  it("puts the tone on the label as text colour, and none without a tone", () => {
+    const { rerender } = render(
+      <Bar bar={{ label: "Fill", caption: "3 of 4", percent: 75, tone: "danger" }} />,
+    );
+    expect(screen.getByText("Fill")).toHaveClass("ad-danger-text");
+    rerender(<Bar bar={{ label: "Fill", caption: "3 of 4", percent: 75, tone: "warning" }} />);
+    expect(screen.getByText("Fill")).toHaveClass("ad-warning-text");
+    rerender(<Bar bar={{ label: "Fill", caption: "3 of 4", percent: 75, tone: null }} />);
+    expect(screen.getByText("Fill").className).toBe("");
   });
 
   it("sizes each bar by total coverage, not by the returner share", () => {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRenderedTermId, useRenderedTermName } from "@/components/RenderedTerm";
+import { Button, CheckRow } from "@/components/admin/ui";
 import { clearScheduleRun } from "@/lib/schedule/actions";
 
 /**
@@ -30,38 +31,42 @@ export function ClearScheduleButton({ markedScheduled }: { markedScheduled: numb
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <span className="ad-sc-inline">
       {!confirming ? (
-        <button type="button" onClick={() => setConfirming(true)} disabled={pending}>
-          {pending ? "Clearing…" : "Clear schedule"}
-        </button>
+        <Button
+          variant="danger"
+          onClick={() => setConfirming(true)}
+          pending={pending}
+          pendingLabel="Clearing…"
+        >
+          Clear schedule
+        </Button>
       ) : (
         <>
-          <span style={{ fontSize: 13, fontWeight: 400 }}>
-            Empty the {termName} schedule? You can restore it from this list.
-          </span>
+          <span>Empty the {termName} schedule? You can restore it from the run history.</span>
           {markedScheduled > 0 && (
-            <label style={{ fontSize: 13, fontWeight: 400, display: "inline-flex", gap: 5 }}>
+            <CheckRow
+              label={
+                markedScheduled === 1
+                  ? "Also unmark 1 student as scheduled"
+                  : `Also unmark ${markedScheduled} students as scheduled`
+              }
+            >
               <input
                 type="checkbox"
                 checked={unmark}
                 onChange={(e) => setUnmark(e.target.checked)}
               />
-              {markedScheduled === 1
-                ? "Also unmark 1 student as scheduled"
-                : `Also unmark ${markedScheduled} students as scheduled`}
-            </label>
+            </CheckRow>
           )}
-          <button type="button" onClick={submit}>
+          <Button variant="danger-fill" onClick={submit}>
             Yes, clear
-          </button>
-          <button type="button" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={() => setConfirming(false)}>Cancel</Button>
         </>
       )}
       {error && !confirming && (
-        <span role="status" style={{ fontSize: 13, color: "var(--color-text-danger)" }}>
+        <span role="status" className="ad-danger-text">
           {error}
         </span>
       )}

@@ -14,7 +14,14 @@ import {
 } from "@/lib/positions/actions";
 import type { AdminPositionItem } from "@/lib/positions/data";
 import { diffTitleList } from "@/lib/roster/position-mapping";
-import { BlockEditor, blockRowDirty, parseBlockRow, type BlockRowEdit } from "./BlockEditor";
+import { ActionMessage, Button, CheckRow, Disclosure, Field, Pill } from "@/components/admin/ui";
+import {
+  BlockEditor,
+  blockChecks,
+  blockRowDirty,
+  parseBlockRow,
+  type BlockRowEdit,
+} from "./BlockEditor";
 import type { PositionOption } from "./GhostTitleCard";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -215,97 +222,96 @@ export function PositionCard({
     });
   }
 
+  // What the closed row says: the block set's warnings, counted the way the
+  // editor shows them. An alias has no blocks of its own to check.
+  const liveBlockCount = position.blocks.filter((b) => !b.retired).length;
+  const checks = isAlias
+    ? null
+    : blockChecks(position, position.blocks, edits, position.onRosterCount, dayCapHours);
+  const warningCount = checks ? checks.warnings.length + (checks.capacityShort ? 1 : 0) : 0;
+
+  // Open from the start when there is something to fix, and once it has been
+  // worked in it stays open, so a save does not fold the card over its result.
+  const [keepOpen, setKeepOpen] = useState(warningCount > 0);
+  if (!keepOpen && (warningCount > 0 || dirty || titlesDirty || pending || msg !== null)) {
+    setKeepOpen(true);
+  }
+
   return (
-    <section style={{ ...card, opacity: isAlias || !position.active ? 0.75 : 1 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>{position.name}</h2>
-        {!position.active && <span style={badge}>inactive</span>}
-        {isAlias && <span style={badge}>alias of {position.mergedIntoName}</span>}
-        <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          {plural(position.studentCount, "student")}
+    <Disclosure
+      open={keepOpen}
+      title={
+        <span className="ad-su-pos-title">
+          {position.name}
+          {!position.active && <Pill>inactive</Pill>}
+          {isAlias && <Pill>alias of {position.mergedIntoName}</Pill>}
         </span>
-      </div>
-
-      <div style={detailsRow}>
-        <label style={label}>
-          Name
-          <input value={name} onChange={(e) => setName(e.target.value)} style={input} />
-        </label>
-        <label style={label}>
-          Min hours
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={minHours}
-            onChange={(e) => setMinHours(e.target.value)}
-            style={{ ...input, width: 70 }}
-          />
-        </label>
-        <label style={label}>
-          Min days
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={minDays}
-            onChange={(e) => setMinDays(e.target.value)}
-            style={{ ...input, width: 70 }}
-          />
-        </label>
-        <label style={{ ...label, flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={weekendExempt}
-            onChange={(e) => setWeekendExempt(e.target.checked)}
-          />
-          Weekend exempt
-        </label>
-        <label style={label}>
-          Return date
-          <input
-            type="date"
-            value={returnDate}
-            onChange={(e) => setReturnDate(e.target.value)}
-            style={input}
-          />
-        </label>
-      </div>
-      <p style={{ margin: "-6px 0 12px", fontSize: 12, color: "var(--color-text-secondary)" }}>
-        Shown to students in this position on /travel. Leave blank to hide that card.
-      </p>
-
-      {!isAlias && (
-        <div style={{ margin: "12px 0" }}>
-          <label style={{ ...label, maxWidth: 440 }}>
-            Roster titles
-            <textarea
-              value={titles}
-              onChange={(e) => setTitles(e.target.value)}
-              disabled={pending}
-              rows={Math.max(2, position.rosterTitles.length + 1)}
-              placeholder="No roster title maps here yet"
-              style={{ ...input, resize: "vertical", lineHeight: 1.5 }}
+      }
+      summary={
+        <span className="ad-su-pos-summary">
+          {warningCount > 0 && (
+            <Pill tone={checks && checks.warnings.length > 0 ? "danger" : "warning"}>
+              {plural(warningCount, "warning")}
+            </Pill>
+          )}
+          <span>
+            Min {plural(position.minHours, "hour")}, {plural(position.minDays, "day")}
+            {!isAlias && ` · ${plural(liveBlockCount, "block")}`}
+            {` · ${plural(position.studentCount, "student")}`}
+          </span>
+        </span>
+      }
+    >
+      <section className="ad-su-group">
+        <h2 className="ad-minititle">Details</h2>
+        <div className="ad-fields">
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Min hours">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={minHours}
+              onChange={(e) => setMinHours(e.target.value)}
             />
-          </label>
-          <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--color-text-secondary)" }}>
-            One per line. Students the tracker lists under these titles get this position, now and
-            on every import after.
-          </p>
-          <button type="button" disabled={pending || !titlesDirty} onClick={saveTitles}>
-            Save titles
-          </button>
+          </Field>
+          <Field label="Min days">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={minDays}
+              onChange={(e) => setMinDays(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Return date"
+            help="Shown to students in this position on /travel. Leave blank to hide that card."
+          >
+            <input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+          </Field>
         </div>
-      )}
+        <div className="ad-su-below">
+          <CheckRow label="Weekend exempt">
+            <input
+              type="checkbox"
+              checked={weekendExempt}
+              onChange={(e) => setWeekendExempt(e.target.checked)}
+            />
+          </CheckRow>
+        </div>
+      </section>
 
       {isAlias ? (
-        <div style={{ margin: "12px 0" }}>
-          <p style={{ margin: "0 0 8px", fontSize: 14 }}>
+        <section className="ad-su-group">
+          <h2 className="ad-minititle">Alias</h2>
+          <p>
             Alias of <strong>{position.mergedIntoName}</strong>. Roster titles that map here count
             as {position.mergedIntoName}.
           </p>
-          <button
-            type="button"
+          <Button
             disabled={pending}
             onClick={() => {
               if (
@@ -316,10 +322,11 @@ export function PositionCard({
             }}
           >
             Remove alias
-          </button>
-        </div>
+          </Button>
+        </section>
       ) : (
-        <div style={{ margin: "12px 0" }}>
+        <section className="ad-su-group">
+          <h2 className="ad-minititle">Shifts</h2>
           <BlockEditor
             position={{
               id: position.id,
@@ -335,127 +342,113 @@ export function PositionCard({
             onEdit={(blockId, value) => setEdits((prev) => ({ ...prev, [blockId]: value }))}
             saving={pending}
           />
-        </div>
+        </section>
       )}
 
-      <div style={{ margin: "12px 0" }}>
-        <button type="button" disabled={pending || !dirty} onClick={save}>
+      <div className="ad-su-group">
+        <Button variant="primary" disabled={pending || !dirty} onClick={save}>
           Save changes
-        </button>
+        </Button>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            act(
-              () => setPositionActive(position.id, !position.active),
-              position.active ? "Deactivated." : "Reactivated.",
-            )
-          }
-        >
-          {position.active ? "Deactivate" : "Reactivate"}
-        </button>
-        {deletable && (
-          <button
-            type="button"
-            disabled={pending}
-            style={{ color: "var(--color-text-danger)" }}
-            onClick={() => {
-              // The W2W mappings are called out separately: they go with the
-              // position, and until they are set up again on the W2W positions
-              // page those shifts export with nobody on them.
-              const n = position.w2wMappingCount;
-              const w2w =
-                n > 0
-                  ? ` ${plural(n, "W2W position")} ${n === 1 ? "maps" : "map"} to it, so ${n === 1 ? "its" : "their"} shifts will export with no names until you map ${n === 1 ? "it" : "them"} again on the W2W positions page.`
-                  : "";
-              if (
-                confirm(`Delete ${position.name}? Its blocks and title mappings go with it.${w2w}`)
-              ) {
-                act(() => deletePosition(position.id), "Deleted.");
-              }
-            }}
-          >
-            Delete
-          </button>
-        )}
-        {isShiftLead ? (
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-            Shift Lead is built in. It can&apos;t be deleted or turned into an alias.
-          </span>
-        ) : (
-          !isAlias && (
-            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-              <select
-                value={aliasTarget}
-                onChange={(e) => setAliasTarget(e.target.value)}
-                disabled={pending}
-                style={input}
-              >
-                <option value="">Make this an alias of…</option>
-                {targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" disabled={pending || !aliasTarget} onClick={makeAlias}>
-                Make alias
-              </button>
-            </span>
-          )
-        )}
-      </div>
-
-      {msg && (
-        <p
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
-          {msg.text}
-        </p>
+      {!isAlias && (
+        <section className="ad-su-group">
+          <h2 className="ad-minititle">Roster titles</h2>
+          <div className="ad-su-medium">
+            <textarea
+              className="ad-input--block"
+              aria-label="Roster titles"
+              value={titles}
+              onChange={(e) => setTitles(e.target.value)}
+              disabled={pending}
+              rows={Math.max(2, position.rosterTitles.length + 1)}
+              placeholder="No roster title maps here yet"
+            />
+            <p className="ad-help">
+              One per line. Students the tracker lists under these titles get this position, now and
+              on every import after.
+            </p>
+          </div>
+          <div className="ad-actions">
+            <Button variant="primary" disabled={pending || !titlesDirty} onClick={saveTitles}>
+              Save titles
+            </Button>
+          </div>
+        </section>
       )}
-    </section>
+
+      <div className="ad-su-group">
+        <div className="ad-row">
+          <Button
+            variant={position.active ? "danger" : "secondary"}
+            disabled={pending}
+            onClick={() =>
+              act(
+                () => setPositionActive(position.id, !position.active),
+                position.active ? "Deactivated." : "Reactivated.",
+              )
+            }
+          >
+            {position.active ? "Deactivate" : "Reactivate"}
+          </Button>
+          {deletable && (
+            <Button
+              variant="danger"
+              disabled={pending}
+              onClick={() => {
+                // The W2W mappings are called out separately: they go with the
+                // position, and until they are set up again on the W2W positions
+                // page those shifts export with nobody on them.
+                const n = position.w2wMappingCount;
+                const w2w =
+                  n > 0
+                    ? ` ${plural(n, "W2W position")} ${n === 1 ? "maps" : "map"} to it, so ${n === 1 ? "its" : "their"} shifts will export with no names until you map ${n === 1 ? "it" : "them"} again on the W2W positions page.`
+                    : "";
+                if (
+                  confirm(
+                    `Delete ${position.name}? Its blocks and title mappings go with it.${w2w}`,
+                  )
+                ) {
+                  act(() => deletePosition(position.id), "Deleted.");
+                }
+              }}
+            >
+              Delete
+            </Button>
+          )}
+          {isShiftLead ? (
+            <span className="ad-muted">
+              Shift Lead is built in. It can&apos;t be deleted or turned into an alias.
+            </span>
+          ) : (
+            !isAlias && (
+              <>
+                <select
+                  value={aliasTarget}
+                  onChange={(e) => setAliasTarget(e.target.value)}
+                  disabled={pending}
+                  aria-label={`Make ${position.name} an alias of`}
+                >
+                  <option value="">Make this an alias of…</option>
+                  {targets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Button disabled={pending || !aliasTarget} onClick={makeAlias}>
+                  Make alias
+                </Button>
+              </>
+            )
+          )}
+        </div>
+        {msg && (
+          <ActionMessage ok={msg.ok} as="p" className="ad-su-below">
+            {msg.text}
+          </ActionMessage>
+        )}
+      </div>
+    </Disclosure>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};
-const badge: React.CSSProperties = {
-  background: "var(--color-background-secondary, #eef)",
-  color: "var(--color-text-secondary)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-};
-const detailsRow: React.CSSProperties = {
-  display: "flex",
-  gap: 12,
-  alignItems: "flex-end",
-  flexWrap: "wrap",
-  margin: "12px 0",
-};
-const label: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 12,
-  color: "var(--color-text-secondary)",
-};
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};

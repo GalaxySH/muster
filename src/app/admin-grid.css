@@ -1,0 +1,601 @@
+/* The preference grid, the coverage grid, the slot dialog and the schedule
+   health bar. Same convention as admin.css: one `ad-` prefixed class per rule;
+   this file's own are `ad-gr-`. A rule on a bare element is nested under one
+   of this file's own classes.
+
+   Colour pairs used here, beyond the ones admin.css lists (WCAG 2.2: text 4.5:1,
+   non-text marks 3:1 against what they sit on):
+     picked     #4a7fc9 (--ad-gr-picked) on the empty fill (sunken) 3.4, surface 4.1
+     trial      info #1d4e89 on sunken 7.1, surface 8.4; its white check on it 8.4
+     auto       auto #9d2463 on sunken 6.2, surface 7.3; its white dot on it 7.3
+     scheduled  success #166534 on sunken 6.0
+     by hand    manual #5b3fa8 on sunken 6.5; its white dot on it 7.7
+     cell edge  border-strong #8a8279 on surface 3.8, on sunken 3.2
+     pending / not picked ring   warn-mark #b45309 on surface 5.0
+     dropped ring                info #1d4e89 on surface 8.4
+     high-demand bar             accent #c5050c on surface 6.2, on sunken 5.2
+                                 (a 1px surface line parts it from a dark fill)
+     dead pick  danger #b42318 check on the hatch: on border #ddd6cc 4.6,
+                on sunken 5.5; its danger edge on surface 6.6
+     coverage   success on its tint 6.4, warning on its tint 6.8, danger on its
+                tint 5.7, text-2 on surface 7.6 */
+.ad-gr {
+  --ad-gr-picked: #4a7fc9;
+  --ad-gr-cell-w: 1.75rem;
+  --ad-gr-cell-h: 1.5rem;
+  --ad-gr-cell-r: 7px;
+}
+/* Dark (see admin.css): a lighter blue, 5.0 on the dark sunken fill. */
+.ad[data-theme="dark"] .ad-gr {
+  --ad-gr-picked: #6b9be0;
+}
+@media (prefers-color-scheme: dark) {
+  .ad:not([data-theme="light"]) .ad-gr {
+    --ad-gr-picked: #6b9be0;
+  }
+}
+
+/* ---- Header: title, mode switch, the two hour figures -------------------- */
+.ad-gr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem 0.75rem;
+}
+.ad-gr-mode > button:disabled {
+  background: transparent;
+  color: var(--ad-text-3);
+  cursor: default;
+}
+/* Always its own line under the title, so a wider figure never reflows the head. */
+.ad-gr-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.875rem;
+  min-height: 1.5rem;
+  margin: 0.375rem 0 0.625rem;
+}
+.ad-gr-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+.ad-gr-figure {
+  font-size: 1.375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ad-gr-status {
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+/* The figure the current mode is not about: small, and carrying its own noun. */
+.ad-gr-mini {
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ad-gr-tone--info {
+  color: var(--ad-info);
+}
+.ad-gr-tone--muted {
+  color: var(--ad-text-2);
+}
+.ad-gr-tone--warning {
+  color: var(--ad-warning);
+}
+.ad-gr-tone--danger {
+  color: var(--ad-danger);
+}
+.ad-gr-auto-text {
+  color: var(--ad-auto);
+}
+
+/* ---- The two sub-grids --------------------------------------------------- */
+.ad-gr-grids {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1.375rem;
+}
+.ad-gr-sub {
+  min-width: 0;
+  max-width: 100%;
+}
+.ad-gr-subhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.5rem;
+  margin-bottom: 0.25rem;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+/* The padding leaves room for a cell's focus ring at the edge of the scroller
+   (an `ad-scroll-x`). The negative margin takes that room back, so the box may
+   be 8px wider than its column: without that it is narrower than the grid it
+   holds and scrolls when nothing is cut off. */
+.ad-gr-scroll {
+  max-width: calc(100% + 8px);
+  margin: -4px;
+  padding: 4px;
+}
+.ad-gr-table {
+  width: auto;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: 0.75rem;
+}
+.ad-gr-day {
+  width: var(--ad-gr-cell-w);
+  padding: 0;
+  color: var(--ad-text-2);
+  font-weight: 600;
+  text-align: center;
+}
+.ad-gr-label {
+  padding: 0 0.25rem 0 0;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+.ad-gr-td {
+  padding: 0;
+}
+/* The week starts on Sunday, so Sun and Sat are its two ends, not one block:
+   a wider gap and a thin rule part them. */
+.ad-gr-sun {
+  padding-right: 7px;
+}
+.ad-gr-sat {
+  padding-left: 10px;
+  border-left: 1px solid var(--ad-border-strong);
+}
+.ad-gr-edge {
+  color: var(--ad-info);
+}
+
+/* One cell. Its fill comes from two custom properties the state classes set:
+   the preference, and the scheduled shift once there is a schedule to split
+   against. */
+.ad-gr-cell {
+  --ad-gr-mark-inset: 5px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ad-gr-cell-w);
+  height: var(--ad-gr-cell-h);
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: var(--ad-gr-cell-r);
+  background: var(--ad-gr-pref, var(--ad-sunken));
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.ad-gr-cell:hover {
+  border-color: var(--ad-ink);
+}
+/* The same fill at legend size. */
+.ad-gr-swatch {
+  position: relative;
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: 4px;
+  background: var(--ad-gr-pref, var(--ad-sunken));
+  vertical-align: -1px;
+}
+/* Inner square: the preference. Outer square: the scheduled shift. A shift
+   that is only scheduled is a hollow square, a preference that is not
+   scheduled a small one, and both together a full square with the preference
+   inside. The inner square is its own element (`ad-gr-inner`) so it can have
+   rounded corners; `--ad-gr-ring` is how far it sits from the edge. */
+.ad-gr-split {
+  --ad-gr-ring: 5px;
+  background: var(--ad-gr-sched, var(--ad-sunken));
+}
+.ad-gr-inner {
+  position: absolute;
+  inset: var(--ad-gr-ring);
+  border-radius: 4px;
+  background: var(--ad-gr-pref, var(--ad-sunken));
+  pointer-events: none;
+}
+.ad-gr-swatch.ad-gr-split {
+  --ad-gr-ring: 3px;
+}
+.ad-gr-swatch .ad-gr-inner {
+  border-radius: 2px;
+}
+.ad-gr-pref--trial {
+  --ad-gr-pref: var(--ad-info);
+}
+.ad-gr-pref--picked {
+  --ad-gr-pref: var(--ad-gr-picked);
+}
+/* Auto-assigned carries a dot as well as its colour: in its corner on a whole
+   cell, in the middle of the inner square on a split one. */
+.ad-gr-pref--auto {
+  --ad-gr-pref: var(--ad-auto);
+}
+.ad-gr-pref--auto::before {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ad-on-ink);
+  pointer-events: none;
+}
+.ad-gr-sched--engine {
+  --ad-gr-sched: var(--ad-success);
+}
+.ad-gr-split.ad-gr-pref--auto::before {
+  z-index: 1;
+  bottom: calc(50% - 2px);
+  left: calc(50% - 2px);
+}
+/* Scheduled by hand carries a dot in its corner, on the outer square, as well
+   as its colour. */
+.ad-gr-sched--manual {
+  --ad-gr-sched: var(--ad-manual);
+}
+.ad-gr-sched--manual::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: var(--ad-gr-mark-inset, 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ad-on-ink);
+  pointer-events: none;
+}
+/* A change not saved yet, or a cell the student never picked: a dashed ring.
+   The fill stops short of the ring so its gaps show the surface. */
+.ad-gr-ring--deviates {
+  border: 2px dashed var(--ad-warn-mark);
+  background-clip: padding-box;
+}
+/* On the rotation pill while it is pressed, where the chip sets its own edge. */
+.ad-gr-ring--deviates[aria-pressed="true"] {
+  border-color: var(--ad-warn-mark);
+}
+/* The student's pick, dropped from this copy: a dotted ring. */
+.ad-gr-ring--dropped {
+  border: 2px dotted var(--ad-info);
+  background-clip: padding-box;
+}
+.ad-gr-hot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  bottom: -1px;
+  width: 3px;
+  border-radius: 0 var(--ad-gr-cell-r) var(--ad-gr-cell-r) 0;
+  background: var(--ad-accent);
+  box-shadow: -1px 0 0 var(--ad-surface);
+  pointer-events: none;
+}
+.ad-gr-hot-swatch {
+  display: inline-block;
+  width: 3px;
+  height: 0.75rem;
+  background: var(--ad-accent);
+  vertical-align: -1px;
+}
+/* The trial's check, centred: in the inner square of a split cell, smaller. */
+.ad-gr-tick {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ad-on-ink);
+  font-size: 0.5625rem;
+  pointer-events: none;
+}
+.ad-gr-tick--full {
+  font-size: 0.6875rem;
+}
+/* A cell on a shift that no longer exists. Inert unless the student picked it;
+   a picked one is hatched and keeps a check, and can only be cleared. */
+.ad-gr-orphan {
+  position: relative;
+  width: var(--ad-gr-cell-w);
+  height: var(--ad-gr-cell-h);
+  min-height: 0;
+  padding: 0;
+  border: 1px dashed var(--ad-border-strong);
+  border-radius: var(--ad-gr-cell-r);
+  background: var(--ad-sunken);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ad-gr-orphan--picked {
+  border: 1px solid var(--ad-danger);
+  background: repeating-linear-gradient(45deg, var(--ad-border) 0 3px, var(--ad-sunken) 3px 6px);
+  opacity: 1;
+  cursor: pointer;
+}
+.ad-gr-orphan-tick {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ad-danger);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+.ad-gr-busy {
+  opacity: 0.5;
+}
+
+/* The saved schedule's rotation week beside the preference pill: a label, not
+   a control. */
+.ad-gr-week-note {
+  padding: 0 0.375rem;
+  border: 1px solid var(--ad-border);
+  border-radius: 999px;
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: default;
+}
+
+/* ---- Footer: legend on the left, the trial's controls on the right ------- */
+.ad-gr-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.625rem;
+}
+.ad-gr-legend-wrap {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.ad-gr-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+}
+.ad-gr-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.875rem;
+}
+.ad-gr-controls {
+  display: flex;
+  flex: none;
+  gap: 0.375rem;
+  margin-left: auto;
+}
+/* Save once it has landed: the same button, now a receipt. */
+.ad-gr-saved {
+  border-color: var(--ad-success);
+  background: var(--ad-surface);
+  color: var(--ad-success);
+  cursor: default;
+}
+.ad-gr-block {
+  margin-top: 0.625rem;
+}
+.ad-gr-msg {
+  margin: 0.5rem 0 0;
+  text-align: right;
+}
+.ad-gr-list {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.125rem;
+}
+
+/* ---- Coverage grid ------------------------------------------------------- */
+/* Weekdays and weekends side by side, wrapping one above the other in a narrow
+   card. The card sets the width: `contain` keeps a wide table from widening
+   the column, and the table scrolls in its own box instead. */
+.ad-gr-cov-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1.75rem;
+  contain: inline-size;
+}
+.ad-gr-cov-block {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ad-gr-cov-table {
+  width: auto;
+}
+.ad-gr-cov-table tbody th {
+  border-top: 1px solid var(--ad-border-soft);
+  background: transparent;
+  color: var(--ad-ink);
+  font-size: inherit;
+  font-weight: 400;
+}
+.ad-gr-cov-table--compact th,
+.ad-gr-cov-table--compact td {
+  padding: 0.1875rem 0.375rem;
+}
+.ad-gr-cov {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ad-gr-cov--ok {
+  background: var(--ad-success-tint);
+  color: var(--ad-success);
+}
+.ad-gr-cov--short {
+  background: var(--ad-warning-tint);
+  color: var(--ad-warning);
+}
+/* Under half is heavier and underlined as well as red. */
+.ad-gr-cov--severe {
+  background: var(--ad-danger-tint);
+  box-shadow: inset 0 -2px 0 var(--ad-danger);
+  color: var(--ad-danger);
+  font-weight: 600;
+}
+.ad-gr-cov--none {
+  color: var(--ad-text-2);
+}
+.ad-gr-cov-target {
+  font-weight: 400;
+}
+/* The whole cell is the button that opens who is behind its number. */
+.ad-gr-slot {
+  display: block;
+  width: 100%;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.ad-gr-slot:hover {
+  text-decoration: underline;
+}
+.ad-gr-slot:focus-visible {
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+/* ---- Slot dialog --------------------------------------------------------- */
+/* A summary line, then the people as rows of name | week | status. Both groups
+   share one set of columns (the lists and their rows are subgrids of the
+   roster), so the tags line up from the first row to the last. When the dialog
+   is too narrow for three columns (a phone, large text) each row wraps its tags
+   under the name instead. */
+.ad-gr-dialog {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ad-gr-dialog-sum {
+  margin: 0;
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+}
+.ad-gr-dialog-note {
+  margin: 0;
+}
+.ad-gr-roster {
+  display: grid;
+  /* The name takes what the tags leave; an empty week column takes nothing. */
+  grid-template-columns: minmax(8em, 1fr) auto auto;
+  column-gap: 0.75rem;
+  font-size: 0.8125rem;
+}
+.ad-gr-people {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--ad-border-soft);
+  list-style: none;
+}
+.ad-gr-person {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  padding: 0.3125rem 0;
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-gr-person-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ad-gr-person-week {
+  display: flex;
+}
+.ad-gr-person-state {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.25rem 0.5rem;
+}
+.ad-gr-person-on {
+  color: var(--ad-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ad-gr-person-done {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  color: var(--ad-success);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* The heading over the people on the shift who are not in the count. */
+.ad-gr-more {
+  grid-column: 1 / -1;
+  margin: 0.75rem 0 0.25rem;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+@container (max-width: 26em) {
+  .ad-gr-roster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ad-gr-person {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+  }
+  .ad-gr-person-name {
+    flex: 1 0 100%;
+  }
+  .ad-gr-person-week:empty {
+    display: none;
+  }
+  .ad-gr-person-state {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+/* ---- Schedule health bar (schedule-ui.tsx) ------------------------------- */
+.ad-gr-bar {
+  padding: 0.375rem 0;
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-gr-bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ActionMessage, Button } from "@/components/admin/ui";
 import { restoreScheduleRun } from "@/lib/schedule/actions";
 
 /**
@@ -22,27 +23,21 @@ export function RestoreRunButton({ runId }: { runId: string }) {
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <span className="ad-sc-inline">
       {!confirming ? (
-        <button type="button" onClick={() => setConfirming(true)} disabled={pending}>
-          {pending ? "Restoring…" : "Restore"}
-        </button>
+        <Button onClick={() => setConfirming(true)} pending={pending} pendingLabel="Restoring…">
+          Restore
+        </Button>
       ) : (
         <>
-          <span style={{ fontSize: 13 }}>Make this run the current schedule?</span>
-          <button type="button" onClick={submit}>
+          <span>Make this run the current schedule?</span>
+          <Button variant="primary" onClick={submit}>
             Yes, restore
-          </button>
-          <button type="button" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={() => setConfirming(false)}>Cancel</Button>
         </>
       )}
-      {error && !confirming && (
-        <span role="status" style={{ fontSize: 13, color: "var(--color-text-danger)" }}>
-          {error}
-        </span>
-      )}
+      {error && !confirming && <ActionMessage ok={false}>{error}</ActionMessage>}
     </span>
   );
 }

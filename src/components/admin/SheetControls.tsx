@@ -9,6 +9,7 @@ import {
   faArrowUpRightFromSquare,
   faArrowsRotate,
 } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
+import { VisuallyHidden } from "@/components/admin/ui";
 
 export interface SheetRebuildOutcome {
   ok: boolean;
@@ -59,33 +60,27 @@ export function SheetControls({
   }
 
   return (
-    <div style={{ margin: "0 0 14px" }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {leading}
-        {sheetUrl ? (
-          <a href={sheetUrl} target="_blank" rel="noreferrer" style={btnLink}>
-            Open Google Sheet <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
-          </a>
-        ) : (
-          <span style={{ fontSize: 13, color: "var(--color-text-tertiary)" }}>
-            No Drive sheet yet
-          </span>
-        )}
-        <button type="button" onClick={runRebuild} disabled={pending} style={btn}>
-          {pending ? "Rebuilding…" : "Rebuild Google Sheet"} <FontAwesomeIcon icon={faArrowsRotate} />
-        </button>
-        <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-          Last synced: {lastSyncedAtMs ? fmtTime(lastSyncedAtMs) : "never"}
-        </span>
-      </div>
+    <div className="ad-row">
+      {leading}
+      {sheetUrl ? (
+        <a href={sheetUrl} target="_blank" rel="noreferrer" className="ad-btn">
+          Open Google Sheet <FontAwesomeIcon icon={faArrowUpRightFromSquare} aria-hidden />
+          <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+        </a>
+      ) : (
+        <span className="ad-faint ad-small">No Drive sheet yet</span>
+      )}
+      <button type="button" className="ad-btn" onClick={runRebuild} disabled={pending}>
+        {pending ? "Rebuilding…" : "Rebuild Google Sheet"}{" "}
+        <FontAwesomeIcon icon={faArrowsRotate} aria-hidden />
+      </button>
+      <span className="ad-faint ad-small">
+        Last synced: {lastSyncedAtMs ? fmtTime(lastSyncedAtMs) : "never"}
+      </span>
       {msg && (
         <p
-          role="status"
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
+          role={msg.ok ? "status" : "alert"}
+          className={`ad-sc-sheet-msg ${msg.ok ? "ad-success-text" : "ad-danger-text"}`}
         >
           {msg.ok ? "✓ " : "✗ "}
           {msg.text}
@@ -104,17 +99,3 @@ function fmtTime(value: Date | string | number | null): string {
     minute: "2-digit",
   });
 }
-
-export const btn: React.CSSProperties = {
-  fontSize: 13,
-  padding: "6px 12px",
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  cursor: "pointer",
-};
-export const btnLink: React.CSSProperties = {
-  ...btn,
-  textDecoration: "none",
-  color: "var(--color-text-primary)",
-};

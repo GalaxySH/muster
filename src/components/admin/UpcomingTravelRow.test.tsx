@@ -29,9 +29,11 @@ function entry(over: Partial<UpcomingTravelEntry> = {}): UpcomingTravelEntry {
 
 function renderRow(e: UpcomingTravelEntry) {
   return render(
-    <ul>
-      <UpcomingTravelRow entry={e} />
-    </ul>,
+    <table>
+      <tbody>
+        <UpcomingTravelRow entry={e} />
+      </tbody>
+    </table>,
   );
 }
 
@@ -40,8 +42,8 @@ describe("UpcomingTravelRow", () => {
     renderRow(entry());
     const note = screen.getByText(LONG_NOTE);
     expect(note).toHaveAttribute("title", LONG_NOTE);
-    expect(note.style.overflow).toBe("hidden");
-    expect(note.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
+    // The class carries the two-line clamp (admin-lists.css).
+    expect(note).toHaveClass("ad-ls-note");
   });
 
   it("shows nothing extra when there is no note", () => {
@@ -65,11 +67,11 @@ describe("UpcomingTravelRow", () => {
     const dates = screen.getByText("Jan 8 to Jan 11");
     expect(name.compareDocumentPosition(thumb) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(thumb.compareDocumentPosition(dates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect((thumb.parentElement as HTMLElement).style.flexShrink).toBe("0");
     // A flex wrapper hugs the button, with no baseline gap below it.
-    expect((thumb.parentElement as HTMLElement).style.display).toBe("flex");
-    // The dates column carries the class that gives it one width on desktop.
-    expect(dates.closest(".travel-row-right")).not.toBeNull();
+    expect(thumb.parentElement).toHaveClass("ad-ls-proof");
+    expect(thumb.closest('td[data-label="Proof"]')).not.toBeNull();
+    // The dates sit in their own column, so the thumbnails line up from row to row.
+    expect(dates.closest('td[data-label="Dates"]')).not.toBeNull();
   });
 
   it("loads the original only once the lightbox opens", () => {
@@ -89,8 +91,25 @@ describe("UpcomingTravelRow", () => {
   });
 
   it("keeps the late cues", () => {
-    renderRow(entry({ excused: false }));
+    const { container } = renderRow(entry({ excused: false }));
     expect(screen.getByText("late")).toBeInTheDocument();
+    expect(container.querySelector("tr")).toHaveClass("ad-tr--danger");
+  });
+
+  it("carries both cues on a trip that is late and resolved", () => {
+    const { container } = renderRow(entry({ excused: false, resolved: true }));
+    const row = container.querySelector("tr");
+    expect(row).toHaveClass("ad-tr--danger");
+    expect(row).toHaveClass("ad-tr--success");
+    expect(screen.getByText("late")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeChecked();
+  });
+
+  it("marks a resolved trip that is not late as resolved only", () => {
+    const { container } = renderRow(entry({ resolved: true }));
+    const row = container.querySelector("tr");
+    expect(row).toHaveClass("ad-tr--success");
+    expect(row).not.toHaveClass("ad-tr--danger");
   });
 
   it("says no proof on a late entry without one", () => {
@@ -98,11 +117,10 @@ describe("UpcomingTravelRow", () => {
     expect(screen.getByText("no proof")).toBeInTheDocument();
   });
 
-  it("keeps the separator inside the position so it wraps or hides with it", () => {
+  it("gives the position its own cell, outside the name link", () => {
     const { container } = renderRow(entry());
-    const position = container.querySelector(".travel-row-position") as HTMLElement;
-    expect(position.textContent).toBe(" · Barista");
-    expect(position.querySelector(".travel-row-sep")?.textContent).toBe(" · ");
+    const position = container.querySelector('td[data-label="Position"]') as HTMLElement;
+    expect(position.textContent).toBe("Barista");
     expect(screen.getByRole("link", { name: "Ann Lee" }).contains(position)).toBe(false);
   });
 
@@ -110,13 +128,14 @@ describe("UpcomingTravelRow", () => {
     renderRow(entry({ studentName: "Featherstonehaugh-Worthington" }));
     const column = screen.getByRole("link", { name: "Featherstonehaugh-Worthington" })
       .parentElement as HTMLElement;
-    expect(column.style.minWidth).toBe("0");
-    expect(column.style.getPropertyValue("overflow-wrap")).toBe("anywhere");
+    // The class lets the cell break a word anywhere (admin-lists.css).
+    expect(column.tagName).toBe("TD");
+    expect(column).toHaveClass("ad-ls-break");
   });
 
   it("shows no separator without a position", () => {
     const { container } = renderRow(entry({ positionName: null }));
-    expect(container.querySelector(".travel-row-sep")).toBeNull();
+    expect(container.querySelector('td[data-label="Position"]')?.textContent).toBe("");
     expect(container.textContent).not.toContain("·");
   });
 

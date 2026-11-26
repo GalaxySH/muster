@@ -10,7 +10,7 @@
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button, Field } from "@/components/admin/ui";
 import { setRosterReading } from "@/lib/admin/actions";
 import type { RosterColumns, RosterReadingInput } from "@/lib/roster/config";
 
@@ -48,95 +48,64 @@ export function RosterReadingPanel({ reading }: { reading: RosterReadingInput })
 
   return (
     <div>
-      <div style={grid}>
-        <label style={field}>
-          <span style={labelText}>Sheets to read</span>
+      <div className="ad-fields">
+        <Field label="Sheets to read" help="One per line. The first one found in the file is read.">
           <textarea
             value={draft.sheetCandidates}
             rows={2}
             onChange={(e) => set("sheetCandidates", e.target.value)}
-            style={input}
+            className="ad-input--block"
           />
-          <span style={hint}>One per line. The first one found in the file is read.</span>
-        </label>
-        <label style={field}>
-          <span style={labelText}>Leaving sheet</span>
+        </Field>
+        <Field label="Leaving sheet" help="Read for resignation dates only.">
           <input
             type="text"
             value={draft.leavingSheet}
             onChange={(e) => set("leavingSheet", e.target.value)}
-            style={input}
+            className="ad-input--block"
           />
-          <span style={hint}>Read for resignation dates only.</span>
-        </label>
-        <label style={field}>
-          <span style={labelText}>Admin titles</span>
+        </Field>
+        <Field label="Admin titles" help="One per line. People with these titles become admins.">
           <textarea
             value={draft.adminTitles}
             rows={2}
             onChange={(e) => set("adminTitles", e.target.value)}
-            style={input}
+            className="ad-input--block"
           />
-          <span style={hint}>One per line. People with these titles become admins.</span>
-        </label>
+        </Field>
       </div>
 
-      <h3 style={{ fontSize: 14, margin: "16px 0 4px" }}>Column names</h3>
-      <p style={{ ...hint, margin: "0 0 8px" }}>
+      <h3 className="ad-subhead--ruled">Column names</h3>
+      <p className="ad-help">
         Leave a column blank to find it automatically. Fill one in if the tracker calls it something
         else.
       </p>
-      <div style={grid}>
+      <div className="ad-fields ad-se-after-help">
         {COLUMN_FIELDS.map(({ key, label }) => (
-          <label key={key} style={field}>
-            <span style={labelText}>{label}</span>
+          <Field key={key} label={label}>
             <input
               type="text"
               value={draft.columns[key]}
               placeholder="Automatic"
               onChange={(e) => set("columns", { ...draft.columns, [key]: e.target.value })}
-              style={input}
+              className="ad-input--block"
             />
-          </label>
+          </Field>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
-        <ActionButton onClick={save} pending={pending} pendingLabel="Saving…" disabled={!dirty}>
+      <div className="ad-actions">
+        <Button
+          variant="primary"
+          onClick={save}
+          pending={pending}
+          pendingLabel="Saving…"
+          disabled={!dirty}
+        >
           Save roster settings
-        </ActionButton>
-        {msg && (
-          <span
-            role="status"
-            style={{
-              fontSize: 13,
-              color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-            }}
-          >
-            {msg.ok ? "✓ " : "✗ "}
-            {msg.text}
-          </span>
-        )}
+        </Button>
+        {msg && <ActionMessage ok={msg.ok}>{msg.text}</ActionMessage>}
       </div>
     </div>
   );
 }
-
-const grid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 14,
-  alignItems: "start",
-};
-const field: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
-const labelText: React.CSSProperties = { fontSize: 13, fontWeight: 600 };
-const hint: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)" };
-const input: React.CSSProperties = {
-  padding: "6px 8px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-  width: "100%",
-};

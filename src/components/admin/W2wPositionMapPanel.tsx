@@ -6,6 +6,7 @@ import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createW2wMapping, deleteW2wMapping, updateW2wMapping } from "@/lib/w2w/map-actions";
 import type { MapPositionOption, W2wMapRow } from "@/lib/w2w/map-data";
 import type { PlanPosition } from "@/lib/domain/w2w-plan/map-health";
+import { ActionMessage, Button, Field, Notice, Panel, VisuallyHidden } from "@/components/admin/ui";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -159,116 +160,134 @@ export function W2wPositionMapPanel({
   }
 
   return (
-    <div>
-      <table style={{ borderCollapse: "collapse", fontSize: 14, width: "100%" }}>
-        <thead>
-          <tr>
-            <th style={th}>W2W position</th>
-            <th style={th}>Muster position</th>
-            <th style={thNum}>Fill order</th>
-            {hasPlan && <th style={thNum}>In plan</th>}
-            <th style={th} />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
+    <div className="ad-stack">
+      <Panel flush title="Position mapping">
+        <p className="ad-panel-pad ad-muted">
+          Fill order decides who goes on which shift when two W2W positions share one Muster shift.
+          Lower fills first.
+        </p>
+        <table className="ad-table ad-table--stack ad-table--middle">
+          <thead>
             <tr>
-              <td style={td} colSpan={hasPlan ? 5 : 4}>
-                <span style={{ color: "var(--color-text-tertiary)" }}>Nothing is mapped yet.</span>
-              </td>
+              <th scope="col">W2W position</th>
+              <th scope="col">Muster position</th>
+              <th scope="col" className="ad-num">
+                Fill order
+              </th>
+              {hasPlan && (
+                <th scope="col" className="ad-num">
+                  In plan
+                </th>
+              )}
+              <th scope="col">
+                <VisuallyHidden>Actions</VisuallyHidden>
+              </th>
             </tr>
-          )}
-          {rows.map((row) => {
-            const d = drafts[row.w2wPositionId] ?? draftOf(row);
-            const set = (patch: Partial<Draft>) =>
-              setDrafts((prev) => ({ ...prev, [row.w2wPositionId]: { ...d, ...patch } }));
-            return (
-              <tr key={row.w2wPositionId}>
-                <td style={td}>
-                  <input
-                    value={d.w2wPositionName}
-                    onChange={(e) => set({ w2wPositionName: e.target.value })}
-                    disabled={pending}
-                    style={{ ...input, width: 190 }}
-                    aria-label={`W2W name for ${row.w2wPositionName}`}
-                  />
-                  <div style={idHint}>ID {row.w2wPositionId}</div>
-                </td>
-                <td style={td}>
-                  <select
-                    value={d.musterPositionId}
-                    onChange={(e) => set({ musterPositionId: e.target.value })}
-                    disabled={pending}
-                    style={input}
-                    aria-label={`Muster position for ${row.w2wPositionName}`}
-                  >
-                    {/* The row's current target when it is not a valid choice
-                        (deleted, or now an alias). Without it the select would
-                        show nothing on exactly the rows that need fixing. */}
-                    {!row.targetSelectable && (
-                      <option value={row.musterPositionId}>
-                        {row.musterPositionName ?? row.musterPositionId}
-                        {row.musterPositionName === null ? " (missing)" : " (alias)"}
-                      </option>
-                    )}
-                    {positionOptions.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.active ? "" : " (off)"}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={tdNum}>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={d.fillOrder}
-                    onChange={(e) => set({ fillOrder: e.target.value })}
-                    disabled={pending}
-                    style={{ ...input, width: 62 }}
-                    aria-label={`Fill order for ${row.w2wPositionName}`}
-                  />
-                </td>
-                {hasPlan && (
-                  <td
-                    style={{
-                      ...tdNum,
-                      color: row.planRowCount ? undefined : "var(--color-text-tertiary)",
-                    }}
-                  >
-                    {row.planRowCount}
-                  </td>
-                )}
-                <td style={{ ...td, whiteSpace: "nowrap" }}>
-                  <button
-                    type="button"
-                    disabled={pending || !dirty(row, d)}
-                    onClick={() => save(row)}
-                  >
-                    Save
-                  </button>{" "}
-                  <button
-                    type="button"
-                    disabled={pending}
-                    style={{ color: "var(--color-text-danger)" }}
-                    onClick={() => remove(row)}
-                  >
-                    Remove
-                  </button>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={hasPlan ? 5 : 4}>
+                  <span className="ad-faint">Nothing is mapped yet.</span>
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+            {rows.map((row) => {
+              const d = drafts[row.w2wPositionId] ?? draftOf(row);
+              const set = (patch: Partial<Draft>) =>
+                setDrafts((prev) => ({ ...prev, [row.w2wPositionId]: { ...d, ...patch } }));
+              return (
+                <tr key={row.w2wPositionId}>
+                  <td data-label="W2W position">
+                    <input
+                      value={d.w2wPositionName}
+                      onChange={(e) => set({ w2wPositionName: e.target.value })}
+                      disabled={pending}
+                      className="ad-pl-name-input"
+                      aria-label={`W2W name for ${row.w2wPositionName}`}
+                    />
+                    <div className="ad-pl-id">ID {row.w2wPositionId}</div>
+                  </td>
+                  <td data-label="Muster position">
+                    <select
+                      value={d.musterPositionId}
+                      onChange={(e) => set({ musterPositionId: e.target.value })}
+                      disabled={pending}
+                      className="ad-pl-select"
+                      aria-label={`Muster position for ${row.w2wPositionName}`}
+                    >
+                      {/* The row's current target when it is not a valid choice
+                          (deleted, or now an alias). Without it the select would
+                          show nothing on exactly the rows that need fixing. */}
+                      {!row.targetSelectable && (
+                        <option value={row.musterPositionId}>
+                          {row.musterPositionName ?? row.musterPositionId}
+                          {row.musterPositionName === null ? " (missing)" : " (alias)"}
+                        </option>
+                      )}
+                      {positionOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.active ? "" : " (off)"}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td data-label="Fill order" className="ad-num">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={d.fillOrder}
+                      onChange={(e) => set({ fillOrder: e.target.value })}
+                      disabled={pending}
+                      className="ad-pl-order-input"
+                      aria-label={`Fill order for ${row.w2wPositionName}`}
+                    />
+                  </td>
+                  {hasPlan && (
+                    <td
+                      data-label="In plan"
+                      className={row.planRowCount ? "ad-num" : "ad-num ad-faint"}
+                    >
+                      {row.planRowCount}
+                    </td>
+                  )}
+                  <td className="ad-nowrap">
+                    <Button disabled={pending || !dirty(row, d)} onClick={() => save(row)}>
+                      Save
+                    </Button>{" "}
+                    <Button
+                      variant="quiet-danger"
+                      disabled={pending}
+                      aria-label={`Remove ${row.w2wPositionName}`}
+                      onClick={() => remove(row)}
+                    >
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Panel>
 
-      <div style={{ marginTop: 16 }}>
-        <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Add a mapping</h3>
+      {msg &&
+        (msg.ok ? (
+          <ActionMessage ok as="p">
+            {msg.text}
+          </ActionMessage>
+        ) : (
+          <Notice tone="danger" role="alert">
+            {msg.text}
+          </Notice>
+        ))}
+
+      <Panel title="Add a mapping">
         {unmapped.length > 0 && (
-          <p style={{ margin: "0 0 8px", fontSize: 13 }}>
-            From the current plan:{" "}
+          <div className="ad-pl-suggestions">
+            <span className="ad-muted">From the current plan:</span>
             {unmapped.map((u) => (
               <button
                 key={u.w2wPositionId}
@@ -281,39 +300,36 @@ export function W2wPositionMapPanel({
                     w2wPositionName: u.w2wPositionName,
                   }))
                 }
-                style={suggestion}
+                className="ad-chip"
               >
                 {u.w2wPositionName} ({plural(u.rowCount, "shift")})
               </button>
             ))}
-          </p>
+          </div>
         )}
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={label}>
-            W2W position ID
+        <div className="ad-row ad-row--end">
+          <Field label="W2W position ID">
             <input
               value={adding.w2wPositionId}
               onChange={(e) => setAdding((p) => ({ ...p, w2wPositionId: e.target.value }))}
               disabled={pending}
-              style={{ ...input, width: 130 }}
+              className="ad-pl-id-input"
             />
-          </label>
-          <label style={label}>
-            W2W position name
+          </Field>
+          <Field label="W2W position name">
             <input
               value={adding.w2wPositionName}
               onChange={(e) => setAdding((p) => ({ ...p, w2wPositionName: e.target.value }))}
               disabled={pending}
-              style={{ ...input, width: 190 }}
+              className="ad-pl-name-input"
             />
-          </label>
-          <label style={label}>
-            Muster position
+          </Field>
+          <Field label="Muster position">
             <select
               value={adding.musterPositionId}
               onChange={(e) => setAdding((p) => ({ ...p, musterPositionId: e.target.value }))}
               disabled={pending}
-              style={input}
+              className="ad-pl-select"
             >
               {positionOptions.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -322,9 +338,8 @@ export function W2wPositionMapPanel({
                 </option>
               ))}
             </select>
-          </label>
-          <label style={label}>
-            Fill order
+          </Field>
+          <Field label="Fill order">
             <input
               type="number"
               min={0}
@@ -332,73 +347,20 @@ export function W2wPositionMapPanel({
               value={adding.fillOrder}
               onChange={(e) => setAdding((p) => ({ ...p, fillOrder: e.target.value }))}
               disabled={pending}
-              style={{ ...input, width: 62 }}
+              className="ad-pl-order-input"
             />
-          </label>
-          <button
-            type="button"
+          </Field>
+          <Button
+            variant="primary"
             disabled={
               pending || adding.w2wPositionId.trim() === "" || adding.w2wPositionName.trim() === ""
             }
             onClick={add}
           >
             Add mapping
-          </button>
+          </Button>
         </div>
-      </div>
-
-      {msg && (
-        <p
-          style={{
-            margin: "10px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
-          {msg.text}
-        </p>
-      )}
+      </Panel>
     </div>
   );
 }
-
-const th: React.CSSProperties = {
-  textAlign: "left",
-  padding: "4px 12px 6px 0",
-  borderBottom: "1px solid var(--color-border-tertiary)",
-  fontSize: 12,
-  color: "var(--color-text-secondary)",
-};
-const thNum: React.CSSProperties = { ...th, textAlign: "right", paddingRight: 12 };
-const td: React.CSSProperties = {
-  padding: "6px 12px 6px 0",
-  borderBottom: "0.5px solid var(--color-border-tertiary)",
-  verticalAlign: "top",
-};
-const tdNum: React.CSSProperties = { ...td, textAlign: "right", paddingRight: 12 };
-const idHint: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--color-text-tertiary)",
-  marginTop: 2,
-};
-const label: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 12,
-  color: "var(--color-text-secondary)",
-};
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};
-const suggestion: React.CSSProperties = {
-  marginRight: 6,
-  marginBottom: 4,
-  fontSize: 12,
-  cursor: "pointer",
-};

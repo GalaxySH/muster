@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listResponses } from "@/lib/admin/data";
 import { listGroups } from "@/lib/groups/data";
 import { listPositions } from "@/lib/positions/data";
@@ -9,7 +9,10 @@ import { parseResponseFilters, serializeResponseFilters } from "@/lib/admin/resp
 import { parseResponseSort } from "@/lib/admin/response-sort";
 import { ResponseList } from "@/components/admin/ResponseList";
 import { ResponseFilterBar } from "@/components/admin/ResponseFilterBar";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { ButtonLink } from "@/components/admin/ui";
+
+export const metadata: Metadata = { title: "Responses" };
 
 /**
  * The response dashboard (PLAN §10): the navigation hub into the per-student
@@ -75,13 +78,15 @@ export default async function ResponsesPage({
   );
 
   return (
-    <Page width="full">
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-        <Crumb href="/admin/non-responses" label="Non-responses" />
-        <Crumb href="/admin/drive" label="Export & sheet" />
-      </AppHeader>
-      <h1 style={{ marginTop: 0 }}>Responses</h1>
+    <AdminPage
+      title="Responses"
+      actions={
+        <>
+          <ButtonLink href="/admin/non-responses">Missing responses</ButtonLink>
+          <ButtonLink href="/admin/drive">Export and sheet</ButtonLink>
+        </>
+      }
+    >
       {/* The list renders even when nothing matches, so the filter that emptied
           it is still there to change. */}
       <ResponseList
@@ -91,6 +96,6 @@ export default async function ResponsesPage({
         filters={filterBar}
         emptyMessage={filtered ? "No one matches this filter." : "No submissions yet."}
       />
-    </Page>
+    </AdminPage>
   );
 }

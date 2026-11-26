@@ -6,6 +6,16 @@ import "./student.css";
 import "./student-pages.css";
 import "./student-evidence.css";
 import "./student-requests.css";
+import "./admin.css";
+import "./admin-overview.css";
+import "./admin-lists.css";
+import "./admin-student.css";
+import "./admin-dialogs.css";
+import "./admin-grid.css";
+import "./admin-schedule.css";
+import "./admin-plan.css";
+import "./admin-setup.css";
+import "./admin-settings.css";
 
 // We import the Font Awesome CSS above; stop the core from injecting it again at
 // runtime (which causes a flash of huge icons before CSS loads under SSR).

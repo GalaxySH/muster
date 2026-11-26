@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ActionButton, InfoCard } from "@/components/ui";
+import { Button, Panel, Pill, SettingRow } from "@/components/admin/ui";
 import { setEmailSendingEnabled } from "@/lib/admin/actions";
 
 /**
@@ -38,32 +38,32 @@ export function EmailSettingsPanel({
   }
 
   return (
-    <div>
-      <InfoCard
-        tone={enabled ? "success" : "danger"}
-        title={enabled ? "Email sending is on" : "Email sending is off"}
+    <Panel
+      title="Sending"
+      aside={<Pill tone={enabled ? "success" : "danger"}>{enabled ? "On" : "Off"}</Pill>}
+    >
+      <SettingRow
+        name="Email sending"
+        help={
+          enabled ? "The app is sending emails normally." : "Sending emails is currently disabled."
+        }
       >
-        <p style={{ marginTop: 0 }}>
-          {enabled
-            ? "The app is sending emails normally."
-            : "Sending emails is currently disabled."}
-        </p>
-        <ActionButton
+        <Button
           onClick={toggle}
           variant={enabled ? "secondary" : "primary"}
           pending={pending}
           pendingLabel="Saving…"
         >
           {enabled ? "Turn off email sending" : "Turn on email sending"}
-        </ActionButton>
-      </InfoCard>
+        </Button>
+      </SettingRow>
 
       {!resendConfigured && (
-        <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+        <p className="ad-help">
           No Resend API key is set on this server, so even with sending on, emails are only written
           to the server log (local testing).
         </p>
       )}
-    </div>
+    </Panel>
   );
 }

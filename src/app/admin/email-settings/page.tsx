@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import {
   getEmailSendingEnabled,
   getChangeDigestEnabled,
@@ -14,8 +14,10 @@ import { digestSchedulerEnabled, env } from "@/lib/env";
 import { EmailSettingsPanel } from "@/components/admin/EmailSettingsPanel";
 import { DigestSettingsPanel } from "@/components/admin/DigestSettingsPanel";
 import { ScheduleEmailSettingsPanel } from "@/components/admin/ScheduleEmailSettingsPanel";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
 import { workingTerm } from "@/lib/terms/working";
+
+export const metadata: Metadata = { title: "Email settings" };
 
 /**
  * Email settings: the master switch for all outbound email (honored by
@@ -46,32 +48,26 @@ export default async function EmailSettingsPage() {
   });
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1 style={{ marginTop: 0 }}>Email settings</h1>
-      <p style={{ color: "var(--color-text-secondary)", marginTop: 0 }}>
-        The app sends email through Resend. Use the switch below to turn all outbound email on or
-        off.
-      </p>
-      <EmailSettingsPanel enabled={enabled} resendConfigured={Boolean(env.RESEND_API_KEY)} />
-
-      <h2 style={{ fontSize: 17, margin: "24px 0 6px" }}>Schedule-change digest</h2>
-      <DigestSettingsPanel
-        enabled={digestEnabled}
-        recipients={digestRecipients}
-        health={health}
-        lastRunAt={digestLastRun?.toISOString() ?? null}
-      />
-
-      <h2 style={{ fontSize: 17, margin: "24px 0 6px" }}>Schedule email</h2>
-      <ScheduleEmailSettingsPanel
-        config={scheduleEmail}
-        termName={term.name}
-        domain={fromDomain(env.EMAIL_FROM)}
-        adminEmail={session.email}
-      />
-    </Page>
+    <AdminPage
+      title="Email settings"
+      width="form"
+      description="The app sends email through Resend. Use the switch below to turn all outbound email on or off."
+    >
+      <div className="ad-stack">
+        <EmailSettingsPanel enabled={enabled} resendConfigured={Boolean(env.RESEND_API_KEY)} />
+        <DigestSettingsPanel
+          enabled={digestEnabled}
+          recipients={digestRecipients}
+          health={health}
+          lastRunAt={digestLastRun?.toISOString() ?? null}
+        />
+        <ScheduleEmailSettingsPanel
+          config={scheduleEmail}
+          termName={term.name}
+          domain={fromDomain(env.EMAIL_FROM)}
+          adminEmail={session.email}
+        />
+      </div>
+    </AdminPage>
   );
 }

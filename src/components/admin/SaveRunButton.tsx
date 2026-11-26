@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
+import { Button } from "@/components/admin/ui";
 import { saveScheduleRunSnapshot } from "@/lib/schedule/actions";
 
 /**
@@ -25,12 +26,12 @@ export function SaveRunButton() {
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-      <button type="button" onClick={submit} disabled={pending}>
-        {pending ? "Saving…" : "Save run"}
-      </button>
+    <span className="ad-sc-inline">
+      <Button onClick={submit} pending={pending} pendingLabel="Saving…">
+        Save run
+      </Button>
       {msg && (
-        <span role="status" style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+        <span role="status" className="ad-muted">
           {msg}
         </span>
       )}

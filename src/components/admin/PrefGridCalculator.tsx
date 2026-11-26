@@ -11,7 +11,7 @@ import { saveAvailabilityFor } from "@/lib/availability/actions";
 import { removeOrphanedSelection } from "@/lib/admin/actions";
 import type { OrphanedCell } from "@/lib/positions/orphans";
 import { applyScheduleEdits } from "@/lib/schedule/manual";
-import { ENGINE_COLOR, MANUAL_COLOR } from "@/components/admin/schedule-ui";
+import { Button, Disclosure, Notice, Pill, cx } from "@/components/admin/ui";
 import { dayConflictMessage, findDayConflict, type RowSpan } from "@/lib/domain/scheduling/manual";
 import { isBelowMinHours } from "@/lib/domain/scheduling/problems";
 import type { AssignmentSource, Cohort } from "@/lib/domain/scheduling/types";
@@ -27,8 +27,8 @@ import {
 
 /**
  * Interactive grid + live hours calculator for the per-student admin view.
- * Every cell is split diagonally: the lower-left half is the student's
- * availability preference, the upper-right half is the current schedule run's
+ * Once there is a schedule run every cell is split: an inner square is the
+ * student's availability preference, the outer square the current run's
  * assignment for that (block, day). Preferences and assignments live in
  * separate tables (generation never overwrites preferences); the split makes
  * that visible, including a scheduled shift the student never offered.
@@ -72,17 +72,8 @@ import {
  * for each other.
  */
 
-// Compact fixed cell size; keeps the grid tight instead of stretching wide.
-const CELL = 26;
-
-/** The empty half of a cell; matches the untouched-preference fill. */
-const EMPTY_COLOR = "var(--color-background-secondary)";
-/**
- * "Picked, but not in the trial schedule": a mid blue that reads clearly against
- * the grid, where the old near-white tint was almost invisible. Still plainly
- * lighter than the strong trial-blue fill, which also carries a check mark.
- */
-const PREF_PICKED_COLOR = "#8cb2e5";
+/** The colour a readout takes; each is a class in app/admin-grid.css. */
+type ReadoutTone = "info" | "muted" | "warning" | "danger";
 
 const fmtNum = (h: number) => `${Math.round(h * 10) / 10}`;
 const fmtHours = (h: number) => `${fmtNum(h)}h`;
@@ -372,11 +363,15 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     setSaveError(null);
     setSaveState("saving");
     startTransition(async () => {
-      const res = await saveAvailabilityFor(props.studentEmail, {
-        selection,
-        everyWeekendOptIn: optIn,
-        overrideInvalid: override,
-      }, termId);
+      const res = await saveAvailabilityFor(
+        props.studentEmail,
+        {
+          selection,
+          everyWeekendOptIn: optIn,
+          overrideInvalid: override,
+        },
+        termId,
+      );
       if (!res.ok) {
         setSaveError(res.errors[0] ?? "Something went wrong.");
         setSaveState("idle");
@@ -558,8 +553,8 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       ? "no shifts picked"
       : dirty
         ? "trial schedule"
-        : "preferred";
-  const accent = belowFloor ? "var(--color-text-warning)" : "var(--color-text-info)";
+        : "available";
+  const tone: ReadoutTone = belowFloor ? "warning" : "info";
 
   /**
    * The scheduled figure follows the trial while schedule mode is dirty. It is
@@ -611,13 +606,13 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
     scheduledHours !== 0 &&
     isBelowMinHours(trialMinutes, props.position.minHours);
   const scheduledJudged = scheduledOverCap || scheduledBelowFloor;
-  const scheduledAccent = scheduledOverCap
-    ? "var(--color-text-danger)"
+  const scheduledTone: ReadoutTone = scheduledOverCap
+    ? "danger"
     : scheduledBelowFloor
-      ? "var(--color-text-warning)"
+      ? "warning"
       : scheduledHours === 0
-        ? "var(--color-text-secondary)"
-        : "var(--color-text-info)";
+        ? "muted"
+        : "info";
   // Same wording as the schedule page's pills, so the two agree.
   const scheduledNote = scheduledOverCap
     ? `over ${props.cap}h cap`
@@ -630,104 +625,96 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
   // Mini form of the preferred figure: the auto-weekend range survives, since
   // dropping it here would quietly restate an upper bound as a single number.
   const preferredMini = showAutoRange
-    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} preferred`
-    : `${fmtHours(hours)} preferred`;
+    ? `${fmtNum(hours)}–${fmtHours(hoursWithAuto)} available`
+    : `${fmtHours(hours)} available`;
   // Schedule mode without a run cannot happen (the button is disabled), but the
   // fallback keeps the preferred readout big rather than rendering nothing.
   const scheduleIsBig = mode === "schedule" && scheduledHours !== null;
 
   return (
-    <>
+    <div className="ad-gr">
       {/* Header: title + the mode toggle share the top line; the hours readout gets
           its own line so a wider or narrower number can't shuffle the layout as the
           admin clicks. The Reset/Clear controls sit with the legend. */}
-      <div style={headerRow}>
-        <div style={titleRow}>
-          <div style={sectionLabel}>Availability and schedule</div>
-          <div role="group" aria-label="Edit mode" style={modeGroup}>
-            <button
-              type="button"
-              aria-pressed={mode === "prefs"}
-              onClick={() => switchMode("prefs")}
-              style={modeBtn(mode === "prefs")}
-            >
-              Edit preferences
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === "schedule"}
-              disabled={!props.hasCurrentRun}
-              onClick={() => switchMode("schedule")}
-              style={modeBtn(mode === "schedule")}
-            >
-              Edit schedule
-            </button>
-          </div>
-        </div>
-        {!props.hasCurrentRun && (
-          <p style={modeNote}>Generate a schedule first on the schedule page.</p>
-        )}
-        {mode === "schedule" && (
-          <p style={modeNote}>
-            Updating the schedule can replace these shifts unless the student is marked scheduled.
-          </p>
-        )}
-        {/* Preferred always first, scheduled always second, whichever mode is on.
-            Switching modes only moves the emphasis between them: a figure that
-            jumped sides as well would have to be re-found on every click. */}
-        <div style={badge} aria-live="polite">
-          <Readout
-            big={!scheduleIsBig}
-            accent={accent}
-            judged={belowFloor}
-            status={
-              <>
-                {statusText}
-                {mock.size > 0 && !belowFloor && (
-                  <span style={{ color: "var(--color-text-tertiary)" }}>
-                    {" "}
-                    · {dayCount} day{dayCount === 1 ? "" : "s"}
-                  </span>
-                )}
-              </>
-            }
-            mini={preferredMini}
+      <div className="ad-gr-head">
+        <h2 className="ad-panel-title">Availability and schedule</h2>
+        <div role="group" aria-label="Edit mode" className="ad-seg ad-gr-mode">
+          <button type="button" aria-pressed={mode === "prefs"} onClick={() => switchMode("prefs")}>
+            Edit preferences
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "schedule"}
+            disabled={!props.hasCurrentRun}
+            onClick={() => switchMode("schedule")}
           >
-            {showAutoRange ? (
-              <>
-                {fmtNum(hours)}
-                <span
-                  style={{ color: "var(--color-text-auto)" }}
-                  title={`Includes the auto-assigned weekend shift: ${autoWeekend
-                    .map((s) => describeCell(s, props.blocks))
-                    .join(", ")}`}
-                >
-                  –{fmtHours(hoursWithAuto)}
-                </span>
-              </>
-            ) : (
-              fmtHours(hours)
-            )}
-          </Readout>
-          {scheduledHours !== null && (
-            <Readout
-              big={scheduleIsBig}
-              accent={scheduledAccent}
-              judged={scheduledJudged}
-              status={scheduledStatus}
-              // Shrunk, the figure still has to carry its own verdict, or an
-              // over-cap schedule goes quiet the moment the admin leaves
-              // schedule mode.
-              mini={`${fmtHours(scheduledHours)} scheduled${scheduledNote ? ` · ${scheduledNote}` : ""}`}
-            >
-              {fmtHours(scheduledHours)}
-            </Readout>
-          )}
+            Edit schedule
+          </button>
         </div>
       </div>
+      {!props.hasCurrentRun && (
+        <p className="ad-help">Generate a schedule first on the schedule page.</p>
+      )}
+      {mode === "schedule" && (
+        <p className="ad-help">
+          Updating the schedule can replace these shifts unless the student is marked scheduled.
+        </p>
+      )}
+      {/* Preferred always first, scheduled always second, whichever mode is on.
+          Switching modes only moves the emphasis between them: a figure that
+          jumped sides as well would have to be re-found on every click. */}
+      <div className="ad-gr-readouts" aria-live="polite">
+        <Readout
+          big={!scheduleIsBig}
+          tone={tone}
+          judged={belowFloor}
+          status={
+            <>
+              {statusText}
+              {mock.size > 0 && !belowFloor && (
+                <span className="ad-faint">
+                  {" "}
+                  · {dayCount} day{dayCount === 1 ? "" : "s"}
+                </span>
+              )}
+            </>
+          }
+          mini={preferredMini}
+        >
+          {showAutoRange ? (
+            <>
+              {fmtNum(hours)}
+              <span
+                className="ad-gr-auto-text"
+                title={`Includes the auto-assigned weekend shift: ${autoWeekend
+                  .map((s) => describeCell(s, props.blocks))
+                  .join(", ")}`}
+              >
+                –{fmtHours(hoursWithAuto)}
+              </span>
+            </>
+          ) : (
+            fmtHours(hours)
+          )}
+        </Readout>
+        {scheduledHours !== null && (
+          <Readout
+            big={scheduleIsBig}
+            tone={scheduledTone}
+            judged={scheduledJudged}
+            status={scheduledStatus}
+            // Shrunk, the figure still has to carry its own verdict, or an
+            // over-cap schedule goes quiet the moment the admin leaves
+            // schedule mode.
+            mini={`${fmtHours(scheduledHours)} scheduled${scheduledNote ? ` · ${scheduledNote}` : ""}`}
+          >
+            {fmtHours(scheduledHours)}
+          </Readout>
+        )}
+      </div>
 
-      <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div>
+      <div className="ad-gr-grids">
+        <div className="ad-gr-sub">
           <SubHead>Weekday</SubHead>
           <CalcTable
             sub={props.grid.weekday}
@@ -747,7 +734,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           />
         </div>
         {props.grid.weekend && (
-          <div>
+          <div className="ad-gr-sub">
             <SubHead>
               Weekend
               {/* Two rotations, one per mode, because they are two different
@@ -759,7 +746,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                     type="button"
                     aria-pressed={schedCohort === "every"}
                     onClick={flipScheduleRotation}
-                    style={weekendModeBadge(schedCohort === "every", rotationMoves)}
+                    className={rotationPillClass(rotationMoves)}
                     title={
                       schedCohort === "every"
                         ? "They work both weeks. Click to put them on one."
@@ -769,14 +756,13 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                     {schedCohort === "every" ? "EVERY weekend" : "alternating (A/B)"}
                   </button>
                   {schedCohort !== "every" && (
-                    <span role="group" aria-label="Rotation week" style={weekGroup}>
+                    <span role="group" aria-label="Rotation week" className="ad-seg">
                       {(["a", "b"] as const).map((week) => (
                         <button
                           key={week}
                           type="button"
                           aria-pressed={schedCohort === week}
                           onClick={() => setRotationWeek(week)}
-                          style={weekBtn(schedCohort === week)}
                           title={`Put their weekend shifts in week ${week.toUpperCase()}`}
                         >
                           {week.toUpperCase()}
@@ -791,7 +777,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                     type="button"
                     aria-pressed={optIn}
                     onClick={flipRotation}
-                    style={weekendModeBadge(optIn, rotationDeviates)}
+                    className={rotationPillClass(rotationDeviates)}
                     title={
                       rotationDeviates
                         ? `Trial only. ${props.everyWeekendOptIn ? (props.isInternal ? "The saved copy has every weekend." : "The student chose every weekend.") : props.isInternal ? "The saved copy has alternating (A/B)." : "The student chose alternating (A/B)."} Click to switch back.`
@@ -809,7 +795,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                       role="note"
                       aria-label={SCHEDULED_WEEK[props.scheduleCohort].label}
                       title={SCHEDULED_WEEK[props.scheduleCohort].label}
-                      style={scheduledWeekChip}
+                      className="ad-gr-week-note"
                     >
                       Sched <b>{SCHEDULED_WEEK[props.scheduleCohort].letter}</b>
                     </span>
@@ -837,31 +823,32 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
         )}
       </div>
 
-      <div style={footerRow}>
-        <Legend split={split} showDiff={studentKeys !== null} showPending={mode === "schedule"} />
-        {/* marginLeft keeps the controls in the bottom-right corner even when the
-            legend is wide enough to push them onto their own line. */}
+      <div className="ad-gr-foot">
+        <div className="ad-gr-legend-wrap">
+          <Disclosure title="Legend" panel={false}>
+            <Legend
+              split={split}
+              showDiff={studentKeys !== null}
+              showPending={mode === "schedule"}
+            />
+          </Disclosure>
+        </div>
         {mode === "prefs" ? (
-          <div style={{ display: "flex", gap: 4, flex: "none", marginLeft: "auto" }}>
+          <div className="ad-gr-controls">
             {dirty && (
-              <button
-                type="button"
-                onClick={reset}
-                style={miniBtn}
-                title="Reset to the saved picks"
-              >
+              <Button onClick={reset} title="Reset to the saved picks">
                 Reset
-              </button>
+              </Button>
             )}
-            <button type="button" onClick={clear} style={miniBtn} title="Clear every cell">
+            <Button onClick={clear} title="Clear every cell">
               Clear
-            </button>
+            </Button>
             {showSave && (
-              <button
-                type="button"
+              <Button
+                variant={saving || saved ? "secondary" : "primary"}
+                className={saved ? "ad-gr-saved" : undefined}
                 onClick={save}
                 disabled={saving || saved}
-                style={saveBtn(saved)}
                 title={
                   saved
                     ? "Saved as the internal copy used for scheduling"
@@ -869,28 +856,23 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 }
               >
                 {saving ? "Saving…" : saved ? "Saved" : "Save"}
-              </button>
+              </Button>
             )}
           </div>
         ) : (
           /* No Clear here: wiping a whole schedule should not be one click. */
-          <div style={{ display: "flex", gap: 4, flex: "none", marginLeft: "auto" }}>
+          <div className="ad-gr-controls">
             {scheduleDirty && (
-              <button
-                type="button"
-                onClick={resetSchedule}
-                style={miniBtn}
-                title="Drop the pending changes"
-              >
+              <Button onClick={resetSchedule} title="Drop the pending changes">
                 Reset
-              </button>
+              </Button>
             )}
             {showSchedSave && (
-              <button
-                type="button"
+              <Button
+                variant={schedSaving || schedSaved ? "secondary" : "primary"}
+                className={schedSaved ? "ad-gr-saved" : undefined}
                 onClick={saveSchedule}
                 disabled={schedSaving || schedSaved || busyCell !== null}
-                style={saveBtn(schedSaved)}
                 title={
                   schedSaved
                     ? "Saved to the current schedule"
@@ -898,7 +880,7 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
                 }
               >
                 {schedSaving ? "Saving…" : schedSaved ? "Saved" : "Save"}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -907,32 +889,31 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
       {/* The explicit "Save anyway" step: the trial fails hard checks, so the save
           waits until the admin has seen exactly which ones and accepts the flag. */}
       {overrideChecks && (
-        <div role="status" style={overridePanel}>
-          <p style={{ margin: 0, fontWeight: 600 }}>This does not pass the availability checks:</p>
-          <ul style={overrideList}>
-            {overrideChecks.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-          <p style={{ margin: "6px 0 8px" }}>Saving anyway keeps shifts that fail these checks.</p>
-          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => setOverrideChecks(null)} style={miniBtn}>
-              Keep editing
-            </button>
-            <button type="button" onClick={() => doSave(true)} style={overrideBtn}>
-              Save anyway
-            </button>
-          </div>
+        <div className="ad-gr-block">
+          <Notice tone="warning" role="status" title="This does not pass the availability checks:">
+            <ul className="ad-gr-list">
+              {overrideChecks.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+            <p>Saving anyway keeps shifts that fail these checks.</p>
+            <div className="ad-row">
+              <Button variant="danger-fill" onClick={() => doSave(true)}>
+                Save anyway
+              </Button>
+              <Button onClick={() => setOverrideChecks(null)}>Keep editing</Button>
+            </div>
+          </Notice>
         </div>
       )}
 
       {saveError && (
-        <p role="status" style={saveErrorStyle}>
+        <p role="status" className="ad-error ad-gr-msg">
           {saveError}
         </p>
       )}
       {assignError && (
-        <p role="status" style={saveErrorStyle}>
+        <p role="status" className="ad-error ad-gr-msg">
           {assignError}
         </p>
       )}
@@ -940,31 +921,25 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
           placed, the admin decides. Deliberately quieter than the amber
           acknowledge panel, which blocks. */}
       {assignWarnings && (
-        <div role="status" style={laborNotePanel}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Saved, but worth checking:</p>
-          <ul style={overrideList}>
-            {assignWarnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
+        <div className="ad-gr-block">
+          <Notice role="status" title="Saved, but worth checking:">
+            <ul className="ad-gr-list">
+              {assignWarnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </Notice>
         </div>
       )}
       {orphanError && (
-        <p role="status" style={saveErrorStyle}>
+        <p role="status" className="ad-error ad-gr-msg">
           {orphanError}
         </p>
       )}
-    </>
+    </div>
   );
 }
 
-/**
- * The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
- * rather than the two forming one contiguous weekend (PLAN §7). A wider gap plus
- * a thin vertical rule between the two weekend columns makes that visible,
- * mirroring the split in the student grid (AvailabilityForm). The 3px
- * borderSpacing sits on the Sun side of the rule, hence the smaller padding.
- */
 /**
  * One of the two hour figures. Both are always on screen in the same order;
  * `big` is the only thing the mode toggle changes, so the admin's eye keeps the
@@ -974,37 +949,41 @@ export function PrefGridCalculator(props: PrefGridCalculatorProps) {
  */
 function Readout({
   big,
-  accent,
+  tone,
   judged,
   status,
   mini,
   children,
 }: {
   big: boolean;
-  accent: string;
+  tone: ReadoutTone;
   judged: boolean;
   status: React.ReactNode;
   mini: string;
   /** The figure itself, since the preferred one can be a two-tone range. */
   children: React.ReactNode;
 }) {
+  const toneClass = `ad-gr-tone--${tone}`;
   if (!big) {
-    return <div style={judged ? { ...miniReadout, color: accent } : miniReadout}>{mini}</div>;
+    return <div className={cx("ad-gr-mini", judged && toneClass)}>{mini}</div>;
   }
   return (
-    <div style={readoutGroup}>
-      <div style={{ ...bigFigure, color: accent }}>{children}</div>
-      <div style={{ ...statusLine, color: judged ? accent : "var(--color-text-secondary)" }}>
-        {status}
-      </div>
+    <div className="ad-gr-readout">
+      <div className={cx("ad-gr-figure", toneClass)}>{children}</div>
+      <div className={cx("ad-gr-status", judged && toneClass)}>{status}</div>
     </div>
   );
 }
 
-function weekSplit(sub: AdminSubGrid, day: Day): React.CSSProperties {
-  if (sub.dayType !== "weekend") return {};
-  if (day === "sun") return { paddingRight: 7 };
-  return { borderLeft: "1px solid var(--color-border-secondary)", paddingLeft: 10 };
+/**
+ * The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
+ * rather than the two forming one contiguous weekend (PLAN §7). A wider gap plus
+ * a thin vertical rule between the two weekend columns makes that visible,
+ * mirroring the split in the student grid (AvailabilityForm).
+ */
+function weekSplitClass(sub: AdminSubGrid, day: Day): string | false {
+  if (sub.dayType !== "weekend") return false;
+  return day === "sun" ? "ad-gr-sun" : "ad-gr-sat";
 }
 
 function CalcTable({
@@ -1030,7 +1009,7 @@ function CalcTable({
   auto: Set<string>;
   /** What the run holds now. */
   assigned: Map<string, AssignmentSource>;
-  /** What the schedule trial holds; the schedule half renders from it in schedule mode. */
+  /** What the schedule trial holds; the outer square renders from it in schedule mode. */
   trial: Set<string>;
   busyCell: string | null;
   split: boolean;
@@ -1068,188 +1047,148 @@ function CalcTable({
   }, [orphans, sub.dayType]);
 
   return (
-    <table style={{ width: "auto", borderCollapse: "separate", borderSpacing: 3, fontSize: 11 }}>
-      <tbody>
-        <tr style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>
-          <td />
-          {sub.days.map((d) => (
-            <td key={d} style={{ width: CELL, textAlign: "center", ...weekSplit(sub, d) }}>
-              {DAY_LABEL[d]}
-            </td>
+    <div className="ad-scroll-x ad-gr-scroll">
+      <table className="ad-gr-table">
+        <thead>
+          <tr>
+            <td />
+            {sub.days.map((d) => (
+              <th key={d} scope="col" className={cx("ad-gr-day", weekSplitClass(sub, d))}>
+                {DAY_LABEL[d]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sub.rows.map((row) => (
+            <tr key={row.block.id}>
+              <th scope="row" className="ad-gr-label">
+                {row.label} {row.isOpen && <span className="ad-gr-edge">open</span>}
+                {row.isClose && <span className="ad-gr-edge">close</span>}
+              </th>
+              {sub.days.map((day, i) => {
+                const key = selectionKey(row.block.id, day);
+                const inMock = mock.has(key);
+                const wasPreferred = preferred.has(key);
+                const wasAuto = auto.has(key);
+                // Diff cues against the student's own cells (internal copy only).
+                // Live against the trial, so re-adding a dropped cell clears its ring.
+                const inStudent = studentKeys ? studentKeys.has(key) : null;
+                const notOffered =
+                  inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
+                const removedFromStudent = inStudent === true && !inMock;
+                const persisted = assigned.get(key) ?? null;
+                // In schedule mode the outer square renders the TRIAL: a pending add takes
+                // the manual violet, a pending removal empties it.
+                const inTrial = trial.has(key);
+                const schedMode = mode === "schedule";
+                const source = schedMode ? (inTrial ? (persisted ?? "manual") : null) : persisted;
+                const pendingAdd = schedMode && inTrial && persisted === null;
+                const pendingRemove = schedMode && !inTrial && persisted !== null;
+                const isHot = row.highDemandDays[i] ?? false;
+                const pressed = schedMode ? inTrial : inMock;
+                return (
+                  <td key={day} className={cx("ad-gr-td", weekSplitClass(sub, day))}>
+                    <button
+                      type="button"
+                      aria-pressed={pressed}
+                      aria-label={`${row.label} ${DAY_LABEL[day]}`}
+                      title={cellTitle(
+                        mode,
+                        inMock,
+                        wasPreferred,
+                        wasAuto,
+                        source,
+                        isHot,
+                        isInternal,
+                        notOffered,
+                        removedFromStudent,
+                        pendingAdd,
+                        pendingRemove,
+                      )}
+                      onClick={() => onToggle(row.block.id, day)}
+                      className={cellClass(
+                        inMock,
+                        wasPreferred,
+                        wasAuto,
+                        source,
+                        busyCell === key,
+                        split,
+                        notOffered,
+                        removedFromStudent,
+                        pendingAdd || pendingRemove,
+                      )}
+                    >
+                      {split && <span aria-hidden className="ad-gr-inner" />}
+                      {isHot && <span aria-hidden className="ad-gr-hot" />}
+                      {inMock && (
+                        <span
+                          aria-hidden
+                          className={split ? "ad-gr-tick" : "ad-gr-tick ad-gr-tick--full"}
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
           ))}
-        </tr>
-        {sub.rows.map((row) => (
-          <tr key={row.block.id}>
-            <td style={{ whiteSpace: "nowrap" }}>
-              {row.label}{" "}
-              {row.isOpen && <span style={{ color: "var(--color-text-info)" }}>open</span>}
-              {row.isClose && <span style={{ color: "var(--color-text-info)" }}>close</span>}
-            </td>
-            {sub.days.map((day, i) => {
-              const key = selectionKey(row.block.id, day);
-              const inMock = mock.has(key);
-              const wasPreferred = preferred.has(key);
-              const wasAuto = auto.has(key);
-              // Diff cues against the student's own cells (internal copy only).
-              // Live against the trial, so re-adding a dropped cell clears its ring.
-              const inStudent = studentKeys ? studentKeys.has(key) : null;
-              const notOffered =
-                inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
-              const removedFromStudent = inStudent === true && !inMock;
-              const persisted = assigned.get(key) ?? null;
-              // In schedule mode the half renders the TRIAL: a pending add takes
-              // the manual violet, a pending removal empties the half.
-              const inTrial = trial.has(key);
-              const schedMode = mode === "schedule";
-              const source = schedMode ? (inTrial ? (persisted ?? "manual") : null) : persisted;
-              const pendingAdd = schedMode && inTrial && persisted === null;
-              const pendingRemove = schedMode && !inTrial && persisted !== null;
-              const isHot = row.highDemandDays[i] ?? false;
-              const pressed = schedMode ? inTrial : inMock;
-              return (
-                <td key={day} style={{ padding: 0, ...weekSplit(sub, day) }}>
-                  <button
-                    type="button"
-                    aria-pressed={pressed}
-                    aria-label={`${row.label} ${DAY_LABEL[day]}`}
-                    title={cellTitle(
-                      mode,
-                      inMock,
-                      wasPreferred,
-                      wasAuto,
-                      source,
-                      isHot,
-                      isInternal,
-                      notOffered,
-                      removedFromStudent,
-                      pendingAdd,
-                      pendingRemove,
-                    )}
-                    onClick={() => onToggle(row.block.id, day)}
-                    style={cellStyle(
-                      inMock,
-                      wasPreferred,
-                      wasAuto,
-                      source,
-                      busyCell === key,
-                      split,
-                      notOffered,
-                      removedFromStudent,
-                      pendingAdd || pendingRemove,
-                    )}
-                  >
-                    {isHot && <span aria-hidden style={hotTick} />}
-                    {inMock && (
-                      <span aria-hidden style={split ? prefTick : prefTickFull}>
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-        {/* Dead shifts: retired by an admin, or on the position the student
-            used to hold. The row is dead either way: every cell is disabled,
-            and only a cell the student actually picked is clickable, to clear
-            it. */}
-        {orphanRows.map((row) => {
-          const what = row.retired ? "removed" : "old position";
-          const why = row.retired
-            ? "This shift was removed."
-            : "This shift is on the position they used to hold.";
-          return (
-          <tr key={row.blockId}>
-            <td style={orphanLabel}>
-              <span style={{ textDecoration: "line-through" }}>{row.label}</span>{" "}
-              <span style={orphanTag}>{what}</span>
-            </td>
-            {sub.days.map((day) => {
-              const picked = row.days.has(day);
-              const key = selectionKey(row.blockId, day);
-              return (
-                <td key={day} style={{ padding: 0, ...weekSplit(sub, day) }}>
-                  <button
-                    type="button"
-                    aria-label={`${row.label} ${DAY_LABEL[day]} on a ${what} shift`}
-                    disabled={!picked || busyCell === key}
-                    title={
-                      picked
-                        ? `${why} Click to clear this pick.`
-                        : `${why} It can't be picked.`
-                    }
-                    onClick={() => onRemoveOrphan(row.blockId, day)}
-                    style={orphanCellStyle(picked, busyCell === key)}
-                  >
-                    {picked && (
-                      <span aria-hidden style={orphanTick}>
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                </td>
-              );
-            })}
-          </tr>
-          );
-        })}
-      </tbody>
-    </table>
+          {/* Dead shifts: retired by an admin, or on the position the student
+              used to hold. The row is dead either way: every cell is disabled,
+              and only a cell the student actually picked is clickable, to clear
+              it. */}
+          {orphanRows.map((row) => {
+            const what = row.retired ? "removed" : "old position";
+            const why = row.retired
+              ? "This shift was removed."
+              : "This shift is on the position they used to hold.";
+            return (
+              <tr key={row.blockId}>
+                <th scope="row" className="ad-gr-label ad-faint">
+                  <span className="ad-struck">{row.label}</span> <Pill tone="danger">{what}</Pill>
+                </th>
+                {sub.days.map((day) => {
+                  const picked = row.days.has(day);
+                  const key = selectionKey(row.blockId, day);
+                  return (
+                    <td key={day} className={cx("ad-gr-td", weekSplitClass(sub, day))}>
+                      {/* A picked one keeps the check mark so it still reads as
+                          the student's answer, hatched so it never looks like
+                          something the scheduler can use; an unpicked one is
+                          inert. */}
+                      <button
+                        type="button"
+                        aria-label={`${row.label} ${DAY_LABEL[day]} on a ${what} shift`}
+                        disabled={!picked || busyCell === key}
+                        title={
+                          picked ? `${why} Click to clear this pick.` : `${why} It can't be picked.`
+                        }
+                        onClick={() => onRemoveOrphan(row.blockId, day)}
+                        className={cx(
+                          "ad-gr-orphan",
+                          picked && "ad-gr-orphan--picked",
+                          busyCell === key && "ad-gr-busy",
+                        )}
+                      >
+                        {picked && (
+                          <span aria-hidden className="ad-gr-orphan-tick">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
-
-/**
- * A cell on a dead shift (retired, or on the position the student left). A
- * picked one keeps the check mark so it still reads as the student's answer,
- * but greyed and hatched so it never looks like something the scheduler can
- * use; an unpicked one is inert.
- */
-function orphanCellStyle(picked: boolean, busy: boolean): React.CSSProperties {
-  return {
-    width: CELL,
-    height: CELL,
-    padding: 0,
-    borderRadius: 4,
-    position: "relative",
-    border: picked
-      ? "1px solid var(--color-text-danger)"
-      : "1px dashed var(--color-border-secondary)",
-    background: picked
-      ? "repeating-linear-gradient(45deg, #d9d9d9, #d9d9d9 3px, #ececec 3px, #ececec 6px)"
-      : "var(--color-background-secondary)",
-    opacity: busy ? 0.5 : picked ? 1 : 0.45,
-    cursor: picked ? "pointer" : "not-allowed",
-    boxSizing: "border-box",
-  };
-}
-
-/** The live cells' white tick would vanish on the grey hatch; this reads on it. */
-const orphanTick: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 11,
-  fontWeight: 700,
-  color: "var(--color-text-danger)",
-  pointerEvents: "none",
-};
-
-const orphanLabel: React.CSSProperties = {
-  whiteSpace: "nowrap",
-  color: "var(--color-text-tertiary)",
-};
-
-const orphanTag: React.CSSProperties = {
-  borderRadius: 8,
-  padding: "0 5px",
-  fontSize: 10,
-  background: "#fdecec",
-  color: "var(--color-text-danger)",
-  whiteSpace: "nowrap",
-};
 
 function cellTitle(
   mode: Mode,
@@ -1306,17 +1245,18 @@ function cellTitle(
 }
 
 function SubHead({ children }: { children: React.ReactNode }) {
+  return <div className="ad-gr-subhead">{children}</div>;
+}
+
+/**
+ * A legend swatch for a preference colour: the inner square when the cell is
+ * split against a schedule, the whole swatch when there is no run to split against.
+ */
+function PrefSwatch({ pref, split }: { pref: "trial" | "picked" | "auto"; split: boolean }) {
   return (
-    <div
-      style={{
-        fontSize: 12,
-        fontWeight: 600,
-        color: "var(--color-text-secondary)",
-        marginBottom: 6,
-      }}
-    >
-      {children}
-    </div>
+    <span className={cx("ad-gr-swatch", `ad-gr-pref--${pref}`, split && "ad-gr-split")}>
+      {split && <span className="ad-gr-inner" />}
+    </span>
   );
 }
 
@@ -1331,344 +1271,65 @@ function Legend({
   showPending: boolean;
 }) {
   return (
-    <div style={legendCol}>
+    <div className="ad-gr-legend">
       {/* The split only exists once there's a schedule run to compare against;
           without one the cells are whole preference squares. */}
-      {split && <div>Lower left: their preference. Upper right: scheduled shift.</div>}
-      <div style={legendRow}>
+      {split && <div>Inner square: their preference. Outer square: scheduled shift.</div>}
+      <div className="ad-gr-legend-row">
         <span>
-          <span style={prefSwatch("var(--color-text-info)", split)} /> in trial schedule
+          <PrefSwatch pref="trial" split={split} /> in trial schedule
         </span>
         <span>
-          <span style={prefSwatch(PREF_PICKED_COLOR, split)} /> picked, not in trial
+          <PrefSwatch pref="picked" split={split} /> picked, not in trial
         </span>
         <span>
-          <span style={prefSwatch("var(--color-background-warning)", split)} /> auto-assigned
+          <PrefSwatch pref="auto" split={split} /> auto-assigned
         </span>
         {showDiff && (
           <>
             <span>
-              <span style={ringSwatch("1.5px dashed var(--color-border-warning)")} /> not picked by
-              the student
+              <span className="ad-gr-swatch ad-gr-ring--deviates" /> not picked by the student
             </span>
             <span>
-              <span style={ringSwatch(`1.5px dotted ${PREF_PICKED_COLOR}`)} /> their pick, not in
-              this copy
+              <span className="ad-gr-swatch ad-gr-ring--dropped" /> their pick, not in this copy
             </span>
           </>
         )}
         {split && (
           <>
             <span>
-              <span style={schedSwatch(ENGINE_COLOR)} /> scheduled
+              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--engine">
+                <span className="ad-gr-inner" />
+              </span>{" "}
+              scheduled
             </span>
             <span>
-              <span style={schedSwatch(MANUAL_COLOR)} /> scheduled by hand
+              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--manual">
+                <span className="ad-gr-inner" />
+              </span>{" "}
+              scheduled by hand
             </span>
           </>
         )}
         {showPending && (
           <span>
-            <span style={ringSwatch("1.5px dashed var(--color-border-warning)")} /> pending change
+            <span className="ad-gr-swatch ad-gr-ring--deviates" /> pending change
           </span>
         )}
         <span>
-          <span
-            style={{
-              display: "inline-block",
-              width: 3,
-              height: 11,
-              background: "var(--color-text-danger)",
-              verticalAlign: -1,
-            }}
-          />{" "}
-          high-demand
+          <span className="ad-gr-hot-swatch" /> high-demand
         </span>
       </div>
     </div>
   );
 }
 
-// --- styles ---
-
 /**
- * The readout always sits on its own line under the title, never inline, even when
- * it would fit. Inline, a wider or narrower number reflows the header on every click.
+ * The weekend rotation as a toggle: filled while it is every weekend, quiet
+ * under A/B. Once flipped away from what is saved it takes the same dashed ring
+ * the grid uses for a cell that deviates.
  */
-const headerRow: React.CSSProperties = {
-  marginBottom: 10,
-};
-const titleRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  flexWrap: "wrap",
-};
-const sectionLabel: React.CSSProperties = {
-  fontSize: 14,
-  fontWeight: 700,
-  color: "var(--color-text-primary)",
-};
-/**
- * The readout line, hard against the title: the mode's own figure first, the
- * other one as a miniature after it. The wider gap between the two readouts
- * than inside either keeps them reading as two things and not one long number.
- */
-const badge: React.CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  gap: 14,
-  marginTop: 2,
-  flexWrap: "wrap",
-};
-/** One readout: its figure and its status line, side by side. */
-const readoutGroup: React.CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  gap: 6,
-};
-const bigFigure: React.CSSProperties = {
-  fontSize: 22,
-  fontWeight: 700,
-  lineHeight: 1,
-};
-const statusLine: React.CSSProperties = {
-  fontSize: 11,
-  whiteSpace: "nowrap",
-};
-/**
- * The figure the current mode is NOT about. Small, quiet, and always carrying
- * its own noun ("scheduled", "preferred"), since the only thing worse than two
- * hour figures is two hour figures nobody can tell apart.
- */
-const miniReadout: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  whiteSpace: "nowrap",
-  color: "var(--color-text-secondary)",
-};
-/** The two-mode switch; the active mode reads as the pressed segment. */
-const modeGroup: React.CSSProperties = {
-  display: "inline-flex",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  overflow: "hidden",
-};
-const modeBtn = (active: boolean): React.CSSProperties => ({
-  fontSize: 11,
-  fontWeight: 600,
-  padding: "3px 10px",
-  border: "none",
-  cursor: "pointer",
-  background: active ? "var(--color-text-info)" : "var(--color-background-primary)",
-  color: active ? "#fff" : "var(--color-text-secondary)",
-});
-const modeNote: React.CSSProperties = {
-  margin: "4px 0 0",
-  fontSize: 11,
-  color: "var(--color-text-secondary)",
-};
-const miniBtn: React.CSSProperties = {
-  fontSize: 11,
-  padding: "2px 8px",
-  borderRadius: "var(--border-radius-md)",
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-secondary)",
-  cursor: "pointer",
-};
-/**
- * Save is the one control here that writes, so it carries weight the quiet
- * Reset/Clear pair doesn't. Once saved it drops to a green receipt: still the same
- * button in the same spot, no longer offering to do anything.
- */
-const saveBtn = (done: boolean): React.CSSProperties => ({
-  ...miniBtn,
-  fontWeight: 600,
-  ...(done
-    ? {
-        background: "var(--color-background-primary)",
-        border: "1px solid var(--color-text-success)",
-        color: "var(--color-text-success)",
-        cursor: "default",
-      }
-    : {
-        background: "var(--color-text-info)",
-        border: "1px solid var(--color-text-info)",
-        color: "#fff",
-      }),
-});
-/** The failed-checks warning: quiet amber, with the one red action inside it. */
-const overridePanel: React.CSSProperties = {
-  marginTop: 10,
-  padding: "8px 10px",
-  fontSize: 12,
-  background: "var(--color-background-warning)",
-  border: "1px solid var(--color-border-warning)",
-  borderRadius: "var(--border-radius-md)",
-};
-const overrideList: React.CSSProperties = {
-  margin: "4px 0 0",
-  paddingLeft: 18,
-};
-const laborNotePanel: React.CSSProperties = {
-  marginTop: 10,
-  padding: "8px 10px",
-  fontSize: 12,
-  background: "var(--color-background-secondary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  color: "var(--color-text-secondary)",
-};
-const overrideBtn: React.CSSProperties = {
-  ...miniBtn,
-  fontWeight: 600,
-  background: "var(--color-text-danger)",
-  border: "1px solid var(--color-text-danger)",
-  color: "#fff",
-};
-const saveErrorStyle: React.CSSProperties = {
-  margin: "8px 0 0",
-  fontSize: 12,
-  textAlign: "right",
-  color: "var(--color-text-danger)",
-};
-const hotTick: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  bottom: 0,
-  right: 0,
-  width: 3,
-  background: "var(--color-text-danger)",
-  borderRadius: "0 4px 4px 0",
-  pointerEvents: "none",
-};
-/** The trial check sits in the preference (lower-left) half of the split. */
-const prefTick: React.CSSProperties = {
-  position: "absolute",
-  left: 2,
-  bottom: 0,
-  fontSize: 9,
-  color: "#fff",
-  pointerEvents: "none",
-};
-/** With no schedule to split against, the cell is whole, so the check centers. */
-const prefTickFull: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 11,
-  color: "#fff",
-  pointerEvents: "none",
-};
-/** Legend on the left, the trial controls on the right, sharing the card's last row. */
-const footerRow: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-  marginTop: 12,
-};
-const legendCol: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 11,
-  color: "var(--color-text-secondary)",
-};
-const legendRow: React.CSSProperties = {
-  display: "flex",
-  gap: 14,
-  flexWrap: "wrap",
-};
-const swatch: React.CSSProperties = {
-  display: "inline-block",
-  width: 11,
-  height: 11,
-  borderRadius: 3,
-  verticalAlign: -1,
-  border: "1px solid var(--color-border-tertiary)",
-};
-/**
- * A legend swatch for a preference color: the lower-left half when the cell is
- * split against a schedule, the whole swatch when there's no run to split against.
- */
-const prefSwatch = (color: string, split: boolean): React.CSSProperties => ({
-  ...swatch,
-  background: split ? `linear-gradient(45deg, ${color} 0 50%, ${EMPTY_COLOR} 50% 100%)` : color,
-});
-/** A legend swatch showing a color in the schedule (upper-right) half. */
-const schedSwatch = (color: string): React.CSSProperties => ({
-  ...swatch,
-  background: `linear-gradient(45deg, ${EMPTY_COLOR} 0 50%, ${color} 50% 100%)`,
-});
-/** A legend swatch for a diff ring: empty fill, the cue lives in the border. */
-const ringSwatch = (border: string): React.CSSProperties => ({
-  ...swatch,
-  background: EMPTY_COLOR,
-  border,
-});
-
-/**
- * The weekend rotation, made unmissable: opt-ins get a filled badge, A/B a quiet
- * one. It's also the toggle that re-weights the weekend in the trial, so it carries
- * button affordances, plus, once flipped away from what the student actually chose,
- * the same amber dashed ring the grid uses for cells they never offered.
- */
-const weekendModeBadge = (every: boolean, deviates: boolean): React.CSSProperties => ({
-  display: "inline-block",
-  marginLeft: 8,
-  padding: "1px 8px",
-  borderRadius: 10,
-  fontSize: 11,
-  fontWeight: 600,
-  fontFamily: "inherit",
-  lineHeight: 1.6,
-  cursor: "pointer",
-  ...(every
-    ? {
-        background: "var(--color-text-info)",
-        color: "#fff",
-        border: "1px solid var(--color-text-info)",
-      }
-    : {
-        background: "var(--color-background-secondary)",
-        color: "var(--color-text-secondary)",
-        border: "1px solid var(--color-border-tertiary)",
-      }),
-  ...(deviates ? { border: "1.5px dashed var(--color-border-warning)" } : null),
-});
-
-/**
- * Which of the two rotation weeks a student's weekend shifts fall in, offered
- * only in schedule mode and only while the schedule is alternating (under every
- * weekend they work both, so there is nothing to pick). Shaped like the Edit
- * mode toggle above rather than the pill beside it: it is a two-way choice, not
- * something that flips.
- */
-const weekGroup: React.CSSProperties = {
-  display: "inline-flex",
-  marginLeft: 5,
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  overflow: "hidden",
-  verticalAlign: "middle",
-};
-const weekBtn = (active: boolean): React.CSSProperties => ({
-  fontSize: 11,
-  fontWeight: 600,
-  fontFamily: "inherit",
-  lineHeight: 1.6,
-  padding: "1px 8px",
-  border: "none",
-  cursor: "pointer",
-  background: active ? "var(--color-text-info)" : "var(--color-background-primary)",
-  color: active ? "#fff" : "var(--color-text-secondary)",
-});
+const rotationPillClass = (deviates: boolean) => cx("ad-chip", deviates && "ad-gr-ring--deviates");
 
 /**
  * The saved schedule's rotation week, shown beside the preference pill. It is
@@ -1680,36 +1341,19 @@ const SCHEDULED_WEEK: Record<Exclude<Cohort, "weekday">, { letter: string; label
   b: { letter: "B", label: "Scheduled for week B" },
   every: { letter: "E", label: "Scheduled every weekend" },
 };
-const scheduledWeekChip: React.CSSProperties = {
-  display: "inline-block",
-  marginLeft: 5,
-  padding: "0 6px",
-  borderRadius: 10,
-  border: "1px solid var(--color-border-tertiary)",
-  fontSize: 10,
-  fontWeight: 500,
-  lineHeight: 1.6,
-  color: "var(--color-text-tertiary)",
-  verticalAlign: "middle",
-  cursor: "default",
-};
 
-/** The preference half's fill (the whole cell when there is no schedule to split). */
-function prefFill(inMock: boolean, wasPreferred: boolean, wasAuto: boolean): string {
-  if (inMock) return "var(--color-text-info)";
-  if (wasPreferred) return PREF_PICKED_COLOR;
-  if (wasAuto) return "var(--color-background-warning)";
-  return EMPTY_COLOR;
-}
-
-/** The schedule (upper-right) half's fill: green engine rows, violet manual ones. */
-function schedFill(source: AssignmentSource | null): string {
-  if (source === "manual") return MANUAL_COLOR;
-  if (source === "engine") return ENGINE_COLOR;
-  return EMPTY_COLOR;
-}
-
-function cellStyle(
+/**
+ * One cell's look, as classes (app/admin-grid.css). The preference fills the
+ * inner square and the schedule the outer one once there is a schedule to
+ * split against; with no run the preference fills the whole square.
+ *
+ * A cell the student never offered, now in the trial, gets a dashed ring; a
+ * student cell missing from the trial (dropped by the internal copy, or just
+ * unchecked) gets a dotted one. An unsaved schedule change is the same
+ * "deviates" cue and takes precedence, since in schedule mode that is the
+ * thing the admin is tracking.
+ */
+function cellClass(
   inMock: boolean,
   wasPreferred: boolean,
   wasAuto: boolean,
@@ -1719,38 +1363,16 @@ function cellStyle(
   notOffered: boolean,
   removedFromStudent: boolean,
   pendingChange: boolean,
-): React.CSSProperties {
-  const pref = prefFill(inMock, wasPreferred, wasAuto);
-  // A cell the student never offered, now in the trial, gets an amber dashed
-  // ring; a student cell missing from the trial (dropped by the internal copy,
-  // or just unchecked) gets a blue dotted one. An unsaved schedule change is
-  // the same "deviates" cue and takes precedence, since in schedule mode that
-  // is the thing the admin is tracking.
-  const border =
+): string {
+  const pref = inMock ? "trial" : wasPreferred ? "picked" : wasAuto ? "auto" : null;
+  return cx(
+    "ad-gr-cell",
+    pref && `ad-gr-pref--${pref}`,
+    split && "ad-gr-split",
+    split && source && `ad-gr-sched--${source}`,
     pendingChange || notOffered
-      ? "1.5px dashed var(--color-border-warning)"
-      : removedFromStudent
-        ? `1.5px dotted ${PREF_PICKED_COLOR}`
-        : "1px solid var(--color-border-tertiary)";
-  return {
-    position: "relative",
-    width: CELL,
-    height: 22,
-    borderRadius: 4,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    lineHeight: 1,
-    fontWeight: 700,
-    cursor: "pointer",
-    // With a schedule run the cell splits: lower-left = preference, upper-right =
-    // schedule (see Legend). With no run there's nothing to compare against, so the
-    // preference fills the whole square.
-    background: split
-      ? `linear-gradient(45deg, ${pref} 0 50%, ${schedFill(source)} 50% 100%)`
-      : pref,
-    border,
-    opacity: busy ? 0.5 : 1,
-  };
+      ? "ad-gr-ring--deviates"
+      : removedFromStudent && "ad-gr-ring--dropped",
+    busy && "ad-gr-busy",
+  );
 }

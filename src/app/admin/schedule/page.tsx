@@ -1,20 +1,19 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
 import {
-  SectionLabel,
-  StatTile,
-  bannerStyle,
-  cardsGridStyle,
+  ButtonLink,
+  Disclosure,
+  Notice,
+  PageSettings,
+  Panel,
+  Pill,
+  Stat,
+  StatStrip,
+  Status,
   formatDayLabel,
-  keptTagStyle,
-  manualTagStyle,
-  panelStyle,
-  successPillStyle,
-  tableTdStyle,
-  tableThStyle,
 } from "@/components/admin/ui";
 import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import { GenerateScheduleButton } from "@/components/admin/GenerateScheduleButton";
@@ -26,7 +25,7 @@ import { ClearScheduleButton } from "@/components/admin/ClearScheduleButton";
 import { ScheduleParamsForm } from "@/components/admin/ScheduleParamsForm";
 import { ScheduleStudentTable } from "@/components/admin/ScheduleStudentTable";
 import { SheetControls } from "@/components/admin/SheetControls";
-import { CoverageGrid, CoverageLegend, legendChip } from "@/components/admin/CoverageGrid";
+import { CoverageGrid, CoverageLegend } from "@/components/admin/CoverageGrid";
 import { getSchedulingParams } from "@/lib/settings";
 import { workingTermId } from "@/lib/terms/working";
 import { rebuildScheduleSheet } from "@/lib/schedule/actions";
@@ -49,7 +48,6 @@ import {
 import {
   laborFindingSections,
   type LaborFindingSection,
-  type LaborFindingView,
 } from "@/lib/domain/scheduling/run-warnings";
 import { isReadableRunStats } from "@/lib/admin/schedule-health-view";
 import { getLastSheetSync, getSheetUrl, SCHEDULE_SHEET } from "@/lib/admin/sheet-sync";
@@ -63,6 +61,8 @@ import type { Cohort, LateStartWarning } from "@/lib/domain/scheduling/types";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL } from "@/lib/domain/types";
 
+export const metadata: Metadata = { title: "Schedule" };
+
 /** Counts move with every submission and run; never serve a cached page. */
 export const dynamic = "force-dynamic";
 
@@ -73,9 +73,12 @@ export const dynamic = "force-dynamic";
  * × day) cell, scheduled counts the seats the current run put in it, graded
  * against the targets with supply in the cell tooltip. Before any run exists
  * only availability is possible; afterwards `?grid=` switches between them and
- * scheduled is the default. Below the grids: every student's recommended
- * shifts, the run history with restore, the run diff picker, and the Muster
- * Schedule sheet.
+ * scheduled is the default.
+ *
+ * Top to bottom: the run and its actions, what is wrong with it, the three
+ * figures, the grids, every student's recommended shifts. The generation
+ * settings, the per-position ledger, the run history with restore and the run
+ * diff picker sit closed under those.
  */
 export default async function AdminSchedulePage({
   searchParams,
@@ -157,112 +160,151 @@ export default async function AdminSchedulePage({
   );
 
   return (
-    <Page width="full">
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>Schedule</h1>
-      <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        {gridMode === "scheduled"
-          ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Click a cell to see everyone who could work it. Weekend cells show both rotation weeks as A·B."
-          : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Click a cell to see who they are. Set targets per block on the Positions and shift blocks page."}
-      </p>
-      <p style={{ fontSize: 14, marginTop: -6 }}>
-        <Link href="/admin/schedule/plan">W2W shift plan</Link>: import the shift budget from W2W
-        and export the filled schedule back.
-      </p>
+    <AdminPage
+      title="Schedule"
+      description={
+        gridMode === "scheduled"
+          ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set."
+          : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set."
+      }
+      actions={<ButtonLink href="/admin/schedule/plan">W2W shift plan</ButtonLink>}
+    >
+      <div className="ad-stack">
+        <Disclosure panel={false} title="About this page">
+          <div className="ad-sc-prose ad-muted">
+            <p>
+              {gridMode === "scheduled"
+                ? "Each cell shows how many students the current schedule puts on that shift, against the target staffing where one is set. Click a cell to see everyone who could work it. Weekend cells show both rotation weeks as A·B."
+                : "Each cell counts the submitted students who could work that shift on that day, next to the target staffing where one is set. Click a cell to see who they are. Set targets per block on the Positions and shifts page."}
+            </p>
+            <p>
+              <Link href="/admin/schedule/plan">W2W shift plan</Link>: import the shift budget from
+              W2W and export the filled schedule back.
+            </p>
+          </div>
+        </Disclosure>
 
-      <SchedulePanel
-        schedule={schedule}
-        responders={totals.responders}
-        staleLine={staleLine}
-        sheetUrl={sheetUrl}
-        sheetSyncedAt={sheetSyncedAt}
-        hasPlan={hasPlan}
-        positions={scopePositions}
-      />
-      <ScopeLedgerPanel ledger={ledger} />
-      <ScheduleHealthSection schedule={schedule} positionNames={positionNames} />
-
-      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-        <SectionLabel>Generation settings</SectionLabel>
-        {/* Shift Lead is not offered in the cross-coverage pool: the statistics
-            drop the lead id from it and measure new leads on their own floor,
-            so a ticked box there would look like a setting and do nothing. */}
-        <ScheduleParamsForm
-          initial={params}
-          positions={scopePositions.filter((p) => !leadPositionIds.includes(p.id))}
-          leadPositionIds={leadPositionIds}
-        />
-      </section>
-
-      <div style={{ ...cardsGridStyle, maxWidth: 720 }}>
-        <StatTile
-          label="Responses in"
-          value={totals.responders}
-          sub={`of ${totals.roster} on the roster`}
-        />
-        <StatTile
-          label="Cells with a target"
-          value={totals.targetedCells}
-          sub={totals.targetedCells === 0 ? "no targets set yet" : undefined}
-          subTone={totals.targetedCells === 0 ? "warning" : undefined}
-        />
-        <StatTile
-          label="Cells short"
-          value={totals.shortCells}
-          sub={totals.missing > 0 ? `${totals.missing} people missing in total` : undefined}
-          subTone={totals.shortCells > 0 ? "danger" : undefined}
-        />
-      </div>
-
-      <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-        {/* Only worth offering once a run exists: before that there is one grid.
-            The four status chips below apply to both modes and never move. */}
-        {schedule && (
-          <span style={{ marginRight: 10 }}>
-            <GridModeLink mode="scheduled" active={gridMode} before={sp.before} after={sp.after} />{" "}
-            <GridModeLink
-              mode="availability"
-              active={gridMode}
-              before={sp.before}
-              after={sp.after}
-            />
-          </span>
-        )}
-        <CoverageLegend />
-      </p>
-
-      {coverage.map((p) => (
-        <PositionSection
-          key={p.positionId}
-          coverage={p}
-          schedule={gridSchedule}
-          summary={summaryOf(p)}
-        />
-      ))}
-
-      {schedule && <StudentTable schedule={schedule} />}
-
-      {runs.length > 0 && <RunHistorySection runs={runs} markedScheduled={markedScheduled} />}
-
-      {runs.length > 1 && beforeId && afterId ? (
-        <DiffSection
+        <SchedulePanel
+          schedule={schedule}
+          responders={totals.responders}
+          staleLine={staleLine}
+          sheetUrl={sheetUrl}
+          sheetSyncedAt={sheetSyncedAt}
+          hasPlan={hasPlan}
+          positions={scopePositions}
           runs={runs}
-          beforeId={beforeId}
-          afterId={afterId}
-          grid={gridMode}
-          data={diffData}
-          mismatches={mismatches}
+          markedScheduled={markedScheduled}
         />
-      ) : (
-        mismatches.length > 0 && (
-          <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-            <MismatchList mismatches={mismatches} />
-          </section>
-        )
-      )}
-    </Page>
+        {mismatches.length > 0 && <MismatchList mismatches={mismatches} />}
+
+        <PageSettings
+          summary={`Max ${params.dayCapHours}h a day, ${params.minRestHours}h rest, up to ${params.maxDaysPerWeek} days a week`}
+        >
+          <div className="ad-stack">
+            <h2>Generation settings</h2>
+            {/* Shift Lead is not offered in the cross-coverage pool: the statistics
+                drop the lead id from it and measure new leads on their own floor,
+                so a ticked box there would look like a setting and do nothing. */}
+            <ScheduleParamsForm
+              initial={params}
+              positions={scopePositions.filter((p) => !leadPositionIds.includes(p.id))}
+              leadPositionIds={leadPositionIds}
+            />
+            <p className="ad-help">
+              Target staffing is set per block on{" "}
+              <Link href="/admin/positions">Positions and shifts</Link>.
+            </p>
+          </div>
+        </PageSettings>
+
+        <ScheduleHealthSection schedule={schedule} positionNames={positionNames} />
+
+        <StatStrip>
+          <Stat
+            label="Responses in"
+            value={totals.responders}
+            sub={`of ${totals.roster} on the roster`}
+          />
+          <Stat
+            label="Cells with a target"
+            value={totals.targetedCells}
+            sub={totals.targetedCells === 0 ? "no targets set yet" : undefined}
+            subTone={totals.targetedCells === 0 ? "warning" : undefined}
+          />
+          <Stat
+            label="Cells short"
+            value={totals.shortCells}
+            sub={totals.missing > 0 ? `${totals.missing} people missing in total` : undefined}
+            subTone={totals.shortCells > 0 ? "danger" : undefined}
+          />
+        </StatStrip>
+
+        <div className="ad-sc-gridbar">
+          {/* Only worth offering once a run exists: before that there is one grid.
+              The four status chips beside it apply to both modes and never move. */}
+          {schedule && (
+            <span className="ad-seg" role="group" aria-label="Grid numbers">
+              <GridModeLink
+                mode="scheduled"
+                active={gridMode}
+                before={sp.before}
+                after={sp.after}
+              />
+              <GridModeLink
+                mode="availability"
+                active={gridMode}
+                before={sp.before}
+                after={sp.after}
+              />
+            </span>
+          )}
+          <span className="ad-sc-legend">
+            <CoverageLegend />
+          </span>
+          {coverage.length > 1 && (
+            <nav className="ad-sc-jump" aria-label="Positions">
+              {coverage.map((p) => (
+                <a key={p.positionId} href={`#${positionAnchor(p.positionId)}`}>
+                  {p.positionName}
+                </a>
+              ))}
+            </nav>
+          )}
+        </div>
+
+        <div className="ad-sc-grids">
+          {coverage.map((p) => (
+            <PositionSection
+              key={p.positionId}
+              coverage={p}
+              schedule={gridSchedule}
+              summary={summaryOf(p)}
+            />
+          ))}
+        </div>
+
+        {schedule && (
+          <Panel flush title="Students">
+            <ScheduleStudentTable students={schedule.students} />
+          </Panel>
+        )}
+
+        <ScopeLedgerPanel ledger={ledger} />
+
+        {runs.length > 0 && <RunHistorySection runs={runs} />}
+
+        {runs.length > 1 && beforeId && afterId && (
+          <DiffSection
+            runs={runs}
+            beforeId={beforeId}
+            afterId={afterId}
+            grid={gridMode}
+            data={diffData}
+            open={Boolean(sp.before || sp.after)}
+          />
+        )}
+      </div>
+    </AdminPage>
   );
 }
 
@@ -273,6 +315,9 @@ const GRID_MODE_LABEL: Record<GridMode, string> = {
   scheduled: "Scheduled",
   availability: "Availability",
 };
+
+/** The id a position's grid panel carries, for the jump links above the grids. */
+const positionAnchor = (positionId: string) => `position-${encodeURIComponent(positionId)}`;
 
 /**
  * One half of the grid switch. The diff picker's own params ride along, so
@@ -296,7 +341,7 @@ function GridModeLink({
   return (
     <Link
       href={`/admin/schedule?${params.toString()}`}
-      style={mode === active ? activeLegendChip : legendChip}
+      aria-current={mode === active ? "true" : undefined}
     >
       {GRID_MODE_LABEL[mode]}
     </Link>
@@ -311,6 +356,8 @@ function SchedulePanel({
   sheetSyncedAt,
   hasPlan,
   positions,
+  runs,
+  markedScheduled,
 }: {
   schedule: CurrentSchedule | null;
   responders: number;
@@ -319,17 +366,34 @@ function SchedulePanel({
   sheetSyncedAt: Date | null;
   hasPlan: boolean;
   positions: { id: string; name: string }[];
+  runs: ScheduleRunListItem[];
+  markedScheduled: number;
 }) {
+  const currentRun = runs.find((r) => r.status === "current");
+  // Saving and clearing act on whatever run is current, so they sit with the
+  // run. Both need a run to exist, as the history they used to head did.
+  const keepActions = runs.length > 0 && (
+    <>
+      <SaveRunButton />
+      {currentRun && <PinRunButton runId={currentRun.id} pinned={currentRun.pinned} current />}
+      <ClearScheduleButton markedScheduled={markedScheduled} />
+    </>
+  );
+
   if (!schedule) {
     return (
-      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-        <SectionLabel>Recommended schedule</SectionLabel>
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
-          No schedule has been generated yet. Responses are placed in the order they came in, later
-          shifts first.
-        </p>
-        <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} positions={positions} />
-      </section>
+      <Panel title="Recommended schedule">
+        <div className="ad-stack">
+          <p className="ad-sc-summary">
+            No schedule has been generated yet. Responses are placed in the order they came in,
+            later shifts first.
+          </p>
+          <div className="ad-sc-runbar">
+            <GenerateScheduleButton hasRun={false} hasPlan={hasPlan} positions={positions} />
+            {keepActions && <div className="ad-row">{keepActions}</div>}
+          </div>
+        </div>
+      </Panel>
     );
   }
 
@@ -355,82 +419,107 @@ function SchedulePanel({
         .map((p) => p.name)
         .join(", ")
     : null;
+  const lateStarts = report.lateStarts ?? [];
+  // The read-time validator's verdicts on the run as it stands now, hand edits
+  // included (`domain/scheduling/validate.ts`).
+  const laborSections = laborFindingSections(schedule.laborFindings);
+  const hasProblems =
+    problems.length > 0 ||
+    report.droppedBlockGone > 0 ||
+    lateStarts.length > 0 ||
+    laborSections.length > 0;
+  const hasBuildNotes = Boolean(report.returners || report.anneal || knobs);
 
   return (
-    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-      <SectionLabel
-        action={
-          <a href="/admin/schedule/export" style={{ fontSize: 13 }}>
-            Download CSV
-          </a>
-        }
-      >
-        Recommended schedule
-      </SectionLabel>
-      <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
-        Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
-        {schedule.totalAssignments} assignments across {placed} of {responders} responses.
-        {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
-        {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
-        {/* Says "not changed", not "kept their shifts": on the first run of a
-            cycle the out-of-scope students have no shifts yet to keep. */}
-        {outOfScope > 0 &&
-          ` This update only covered ${scopeNames}, so ${outOfScope} people in other positions were not changed.`}
-        {planKept > 0 &&
-          ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
-        {report.returners &&
-          ` ${report.returners.count} returners were placed before new students.`}
-        {report.anneal &&
-          ` The optimizer filled ${report.anneal.gainedSeats} more seats, over ` +
-            `${report.anneal.iterations.toLocaleString("en-US")} rounds with seed ${report.anneal.seed}.`}
-        {report.anneal !== undefined &&
-          report.anneal.trimmedStudents > 0 &&
-          ` ${report.anneal.trimmedStudents} people had hours above their target trimmed back.`}
-        {knobs &&
-          ` Used max ${knobs.dayCapHours}h per day, night priority ${knobs.nightPriority}, evening ${knobs.eveningPriority}, rest ${knobs.minRestHours}h/${knobs.preferredRestHours}h, days ${knobs.preferredDaysPerWeek}/${knobs.maxDaysPerWeek}, run cap ${knobs.maxConsecutiveDays}.`}
-      </p>
-      {/* Without hire dates everyone counts as a new student, so the ordering
-          quietly becomes plain first come first served. Say so. */}
-      {report.returners && report.returners.unknownHireDate > 0 && (
-        <div style={{ ...bannerStyle, marginBottom: 10 }}>
-          {report.returners.unknownHireDate} people have no start date on the roster, so they were
-          scheduled as new students. Re-import the roster from the PCPL workbook to fix this.
+    <Panel title="Recommended schedule">
+      <div className="ad-stack">
+        <div className="ad-sc-runbar">
+          <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
+          <div className="ad-row">
+            <SheetControls
+              sheetUrl={sheetUrl}
+              lastSyncedAtMs={sheetSyncedAt ? sheetSyncedAt.getTime() : null}
+              rebuild={rebuildScheduleSheet}
+              leading={
+                <a href="/admin/schedule/export" className="ad-btn">
+                  Download CSV
+                </a>
+              }
+            />
+            {keepActions}
+          </div>
         </div>
-      )}
-      {schedule.offRosterStudents > 0 && (
-        <div style={{ ...bannerStyle, marginBottom: 10 }}>
-          {schedule.offRosterStudents === 1
-            ? "1 student in this schedule has left the roster and is not shown."
-            : `${schedule.offRosterStudents} students in this schedule have left the roster and are not shown.`}
-        </div>
-      )}
-      {(problems.length > 0 || report.droppedBlockGone > 0) && (
-        <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-danger)" }}>
-          {problems.map((group) => (
-            <ProblemWarning key={group.kind} group={group} />
-          ))}
-          {report.droppedBlockGone > 0 && (
-            <p style={{ margin: "0 0 4px" }}>
-              {report.droppedBlockGone} kept shifts pointed at removed blocks and were dropped.
+
+        <p className="ad-sc-summary">
+          Generated {schedule.generatedAt.toLocaleString("en-US")} by {schedule.generatedBy}.{" "}
+          {schedule.totalAssignments} assignments across {placed} of {responders} responses.
+          {withoutResponse > 0 && ` ${withoutResponse} more scheduled without a response.`}
+          {frozen > 0 && ` ${frozen} marked scheduled and kept as is.`}
+          {/* Says "not changed", not "kept their shifts": on the first run of a
+              cycle the out-of-scope students have no shifts yet to keep. */}
+          {outOfScope > 0 &&
+            ` This update only covered ${scopeNames}, so ${outOfScope} people in other positions were not changed.`}
+          {planKept > 0 &&
+            ` ${planKept} kept in place from the imported W2W plan (this run only; a plain update re-solves them).`}
+        </p>
+
+        {staleLine && <Notice tone="warning">{staleLine}</Notice>}
+        {/* Without hire dates everyone counts as a new student, so the ordering
+            quietly becomes plain first come first served. Say so. */}
+        {report.returners && report.returners.unknownHireDate > 0 && (
+          <Notice tone="warning">
+            {report.returners.unknownHireDate} people have no start date on the roster, so they were
+            scheduled as new students. Re-import the roster from the PCPL workbook to fix this.
+          </Notice>
+        )}
+        {schedule.offRosterStudents > 0 && (
+          <Notice tone="warning">
+            {schedule.offRosterStudents === 1
+              ? "1 student in this schedule has left the roster and is not shown."
+              : `${schedule.offRosterStudents} students in this schedule have left the roster and are not shown.`}
+          </Notice>
+        )}
+
+        {hasProblems && (
+          <div>
+            <ul className="ad-list-reset ad-sc-problems">
+              {problems.map((group) => (
+                <ProblemWarning key={group.kind} group={group} />
+              ))}
+              {report.droppedBlockGone > 0 && (
+                <ProblemRow
+                  tone="danger"
+                  label={`${report.droppedBlockGone} kept shifts pointed at removed blocks and were dropped.`}
+                />
+              )}
+              <LateStartWarnings
+                lateStarts={lateStarts}
+                nameOf={(email) => nameByEmail.get(email) ?? email}
+              />
+              <LaborFindings sections={laborSections} />
+            </ul>
+            <LaborFindingsNote sections={laborSections} />
+          </div>
+        )}
+
+        {hasBuildNotes && (
+          <Disclosure panel={false} title="How this run was built">
+            <p className="ad-sc-summary">
+              {report.returners &&
+                `${report.returners.count} returners were placed before new students. `}
+              {report.anneal &&
+                `The optimizer filled ${report.anneal.gainedSeats} more seats, over ` +
+                  `${report.anneal.iterations.toLocaleString("en-US")} rounds with seed ${report.anneal.seed}. `}
+              {report.anneal !== undefined &&
+                report.anneal.trimmedStudents > 0 &&
+                `${report.anneal.trimmedStudents} people had hours above their target trimmed back. `}
+              {knobs &&
+                `Used max ${knobs.dayCapHours}h per day, night priority ${knobs.nightPriority}, evening ${knobs.eveningPriority}, rest ${knobs.minRestHours}h/${knobs.preferredRestHours}h, days ${knobs.preferredDaysPerWeek}/${knobs.maxDaysPerWeek}, run cap ${knobs.maxConsecutiveDays}.`}
             </p>
-          )}
-        </div>
-      )}
-      <LateStartWarnings
-        lateStarts={report.lateStarts ?? []}
-        nameOf={(email) => nameByEmail.get(email) ?? email}
-      />
-      <LaborFindings findings={schedule.laborFindings} />
-      {staleLine && <div style={{ ...bannerStyle, marginBottom: 10 }}>{staleLine}</div>}
-      <GenerateScheduleButton hasRun hasPlan={hasPlan} positions={positions} />
-      <div style={{ marginTop: 12, marginBottom: -14 }}>
-        <SheetControls
-          sheetUrl={sheetUrl}
-          lastSyncedAtMs={sheetSyncedAt ? sheetSyncedAt.getTime() : null}
-          rebuild={rebuildScheduleSheet}
-        />
+          </Disclosure>
+        )}
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -450,11 +539,7 @@ function ScheduleHealthSection({
 }) {
   if (!schedule) return null;
   if (!isReadableRunStats(schedule.report.stats)) {
-    return (
-      <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-        Update the schedule to see health statistics.
-      </p>
-    );
+    return <p className="ad-muted">Update the schedule to see health statistics.</p>;
   }
   return <ScheduleHealth stats={schedule.report.stats} positionNames={positionNames} />;
 }
@@ -470,33 +555,30 @@ function ScopeLedgerPanel({ ledger }: { ledger: PositionLedgerRow[] }) {
   if (!anyScoped && behind.length === 0) return null;
 
   return (
-    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-      <SectionLabel>Updated by position</SectionLabel>
-      <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+    <Disclosure
+      title="Updated by position"
+      summary={behind.length > 0 ? `${behind.length} changed since` : undefined}
+    >
+      <table className="ad-table ad-table--stack">
         <thead>
           <tr>
-            <th style={{ ...tableThStyle, textAlign: "left" }}>Position</th>
-            <th style={{ ...tableThStyle, textAlign: "left" }}>Last updated</th>
-            <th style={tableThStyle}>Changed since</th>
+            <th scope="col">Position</th>
+            <th scope="col">Last updated</th>
+            <th scope="col">Changed since</th>
           </tr>
         </thead>
         <tbody>
           {ledger.map((row) => (
             <tr key={row.positionId}>
-              <td style={{ ...tableTdStyle, textAlign: "left" }}>{row.positionName}</td>
-              <td
-                style={{ ...tableTdStyle, textAlign: "left", color: "var(--color-text-secondary)" }}
-              >
+              <td data-label="Position">{row.positionName}</td>
+              <td data-label="Last updated" className="ad-muted">
                 {row.lastSolvedAt ? row.lastSolvedAt.toLocaleString("en-US") : "Never"}
               </td>
               <td
-                style={{
-                  ...tableTdStyle,
-                  color:
-                    row.newSubmissions + row.edited > 0
-                      ? "var(--color-text-warning)"
-                      : "var(--color-text-secondary)",
-                }}
+                data-label="Changed since"
+                className={
+                  row.newSubmissions + row.edited > 0 ? "ad-warning-text ad-strong" : "ad-muted"
+                }
               >
                 {changedLabel(row)}
               </td>
@@ -504,7 +586,7 @@ function ScopeLedgerPanel({ ledger }: { ledger: PositionLedgerRow[] }) {
           ))}
         </tbody>
       </table>
-    </section>
+    </Disclosure>
   );
 }
 
@@ -516,20 +598,52 @@ function changedLabel(row: PositionLedgerRow): string {
   return parts.length > 0 ? parts.join(", ") : "Nothing";
 }
 
+/**
+ * One problem with the run: a tinted row with a bar on its leading edge. With
+ * children it opens in place to the people it is about.
+ */
+function ProblemRow({
+  tone,
+  label,
+  children,
+}: {
+  tone: "danger" | "warning";
+  label: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  const status = <Status tone={tone}>{label}</Status>;
+  return (
+    <li
+      className={
+        tone === "danger"
+          ? "ad-entry ad-entry--danger ad-sc-problem"
+          : "ad-entry ad-entry--warning ad-sc-problem"
+      }
+    >
+      {children ? (
+        <Disclosure panel={false} title={status}>
+          {children}
+        </Disclosure>
+      ) : (
+        status
+      )}
+    </li>
+  );
+}
+
 /** One warning line that expands to the affected students. */
 function ProblemWarning({ group }: { group: ProblemGroup }) {
   return (
-    <details style={{ margin: "0 0 4px" }}>
-      <summary style={{ cursor: "pointer" }}>{group.label}.</summary>
-      <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
+    <ProblemRow tone="danger" label={`${group.label}.`}>
+      <ul className="ad-bullets ad-sc-people">
         {group.students.map((s) => (
           <li key={s.email}>
             <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.name}</Link>{" "}
-            <span style={{ color: "var(--color-text-secondary)" }}>{s.email}</span>
+            <span className="ad-muted">{s.email}</span>
           </li>
         ))}
       </ul>
-    </details>
+    </ProblemRow>
   );
 }
 
@@ -547,23 +661,21 @@ function LateStartWarnings({
   if (lateStarts.length === 0) return null;
   const n = lateStarts.length;
   return (
-    <div style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-warning)" }}>
-      <details>
-        <summary style={{ cursor: "pointer" }}>
-          {n} {n === 1 ? "student starts" : "students start"} after the schedule begins.
-        </summary>
-        <p style={{ margin: "4px 0 0" }}>Edit their shifts by hand in W2W.</p>
-        <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
-          {lateStarts.map((w) => (
-            <li key={w.email}>
-              <Link href={`/admin/students/${encodeURIComponent(w.email)}`}>{nameOf(w.email)}</Link>{" "}
-              starts {formatDayLabel(w.hiredOn)}, after shifts resume{" "}
-              {formatDayLabel(w.expectedStart)}.
-            </li>
-          ))}
-        </ul>
-      </details>
-    </div>
+    <ProblemRow
+      tone="warning"
+      label={`${n} ${n === 1 ? "student starts" : "students start"} after the schedule begins.`}
+    >
+      <p>Edit their shifts by hand in W2W.</p>
+      <ul className="ad-bullets ad-sc-people">
+        {lateStarts.map((w) => (
+          <li key={w.email}>
+            <Link href={`/admin/students/${encodeURIComponent(w.email)}`}>{nameOf(w.email)}</Link>{" "}
+            starts {formatDayLabel(w.hiredOn)}, after shifts resume{" "}
+            {formatDayLabel(w.expectedStart)}.
+          </li>
+        ))}
+      </ul>
+    </ProblemRow>
   );
 }
 
@@ -575,57 +687,55 @@ function laborSectionLabel(section: LaborFindingSection): string {
     : `${n} ${n === 1 ? "student is" : "students are"} outside a preferred limit`;
 }
 
-/**
- * The read-time validator's verdicts on the run as it stands now, hand edits
- * included (`domain/scheduling/validate.ts`).
- */
-function LaborFindings({ findings }: { findings: LaborFindingView[] }) {
-  const sections = laborFindingSections(findings);
-  if (sections.length === 0) return null;
+/** One row per severity, each opening to its lines. */
+function LaborFindings({ sections }: { sections: LaborFindingSection[] }) {
+  return sections.map((section) => (
+    <ProblemRow
+      key={section.severity}
+      tone={section.severity === "hard" ? "danger" : "warning"}
+      label={`${laborSectionLabel(section)}.`}
+    >
+      <ul className="ad-bullets ad-sc-people">
+        {section.lines.map((line, i) => (
+          <li key={`${line.email}|${i}`}>
+            <Link href={`/admin/students/${encodeURIComponent(line.email)}`}>
+              {line.displayName}
+            </Link>
+            {": "}
+            {line.message}
+            {line.frozenReason && (
+              <>
+                {" "}
+                <Pill>{FROZEN_LABEL[line.frozenReason]}</Pill>
+              </>
+            )}
+            {line.involvesManual && (
+              <>
+                {" "}
+                <Pill tone="manual">manual</Pill>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </ProblemRow>
+  ));
+}
+
+/** Says when the labor findings count kept or hand-edited shifts. */
+function LaborFindingsNote({ sections }: { sections: LaborFindingSection[] }) {
   const lines = sections.flatMap((s) => s.lines);
   const anyFrozen = lines.some((l) => l.frozenReason !== null);
   const anyManual = lines.some((l) => l.involvesManual);
+  if (!anyFrozen && !anyManual) return null;
   return (
-    <div style={{ margin: "0 0 10px", fontSize: 13 }}>
-      {sections.map((section) => (
-        <details
-          key={section.severity}
-          style={{
-            margin: "0 0 4px",
-            color:
-              section.severity === "hard"
-                ? "var(--color-text-danger)"
-                : "var(--color-text-warning)",
-          }}
-        >
-          <summary style={{ cursor: "pointer" }}>{laborSectionLabel(section)}.</summary>
-          <ul style={{ margin: "4px 0 8px", paddingLeft: 24 }}>
-            {section.lines.map((line, i) => (
-              <li key={`${line.email}|${i}`}>
-                <Link href={`/admin/students/${encodeURIComponent(line.email)}`}>
-                  {line.displayName}
-                </Link>
-                {": "}
-                {line.message}
-                {line.frozenReason && (
-                  <span style={keptTagStyle}>{FROZEN_LABEL[line.frozenReason]}</span>
-                )}
-                {line.involvesManual && <span style={manualTagStyle}>manual</span>}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
-      {(anyFrozen || anyManual) && (
-        <p style={{ margin: "0 0 4px", color: "var(--color-text-secondary)" }}>
-          {anyFrozen && anyManual
-            ? "Kept and hand-edited shifts are included."
-            : anyFrozen
-              ? "Kept shifts are included."
-              : "Hand-edited shifts are included."}
-        </p>
-      )}
-    </div>
+    <p className="ad-help">
+      {anyFrozen && anyManual
+        ? "Kept and hand-edited shifts are included."
+        : anyFrozen
+          ? "Kept shifts are included."
+          : "Hand-edited shifts are included."}
+    </p>
   );
 }
 
@@ -650,76 +760,86 @@ const fmtRunTime = (d: Date) =>
     minute: "2-digit",
   });
 
-function RunHistorySection({
-  runs,
-  markedScheduled,
-}: {
-  runs: ScheduleRunListItem[];
-  markedScheduled: number;
-}) {
+function RunHistorySection({ runs }: { runs: ScheduleRunListItem[] }) {
   return (
-    <section style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
-      <SectionLabel
-        action={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <SaveRunButton />
-            <ClearScheduleButton markedScheduled={markedScheduled} />
-          </span>
-        }
-      >
-        Run history
-      </SectionLabel>
-      <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--color-text-secondary)" }}>
-        Every kept run, newest first. Restoring makes an earlier run the current schedule again; the
-        replaced run stays here. Pinned runs are kept regardless of age.
-      </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-          <thead>
-            <tr>
-              <th style={{ ...tableThStyle, textAlign: "left" }}>Generated</th>
-              <th style={{ ...tableThStyle, textAlign: "left" }}>By</th>
-              <th style={tableThStyle}>Assignments</th>
-              <th style={tableThStyle}>Students</th>
-              <th style={tableThStyle}>Short of hours</th>
-              <th style={tableThStyle}>Below min</th>
-              <th style={{ ...tableThStyle, textAlign: "left" }}>Restored</th>
-              <th style={{ ...tableThStyle, textAlign: "left" }}>Pinned</th>
-              <th style={{ ...tableThStyle, textAlign: "left" }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((r) => (
-              <tr key={r.id}>
-                <td style={{ ...tableTdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
-                  {fmtRunTime(r.generatedAt)}
-                  {r.origin && <span style={manualTagStyle}>{RUN_ORIGIN_LABEL[r.origin]}</span>}
-                </td>
-                <td style={{ ...tableTdStyle, textAlign: "left" }}>{r.generatedBy}</td>
-                <td style={tableTdStyle}>{r.assignments}</td>
-                <td style={tableTdStyle}>{r.students}</td>
-                <td style={tableTdStyle}>{r.shortOfTarget}</td>
-                {/* Runs stored before the counter existed have nothing to show. */}
-                <td style={tableTdStyle}>{r.belowMinHours ?? "-"}</td>
-                <td style={{ ...tableTdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
-                  {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
-                </td>
-                <td style={{ ...tableTdStyle, textAlign: "left" }}>
-                  <PinRunButton runId={r.id} pinned={r.pinned} />
-                </td>
-                <td style={{ ...tableTdStyle, textAlign: "left" }}>
-                  {r.status === "current" ? (
-                    <span style={successPillStyle}>current</span>
-                  ) : (
-                    <RestoreRunButton runId={r.id} />
-                  )}
-                </td>
+    <Disclosure
+      title="Run history"
+      summary={`${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
+    >
+      <div className="ad-stack">
+        <p className="ad-help">
+          Every kept run, newest first. Restoring makes an earlier run the current schedule again;
+          the replaced run stays here. Pinned runs are kept regardless of age.
+        </p>
+        <div className="ad-scroll-x">
+          <table className="ad-table ad-table--stack ad-table--zebra ad-table--middle">
+            <thead>
+              <tr>
+                <th scope="col">Generated</th>
+                <th scope="col">By</th>
+                <th scope="col" className="ad-num">
+                  Assignments
+                </th>
+                <th scope="col" className="ad-num">
+                  Students
+                </th>
+                <th scope="col" className="ad-num">
+                  Short of hours
+                </th>
+                <th scope="col" className="ad-num">
+                  Below min
+                </th>
+                <th scope="col">Restored</th>
+                <th scope="col">Pinned</th>
+                <th scope="col">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td data-label="Generated" className="ad-nowrap">
+                    {fmtRunTime(r.generatedAt)}
+                    {r.origin && (
+                      <>
+                        {" "}
+                        <Pill tone="manual">{RUN_ORIGIN_LABEL[r.origin]}</Pill>
+                      </>
+                    )}
+                  </td>
+                  <td data-label="By">{r.generatedBy}</td>
+                  <td data-label="Assignments" className="ad-num">
+                    {r.assignments}
+                  </td>
+                  <td data-label="Students" className="ad-num">
+                    {r.students}
+                  </td>
+                  <td data-label="Short of hours" className="ad-num">
+                    {r.shortOfTarget}
+                  </td>
+                  {/* Runs stored before the counter existed have nothing to show. */}
+                  <td data-label="Below min" className="ad-num">
+                    {r.belowMinHours ?? "-"}
+                  </td>
+                  <td data-label="Restored" className="ad-nowrap">
+                    {r.restoredAt ? `${fmtRunTime(r.restoredAt)} by ${r.restoredBy}` : "-"}
+                  </td>
+                  <td data-label="Pinned">
+                    <PinRunButton runId={r.id} pinned={r.pinned} />
+                  </td>
+                  <td data-label="Status">
+                    {r.status === "current" ? (
+                      <Pill tone="success">current</Pill>
+                    ) : (
+                      <RestoreRunButton runId={r.id} />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </section>
+    </Disclosure>
   );
 }
 
@@ -729,7 +849,7 @@ function DiffSection({
   afterId,
   grid,
   data,
-  mismatches,
+  open,
 }: {
   runs: ScheduleRunListItem[];
   beforeId: string;
@@ -737,77 +857,67 @@ function DiffSection({
   /** The grid mode in force, so comparing runs does not switch grids underneath. */
   grid: GridMode;
   data: RunDiffData | null;
-  mismatches: FrozenMismatchView[];
+  /** Open when the reader has picked a pair, so Compare lands on its result. */
+  open: boolean;
 }) {
   const runLabel = (r: ScheduleRunListItem) =>
     `${fmtRunTime(r.generatedAt)}${r.status === "current" ? " (current)" : ""}`;
 
   return (
-    <section id="diff" style={{ ...panelStyle, marginTop: 14, maxWidth: 900 }}>
-      <SectionLabel>Compare runs</SectionLabel>
-      <form
-        method="get"
-        action="/admin/schedule#diff"
-        style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}
-      >
-        <label>
-          From{" "}
-          <select name="before" defaultValue={beforeId}>
-            {runs.map((r) => (
-              <option key={r.id} value={r.id}>
-                {runLabel(r)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          to{" "}
-          <select name="after" defaultValue={afterId}>
-            {runs.map((r) => (
-              <option key={r.id} value={r.id}>
-                {runLabel(r)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {/* A GET form submits its own fields and nothing else, so without this
-            the two selects would wipe ?grid= and bounce the reader back to the
-            scheduled grid. GridModeLink carries the run pair the other way;
-            this is the same preservation in the other direction. Only the
-            non-default mode needs saying. */}
-        {grid === "availability" && <input type="hidden" name="grid" value="availability" />}
-        <button type="submit">Compare</button>
-      </form>
+    <Disclosure id="diff" title="Compare runs" open={open}>
+      <div className="ad-stack">
+        <form method="get" action="/admin/schedule#diff" className="ad-row">
+          <label>
+            From{" "}
+            <select name="before" defaultValue={beforeId}>
+              {runs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {runLabel(r)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            to{" "}
+            <select name="after" defaultValue={afterId}>
+              {runs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {runLabel(r)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* A GET form submits its own fields and nothing else, so without this
+              the two selects would wipe ?grid= and bounce the reader back to the
+              scheduled grid. GridModeLink carries the run pair the other way;
+              this is the same preservation in the other direction. Only the
+              non-default mode needs saying. */}
+          {grid === "availability" && <input type="hidden" name="grid" value="availability" />}
+          <button type="submit" className="ad-btn">
+            Compare
+          </button>
+        </form>
 
-      {data === null ? (
-        <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-          Pick two different runs to compare.
-        </p>
-      ) : (
-        <DiffResult data={data} />
-      )}
-
-      {mismatches.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <MismatchList mismatches={mismatches} />
-        </div>
-      )}
-    </section>
+        {data === null ? (
+          <p className="ad-muted">Pick two different runs to compare.</p>
+        ) : (
+          <DiffResult data={data} />
+        )}
+      </div>
+    </Disclosure>
   );
 }
 
 function DiffResult({ data }: { data: RunDiffData }) {
   const { diff, names, spans } = data;
   return (
-    <div style={{ marginTop: 12 }}>
-      <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+    <div className="ad-stack ad-stack--tight">
+      <p>
         {diff.added} shifts added, {diff.removed} removed, {diff.moved} moved between rotation
         weeks. {diff.unchanged} students unchanged.
       </p>
       {diff.students.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-          The two runs hold the same schedule.
-        </p>
+        <p className="ad-muted">The two runs hold the same schedule.</p>
       ) : (
         diff.students.map((s) => (
           <StudentDiffRow key={s.email} s={s} name={names.get(s.email) ?? s.email} spans={spans} />
@@ -835,16 +945,20 @@ function StudentDiffRow({
   ].filter((part): part is string => part !== null);
 
   return (
-    <details style={{ marginBottom: 6 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13 }}>
-        <strong>{name}</strong>
-        {s.before === null && s.after !== null && " (new in this run)"}
-        {s.after === null && s.before !== null && " (not in this run)"}
-        {rollup.length > 0 && ` ${rollup.join(", ")}`}
-        {s.changes.length > 0 &&
-          ` (${s.changes.length} ${s.changes.length === 1 ? "change" : "changes"})`}
-      </summary>
-      <ul style={{ margin: "6px 0 8px", paddingLeft: 26, fontSize: 13 }}>
+    <Disclosure
+      panel={false}
+      title={
+        <span className="ad-sc-inline">
+          <strong>{name}</strong>
+          {s.before === null && s.after !== null && " (new in this run)"}
+          {s.after === null && s.before !== null && " (not in this run)"}
+          {rollup.length > 0 && ` ${rollup.join(", ")}`}
+          {s.changes.length > 0 &&
+            ` (${s.changes.length} ${s.changes.length === 1 ? "change" : "changes"})`}
+        </span>
+      }
+    >
+      <ul className="ad-bullets ad-sc-people">
         {s.changes.map((c) => {
           const span = spans.get(c.blockId);
           const time = span ? formatSpan(span.start, span.end) : c.blockId;
@@ -859,11 +973,9 @@ function StudentDiffRow({
             </li>
           );
         })}
-        {s.changes.length === 0 && (
-          <li style={{ color: "var(--color-text-secondary)" }}>No shift changes.</li>
-        )}
+        {s.changes.length === 0 && <li className="ad-muted">No shift changes.</li>}
       </ul>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -888,15 +1000,15 @@ function rotationDelta(before: Cohort | null, after: Cohort | null): string | nu
   return `${ROTATION_LABEL[before]} to ${ROTATION_LABEL[after]}`;
 }
 
+/** Marked students whose kept shifts they no longer pick: a thing to notice. */
 function MismatchList({ mismatches }: { mismatches: FrozenMismatchView[] }) {
   return (
-    <div>
-      <SectionLabel>Kept shifts outside current picks</SectionLabel>
-      <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+    <Notice tone="warning" title="Kept shifts outside current picks">
+      <p>
         These students are marked scheduled, so their shifts were kept, but they have since changed
         their availability and no longer pick these cells.
       </p>
-      <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+      <ul className="ad-bullets ad-sc-people">
         {mismatches.map((m) => (
           <li key={m.email}>
             <Link href={`/admin/students/${encodeURIComponent(m.email)}`}>{m.displayName}</Link>
@@ -905,7 +1017,7 @@ function MismatchList({ mismatches }: { mismatches: FrozenMismatchView[] }) {
           </li>
         ))}
       </ul>
-    </div>
+    </Notice>
   );
 }
 
@@ -918,51 +1030,34 @@ function PositionSection({
   schedule: CurrentSchedule | null;
   summary: CoverageSummary;
 }) {
-  const { positionName, rosterCount, responders, rows } = coverage;
+  const { positionId, positionName, rosterCount, responders, rows } = coverage;
 
   return (
-    <section style={{ ...panelStyle, marginTop: 14 }}>
-      <SectionLabel
-        action={
-          summary.missing > 0 ? (
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-danger)" }}>
-              {summary.missing} people short across {summary.shortCells} cell
-              {summary.shortCells === 1 ? "" : "s"}
+    <Panel
+      id={positionAnchor(positionId)}
+      className="ad-scroll-x"
+      title={positionName}
+      aside={
+        <>
+          <span>
+            {responders} of {rosterCount} responded
+          </span>
+          {summary.missing > 0 && (
+            <span className="ad-danger-text ad-strong">
+              <Status tone="danger">
+                {summary.missing} people short across {summary.shortCells} cell
+                {summary.shortCells === 1 ? "" : "s"}
+              </Status>
             </span>
-          ) : undefined
-        }
-      >
-        {positionName}
-        <span
-          style={{
-            marginLeft: 10,
-            fontSize: 13,
-            fontWeight: 400,
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          {responders} of {rosterCount} responded
-        </span>
-      </SectionLabel>
-
-      <CoverageGrid rows={rows} assignedCells={schedule?.assignedCells ?? null} />
-    </section>
+          )}
+        </>
+      }
+    >
+      <CoverageGrid
+        rows={rows}
+        assignedCells={schedule?.assignedCells ?? null}
+        positionName={positionName}
+      />
+    </Panel>
   );
 }
-
-function StudentTable({ schedule }: { schedule: CurrentSchedule }) {
-  return (
-    <section style={{ ...panelStyle, marginTop: 14 }}>
-      <SectionLabel>Students</SectionLabel>
-      <ScheduleStudentTable students={schedule.students} />
-    </section>
-  );
-}
-
-/** The grid mode currently on screen: filled, so the pair reads as one switch. */
-const activeLegendChip: React.CSSProperties = {
-  ...legendChip,
-  background: "var(--color-background-info)",
-  color: "var(--color-text-info)",
-  fontWeight: 600,
-};

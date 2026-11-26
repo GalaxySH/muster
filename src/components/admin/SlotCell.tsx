@@ -15,10 +15,12 @@
  * to a couple of hundred cells, and only the one an admin clicks is ever
  * needed. It is fetched once per cell and kept, so reopening is instant.
  */
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 
 import { Modal } from "@/components/Modal";
-import { manualTagStyle, ROTATION_TAG_LABEL, rotationTagStyles } from "@/components/admin/ui";
+import { ActionMessage, EmptyState, Pill, ROTATION_TAG_LABEL } from "@/components/admin/ui";
 import { StudentScheduleHover } from "@/components/admin/StudentSchedulePopup";
 import type { Day } from "@/lib/domain/types";
 import { fetchCellAvailability } from "@/lib/schedule/actions";
@@ -30,6 +32,9 @@ export function SlotCell({
   dayLabel,
   shiftLabel,
   supply,
+  positionName,
+  value,
+  className,
   style,
   children,
 }: {
@@ -39,17 +44,41 @@ export function SlotCell({
   shiftLabel: string;
   /** The cell's own count, so the dialog can show what it is explaining. */
   supply: number;
-  style: React.CSSProperties;
+  /** Whose shift it is, for the cell's name. */
+  positionName?: string;
+  /** What the cell shows, as text ("2/2"), for the cell's name. */
+  value?: string;
+  /** The cell's look: its coverage tone and alignment. */
+  className?: string;
+  /** Only for a value computed from data; the look belongs in `className`. */
+  style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [people, setPeople] = useState<CellPerson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const moreId = useId();
 
   const label = `${shiftLabel} on ${dayLabel}`;
-  const offered = people?.filter((p) => p.offered) ?? [];
+  const could = `${supply} could work this shift`;
+  // The cell shows only its figures; its name says which cell they are for.
+  const name = `${[positionName, dayLabel, shiftLabel].filter(Boolean).join(", ")}: ${
+    value === undefined ? "" : `${value}. `
+  }${could}`;
+  // The people the run put here come first; the rest only offered it.
+  const offered = (people?.filter((p) => p.offered) ?? []).sort(
+    (a, b) => Number(b.assignedHere) - Number(a.assignedHere),
+  );
   const alsoScheduled = people?.filter((p) => !p.offered) ?? [];
+  const onShift = people?.filter((p) => p.assignedHere).length ?? 0;
+  const summary = [
+    positionName,
+    supply > 0 && `${supply} can work it`,
+    onShift > 0 && `${onShift} on this shift`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const openDialog = () => {
     setOpen(true);
@@ -62,50 +91,46 @@ export function SlotCell({
   };
 
   return (
-    <td style={style}>
+    <td className={className} style={style}>
       <button
         type="button"
         onClick={openDialog}
-        title={`${supply} could work this shift`}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          display: "block",
-          width: "100%",
-          textAlign: "center",
-          borderRadius: 3,
-        }}
+        title={could}
+        aria-label={name}
+        className="ad-gr-slot"
       >
         {children}
       </button>
       {open && (
         <Modal label={label} onClose={() => setOpen(false)} maxWidth="440px">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-            <strong style={{ fontSize: 15 }}>
-              {supply === 1
-                ? "1 person can work this shift"
-                : `${supply} people can work this shift`}
-            </strong>
+          <div className="ad-gr-dialog">
+            {summary && <p className="ad-gr-dialog-sum">{summary}</p>}
             {pending && !people && (
-              <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Loading…</span>
+              <p role="status" className="ad-gr-dialog-note ad-muted">
+                Loading…
+              </p>
             )}
             {error && (
-              <span style={{ fontSize: 13, color: "var(--color-text-danger)" }}>{error}</span>
+              <ActionMessage ok={false} as="p" className="ad-gr-dialog-note">
+                {error}
+              </ActionMessage>
             )}
             {people && offered.length === 0 && (
-              <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-                Nobody has offered this shift.
-              </span>
+              <EmptyState>Nobody has offered this shift.</EmptyState>
             )}
-            {offered.length > 0 && <PersonList people={offered} />}
-            {alsoScheduled.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
-                <strong style={{ fontSize: 13 }}>
-                  {alsoScheduled.length === 1
-                    ? "1 more person is on this shift"
-                    : `${alsoScheduled.length} more people are on this shift`}
-                </strong>
-                <PersonList people={alsoScheduled} />
+            {(offered.length > 0 || alsoScheduled.length > 0) && (
+              <div className="ad-gr-roster">
+                {offered.length > 0 && <PersonList people={offered} />}
+                {alsoScheduled.length > 0 && (
+                  <>
+                    <p id={moreId} className="ad-gr-more">
+                      {alsoScheduled.length === 1
+                        ? "1 more person is on this shift"
+                        : `${alsoScheduled.length} more people are on this shift`}
+                    </p>
+                    <PersonList people={alsoScheduled} labelledBy={moreId} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -115,45 +140,41 @@ export function SlotCell({
   );
 }
 
+/** A and B are coloured apart so a mixed weekend list scans; the text says which. */
+const ROTATION_TONE = { a: "info", b: "warning", every: "success" } as const;
+
 /**
- * One group of people in the dialog. "on this shift" is only worth saying for
- * someone who offered it; in the also-scheduled group the heading already said
- * it, so the row would just repeat itself.
+ * One group of people in the dialog, as rows of name, rotation week and
+ * status. "on this shift" is only worth saying for someone who offered it; in
+ * the also-scheduled group the heading already said it, so the row would just
+ * repeat itself.
  */
-function PersonList({ people }: { people: CellPerson[] }) {
+function PersonList({ people, labelledBy }: { people: CellPerson[]; labelledBy?: string }) {
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
+    <ul className="ad-gr-people" aria-labelledby={labelledBy}>
       {people.map((p) => (
-        <li
-          key={p.email}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
-          <StudentScheduleHover email={p.email}>
-            <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
-          </StudentScheduleHover>
-          <span style={{ display: "flex", gap: 8, whiteSpace: "nowrap", alignItems: "baseline" }}>
+        <li key={p.email} className="ad-gr-person">
+          <span className="ad-gr-person-name">
+            <StudentScheduleHover email={p.email}>
+              <a href={`/admin/students/${encodeURIComponent(p.email)}`}>{p.displayName}</a>
+            </StudentScheduleHover>
+          </span>
+          <span className="ad-gr-person-week">
             {/* Weekday assignments run every week, so only a weekend one is worth tagging. */}
             {p.cohort !== null && p.cohort !== "weekday" && (
-              <span style={{ ...rotationTagStyles[p.cohort], marginLeft: 0 }}>
-                {ROTATION_TAG_LABEL[p.cohort]}
+              <Pill tone={ROTATION_TONE[p.cohort]}>{ROTATION_TAG_LABEL[p.cohort]}</Pill>
+            )}
+          </span>
+          <span className="ad-gr-person-state">
+            {p.offered && p.assignedHere && <span className="ad-gr-person-on">on this shift</span>}
+            {p.source === "manual" && <Pill tone="manual">manual</Pill>}
+            {p.autoAssigned && <Pill tone="auto">auto weekend</Pill>}
+            {p.scheduled && (
+              <span className="ad-gr-person-done">
+                <FontAwesomeIcon icon={faCheck} aria-hidden />
+                scheduled
               </span>
             )}
-            {p.source === "manual" && (
-              <span style={{ ...manualTagStyle, marginLeft: 0 }}>manual</span>
-            )}
-            {p.autoAssigned && (
-              <span style={{ color: "var(--color-text-auto)" }}>auto weekend</span>
-            )}
-            {p.offered && p.assignedHere && (
-              <span style={{ color: "var(--color-text-success)" }}>on this shift</span>
-            )}
-            {p.scheduled && <span style={{ color: "var(--color-text-success)" }}>✓ scheduled</span>}
           </span>
         </li>
       ))}

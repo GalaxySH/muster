@@ -13,7 +13,7 @@ import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { removeTravelRequest, updateTravelRequest } from "@/lib/evidence/actions";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button, Field } from "@/components/admin/ui";
 
 export function TravelEntryActions({
   id,
@@ -71,46 +71,54 @@ export function TravelEntryActions({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen("edit")} style={link}>
+      <button type="button" onClick={() => setOpen("edit")} className="ad-linkbtn ad-dg-inline">
         Edit
       </button>
-      <button type="button" onClick={() => setOpen("remove")} style={{ ...link, ...danger }}>
+      <button
+        type="button"
+        onClick={() => setOpen("remove")}
+        className="ad-linkbtn ad-linkbtn--danger ad-dg-inline"
+      >
         Remove
       </button>
 
       {open === "edit" && (
         <Modal label="Edit travel entry" onClose={close} maxWidth="420px">
-          <form onSubmit={save} style={formStyle}>
+          <form onSubmit={save} className="ad-stack ad-dg-body">
             <input type="hidden" name="student" value={studentEmail} />
             <input type="hidden" name="termId" value={termId} />
             <input type="hidden" name="id" value={id} />
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <label style={field}>
-                Start
+            <div className="ad-fields">
+              <Field label="Start">
                 <input type="date" name="startDate" defaultValue={startDate} required />
-              </label>
-              <label style={field}>
-                End
+              </Field>
+              <Field label="End">
                 <input type="date" name="endDate" defaultValue={endDate} required />
-              </label>
+              </Field>
             </div>
-            <label style={field}>
-              Note (optional)
-              <input type="text" name="note" defaultValue={note ?? ""} style={{ padding: 6 }} />
-            </label>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-tertiary)" }}>
-              To change the proof, remove this entry and add it again.
-            </p>
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={buttonRow}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              <ActionButton type="submit" pending={pending} pendingLabel="Saving…">
+            <Field
+              label="Note (optional)"
+              help="To change the proof, remove this entry and add it again."
+            >
+              <input
+                type="text"
+                name="note"
+                defaultValue={note ?? ""}
+                className="ad-input--block"
+              />
+            </Field>
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+            <div className="ad-actions">
+              <Button type="submit" variant="primary" pending={pending} pendingLabel="Saving…">
                 Save
-              </ActionButton>
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </form>
         </Modal>
@@ -118,28 +126,27 @@ export function TravelEntryActions({
 
       {open === "remove" && (
         <Modal label="Remove travel entry" onClose={close} maxWidth="420px">
-          <div style={formStyle}>
-            <p style={{ margin: 0, fontSize: 14 }}>
+          <div className="ad-stack ad-dg-body">
+            <p>
               Remove the {startDate} to {endDate} entry? This deletes the proof too.
             </p>
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={buttonRow}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              {/* Destructive, so it takes the outlined danger button the
-                  response delete already uses rather than the primary one. */}
-              <button
-                type="button"
-                className="btn-hover"
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+            <div className="ad-actions">
+              <Button
+                variant="danger-fill"
                 onClick={remove}
-                disabled={pending}
-                style={dangerButton(pending)}
+                pending={pending}
+                pendingLabel="Removing…"
               >
-                {pending ? "Removing…" : "Remove"}
-              </button>
+                Remove
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </div>
         </Modal>
@@ -147,47 +154,3 @@ export function TravelEntryActions({
     </>
   );
 }
-
-/** Quiet text links, sized to sit in the entry beside the resolved checkbox. */
-const link: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  marginLeft: 10,
-  fontSize: 12,
-  fontWeight: 500,
-  color: "var(--color-text-info)",
-  cursor: "pointer",
-};
-const danger: React.CSSProperties = { color: "var(--color-text-danger)" };
-
-/** One size for the box's whole life, so an error never moves the buttons. */
-const formStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  width: "100%",
-  fontSize: 14,
-};
-const field: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13 };
-const errorSlot: React.CSSProperties = {
-  margin: 0,
-  minHeight: 32,
-  fontSize: 13,
-  color: "var(--color-text-danger)",
-};
-const buttonRow: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "flex-end",
-};
-const dangerButton = (pending: boolean): React.CSSProperties => ({
-  fontSize: 13,
-  padding: "5px 12px",
-  borderRadius: "var(--border-radius-md)",
-  cursor: pending ? "default" : "pointer",
-  border: "1px solid var(--color-border-danger, #d93025)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-danger)",
-  opacity: pending ? 0.5 : 1,
-});

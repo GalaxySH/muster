@@ -12,6 +12,7 @@ import {
 import type { PickerStudent, PickerFilters } from "@/lib/groups/data";
 import { STARTED_MODE_OPTIONS } from "@/lib/admin/response-filters";
 import type { StartedMode } from "@/lib/domain/calendar-day";
+import { ActionMessage, Button, Panel } from "@/components/admin/ui";
 
 interface Option {
   id: string;
@@ -139,20 +140,13 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
   const allChecked = students.length > 0 && selected.size === students.length;
 
   return (
-    <section style={card}>
-      <h2 style={{ fontSize: 16, marginTop: 0 }}>Assign students</h2>
-
-      {/* Filters */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          marginBottom: 10,
-        }}
-      >
-        <select value={posSel} onChange={(e) => setPosSel(e.target.value)} style={ctrl}>
+    <Panel flush title="Assign students">
+      <div className="ad-toolbar">
+        <select
+          value={posSel}
+          onChange={(e) => setPosSel(e.target.value)}
+          aria-label="Filter by position"
+        >
           <option value="">Any position</option>
           {positions.map((p) => (
             <option key={p.id} value={p.id}>
@@ -161,12 +155,20 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
           ))}
           <option value="none">No position</option>
         </select>
-        <select value={rosterSel} onChange={(e) => setRosterSel(e.target.value)} style={ctrl}>
+        <select
+          value={rosterSel}
+          onChange={(e) => setRosterSel(e.target.value)}
+          aria-label="Filter by roster status"
+        >
           <option value="">Any roster status</option>
           <option value="yes">On roster</option>
           <option value="no">Off roster</option>
         </select>
-        <select value={groupSel} onChange={(e) => setGroupSel(e.target.value)} style={ctrl}>
+        <select
+          value={groupSel}
+          onChange={(e) => setGroupSel(e.target.value)}
+          aria-label="Filter by group"
+        >
           <option value="">Any group</option>
           <option value="none">Ungrouped</option>
           {groups.map((g) => (
@@ -182,7 +184,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
             setHiredMode(next);
             if (!next) setHiredDate("");
           }}
-          style={ctrl}
+          aria-label="Filter by hire date"
         >
           {STARTED_MODE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -195,7 +197,7 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
             type="date"
             value={hiredDate}
             onChange={(e) => setHiredDate(e.target.value)}
-            style={ctrl}
+            aria-label="Hire date"
           />
         )}
         <input
@@ -203,78 +205,62 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
           onChange={(e) => setSearchText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && setAppliedSearch(searchText)}
           placeholder="Search name/email"
-          style={ctrl}
+          aria-label="Search name or email"
         />
-        <button type="button" onClick={() => setAppliedSearch(searchText)}>
-          Search
-        </button>
+        <Button onClick={() => setAppliedSearch(searchText)}>Search</Button>
       </div>
 
-      {/* Student list */}
-      <div
-        style={{
-          border: "0.5px solid var(--color-border-secondary)",
-          borderRadius: "var(--border-radius-md)",
-          maxHeight: 320,
-          overflow: "auto",
-        }}
-      >
-        <table style={{ width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 13 }}>
+      <div className="ad-su-scroll">
+        <table className="ad-table ad-table--stack">
           <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-text-secondary)" }}>
-              <th style={th}>
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  onChange={toggleAll}
-                  aria-label="select all"
-                />
+            <tr>
+              <th scope="col" className="ad-check-col">
+                <label className="ad-check-hit">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    onChange={toggleAll}
+                    aria-label="select all"
+                  />
+                </label>
               </th>
-              <th style={th}>Name</th>
-              <th style={th}>Email</th>
-              <th style={th}>Position</th>
-              <th style={th}>Group</th>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Position</th>
+              <th scope="col">Group</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td style={td} colSpan={5}>
-                  Loading…
-                </td>
+                <td colSpan={5}>Loading…</td>
               </tr>
             ) : students.length === 0 ? (
               <tr>
-                <td style={td} colSpan={5}>
-                  No students match these filters.
-                </td>
+                <td colSpan={5}>No students match these filters.</td>
               </tr>
             ) : (
               students.map((s) => (
-                <tr
-                  key={s.email}
-                  style={{ borderTop: "0.5px solid var(--color-border-secondary)" }}
-                >
-                  <td style={td}>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(s.email)}
-                      onChange={() => toggleOne(s.email)}
-                      aria-label={`select ${s.email}`}
-                    />
+                <tr key={s.email}>
+                  <td>
+                    <label className="ad-check-hit">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(s.email)}
+                        onChange={() => toggleOne(s.email)}
+                        aria-label={`select ${s.email}`}
+                      />
+                    </label>
                   </td>
-                  <td style={td}>{s.displayName}</td>
-                  <td style={td}>{s.email}</td>
-                  <td style={td}>{s.positionName ?? "—"}</td>
-                  <td style={td}>
-                    {s.groupName ?? (
-                      <span style={{ color: "var(--color-text-tertiary)" }}>none</span>
-                    )}
+                  <td data-label="Name">{s.displayName}</td>
+                  <td data-label="Email">{s.email}</td>
+                  <td data-label="Position">
+                    {s.positionName ?? <span className="ad-faint">none</span>}
+                  </td>
+                  <td data-label="Group">
+                    {s.groupName ?? <span className="ad-faint">none</span>}
                     {s.groupAssignedAuto && s.groupName && (
-                      <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>
-                        {" "}
-                        (auto)
-                      </span>
+                      <span className="ad-faint ad-small"> (auto)</span>
                     )}
                   </td>
                 </tr>
@@ -284,102 +270,63 @@ export function StudentAssigner({ groups, positions }: { groups: Option[]; posit
         </table>
       </div>
 
-      <div
-        style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}
-      >
-        <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          {selected.size} selected →
-        </span>
-        <select value={target} onChange={(e) => setTarget(e.target.value)} style={ctrl}>
+      <div className="ad-row ad-panel-pad ad-panel-pad--top">
+        <span className="ad-muted">{selected.size} selected →</span>
+        <select
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          aria-label="Group to assign the selected students to"
+        >
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
             </option>
           ))}
         </select>
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={assignSelected}
           disabled={pending || selected.size === 0 || !target}
         >
           Assign to group
-        </button>
-        <button type="button" onClick={unassignSelected} disabled={pending || selected.size === 0}>
+        </Button>
+        <Button onClick={unassignSelected} disabled={pending || selected.size === 0}>
           Remove from group
-        </button>
+        </Button>
       </div>
 
-      {/* Paste path */}
-      <div style={{ marginTop: 16 }}>
-        <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>Or paste a list of emails</h3>
+      <div className="ad-panel-pad ad-panel-pad--top">
+        <h3>Or paste a list of emails</h3>
         <textarea
+          className="ad-input--block"
           value={paste}
           onChange={(e) => setPaste(e.target.value)}
           rows={3}
           placeholder="a@wisc.edu, b@wisc.edu  c@wisc.edu …"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: 8,
-            fontFamily: "var(--font-sans)",
-            fontSize: 13,
-          }}
+          aria-label="Emails to assign"
         />
-        <div
-          style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}
-        >
-          <select value={pasteTarget} onChange={(e) => setPasteTarget(e.target.value)} style={ctrl}>
+        <div className="ad-actions">
+          <select
+            value={pasteTarget}
+            onChange={(e) => setPasteTarget(e.target.value)}
+            aria-label="Group to assign the pasted emails to"
+          >
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={assignPasted}
-            disabled={pending || !paste.trim() || !pasteTarget}
-          >
+          <Button onClick={assignPasted} disabled={pending || !paste.trim() || !pasteTarget}>
             Assign pasted emails
-          </button>
+          </Button>
         </div>
+        {msg && (
+          <ActionMessage ok={msg.ok} as="p" className="ad-su-below ad-prewrap">
+            {msg.text}
+          </ActionMessage>
+        )}
       </div>
-
-      {msg && (
-        <p
-          role="status"
-          style={{
-            margin: "10px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
-          {msg.text}
-        </p>
-      )}
-    </section>
+    </Panel>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};
-const ctrl: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};
-const th: React.CSSProperties = {
-  padding: "6px 8px",
-  fontWeight: 500,
-  position: "sticky",
-  top: 0,
-  background: "var(--color-background-primary)",
-};
-const td: React.CSSProperties = { padding: "6px 8px" };

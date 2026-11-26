@@ -122,7 +122,7 @@ describe("PrefGridCalculator", () => {
     expect(screen.getByText("10h")).toBeInTheDocument();
     // Untouched, this is their own selection, not a trial schedule yet. Anchored so
     // the "in trial schedule" legend entry doesn't satisfy it.
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
     expect(screen.queryByText(/^trial schedule$/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "8a–12p Mon" })).toHaveAttribute(
       "aria-pressed",
@@ -137,13 +137,13 @@ describe("PrefGridCalculator", () => {
     await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // add a cell
     expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
 
     // The rotation alone is enough to make it a trial.
     await user.click(screen.getByRole("button", { name: /alternating/i }));
     expect(screen.getByText(/^trial schedule$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByText("preferred")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
   });
 
   it("recomputes the hours live as cells are toggled, flagging the floor", async () => {
@@ -191,29 +191,29 @@ describe("PrefGridCalculator", () => {
 
     const ring = () => {
       const pill = screen.getByRole("button", { name: /alternating|EVERY weekend/i });
-      return pill.style.border;
+      return pill.className;
     };
-    expect(ring()).not.toContain("dashed"); // matches their answer
+    expect(ring()).not.toContain("ad-gr-ring--deviates"); // matches their answer
 
     await user.click(screen.getByRole("button", { name: /alternating/i }));
-    expect(ring()).toContain("dashed"); // trial override
+    expect(ring()).toContain("ad-gr-ring--deviates"); // trial override
     expect(screen.getByRole("button", { name: /EVERY weekend/i })).toHaveAttribute(
       "title",
       expect.stringContaining("The student chose alternating"),
     );
 
     await user.click(screen.getByRole("button", { name: /EVERY weekend/i }));
-    expect(ring()).not.toContain("dashed"); // back to their answer
+    expect(ring()).not.toContain("ad-gr-ring--deviates"); // back to their answer
   });
 
   it("rings the pill when an every-weekend student's rotation is flipped down to A/B", async () => {
     const user = userEvent.setup();
     renderCalc({ everyWeekendOptIn: true }); // student chose every weekend
     const pill = () => screen.getByRole("button", { name: /alternating|EVERY weekend/i });
-    expect(pill().style.border).not.toContain("dashed");
+    expect(pill().className).not.toContain("ad-gr-ring--deviates");
 
     await user.click(pill());
-    expect(pill().style.border).toContain("dashed");
+    expect(pill().className).toContain("ad-gr-ring--deviates");
     expect(pill()).toHaveAttribute(
       "title",
       expect.stringContaining("The student chose every weekend"),
@@ -257,19 +257,17 @@ describe("PrefGridCalculator", () => {
 
   it("fills the whole cell with no generated schedule, and splits once the student has one", () => {
     const { unmount } = renderCalc(); // no assignments: nothing to compare against
-    expect(screen.getByRole("button", { name: "8a–12p Mon" }).style.background).not.toContain(
-      "linear-gradient",
+    expect(screen.getByRole("button", { name: "8a–12p Mon" }).className).not.toContain(
+      "ad-gr-split",
     );
     unmount();
 
-    // A generated shift for this student brings back the diagonal preference/schedule split.
+    // A generated shift for this student brings back the preference/schedule split (inner and outer square).
     renderCalc({
       hasCurrentRun: true,
       assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],
     });
-    expect(screen.getByRole("button", { name: "8a–12p Mon" }).style.background).toContain(
-      "linear-gradient",
-    );
+    expect(screen.getByRole("button", { name: "8a–12p Mon" }).className).toContain("ad-gr-split");
   });
 
   describe("the tab it opens on", () => {
@@ -280,14 +278,14 @@ describe("PrefGridCalculator", () => {
       renderCalc({ hasCurrentRun: true, scheduledMinutes: 12 * 60 });
       expect(pressed("Edit schedule")).toBe("true");
       expect(pressed("Edit preferences")).toBe("false");
-      expect(screen.getByText("12h").style.fontSize).toBe("22px");
+      expect(screen.getByText("12h").className).toContain("ad-gr-figure");
     });
 
     it("opens on Edit preferences before any run", () => {
       renderCalc();
       expect(pressed("Edit preferences")).toBe("true");
       expect(pressed("Edit schedule")).toBe("false");
-      expect(screen.getByText("10h").style.fontSize).toBe("22px");
+      expect(screen.getByText("10h").className).toContain("ad-gr-figure");
     });
   });
 
@@ -420,29 +418,29 @@ describe("PrefGridCalculator", () => {
   describe("the preferred and scheduled readouts", () => {
     // The mode decides which figure is the big one; the other stays visible as a
     // labelled miniature. Sizes are the assertion because that IS the feature.
-    const sizeOf = (text: string) => screen.getByText(text).style.fontSize;
+    const sizeOf = (text: string) => screen.getByText(text).className;
 
     it("keeps preferred big and scheduled miniature while editing preferences", async () => {
       const user = userEvent.setup();
       renderCalc({ hasCurrentRun: true, scheduledMinutes: 12.5 * 60 });
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
-      expect(sizeOf("10h")).toBe("22px");
-      expect(screen.getByText("preferred")).toBeInTheDocument();
-      expect(sizeOf("12.5h scheduled")).toBe("12px");
+      expect(sizeOf("10h")).toContain("ad-gr-figure");
+      expect(screen.getByText("available")).toBeInTheDocument();
+      expect(sizeOf("12.5h scheduled")).toContain("ad-gr-mini");
     });
 
     it("swaps the sizes when the admin switches to Edit schedule", async () => {
       const user = userEvent.setup();
       renderCalc({ hasCurrentRun: true, scheduledMinutes: 12.5 * 60 });
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
-      expect(sizeOf("10h")).toBe("22px");
+      expect(sizeOf("10h")).toContain("ad-gr-figure");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       const figure = screen.getByText("12.5h");
-      expect(figure.style.fontSize).toBe("22px");
+      expect(figure.className).toContain("ad-gr-figure");
       // Scoped to the readout: the legend says "scheduled" too, about a swatch.
       expect(within(figure.parentElement!).getByText("scheduled")).toBeInTheDocument();
-      expect(sizeOf("10h preferred")).toBe("12px");
+      expect(sizeOf("10h available")).toContain("ad-gr-mini");
     });
 
     it("keeps the auto-weekend range in the miniature preferred form", () => {
@@ -459,7 +457,7 @@ describe("PrefGridCalculator", () => {
       // Schedule is the tab a run opens on, so preferred starts as the miniature.
       // 8h picked, up to 10h with the auto weekend: a single number would state
       // an upper bound as a fact.
-      expect(screen.getByText("8–10h preferred")).toBeInTheDocument();
+      expect(screen.getByText("8–10h available")).toBeInTheDocument();
     });
 
     it("flags a scheduled week over the cap, in either size", async () => {
@@ -469,11 +467,11 @@ describe("PrefGridCalculator", () => {
       // Shrunk it still has to say why it is red: leaving preference mode must
       // not be what silences an over-cap schedule.
       const mini = screen.getByText("21h scheduled · over 20h cap");
-      expect(mini.style.color).toBe("var(--color-text-danger)");
+      expect(mini.className).toContain("ad-gr-tone--danger");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       const figure = screen.getByText("21h");
-      expect(figure.style.color).toBe("var(--color-text-danger)");
+      expect(figure.className).toContain("ad-gr-tone--danger");
       expect(within(figure.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
     });
 
@@ -482,7 +480,7 @@ describe("PrefGridCalculator", () => {
       // belongs to the scheduled figure alone. These 10h of picks clear a cap of
       // 8 and the readout must not call that a problem.
       renderCalc({ cap: 8 });
-      expect(sizeOf("10h")).toBe("22px");
+      expect(sizeOf("10h")).toContain("ad-gr-figure");
       expect(screen.queryByText(/over 8h cap/i)).not.toBeInTheDocument();
     });
 
@@ -493,7 +491,7 @@ describe("PrefGridCalculator", () => {
       renderCalc({ minHours: 10, hasCurrentRun: true, scheduledMinutes: 6 * 60 });
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
       const mini = screen.getByText("6h scheduled · below 10h floor");
-      expect(mini.style.color).toBe("var(--color-text-warning)");
+      expect(mini.className).toContain("ad-gr-tone--warning");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       const figure = screen.getByText("6h");
@@ -514,14 +512,14 @@ describe("PrefGridCalculator", () => {
       const order = () => container.querySelector('[aria-live="polite"]')!.textContent ?? "";
       await user.click(screen.getByRole("button", { name: "Edit preferences" }));
 
-      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
-      expect(sizeOf("10h")).toBe("22px");
+      expect(order().indexOf("available")).toBeLessThan(order().indexOf("scheduled"));
+      expect(sizeOf("10h")).toContain("ad-gr-figure");
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
 
-      expect(order().indexOf("preferred")).toBeLessThan(order().indexOf("scheduled"));
-      expect(sizeOf("12h")).toBe("22px");
-      expect(sizeOf("10h preferred")).toBe("12px");
+      expect(order().indexOf("available")).toBeLessThan(order().indexOf("scheduled"));
+      expect(sizeOf("12h")).toContain("ad-gr-figure");
+      expect(sizeOf("10h available")).toContain("ad-gr-mini");
     });
 
     it("says so when the run holds nothing for the student", async () => {
@@ -532,14 +530,14 @@ describe("PrefGridCalculator", () => {
 
       await user.click(screen.getByRole("button", { name: "Edit schedule" }));
       const figure = screen.getByText("0h");
-      expect(figure.style.fontSize).toBe("22px");
+      expect(figure.className).toContain("ad-gr-figure");
       expect(within(figure.parentElement!).getByText("nothing scheduled")).toBeInTheDocument();
     });
 
     it("renders no scheduled readout at all before there is a run", () => {
       renderCalc();
       expect(screen.queryByText(/scheduled$/)).toBeNull();
-      expect(sizeOf("10h")).toBe("22px");
+      expect(sizeOf("10h")).toContain("ad-gr-figure");
     });
   });
 
@@ -563,16 +561,20 @@ describe("PrefGridCalculator", () => {
       await user.click(screen.getByRole("button", { name: /alternating/i })); // and the rotation
       await user.click(save()!);
 
-      expect(saveAvailabilityFor).toHaveBeenCalledWith("stu@wisc.edu", {
-        selection: expect.arrayContaining([
-          { blockId: "wd-a", day: "mon" },
-          { blockId: "wd-a", day: "tue" },
-          { blockId: "we-a", day: "sat" },
-          { blockId: "wd-b", day: "wed" },
-        ]),
-        everyWeekendOptIn: true,
-        overrideInvalid: false,
-      }, "");
+      expect(saveAvailabilityFor).toHaveBeenCalledWith(
+        "stu@wisc.edu",
+        {
+          selection: expect.arrayContaining([
+            { blockId: "wd-a", day: "mon" },
+            { blockId: "wd-a", day: "tue" },
+            { blockId: "we-a", day: "sat" },
+            { blockId: "wd-b", day: "wed" },
+          ]),
+          everyWeekendOptIn: true,
+          overrideInvalid: false,
+        },
+        "",
+      );
       expect(vi.mocked(saveAvailabilityFor).mock.calls[0]![1].selection).toHaveLength(4);
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
@@ -606,7 +608,7 @@ describe("PrefGridCalculator", () => {
           orphans={[]}
         />,
       );
-      expect(screen.getByText("preferred")).toBeInTheDocument();
+      expect(screen.getByText("available")).toBeInTheDocument();
       await waitFor(() => expect(save()).not.toBeInTheDocument(), { timeout: 3000 });
     });
 
@@ -658,7 +660,8 @@ describe("PrefGridCalculator", () => {
         await user.click(screen.getByRole("button", { name: "Save anyway" }));
         expect(saveAvailabilityFor).toHaveBeenCalledWith(
           "stu@wisc.edu",
-          expect.objectContaining({ overrideInvalid: true }), "",
+          expect.objectContaining({ overrideInvalid: true }),
+          "",
         );
         await waitFor(() => expect(refresh).toHaveBeenCalled());
       });
@@ -753,7 +756,8 @@ describe("PrefGridCalculator", () => {
         [{ blockId: "wd-a", day: "mon" }],
         [{ blockId: "wd-b", day: "wed" }],
         // No rotation named: the admin left that control alone.
-        undefined, "",
+        undefined,
+        "",
       );
       await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
@@ -818,12 +822,12 @@ describe("PrefGridCalculator", () => {
     it("moves the scheduled figure with the trial and snaps back on Reset", async () => {
       const user = userEvent.setup();
       inScheduleMode({ scheduledMinutes: 12.5 * 60 });
-      expect(screen.getByText("12.5h").style.fontSize).toBe("22px");
+      expect(screen.getByText("12.5h").className).toContain("ad-gr-figure");
 
       // The delta is the grid's own arithmetic: one more 4h weekday cell.
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" }));
       const figure = screen.getByText("16.5h");
-      expect(figure.style.fontSize).toBe("22px");
+      expect(figure.className).toContain("ad-gr-figure");
       expect(within(figure.parentElement!).getByText("trial schedule")).toBeInTheDocument();
 
       // Dropping the Mon row it already holds takes those 4h back off again.
@@ -839,11 +843,11 @@ describe("PrefGridCalculator", () => {
     it("goes loud on a trial that lands over the cap, before it is saved", async () => {
       const user = userEvent.setup();
       inScheduleMode({ cap: 20, scheduledMinutes: 19 * 60 });
-      expect(screen.getByText("19h").style.color).toBe("var(--color-text-info)");
+      expect(screen.getByText("19h").className).toContain("ad-gr-tone--info");
 
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // +4h
       const figure = screen.getByText("23h");
-      expect(figure.style.color).toBe("var(--color-text-danger)");
+      expect(figure.className).toContain("ad-gr-tone--danger");
       expect(within(figure.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
     });
 
@@ -853,16 +857,16 @@ describe("PrefGridCalculator", () => {
       expect(screen.getByText(/pending change/)).toBeInTheDocument();
       const wed = () => screen.getByRole("button", { name: "1p–5p Wed" });
       const mon = () => screen.getByRole("button", { name: "8a–12p Mon" });
-      expect(wed().style.border).not.toContain("dashed");
+      expect(wed().className).not.toContain("ad-gr-ring--deviates");
 
       await user.click(wed()); // pending add: violet schedule half, dashed ring
-      expect(wed().style.border).toContain("dashed");
-      expect(wed().style.background).toContain("#8a4fd3");
+      expect(wed().className).toContain("ad-gr-ring--deviates");
+      expect(wed().className).toContain("ad-gr-sched--manual");
       expect(wed().getAttribute("title")).toContain("Pending: added on Save");
 
       await user.click(mon()); // pending removal: empty schedule half, same ring
-      expect(mon().style.border).toContain("dashed");
-      expect(mon().style.background).not.toContain("#2e9e5b");
+      expect(mon().className).toContain("ad-gr-ring--deviates");
+      expect(mon().className).not.toContain("ad-gr-sched--engine");
       expect(mon().getAttribute("title")).toContain("Pending: removed on Save");
     });
 
@@ -955,7 +959,7 @@ describe("PrefGridCalculator", () => {
       });
       await user.click(screen.getByRole("button", { name: "1p–5p Wed" })); // +4h: exactly 20h
       const onCap = screen.getByText("20h");
-      expect(onCap.style.color).not.toBe("var(--color-text-danger)");
+      expect(onCap.className).not.toContain("ad-gr-tone--danger");
       expect(within(onCap.parentElement!).queryByText("over 20h cap")).toBeNull();
       unmount();
 
@@ -968,7 +972,7 @@ describe("PrefGridCalculator", () => {
         scheduledMinutes: 20 * 60 + 1,
       });
       const over = screen.getByText("20h");
-      expect(over.style.color).toBe("var(--color-text-danger)");
+      expect(over.className).toContain("ad-gr-tone--danger");
       expect(within(over.parentElement!).getByText("over 20h cap")).toBeInTheDocument();
     });
 
@@ -1053,7 +1057,7 @@ describe("PrefGridCalculator", () => {
       it("counts the weekend whole once the schedule moves to every weekend", async () => {
         const user = userEvent.setup();
         inScheduleMode({ ...withWeekend("a"), scheduledMinutes: 12 * 60 });
-        expect(screen.getByText("12h").style.fontSize).toBe("22px");
+        expect(screen.getByText("12h").className).toContain("ad-gr-figure");
 
         // Their 4h Sat row counted half under A/B and counts whole under every.
         await user.click(pill());
@@ -1068,19 +1072,19 @@ describe("PrefGridCalculator", () => {
       it("leaves the preferred figure alone, since it answers a different question", async () => {
         const user = userEvent.setup();
         inScheduleMode({ ...withWeekend("a"), scheduledMinutes: 12 * 60 });
-        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+        expect(screen.getByText("10h available")).toBeInTheDocument();
 
         await user.click(pill());
-        expect(screen.getByText("10h preferred")).toBeInTheDocument();
+        expect(screen.getByText("10h available")).toBeInTheDocument();
       });
 
       it("saves the rotation with the batch and rings the pill until it lands", async () => {
         const user = userEvent.setup();
         inScheduleMode(withWeekend("a"));
-        expect(pill().style.border).not.toContain("dashed");
+        expect(pill().className).not.toContain("ad-gr-ring--deviates");
 
         await user.click(week("B"));
-        expect(pill().style.border).toContain("dashed");
+        expect(pill().className).toContain("ad-gr-ring--deviates");
         await user.click(save()!);
 
         expect(applyScheduleEdits).toHaveBeenCalledWith("stu@wisc.edu", [], [], "b", "");
@@ -1099,7 +1103,8 @@ describe("PrefGridCalculator", () => {
           "stu@wisc.edu",
           [],
           [{ blockId: "we-a", day: "sun" }],
-          "every", "",
+          "every",
+          "",
         );
       });
 

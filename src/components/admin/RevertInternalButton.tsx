@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { revertInternalAvailability } from "@/lib/availability/actions";
+import { ActionMessage, Button } from "@/components/admin/ui";
 
 /**
  * Drops the admin's internal availability copy so scheduling falls back to
@@ -32,50 +33,24 @@ export function RevertInternalButton({ studentEmail }: { studentEmail: string })
 
   if (!confirming) {
     return (
-      <button
-        type="button"
+      <Button
         onClick={() => setConfirming(true)}
-        style={quietBtn}
         title="Discard the adjustments and use the student's own availability"
       >
         Use student availability
-      </button>
+      </Button>
     );
   }
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{ fontSize: 12 }}>Discard the adjustments?</span>
-      <button type="button" onClick={revert} disabled={pending} style={dangerBtn}>
-        {pending ? "Reverting…" : "Discard"}
-      </button>
-      <button
-        type="button"
-        onClick={() => setConfirming(false)}
-        disabled={pending}
-        style={quietBtn}
-      >
+    <span className="ad-row">
+      <span>Discard the adjustments?</span>
+      <Button variant="danger-fill" onClick={revert} pending={pending} pendingLabel="Reverting…">
+        Discard
+      </Button>
+      <Button onClick={() => setConfirming(false)} disabled={pending}>
         Keep
-      </button>
-      {error && <span style={{ fontSize: 12, color: "var(--color-text-danger)" }}>{error}</span>}
+      </Button>
+      {error && <ActionMessage ok={false}>{error}</ActionMessage>}
     </span>
   );
 }
-
-const quietBtn: React.CSSProperties = {
-  fontSize: 12,
-  padding: "2px 10px",
-  borderRadius: "var(--border-radius-md)",
-  cursor: "pointer",
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-primary)",
-  whiteSpace: "nowrap",
-};
-
-const dangerBtn: React.CSSProperties = {
-  ...quietBtn,
-  fontWeight: 600,
-  border: "1px solid var(--color-text-danger)",
-  background: "var(--color-text-danger)",
-  color: "#fff",
-};

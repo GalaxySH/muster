@@ -1,12 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
-import { InfoCard, Page } from "@/components/ui";
-import { panelStyle } from "@/components/admin/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Disclosure, Notice, Panel, Status } from "@/components/admin/ui";
 import { W2wPositionMapPanel } from "@/components/admin/W2wPositionMapPanel";
 import { PlanRotationPanel } from "@/components/admin/PlanRotationPanel";
 import { getW2wMapPageModel, getW2wNameCoverage } from "@/lib/w2w/map-data";
+
+export const metadata: Metadata = { title: "W2W positions" };
 
 /** Derived live from the map, the position config, and the plan; never cache. */
 export const dynamic = "force-dynamic";
@@ -28,110 +30,94 @@ export default async function AdminW2wPage() {
   const warnings = model.issues.filter((i) => i.severity === "warning");
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>W2W positions</h1>
-      <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        Which Muster position staffs each W2W position. A W2W shift can only be filled if its
-        position is mapped here and its hours match one of that position&apos;s shifts.
-      </p>
-
-      {dangers.length > 0 && (
-        <InfoCard tone="danger" title="Problems" style={{ maxWidth: 720 }}>
-          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14 }}>
-            {dangers.map((issue, i) => (
-              <li key={i}>{issue.message}</li>
-            ))}
-          </ul>
-        </InfoCard>
-      )}
-      {warnings.length > 0 && (
-        <InfoCard tone="warning" title="Worth a look" style={{ maxWidth: 720 }}>
-          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14 }}>
-            {warnings.map((issue, i) => (
-              <li key={i}>{issue.message}</li>
-            ))}
-          </ul>
-        </InfoCard>
-      )}
-      {model.issues.length === 0 && (
-        <InfoCard tone="success" style={{ maxWidth: 720 }}>
-          <p style={{ margin: 0, fontSize: 14 }}>
-            Every mapping points at a position that can be scheduled.
+    <AdminPage
+      title="W2W positions"
+      width="form"
+      description={
+        <>
+          Which Muster position staffs each W2W position. A W2W shift can only be filled if its
+          position is mapped here and its hours match one of that position&apos;s shifts.
+        </>
+      }
+    >
+      <div className="ad-stack">
+        {dangers.length > 0 && (
+          <Notice tone="danger" title="Problems">
+            <ul className="ad-bullets">
+              {dangers.map((issue, i) => (
+                <li key={i}>{issue.message}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
+        {warnings.length > 0 && (
+          <Notice tone="warning" title="Worth a look">
+            <ul className="ad-bullets">
+              {warnings.map((issue, i) => (
+                <li key={i}>{issue.message}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
+        {model.issues.length === 0 && (
+          <p>
+            <Status tone="ok">Every mapping points at a position that can be scheduled.</Status>
           </p>
-        </InfoCard>
-      )}
+        )}
 
-      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 860 }}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Position mapping</h2>
-        <p style={{ margin: "0 0 10px", fontSize: 14, color: "var(--color-text-secondary)" }}>
-          Fill order decides who goes on which shift when two W2W positions share one Muster shift.
-          Lower fills first.
-        </p>
         <W2wPositionMapPanel
           rows={model.rows}
           positionOptions={model.positionOptions}
           unmapped={model.unmapped}
           hasPlan={model.plan !== null}
         />
-      </section>
 
-      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Current plan</h2>
-        {model.plan ? (
-          <>
-            <p style={{ margin: "0 0 10px", fontSize: 14 }}>
-              <strong>{model.plan.sourceFilename}</strong> · {model.plan.rowCount} shifts · imported{" "}
-              {model.plan.importedAt.toLocaleString()}
+        <Panel title="Current plan">
+          {model.plan ? (
+            <div className="ad-stack ad-stack--tight">
+              <p>
+                <strong>{model.plan.sourceFilename}</strong> · {model.plan.rowCount} shifts ·
+                imported {model.plan.importedAt.toLocaleString()}
+              </p>
+              <div className="ad-row ad-row--between">
+                <PlanRotationPanel planId={model.plan.id} rotationWeek={model.plan.rotationWeek} />
+                <Link href="/admin/schedule/plan">Open the W2W shift plan</Link>
+              </div>
+            </div>
+          ) : (
+            <p className="ad-muted">
+              No plan is imported yet. Import one on the{" "}
+              <Link href="/admin/schedule/plan">W2W plan</Link> page to check this mapping against
+              real shifts.
             </p>
-            <PlanRotationPanel planId={model.plan.id} rotationWeek={model.plan.rotationWeek} />
-          </>
-        ) : (
-          <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-tertiary)" }}>
-            No plan is imported yet. Import one on the{" "}
-            <Link href="/admin/schedule/plan">W2W plan</Link> page to check this mapping against
-            real shifts.
-          </p>
-        )}
-      </section>
+          )}
+        </Panel>
 
-      <section style={{ ...panelStyle, marginTop: 14, maxWidth: 720 }}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>W2W names</h2>
-        <p style={{ margin: "0 0 8px", fontSize: 14, color: "var(--color-text-secondary)" }}>
-          {coverage.matched} of {coverage.matched + coverage.missing.length} students on the roster
-          have a name from W2W on file. The rest export under a name guessed from the roster, which
-          W2W leaves unassigned if it does not match.
-        </p>
-        {coverage.missing.length > 0 && (
-          <details>
-            <summary style={{ fontSize: 14, cursor: "pointer" }}>
-              Show the {coverage.missing.length} without one
-            </summary>
-            <ul
-              style={{
-                margin: "8px 0 0",
-                paddingLeft: 20,
-                fontSize: 14,
-                maxHeight: 260,
-                overflowY: "auto",
-              }}
-            >
-              {coverage.missing.map((s) => (
-                <li key={s.email}>
-                  {s.displayName}{" "}
-                  <span style={{ color: "var(--color-text-tertiary)" }}>{s.email}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--color-text-tertiary)" }}>
-          Upload the Employee Details export on the{" "}
-          <Link href="/admin/schedule/plan">W2W plan</Link> page to refresh these.
-        </p>
-      </section>
-    </Page>
+        <Panel title="W2W names">
+          <div className="ad-stack ad-stack--tight">
+            <p className="ad-muted">
+              {coverage.matched} of {coverage.matched + coverage.missing.length} students on the
+              roster have a name from W2W on file. The rest export under a name guessed from the
+              roster, which W2W leaves unassigned if it does not match.
+            </p>
+            {coverage.missing.length > 0 && (
+              <Disclosure panel={false} title={`Show the ${coverage.missing.length} without one`}>
+                <ul className="ad-bullets ad-bullets--scroll">
+                  {coverage.missing.map((s) => (
+                    <li key={s.email}>
+                      {s.displayName} <span className="ad-faint">{s.email}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Disclosure>
+            )}
+            <p className="ad-help">
+              Upload the Employee Details export on the{" "}
+              <Link href="/admin/schedule/plan">W2W plan</Link> page to refresh these.
+            </p>
+          </div>
+        </Panel>
+      </div>
+    </AdminPage>
   );
 }

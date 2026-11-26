@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { InfoCard } from "@/components/ui";
+import { ActionMessage, Button, Notice } from "@/components/admin/ui";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { createPositionForTitle, mapTitleToPosition } from "@/lib/positions/actions";
 import type { GhostTitle } from "@/lib/positions/data";
@@ -13,7 +13,7 @@ export interface PositionOption {
 }
 
 /**
- * The ghost section of /admin/positions (roadmap 3.3): one red card per
+ * The ghost section of /admin/positions (roadmap 3.3): one red notice per
  * roster title that has no position, with the two resolution controls. The
  * section stays mounted across router.refresh so the assigned-count result
  * remains visible after the resolved card disappears.
@@ -29,14 +29,12 @@ export function GhostTitleSection({
   if (ghosts.length === 0 && results.length === 0) return null;
 
   return (
-    <section>
-      {ghosts.length > 0 && (
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Roster titles without a position</h2>
-      )}
+    <section className="ad-stack ad-stack--tight">
+      {ghosts.length > 0 && <h2>Roster titles without a position</h2>}
       {results.map((text, i) => (
-        <InfoCard key={i} tone="success" style={{ padding: "0.6rem 1.2rem" }}>
-          <p style={{ margin: 0, fontSize: 14 }}>{text}</p>
-        </InfoCard>
+        <Notice key={i} tone="success" role="status">
+          <p>{text}</p>
+        </Notice>
       ))}
       {ghosts.map((g) => (
         <GhostTitleCard
@@ -89,18 +87,15 @@ function GhostTitleCard({
   }
 
   return (
-    <InfoCard tone="danger" title={title ?? "No title recorded"}>
-      <p style={{ margin: "0 0 10px", fontSize: 14 }}>
+    <Notice tone="danger" title={title ?? "No title recorded"}>
+      <p>
         No position information. {students} on the roster can&apos;t fill out the availability form.
       </p>
       {title === null ? (
-        <p style={{ margin: 0, fontSize: 14 }}>
-          These students have no roster title on file. Import the roster again to record one.
-        </p>
+        <p>These students have no roster title on file. Import the roster again to record one.</p>
       ) : (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
+        <div className="ad-row">
+          <Button
             disabled={pending}
             onClick={() => {
               if (
@@ -115,13 +110,13 @@ function GhostTitleCard({
             }}
           >
             Create position
-          </button>
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>or</span>
+          </Button>
+          <span className="ad-muted">or</span>
           <select
             value={targetId}
             onChange={(e) => setTargetId(e.target.value)}
             disabled={pending}
-            style={select}
+            aria-label={`Map ${title} to an existing position`}
           >
             <option value="">Map to existing position…</option>
             {options.map((o) => (
@@ -130,8 +125,7 @@ function GhostTitleCard({
               </option>
             ))}
           </select>
-          <button
-            type="button"
+          <Button
             disabled={pending || !targetId}
             onClick={() => {
               const target = options.find((o) => o.id === targetId);
@@ -148,22 +142,14 @@ function GhostTitleCard({
             }}
           >
             Map
-          </button>
+          </Button>
         </div>
       )}
       {error && (
-        <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-danger)" }}>
+        <ActionMessage ok={false} as="p">
           {error}
-        </p>
+        </ActionMessage>
       )}
-    </InfoCard>
+    </Notice>
   );
 }
-
-const select: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};

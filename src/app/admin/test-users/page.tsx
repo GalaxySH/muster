@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Button, CheckRow, EmptyMark, Field, Notice, Panel, Pill } from "@/components/admin/ui";
 import { listTestAccounts } from "@/lib/test-accounts/data";
 import {
   createTestAccount,
@@ -16,6 +17,8 @@ import { positionOptions } from "@/lib/positions/data";
 import { workingTermId } from "@/lib/terms/working";
 import { MagicLinkCopy } from "@/components/admin/MagicLinkCopy";
 import { env } from "@/lib/env";
+
+export const metadata: Metadata = { title: "Test accounts" };
 
 // DB-backed (the test-account list); never statically prerender.
 export const dynamic = "force-dynamic";
@@ -52,7 +55,9 @@ export default async function AdminTestUsersPage({
   if (!session.isAdmin) redirect("/me");
 
   const { error, token, for: linkFor } = await searchParams;
-  const errorMessage = error ? (ERROR_COPY[error as TestAccountError] ?? "Something went wrong.") : null;
+  const errorMessage = error
+    ? (ERROR_COPY[error as TestAccountError] ?? "Something went wrong.")
+    : null;
   // The URL is assembled HERE from our own base + redeem path (the params carry
   // only token + email), so a crafted query can never plant a foreign link.
   const magicLinkUrl =
@@ -65,152 +70,139 @@ export default async function AdminTestUsersPage({
   ]);
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>Test accounts</h1>
-      <p style={{ color: "#555" }}>
-        Create throwaway accounts to walk through the app. Fill out the details, sign in as
-        the student, and preview the form as they would see it. The accounts are not tracked and are in the <strong>Test accounts</strong> group. Edit the group&apos;s form window on{" "}<Link href="/admin/groups">Groups &amp; form windows</Link>.
-      </p>
-      <p style={banner}>
-        <strong>Sign in as replaces your admin session.</strong> To return, sign out and sign
-        back in with Google. To stay signed in here, use <strong>Get link</strong> and open
-        the link in a private or incognito window instead.
-      </p>
+    <AdminPage
+      title="Test accounts"
+      width="form"
+      description={
+        <>
+          Create throwaway accounts to walk through the app. Fill out the details, sign in as the
+          student, and preview the form as they would see it. The accounts are not tracked and are
+          in the <strong>Test accounts</strong> group. Edit the group&apos;s form window on{" "}
+          <Link href="/admin/groups">Groups and windows</Link>.
+        </>
+      }
+    >
+      <div className="ad-stack">
+        <Notice tone="warning" title="Sign in as replaces your admin session.">
+          To return, sign out and sign back in with Google. To stay signed in here, use{" "}
+          <strong>Get link</strong> and open the link in a private or incognito window instead.
+        </Notice>
 
-      {errorMessage && <p style={errorBanner}>{errorMessage}</p>}
+        {errorMessage && (
+          <Notice tone="danger" role="alert">
+            {errorMessage}
+          </Notice>
+        )}
 
-      {magicLinkUrl && (
-        <section style={card}>
-          <h2 style={{ fontSize: 16, marginTop: 0 }}>Sign-in link for {linkFor}</h2>
-          <p style={{ fontSize: 14, color: "#555", marginTop: 0 }}>
-            Open this link in a private or incognito window to use the test account while
-            staying signed in here as admin. It works once and expires in 1 day.
-          </p>
-          <MagicLinkCopy url={magicLinkUrl} />
-        </section>
-      )}
+        {magicLinkUrl && (
+          <Panel title={<>Sign-in link for {linkFor}</>}>
+            <p className="ad-muted">
+              Open this link in a private or incognito window to use the test account while staying
+              signed in here as admin. It works once and expires in 1 day.
+            </p>
+            <MagicLinkCopy url={magicLinkUrl} />
+          </Panel>
+        )}
 
-      <section style={card}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>Create a test account</h2>
-        <form action={createTestAccount} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-          <input type="text" name="name" placeholder="Display name, e.g. Training Barista" required style={field} />
-          <select name="position" defaultValue={positions[0]?.id} style={field}>
-            {positions.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <label style={{ fontSize: 14 }}>
-            <input type="checkbox" name="international" /> International student
-          </label>
-          <label style={{ fontSize: 14, display: "grid", gap: 4 }}>
-            Hire date
-            <input type="date" name="hiredOn" defaultValue={todayIsoChicago()} style={field} />
-          </label>
-          <button type="submit" style={{ justifySelf: "start" }}>
-            Create test account
-          </button>
-        </form>
-      </section>
+        <Panel title="Create a test account">
+          <form action={createTestAccount} className="ad-se-create">
+            <Field label="Display name">
+              <input type="text" name="name" placeholder="e.g. Training Barista" required />
+            </Field>
+            <Field label="Position">
+              <select name="position" defaultValue={positions[0]?.id}>
+                {positions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <CheckRow label="International student">
+              <input type="checkbox" name="international" />
+            </CheckRow>
+            <Field label="Hire date">
+              <input type="date" name="hiredOn" defaultValue={todayIsoChicago()} />
+            </Field>
+            <Button type="submit" variant="primary" size="md">
+              Create test account
+            </Button>
+          </form>
+        </Panel>
 
-      {accounts.length > 0 && (
-        <div style={{ overflowX: "auto", marginTop: "1.2rem" }}>
-          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "var(--color-text-secondary)", fontSize: 13 }}>
-                <th style={th}>Account</th>
-                <th style={th}>Position</th>
-                <th style={th}>Status</th>
-                <th style={{ ...th, textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <tr key={a.email} style={{ borderTop: "0.5px solid var(--color-border-tertiary)" }}>
-                  <td style={td}>
-                    <div style={{ fontWeight: 500 }}>{a.displayName}</div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--color-text-tertiary)",
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {a.email}
-                    </div>
-                  </td>
-                  <td style={td}>{a.positionName ?? "—"}</td>
-                  <td style={td}>
-                    {a.status ? (
-                      <span style={a.status === "submitted" ? submittedBadge : draftBadge}>
-                        {a.status}
-                      </span>
-                    ) : (
-                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ ...td, whiteSpace: "nowrap" }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-                      <Link href={`/admin/students/${encodeURIComponent(a.email)}`}>
-                        View response
-                      </Link>
-                      {a.canManage && (
-                        <>
-                          <form action={signInAsTestAccount}>
-                            <input type="hidden" name="email" value={a.email} />
-                            <button type="submit">Sign in as</button>
-                          </form>
-                          <form action={mintTestAccountLink}>
-                            <input type="hidden" name="email" value={a.email} />
-                            <button type="submit">Get link</button>
-                          </form>
-                          <form action={deleteTestAccount}>
-                            <input type="hidden" name="email" value={a.email} />
-                            <button type="submit" style={{ color: "#b00" }}>
-                              Delete
-                            </button>
-                          </form>
-                        </>
-                      )}
-                    </div>
-                  </td>
+        {accounts.length > 0 && (
+          <Panel flush title="Accounts" aside={accounts.length}>
+            <table className="ad-table ad-table--stack ad-table--middle">
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col">Position</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="ad-num">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Page>
+              </thead>
+              <tbody>
+                {accounts.map((a) => (
+                  <tr key={a.email}>
+                    <td data-label="Account">
+                      <div className="ad-strong">{a.displayName}</div>
+                      <div className="ad-email">{a.email}</div>
+                    </td>
+                    <td data-label="Position">{a.positionName ?? <EmptyMark />}</td>
+                    <td data-label="Status">
+                      {a.status ? (
+                        <Pill tone={a.status === "submitted" ? "success" : undefined}>
+                          {a.status}
+                        </Pill>
+                      ) : (
+                        <EmptyMark />
+                      )}
+                    </td>
+                    <td>
+                      <div className="ad-row ad-se-row-actions">
+                        <Link
+                          href={`/admin/students/${encodeURIComponent(a.email)}`}
+                          aria-label={`View response for ${a.displayName}`}
+                        >
+                          View response
+                        </Link>
+                        {a.canManage && (
+                          <>
+                            <form action={signInAsTestAccount}>
+                              <input type="hidden" name="email" value={a.email} />
+                              <Button type="submit" aria-label={`Sign in as ${a.displayName}`}>
+                                Sign in as
+                              </Button>
+                            </form>
+                            <form action={mintTestAccountLink}>
+                              <input type="hidden" name="email" value={a.email} />
+                              <Button type="submit" aria-label={`Get link for ${a.displayName}`}>
+                                Get link
+                              </Button>
+                            </form>
+                            <form action={deleteTestAccount}>
+                              <input type="hidden" name="email" value={a.email} />
+                              <Button
+                                type="submit"
+                                variant="danger"
+                                aria-label={`Delete ${a.displayName}`}
+                              >
+                                Delete
+                              </Button>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        )}
+      </div>
+    </AdminPage>
   );
 }
-
-const banner: React.CSSProperties = {
-  background: "#fff4d6",
-  border: "1px solid #e0c060",
-  borderRadius: 6,
-  padding: "0.6rem 0.9rem",
-  fontSize: 14,
-};
-const errorBanner: React.CSSProperties = {
-  background: "#fdecea",
-  border: "1px solid #d9756b",
-  borderRadius: 6,
-  padding: "0.6rem 0.9rem",
-  fontSize: 14,
-};
-const card: React.CSSProperties = {
-  border: "1px solid #e2e2e2",
-  borderRadius: 8,
-  padding: "1rem 1.2rem",
-  marginTop: "1.2rem",
-};
-const field: React.CSSProperties = { padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 14 };
-const th: React.CSSProperties = { padding: "6px 10px", whiteSpace: "nowrap" };
-const td: React.CSSProperties = { padding: "8px 10px", verticalAlign: "top" };
-const badge: React.CSSProperties = { borderRadius: 10, padding: "1px 8px", fontSize: 12 };
-const submittedBadge: React.CSSProperties = { ...badge, background: "#e6f4ea", color: "var(--color-text-success)" };
-const draftBadge: React.CSSProperties = { ...badge, background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" };

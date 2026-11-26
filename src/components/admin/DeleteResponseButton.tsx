@@ -3,7 +3,10 @@
 import { useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrashCan } from "@awesome.me/kit-925f6dce39/icons/classic/regular";
 import { deleteResponse } from "@/lib/admin/actions";
+import { Button } from "./ui";
 
 /**
  * Admin-only "delete response" control (PLAN §10). Confirms, then permanently
@@ -48,47 +51,22 @@ export function DeleteResponseButton({
 
   if (variant === "icon") {
     return (
-      <button
-        type="button"
-        className="btn-hover"
+      <Button
+        variant="quiet-danger"
+        className="ad-btn--icon"
         onClick={onClick}
         disabled={pending}
         aria-label={`Delete ${displayName}'s response`}
         title="Delete response"
-        style={{
-          fontSize: 13,
-          padding: "3px 8px",
-          borderRadius: "var(--border-radius-md)",
-          cursor: pending ? "default" : "pointer",
-          border: "0.5px solid var(--color-border-secondary)",
-          background: "var(--color-background-primary)",
-          color: "var(--color-text-danger)",
-          opacity: pending ? 0.5 : 1,
-        }}
       >
-        {pending ? "…" : "Delete"}
-      </button>
+        <FontAwesomeIcon icon={faTrashCan} aria-hidden />
+      </Button>
     );
   }
 
   return (
-    <button
-      type="button"
-      className="btn-hover"
-      onClick={onClick}
-      disabled={pending}
-      style={{
-        fontSize: 13,
-        padding: "5px 12px",
-        borderRadius: "var(--border-radius-md)",
-        cursor: pending ? "default" : "pointer",
-        border: "1px solid var(--color-border-danger, #d93025)",
-        background: "var(--color-background-primary)",
-        color: "var(--color-text-danger)",
-        opacity: pending ? 0.5 : 1,
-      }}
-    >
-      {pending ? "Deleting…" : "Delete response"}
-    </button>
+    <Button variant="danger" onClick={onClick} pending={pending} pendingLabel="Deleting…">
+      Delete response
+    </Button>
   );
 }

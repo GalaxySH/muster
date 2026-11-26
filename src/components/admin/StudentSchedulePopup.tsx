@@ -15,7 +15,6 @@ import type { StudentScheduleView } from "@/lib/admin/student-schedule-data";
 import type { StudentGridRow, StudentGridSub } from "@/lib/admin/student-schedule-view";
 import { DAY_LABEL } from "@/lib/domain/types";
 import { hoursLabel } from "@/lib/domain/config-validation";
-import { ENGINE_COLOR, MANUAL_COLOR, sourceColor } from "./schedule-ui";
 import { placeHoverCard, type Rect } from "./hover-placement";
 
 function useStudentSchedule(email: string) {
@@ -69,7 +68,7 @@ export function StudentScheduleModalLink({
           setOpen(true);
           state.load();
         }}
-        style={triggerButton}
+        className="ad-ls-trigger"
       >
         {children}
       </button>
@@ -79,7 +78,7 @@ export function StudentScheduleModalLink({
           onClose={() => setOpen(false)}
           maxWidth="440px"
         >
-          <div style={{ marginTop: 8 }}>
+          <div className="ad-ls-popup-body">
             <PopupBody {...state} />
           </div>
         </Modal>
@@ -88,8 +87,8 @@ export function StudentScheduleModalLink({
   );
 }
 
-/** The card's width bound; kept clear of the viewport edge by this margin. */
-const HOVER_WIDTH = 360;
+/** The card is kept clear of the viewport edge by this margin. Its width bound
+ *  (360px) and this margin are also in `.ad-ls-hovercard` (admin-lists.css). */
 const HOVER_MARGIN = 8;
 
 /**
@@ -181,7 +180,7 @@ export function StudentScheduleHover({
   return (
     <span
       ref={wrap}
-      style={{ display: "inline-block" }}
+      className="ad-ls-hoverwrap"
       onMouseEnter={enter}
       onMouseLeave={hide}
       onFocus={enter}
@@ -192,8 +191,8 @@ export function StudentScheduleHover({
         <span
           ref={card}
           role="tooltip"
+          className="ad-ls-hovercard"
           style={{
-            ...hoverPanel,
             left: place?.left ?? anchor.left,
             top: place?.top ?? anchor.bottom,
             visibility: place ? undefined : "hidden",
@@ -208,10 +207,10 @@ export function StudentScheduleHover({
 
 function PopupBody({ view, error }: { view: StudentScheduleView | null; error: string | null }) {
   if (error) {
-    return <span style={{ fontSize: 13, color: "var(--color-text-danger)" }}>{error}</span>;
+    return <span className="ad-ls-card-line ad-danger-text">{error}</span>;
   }
   if (!view) {
-    return <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Loading…</span>;
+    return <span className="ad-ls-card-line ad-muted">Loading…</span>;
   }
   return <StudentScheduleCard view={view} />;
 }
@@ -219,44 +218,34 @@ function PopupBody({ view, error }: { view: StudentScheduleView | null; error: s
 /** The card both triggers show: header line, the grids, a one-line legend. */
 export function StudentScheduleCard({ view }: { view: StudentScheduleView }) {
   return (
-    // flex-start keeps the grid tables shrink-wrapped: as stretched flex items
-    // (here and again in .modal-panel) the browser would spread their columns
-    // across the full panel width.
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+    <div className="ad-ls-card">
+      <div className="ad-ls-card-head">
         <Link
           href={`/admin/students/${encodeURIComponent(view.email)}`}
-          style={{ fontWeight: 600, fontSize: 14 }}
+          className="ad-ls-card-name"
         >
           {view.displayName}
         </Link>
-        {view.positionName && (
-          <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-            {view.positionName}
-          </span>
-        )}
+        {view.positionName && <span className="ad-small ad-muted">{view.positionName}</span>}
         {view.grid.assignedCount > 0 && (
           <span
-            style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-info)" }}
+            className="ad-ls-card-hours"
             title="Hours a week, averaged over the weekend rotation"
           >
             {hoursLabel(view.weeklyMinutes)}h
           </span>
         )}
-        {view.scheduled && (
-          <span style={{ fontSize: 12, color: "var(--color-text-success)" }}>✓ scheduled</span>
-        )}
+        {view.scheduled && <span className="ad-small ad-success-text">✓ scheduled</span>}
       </div>
       {view.grid.assignedCount === 0 && (
-        <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-          No shifts in the current run.
-        </span>
+        <span className="ad-ls-card-line ad-muted">No shifts in the current run.</span>
       )}
       <SubGridTable sub={view.grid.weekday} />
       {view.grid.weekend && <SubGridTable sub={view.grid.weekend} />}
-      <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
-        <span style={swatch(ENGINE_COLOR)} /> scheduled&nbsp;&nbsp;
-        <span style={swatch(MANUAL_COLOR)} /> by hand&nbsp;&nbsp;A/B/E: weekend rotation
+      <div className="ad-ls-legend">
+        <span className="ad-ls-swatch ad-ls-cell--engine" /> scheduled&nbsp;&nbsp;
+        <span className="ad-ls-swatch ad-ls-cell--manual" /> by hand (dotted)&nbsp;&nbsp;A/B/E:
+        weekend rotation
       </div>
     </div>
   );
@@ -266,26 +255,32 @@ function SubGridTable({ sub }: { sub: StudentGridSub }) {
   if (sub.rows.length === 0) return null;
   const weekend = sub.dayType === "weekend";
   return (
-    <table className={`avail-grid${weekend ? " avail-grid--weekend" : ""}`}>
+    <table className={`ad-ls-grid${weekend ? " ad-ls-grid--weekend" : ""}`}>
       <thead>
         <tr>
-          <th />
+          <td />
           {sub.days.map((d) => (
-            <th key={d}>{DAY_LABEL[d]}</th>
+            <th key={d} scope="col">
+              {DAY_LABEL[d]}
+            </th>
           ))}
         </tr>
       </thead>
       <tbody>
         {sub.rows.map((row) => (
           <tr key={row.blockId}>
-            <th scope="row" className="avail-rowlabel">
+            <th scope="row" className="ad-ls-grid-rowlabel">
               {row.label}
-              {row.retired && <span style={retiredTag}>retired</span>}
+              {row.retired && <span className="ad-ls-grid-retired">retired</span>}
             </th>
             {row.cells.map((cell) => (
               <td key={cell.day}>
                 <span
-                  style={cellBox(cell.source ? sourceColor(cell.source) : null)}
+                  className={
+                    cell.source
+                      ? `ad-ls-cell ad-ls-cell--on ad-ls-cell--${cell.source}`
+                      : "ad-ls-cell"
+                  }
                   title={
                     cell.source ? cellTitle(row, cell.day, cell.rotation, cell.source) : undefined
                   }
@@ -312,51 +307,3 @@ function cellTitle(
   if (source === "manual") parts.push("by hand");
   return parts.join(", ");
 }
-
-const triggerButton: React.CSSProperties = { all: "unset", cursor: "pointer" };
-
-const hoverPanel: React.CSSProperties = {
-  position: "fixed",
-  zIndex: 30,
-  padding: 10,
-  width: "max-content",
-  maxWidth: HOVER_WIDTH,
-  // A viewport shorter than the card: the clamp pins it inside and the card
-  // itself scrolls rather than running off the page.
-  maxHeight: `calc(100vh - ${HOVER_MARGIN * 2}px)`,
-  overflowY: "auto",
-  background: "var(--color-background-primary)",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: 8,
-  boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-  display: "block",
-};
-
-const retiredTag: React.CSSProperties = {
-  marginLeft: 6,
-  fontSize: 10,
-  color: "var(--color-text-secondary)",
-};
-
-const swatch = (color: string): React.CSSProperties => ({
-  display: "inline-block",
-  width: 9,
-  height: 9,
-  borderRadius: 2,
-  background: color,
-  verticalAlign: "baseline",
-});
-
-const cellBox = (fill: string | null): React.CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: 22,
-  height: 20,
-  borderRadius: 4,
-  fontSize: 10,
-  fontWeight: 600,
-  color: "#fff",
-  background: fill ?? "transparent",
-  border: fill ? "none" : "1px solid var(--color-border-secondary)",
-});

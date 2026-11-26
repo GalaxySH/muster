@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { dismissFlag, type DismissableFlag } from "@/lib/admin/actions";
+import { Button } from "@/components/admin/ui";
 
 /**
  * Dismisses one dismissable flag type from the per-student flags pane:
@@ -34,23 +35,14 @@ export function DismissFlagButton({
   }
 
   return (
-    <button
-      type="button"
+    <Button
       onClick={clear}
-      disabled={pending}
+      pending={pending}
+      pendingLabel="clearing…"
       title={title}
-      style={{
-        fontSize: 12,
-        padding: "2px 10px",
-        borderRadius: "var(--border-radius-md)",
-        cursor: pending ? "default" : "pointer",
-        border: "1px solid var(--color-border-secondary)",
-        background: "var(--color-background-primary)",
-        color: "var(--color-text-primary)",
-        whiteSpace: "nowrap",
-      }}
+      className="ad-nowrap"
     >
-      {pending ? "clearing…" : label}
-    </button>
+      {label}
+    </Button>
   );
 }
