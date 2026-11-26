@@ -143,15 +143,15 @@ function describeCell(cell: SelectedShift, blocks: ShiftBlock[]): string {
   return `${DAY_LABEL[cell.day]} ${formatTime(block.start)}–${formatTime(block.end)}`;
 }
 
-/** One sentence for the banner: how the saved copy differs from the student. */
+/** The banner's tail: how the saved copy differs from the student's answers. */
 function describeDiff(diff: InternalDiff): string {
   const parts: string[] = [];
   if (diff.added.length > 0)
     parts.push(`${diff.added.length} shift${diff.added.length === 1 ? "" : "s"} added`);
   if (diff.removed.length > 0) parts.push(`${diff.removed.length} removed`);
   if (diff.rotationChanged) parts.push("weekend rotation changed");
-  if (parts.length === 0) return "It matches their answers.";
-  return `Compared to their answers: ${parts.join(", ")}.`;
+  if (parts.length === 0) return "no changes";
+  return parts.join(", ");
 }
 
 export default async function StudentDetailPage({
@@ -512,9 +512,14 @@ export default async function StudentDetailPage({
                     <div className="ad-stack">
                       {internal && (
                         <Notice action={<RevertInternalButton studentEmail={detail.email} />}>
-                          Adjusted internally by {internal.editedBy} on{" "}
-                          {fmtStamp(internal.editedAt)}. The student&apos;s own answers are kept.
-                          {internalDiff && ` ${describeDiff(internalDiff)}`}
+                          {/* Short: who and which day, then what changed. The full
+                              address and time are on hover. The student's own
+                              answers are kept, which the revert button implies. */}
+                          <span title={`${internal.editedBy}, ${fmtStamp(internal.editedAt)}`}>
+                            Edited by {internal.editedBy.split("@")[0]} on{" "}
+                            {fmtDay(internal.editedAt)}
+                          </span>
+                          {internalDiff ? `: ${describeDiff(internalDiff)}.` : "."}
                         </Notice>
                       )}
                       <PrefGridCalculator
