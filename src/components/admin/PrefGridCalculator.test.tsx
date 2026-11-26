@@ -262,7 +262,7 @@ describe("PrefGridCalculator", () => {
     );
     unmount();
 
-    // A generated shift for this student brings back the diagonal preference/schedule split.
+    // A generated shift for this student brings back the preference/schedule split (inner and outer square).
     renderCalc({
       hasCurrentRun: true,
       assignments: [{ blockId: "wd-a", day: "mon", source: "engine" }],

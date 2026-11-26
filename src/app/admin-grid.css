@@ -23,6 +23,7 @@
   --ad-gr-picked: #4a7fc9;
   --ad-gr-cell-w: 1.75rem;
   --ad-gr-cell-h: 1.5rem;
+  --ad-gr-cell-r: 7px;
 }
 /* Dark (see admin.css): a lighter blue, 5.0 on the dark sunken fill. */
 .ad[data-theme="dark"] .ad-gr {
@@ -175,7 +176,7 @@
   min-height: 0;
   padding: 0;
   border: 1px solid var(--ad-border-strong);
-  border-radius: var(--ad-radius-sm);
+  border-radius: var(--ad-gr-cell-r);
   background: var(--ad-gr-pref, var(--ad-sunken));
   font-weight: 700;
   line-height: 1;
@@ -191,17 +192,31 @@
   width: 0.75rem;
   height: 0.75rem;
   border: 1px solid var(--ad-border-strong);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--ad-gr-pref, var(--ad-sunken));
   vertical-align: -1px;
 }
-/* Lower left: the preference. Upper right: the scheduled shift. */
+/* Inner square: the preference. Outer square: the scheduled shift. A shift
+   that is only scheduled is a hollow square, a preference that is not
+   scheduled a small one, and both together a full square with the preference
+   inside. The inner square is its own element (`ad-gr-inner`) so it can have
+   rounded corners; `--ad-gr-ring` is how far it sits from the edge. */
 .ad-gr-split {
-  background: linear-gradient(
-    to top right,
-    var(--ad-gr-pref, var(--ad-sunken)) 0 50%,
-    var(--ad-gr-sched, var(--ad-sunken)) 50% 100%
-  );
+  --ad-gr-ring: 5px;
+  background: var(--ad-gr-sched, var(--ad-sunken));
+}
+.ad-gr-inner {
+  position: absolute;
+  inset: var(--ad-gr-ring);
+  border-radius: 4px;
+  background: var(--ad-gr-pref, var(--ad-sunken));
+  pointer-events: none;
+}
+.ad-gr-swatch.ad-gr-split {
+  --ad-gr-ring: 3px;
+}
+.ad-gr-swatch .ad-gr-inner {
+  border-radius: 2px;
 }
 .ad-gr-pref--trial {
   --ad-gr-pref: var(--ad-info);
@@ -209,7 +224,8 @@
 .ad-gr-pref--picked {
   --ad-gr-pref: var(--ad-gr-picked);
 }
-/* Auto-assigned carries a dot in its corner as well as its colour. */
+/* Auto-assigned carries a dot as well as its colour: in its corner on a whole
+   cell, in the middle of the inner square on a split one. */
 .ad-gr-pref--auto {
   --ad-gr-pref: var(--ad-auto);
 }
@@ -227,14 +243,20 @@
 .ad-gr-sched--engine {
   --ad-gr-sched: var(--ad-success);
 }
-/* Scheduled by hand carries a dot in its corner as well as its colour. */
+.ad-gr-split.ad-gr-pref--auto::before {
+  z-index: 1;
+  bottom: calc(50% - 2px);
+  left: calc(50% - 2px);
+}
+/* Scheduled by hand carries a dot in its corner, on the outer square, as well
+   as its colour. */
 .ad-gr-sched--manual {
   --ad-gr-sched: var(--ad-manual);
 }
 .ad-gr-sched--manual::after {
   content: "";
   position: absolute;
-  top: 2px;
+  top: 1px;
   right: var(--ad-gr-mark-inset, 2px);
   width: 4px;
   height: 4px;
@@ -263,7 +285,7 @@
   right: -1px;
   bottom: -1px;
   width: 3px;
-  border-radius: 0 var(--ad-radius-sm) var(--ad-radius-sm) 0;
+  border-radius: 0 var(--ad-gr-cell-r) var(--ad-gr-cell-r) 0;
   background: var(--ad-accent);
   box-shadow: -1px 0 0 var(--ad-surface);
   pointer-events: none;
@@ -275,21 +297,18 @@
   background: var(--ad-accent);
   vertical-align: -1px;
 }
-/* The trial's check sits in the preference half of a split cell. */
+/* The trial's check, centred: in the inner square of a split cell, smaller. */
 .ad-gr-tick {
   position: absolute;
-  bottom: 0;
-  left: 2px;
-  color: var(--ad-on-ink);
-  font-size: 0.5625rem;
-  pointer-events: none;
-}
-/* With nothing to split against the cell is whole, so the check centres. */
-.ad-gr-tick--full {
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--ad-on-ink);
+  font-size: 0.5625rem;
+  pointer-events: none;
+}
+.ad-gr-tick--full {
   font-size: 0.6875rem;
 }
 /* A cell on a shift that no longer exists. Inert unless the student picked it;
@@ -301,7 +320,7 @@
   min-height: 0;
   padding: 0;
   border: 1px dashed var(--ad-border-strong);
-  border-radius: var(--ad-radius-sm);
+  border-radius: var(--ad-gr-cell-r);
   background: var(--ad-sunken);
   opacity: 0.45;
   cursor: not-allowed;

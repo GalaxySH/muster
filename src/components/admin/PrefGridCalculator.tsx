@@ -27,8 +27,8 @@ import {
 
 /**
  * Interactive grid + live hours calculator for the per-student admin view.
- * Every cell is split diagonally: the lower-left half is the student's
- * availability preference, the upper-right half is the current schedule run's
+ * Once there is a schedule run every cell is split: an inner square is the
+ * student's availability preference, the outer square the current run's
  * assignment for that (block, day). Preferences and assignments live in
  * separate tables (generation never overwrites preferences); the split makes
  * that visible, including a scheduled shift the student never offered.
@@ -1009,7 +1009,7 @@ function CalcTable({
   auto: Set<string>;
   /** What the run holds now. */
   assigned: Map<string, AssignmentSource>;
-  /** What the schedule trial holds; the schedule half renders from it in schedule mode. */
+  /** What the schedule trial holds; the outer square renders from it in schedule mode. */
   trial: Set<string>;
   busyCell: string | null;
   split: boolean;
@@ -1078,8 +1078,8 @@ function CalcTable({
                   inMock && (inStudent === null ? !wasPreferred && !wasAuto : !inStudent);
                 const removedFromStudent = inStudent === true && !inMock;
                 const persisted = assigned.get(key) ?? null;
-                // In schedule mode the half renders the TRIAL: a pending add takes
-                // the manual violet, a pending removal empties the half.
+                // In schedule mode the outer square renders the TRIAL: a pending add takes
+                // the manual violet, a pending removal empties it.
                 const inTrial = trial.has(key);
                 const schedMode = mode === "schedule";
                 const source = schedMode ? (inTrial ? (persisted ?? "manual") : null) : persisted;
@@ -1119,6 +1119,7 @@ function CalcTable({
                         pendingAdd || pendingRemove,
                       )}
                     >
+                      {split && <span aria-hidden className="ad-gr-inner" />}
                       {isHot && <span aria-hidden className="ad-gr-hot" />}
                       {inMock && (
                         <span
@@ -1248,11 +1249,16 @@ function SubHead({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * A legend swatch for a preference colour: the lower-left half when the cell is
+ * A legend swatch for a preference colour: the inner square when the cell is
  * split against a schedule, the whole swatch when there is no run to split against.
  */
-const prefSwatch = (pref: "trial" | "picked" | "auto", split: boolean) =>
-  cx("ad-gr-swatch", `ad-gr-pref--${pref}`, split && "ad-gr-split");
+function PrefSwatch({ pref, split }: { pref: "trial" | "picked" | "auto"; split: boolean }) {
+  return (
+    <span className={cx("ad-gr-swatch", `ad-gr-pref--${pref}`, split && "ad-gr-split")}>
+      {split && <span className="ad-gr-inner" />}
+    </span>
+  );
+}
 
 function Legend({
   split,
@@ -1268,16 +1274,16 @@ function Legend({
     <div className="ad-gr-legend">
       {/* The split only exists once there's a schedule run to compare against;
           without one the cells are whole preference squares. */}
-      {split && <div>Lower left: their preference. Upper right: scheduled shift.</div>}
+      {split && <div>Inner square: their preference. Outer square: scheduled shift.</div>}
       <div className="ad-gr-legend-row">
         <span>
-          <span className={prefSwatch("trial", split)} /> in trial schedule
+          <PrefSwatch pref="trial" split={split} /> in trial schedule
         </span>
         <span>
-          <span className={prefSwatch("picked", split)} /> picked, not in trial
+          <PrefSwatch pref="picked" split={split} /> picked, not in trial
         </span>
         <span>
-          <span className={prefSwatch("auto", split)} /> auto-assigned
+          <PrefSwatch pref="auto" split={split} /> auto-assigned
         </span>
         {showDiff && (
           <>
@@ -1292,10 +1298,16 @@ function Legend({
         {split && (
           <>
             <span>
-              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--engine" /> scheduled
+              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--engine">
+                <span className="ad-gr-inner" />
+              </span>{" "}
+              scheduled
             </span>
             <span>
-              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--manual" /> scheduled by hand
+              <span className="ad-gr-swatch ad-gr-split ad-gr-sched--manual">
+                <span className="ad-gr-inner" />
+              </span>{" "}
+              scheduled by hand
             </span>
           </>
         )}
@@ -1332,7 +1344,7 @@ const SCHEDULED_WEEK: Record<Exclude<Cohort, "weekday">, { letter: string; label
 
 /**
  * One cell's look, as classes (app/admin-grid.css). The preference fills the
- * lower-left half and the schedule the upper-right once there is a schedule to
+ * inner square and the schedule the outer one once there is a schedule to
  * split against; with no run the preference fills the whole square.
  *
  * A cell the student never offered, now in the trial, gets a dashed ring; a

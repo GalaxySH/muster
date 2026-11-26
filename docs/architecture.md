@@ -776,9 +776,10 @@ the auto-assigned shift, the readout becomes a **range**: the upper bound is a s
 Any weekend pick in the trial replaces the auto shift, so the range collapses to the
 single number that pick already counts for. Since 0.99 the card is titled
 **Availability and schedule** and carries the current run's assignments as a second
-layer: a cell splits diagonally **only when this student has a generated shift** (or
-while Edit schedule is active) — lower left the student's pick, upper right the
-scheduled shift (engine rows green, manual rows violet) with a legend. With no
+layer: a cell splits **only when this student has a generated shift** (or while Edit
+schedule is active): an inner square for the student's pick and the outer square for
+the scheduled shift (engine rows green, manual rows violet), so a shift that is only
+scheduled is a hollow square, with a legend (a diagonal split until 1.67). With no
 schedule to compare against, the preference fills the whole square and the legend
 drops the split explainer and the scheduled swatches (the `hasSchedule` prop, 1.01).
 The layer is fed by `buildAdminGrid`'s optional assignments parameter (`AdminCell` = `{selected,
