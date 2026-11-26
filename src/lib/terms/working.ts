@@ -33,7 +33,7 @@ import { terms } from "@/lib/db/schema";
 import { chooseWorkingTerm } from "@/lib/domain/terms";
 import { getCurrentTermId, getTerm } from "./term-id";
 
-/** Holds the term an admin selected. httpOnly; only `selectTerm` writes it. */
+/** Holds the term an admin selected. httpOnly; only `POST /api/term` writes it. */
 export const TERM_COOKIE = "muster_term";
 
 /** The term being collected. Fails closed when the pointer is broken. */
