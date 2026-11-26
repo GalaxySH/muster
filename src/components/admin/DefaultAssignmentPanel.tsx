@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { setDefaultAutoAssign, runDefaultAssignmentSweep } from "@/lib/groups/actions";
+import { ActionMessage, Button, CheckRow, SettingRow } from "@/components/admin/ui";
 
 /**
  * The default-assignment toggle + batch "Save" sweep (PLAN §13). The toggle only
@@ -50,45 +51,29 @@ export function DefaultAssignmentPanel({ initialEnabled }: { initialEnabled: boo
   }
 
   return (
-    <section style={card}>
-      <h2 style={{ fontSize: 16, marginTop: 0 }}>Default assignment</h2>
-      <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginTop: 0 }}>
-        When on, clicking <strong>Save</strong> assigns every ungrouped employee to the default group. Turning off does not unassign.
-      </p>
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={pending}
-          onChange={(e) => toggle(e.target.checked)}
-        />
-        Auto-assign ungrouped students to the default group
-      </label>
-      <div style={{ marginTop: 10 }}>
-        <button type="button" onClick={save} disabled={pending || !enabled}>
-          {pending ? "Working…" : "Save (run default assignment)"}
-        </button>
+    <SettingRow
+      name="Default assignment"
+      help={
+        <>
+          When on, clicking <strong>Save</strong> assigns every ungrouped employee to the default
+          group. Turning off does not unassign.
+        </>
+      }
+    >
+      <div className="ad-su-setting-control">
+        <CheckRow label="Auto-assign ungrouped students to the default group">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={pending}
+            onChange={(e) => toggle(e.target.checked)}
+          />
+        </CheckRow>
+        <Button onClick={save} pending={pending} disabled={!enabled}>
+          Save (run default assignment)
+        </Button>
+        {msg && <ActionMessage ok={msg.ok}>{msg.text}</ActionMessage>}
       </div>
-      {msg && (
-        <p
-          role="status"
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
-          {msg.text}
-        </p>
-      )}
-    </section>
+    </SettingRow>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};

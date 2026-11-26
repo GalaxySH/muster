@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faHouse } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader } from "@/components/AppHeader";
+import { AdminTools } from "@/components/AdminTools";
 import type { WizardNav } from "@/lib/flow/data";
 import type { WizardStepKey } from "@/lib/flow/steps";
 import { StepProgress } from "./StepProgress";
@@ -16,7 +16,7 @@ import { StepProgress } from "./StepProgress";
  *   - `default`: reading and the form steps
  *   - `wide`: the availability grid, which puts two grids side by side
  *
- * An admin also gets the console's own header row (semester switcher, student
+ * An admin also gets the console's tools row (semester switcher, student
  * finder, the other-semester banner), since they reach these pages when they
  * fill a form in for a student.
  */
@@ -70,7 +70,7 @@ export async function StudentPage({
       )}
       {session?.isAdmin && (
         <div className="sf-admin-tools">
-          <AppHeader />
+          <AdminTools />
         </div>
       )}
       <main id="main" className="sf-main" tabIndex={-1}>

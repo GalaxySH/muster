@@ -1,0 +1,1490 @@
+/* The admin console's design system (components/admin/AdminPage.tsx and
+   components/admin/ui.tsx). The same family as the student pages (student.css:
+   warm neutrals, ink, the red accent used sparingly), at tighter metrics for a
+   dense desktop tool. The laptop (1280) leads; under 960px the rail becomes a
+   drawer and tables stack.
+
+   Scope. Only AdminPage renders the `.ad` root. One convention in every admin
+   stylesheet: a component rule is a single `ad-` prefixed class (`.ad-panel`),
+   and a rule on a bare element is `:where(.ad) :where(el)`, which scopes it
+   without raising its specificity, so any class and any inline style still wins.
+
+   Colour is used in tested pairs (WCAG 2.2 AA). Text is 4.5:1 or better on every
+   surface it is used on; control borders and state marks are 3:1 or better:
+     ink     #1c1917 on page 16.1, surface 17.5, sunken 14.7, zebra 16.5
+     text-2  #57534e on page 7.0, surface 7.6, sunken 6.4, zebra 7.2,
+             on disabled #e7e2da 5.9
+     text-3  #6b655f on page 5.3, surface 5.8, sunken 4.8, zebra 5.4
+     link    #1d4e89 on page 7.7, surface 8.4, sunken 7.1, zebra 7.9, info tint 7.4
+     on-ink  #ffffff on ink 17.5, ink-hover #44403c 10.3, accent #c5050c 6.2,
+             danger #b42318 6.6, danger-hover #8f1c13 9.0
+     border-strong #8a8279 on surface 3.8, page 3.5, sunken 3.2
+     success #166534 on its tint 6.4, surface 7.1
+     warning #7a4a00 on its tint 6.8, surface 7.5
+     danger  #b42318 on its tint 5.7, surface 6.6, page 6.0
+     info    #1d4e89 on its tint 7.4
+     manual  #5b3fa8 on its tint 6.6, surface 7.7
+     auto    #9d2463 on its tint 6.3, surface 7.3
+     warn-mark #b45309 on surface 5.0 (icons only)
+     draft   #d9a520 is a bar segment and its key dot, always beside its label */
+.ad {
+  --ad-page: #f7f5f2;
+  --ad-surface: #ffffff;
+  --ad-sunken: #efebe5;
+  --ad-zebra: #faf8f5;
+  --ad-ink: #1c1917;
+  --ad-ink-hover: #44403c;
+  --ad-on-ink: #ffffff;
+  --ad-text-2: #57534e;
+  --ad-text-3: #6b655f;
+  --ad-link: #1d4e89;
+  --ad-border: #ddd6cc;
+  --ad-border-soft: #e9e4dc;
+  --ad-border-strong: #8a8279;
+  --ad-disabled: #e7e2da;
+  --ad-accent: #c5050c;
+  --ad-success: #166534;
+  --ad-success-tint: #eaf6ee;
+  --ad-warning: #7a4a00;
+  --ad-warning-tint: #fff4d6;
+  --ad-warn-mark: #b45309;
+  --ad-danger: #b42318;
+  --ad-danger-tint: #fdecea;
+  --ad-danger-hover: #8f1c13;
+  --ad-draft: #d9a520;
+  --ad-info: #1d4e89;
+  --ad-info-tint: #eaf1fa;
+  --ad-manual: #5b3fa8;
+  --ad-manual-tint: #efeafb;
+  --ad-auto: #9d2463;
+  --ad-auto-tint: #fbeaf2;
+  --ad-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ad-radius-sm: 4px;
+  --ad-radius: 6px;
+  --ad-radius-lg: 8px;
+  --ad-shadow-float: 0 4px 16px rgb(28 25 23 / 0.12);
+  --ad-shadow-modal: 0 12px 40px rgb(28 25 23 / 0.25);
+  --ad-rail-w: 13.5rem;
+  --ad-topbar-h: 2.75rem;
+  --ad-gutter: 1.5rem;
+
+  /* The globals.css token names, read by what the console shares with the
+     student pages (the top bar tools, the modal, evidence thumbnails). Inside
+     the console they take the values above, so those join the family. */
+  --color-text-primary: var(--ad-ink);
+  --color-text-secondary: var(--ad-text-2);
+  --color-text-tertiary: var(--ad-text-3);
+  --color-text-info: var(--ad-link);
+  --color-text-warning: var(--ad-warning);
+  --color-background-primary: var(--ad-surface);
+  --color-background-secondary: var(--ad-sunken);
+  --color-background-info: var(--ad-info-tint);
+  --color-background-warning: var(--ad-warning-tint);
+  --color-border-secondary: var(--ad-border);
+  --color-border-tertiary: var(--ad-border-soft);
+  --color-border-control: var(--ad-border-strong);
+  --border-radius-md: var(--ad-radius);
+  --border-radius-lg: var(--ad-radius-lg);
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ad-page);
+  color: var(--ad-ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* A focused control scrolls into view clear of the sticky top bar. Scroll
+   padding only works on the scroller, which is the document. */
+html:has(.ad) {
+  scroll-padding-top: 4rem;
+}
+
+/* ---- Base elements ------------------------------------------------------ */
+/* One focus ring for every control: an ink outline, set off from the control
+   by a 2px gap. The gap shows the surface behind (page, panel, tint or
+   toolbar, all light: ink is 14.7:1 or better on each), so the ring also reads
+   around a filled ink or red button. It is an outline only: a box-shadow here
+   would replace the state bars drawn with one (ad-entry, table rows). */
+:where(.ad) :focus-visible {
+  outline: 2px solid var(--ad-ink);
+  outline-offset: 2px;
+}
+:where(.ad) :where(a) {
+  color: var(--ad-link);
+  text-underline-offset: 2px;
+}
+:where(.ad) :where(h1, h2, h3, h4) {
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+:where(.ad) :where(h2) {
+  font-size: 0.9375rem;
+}
+:where(.ad) :where(h3, h4) {
+  font-size: 0.875rem;
+}
+:where(.ad) :where(p) {
+  margin: 0 0 0.5rem;
+}
+:where(.ad) :where(code, kbd) {
+  font-size: 0.8125rem;
+}
+:where(.ad) :where(summary) {
+  cursor: pointer;
+}
+/* A bare button is the secondary button, so no control is left with the
+   browser's own look. A class or an inline style overrides any of it. */
+:where(.ad) :where(button, .ad-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  padding: 0.1875rem 0.625rem;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: var(--ad-radius);
+  background: var(--ad-surface);
+  color: var(--ad-ink);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+:where(.ad) :where(button, .ad-btn):where(:hover) {
+  background: var(--ad-sunken);
+}
+:where(.ad) :where(button):disabled,
+:where(.ad) :where(.ad-btn)[aria-disabled="true"] {
+  border-color: var(--ad-disabled);
+  background: var(--ad-disabled);
+  color: var(--ad-text-2);
+  cursor: default;
+}
+:where(.ad)
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
+    select,
+    textarea
+  ) {
+  min-height: 1.875rem;
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-surface);
+  color: var(--ad-ink);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  max-width: 100%;
+}
+:where(.ad) :where(textarea) {
+  line-height: 1.45;
+  resize: vertical;
+}
+:where(.ad) :where(input, select, textarea):disabled {
+  background: var(--ad-disabled);
+  color: var(--ad-text-2);
+}
+:where(.ad) :where(input[type="checkbox"], input[type="radio"]) {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--ad-ink);
+}
+:where(.ad) :where(input[type="file"]) {
+  font-family: inherit;
+  font-size: 0.8125rem;
+}
+:where(.ad) ::placeholder {
+  color: var(--ad-text-3);
+  opacity: 1;
+}
+/* Touch screens: 16px inputs so iOS does not zoom on focus, and taller targets. */
+@media (pointer: coarse) {
+  :where(.ad) :where(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+    font-size: 1rem;
+  }
+  :where(.ad) :where(button, .ad-btn) {
+    min-height: 2.25rem;
+  }
+}
+
+/* ---- Shell -------------------------------------------------------------- */
+.ad-skip {
+  position: absolute;
+  left: 0.5rem;
+  top: -4rem;
+  z-index: 100;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--ad-radius);
+  background: var(--ad-ink);
+  color: var(--ad-on-ink);
+  font-weight: 600;
+}
+.ad-skip:focus {
+  top: 0.5rem;
+}
+.ad-body {
+  min-width: 0;
+}
+.ad-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.625rem 0.5rem 1rem;
+  background: var(--ad-page);
+  border-right: 1px solid var(--ad-border);
+  overflow-y: auto;
+}
+.ad-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-height: 1.75rem;
+  padding: 0 0.5rem;
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.ad-brand-name {
+  border-bottom: 3px solid var(--ad-accent);
+  color: var(--ad-ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+/* A small uppercase title over a group: the sections of the rail, a group of
+   fields, a month of weekends. */
+.ad-minititle {
+  margin: 0 0 0.5rem;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ad-rail-title {
+  padding: 0 0.5rem;
+  margin-bottom: 0.125rem;
+  font-size: 0.6875rem;
+}
+.ad-rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ad-rail-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.75rem;
+  padding: 0 0.5rem;
+  border-left: 3px solid transparent;
+  border-radius: var(--ad-radius-sm);
+  color: var(--ad-ink);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+.ad-rail-link:hover {
+  background: var(--ad-sunken);
+}
+.ad-rail-link[aria-current="page"] {
+  border-left-color: var(--ad-accent);
+  background: var(--ad-sunken);
+  font-weight: 600;
+}
+.ad-rail-icon {
+  flex: none;
+  width: 0.9375rem;
+  color: var(--ad-text-2);
+}
+.ad-rail-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ad-rail-count {
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--ad-sunken);
+  color: var(--ad-text-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+}
+.ad-rail-link[aria-current="page"] .ad-rail-count {
+  background: var(--ad-surface);
+}
+.ad-rail-count--warning {
+  background: var(--ad-warning-tint);
+  color: var(--ad-warning);
+}
+.ad-rail-count--danger {
+  background: var(--ad-danger-tint);
+  color: var(--ad-danger);
+}
+.ad-rail-foot {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ad-border);
+}
+/* The button that folds the rail to its icons. Only on a wide screen. */
+.ad-rail-fold {
+  display: none;
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font-weight: 400;
+  text-align: left;
+}
+.ad-nav-toggle,
+.ad-rail-backdrop {
+  display: none;
+}
+.ad-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--ad-topbar-h);
+  padding: 0.375rem var(--ad-gutter);
+  background: var(--ad-surface);
+  border-bottom: 1px solid var(--ad-border);
+}
+.ad-topbar .admin-tools {
+  flex: 1;
+}
+.ad-main {
+  min-width: 0;
+  padding: 1rem var(--ad-gutter) 3rem;
+}
+.ad-main:focus {
+  outline: none;
+}
+.ad-main--form {
+  max-width: 58rem;
+}
+@media (min-width: 960px) {
+  .ad {
+    display: grid;
+    grid-template-columns: var(--ad-rail-w) minmax(0, 1fr);
+  }
+  .ad-rail {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .ad-rail-fold {
+    display: flex;
+  }
+  /* The rail folded to its icons. The labels are hidden from sight only, so
+     every link keeps its name; the group titles become a rule. */
+  .ad:has(.ad-rail--icons) {
+    --ad-rail-w: 3rem;
+  }
+  .ad-rail--icons {
+    overflow-x: hidden;
+  }
+  .ad-rail--icons .ad-rail-label,
+  .ad-rail--icons .ad-rail-count,
+  .ad-rail--icons .ad-brand-role {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .ad-rail--icons .ad-rail-link {
+    justify-content: center;
+    padding: 0;
+    position: relative;
+  }
+  .ad-rail--icons .ad-rail-title {
+    height: 1px;
+    margin: 0 0.25rem 0.25rem;
+    padding: 0;
+    overflow: hidden;
+    background: var(--ad-border);
+    color: transparent;
+  }
+  .ad-rail--icons .ad-brand {
+    justify-content: center;
+    padding: 0;
+  }
+  /* The wordmark shows its first letter. */
+  .ad-rail--icons .ad-brand-name {
+    width: 1ch;
+    overflow: hidden;
+    letter-spacing: 0.5ch;
+  }
+}
+@media (max-width: 959.98px) {
+  .ad {
+    --ad-gutter: 1rem;
+  }
+  .ad-nav-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 0.4375rem;
+    left: 0.75rem;
+    z-index: 45;
+  }
+  .ad-topbar {
+    padding-left: 6rem;
+  }
+  .ad-rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(18rem, 86vw);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+  .ad-rail--open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: var(--ad-shadow-modal);
+  }
+  .ad-rail-link {
+    min-height: 2.5rem;
+    font-size: 0.9375rem;
+  }
+  .ad-rail-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgb(28 25 23 / 0.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-rail {
+    transition: none;
+  }
+}
+
+/* ---- Page header -------------------------------------------------------- */
+.ad-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+.ad-back:hover {
+  text-decoration: underline;
+}
+.ad-pagehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.875rem;
+}
+.ad-pagehead-text {
+  min-width: 0;
+}
+.ad-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.ad-description {
+  max-width: 46rem;
+  margin: 0.125rem 0 0;
+  color: var(--ad-text-2);
+}
+.ad-pagehead-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+.ad-btn--md {
+  min-height: 2rem;
+  padding: 0.25rem 0.875rem;
+}
+.ad-btn--primary {
+  border-color: var(--ad-ink);
+  background: var(--ad-ink);
+  color: var(--ad-on-ink);
+}
+.ad-btn--primary:hover {
+  border-color: var(--ad-ink-hover);
+  background: var(--ad-ink-hover);
+}
+.ad-btn--quiet {
+  border-color: transparent;
+  background: transparent;
+}
+.ad-btn--danger {
+  border-color: var(--ad-danger);
+  color: var(--ad-danger);
+}
+.ad-btn--danger:hover {
+  background: var(--ad-danger-tint);
+}
+/* Destructive but routine: the red action that repeats on every row. */
+.ad-btn--quiet-danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ad-danger);
+}
+.ad-btn--quiet-danger:hover {
+  background: var(--ad-danger-tint);
+}
+.ad-btn--quiet-danger:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ad-text-3);
+}
+/* The one filled red button: the confirm step of something destructive. */
+.ad-btn--danger-fill {
+  border-color: var(--ad-danger);
+  background: var(--ad-danger);
+  color: var(--ad-on-ink);
+}
+.ad-btn--danger-fill:hover {
+  background: var(--ad-danger-hover);
+}
+/* An icon alone. Give it an aria-label. */
+.ad-btn--icon {
+  width: 1.75rem;
+  padding: 0;
+}
+/* A button that reads as a link in a line of text. Its box is 24px tall so
+   it is a fair target; the text keeps the size of the line it sits in. */
+.ad-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0;
+  vertical-align: middle;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--ad-link);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ad-linkbtn:hover {
+  background: none;
+}
+.ad-linkbtn--danger {
+  color: var(--ad-danger);
+}
+.ad-linkbtn:disabled {
+  border: 0;
+  background: none;
+  color: var(--ad-text-2);
+  text-decoration: none;
+}
+
+/* ---- Panels and sections ------------------------------------------------ */
+.ad-panel {
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  padding: 0.75rem 1rem;
+  break-inside: avoid;
+}
+/* A panel whose content runs edge to edge (a table). It scrolls sideways
+   inside itself. It is positioned so that it is the containing block of the
+   visually hidden text in its cells: otherwise that text is laid out against
+   the page, past the right edge, and the page scrolls sideways with it. */
+.ad-panel--flush {
+  position: relative;
+  padding: 0;
+  overflow-x: auto;
+}
+/* Any other box whose content may be wider than it (a table in a padded
+   panel, a grid). Positioned for the same reason. */
+.ad-scroll-x {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ad-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.ad-panel--flush > .ad-panel-head {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--ad-border);
+}
+.ad-panel-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.ad-panel-aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+}
+/* A panel that is one line: its heading, a line of text, and a control on the
+   right. What a card with nothing in it collapses to. */
+.ad-panel--line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.ad-panel-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--ad-text-2);
+}
+.ad-panel-line-end {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-left: auto;
+}
+/* A padded row inside a flush panel, which has no padding of its own: a note
+   above the table (`--bottom` rules it off), the actions under it (`--top`). */
+.ad-panel-pad {
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+.ad-panel-pad--top {
+  border-top: 1px solid var(--ad-border);
+}
+.ad-panel-pad--bottom {
+  border-bottom: 1px solid var(--ad-border);
+}
+/* A heading with a quiet line beside it. Add `ad-row--between` to push the
+   line to the right. */
+.ad-subhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.75rem;
+  margin-bottom: 0.375rem;
+}
+.ad-subhead > :where(h2, h3, h4) {
+  margin: 0;
+}
+/* A sub-heading that starts a new part of a panel: air and a rule above it.
+   Also on a bare heading or block. */
+.ad-subhead--ruled {
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--ad-border-soft);
+}
+/* Vertical rhythm between the blocks of a page. */
+.ad-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.ad-stack > * {
+  min-width: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.ad-stack--tight {
+  gap: 0.375rem;
+}
+.ad-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ad-row--between {
+  justify-content: space-between;
+}
+/* Fields with the button that acts on them, on one baseline. */
+.ad-row--end {
+  align-items: flex-end;
+}
+.ad-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+/* Balanced columns for a run of panels of uneven height. */
+.ad-masonry {
+  column-width: 22rem;
+  column-gap: 0.75rem;
+}
+.ad-masonry > * {
+  margin-bottom: 0.75rem;
+}
+
+/* A section that starts closed. `ad-disclosure--panel` gives it the panel look. */
+.ad-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.75rem;
+  font-weight: 600;
+  list-style: none;
+}
+.ad-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.ad-disclosure > summary::before {
+  content: "";
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid var(--ad-text-2);
+  border-bottom: 2px solid var(--ad-text-2);
+  transform: rotate(-45deg);
+  transition: transform 0.12s ease;
+}
+.ad-disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+.ad-disclosure-summary {
+  margin-left: auto;
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-align: right;
+}
+.ad-disclosure--panel {
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+}
+.ad-disclosure--panel > summary {
+  padding: 0.375rem 1rem;
+}
+.ad-disclosure--panel > .ad-disclosure-body {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--ad-border);
+}
+.ad-disclosure-body {
+  padding-top: 0.5rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-disclosure > summary::before {
+    transition: none;
+  }
+}
+
+/* ---- Notices, pills, status --------------------------------------------- */
+.ad-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.375rem 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--ad-info);
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-info-tint);
+  color: var(--ad-ink);
+}
+.ad-notice-icon {
+  flex: none;
+  margin-top: 0.1875rem;
+  color: var(--ad-info);
+}
+/* The text keeps a readable measure: when the notice is too narrow for the
+   text and the action side by side, the action wraps under the text. */
+.ad-notice-body {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.ad-notice-body > :last-child {
+  margin-bottom: 0;
+}
+.ad-notice-title {
+  font-weight: 600;
+}
+.ad-notice--success {
+  border-left-color: var(--ad-success);
+  background: var(--ad-success-tint);
+}
+.ad-notice--success .ad-notice-icon {
+  color: var(--ad-success);
+}
+.ad-notice--warning {
+  border-left-color: var(--ad-warn-mark);
+  background: var(--ad-warning-tint);
+}
+.ad-notice--warning .ad-notice-icon {
+  color: var(--ad-warning);
+}
+.ad-notice--danger {
+  border-left-color: var(--ad-danger);
+  background: var(--ad-danger-tint);
+}
+.ad-notice--danger .ad-notice-icon {
+  color: var(--ad-danger);
+}
+
+.ad-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: var(--ad-sunken);
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.ad-pill--success {
+  background: var(--ad-success-tint);
+  color: var(--ad-success);
+}
+.ad-pill--warning {
+  background: var(--ad-warning-tint);
+  color: var(--ad-warning);
+}
+.ad-pill--danger {
+  background: var(--ad-danger-tint);
+  color: var(--ad-danger);
+}
+.ad-pill--info {
+  background: var(--ad-info-tint);
+  color: var(--ad-info);
+}
+.ad-pill--manual {
+  background: var(--ad-manual-tint);
+  color: var(--ad-manual);
+}
+.ad-pill--auto {
+  background: var(--ad-auto-tint);
+  color: var(--ad-auto);
+}
+
+/* An icon and one line: whether a thing is fine. Never colour alone. */
+.ad-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+.ad-status--ok > svg {
+  color: var(--ad-success);
+}
+.ad-status--warning > svg {
+  color: var(--ad-warn-mark);
+}
+.ad-status--danger > svg {
+  color: var(--ad-danger);
+}
+
+/* An entry in a list outside a table: a bar on its leading edge, and a tint
+   once it has a state worth noticing. A pill or status in it says the state. */
+.ad-entry {
+  border-radius: var(--ad-radius-sm);
+  box-shadow: inset 3px 0 0 var(--ad-border);
+}
+.ad-entry--danger {
+  background: var(--ad-danger-tint);
+  box-shadow: inset 3px 0 0 var(--ad-danger);
+}
+.ad-entry--warning {
+  background: var(--ad-warning-tint);
+  box-shadow: inset 3px 0 0 var(--ad-warn-mark);
+}
+.ad-entry--success {
+  background: var(--ad-success-tint);
+  box-shadow: inset 3px 0 0 var(--ad-success);
+}
+
+.ad-empty {
+  padding: 1rem;
+  color: var(--ad-text-2);
+  text-align: center;
+}
+
+/* ---- Tables ------------------------------------------------------------- */
+/* The one data table. Under 720px each row stacks into a labelled block, the
+   column name coming from the cell's data-label. */
+.ad-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+.ad-table :where(th) {
+  padding: 0.375rem 0.625rem;
+  background: var(--ad-sunken);
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.ad-table :where(td) {
+  padding: 0.375rem 0.625rem;
+  border-top: 1px solid var(--ad-border-soft);
+  vertical-align: top;
+}
+.ad-table--middle :where(td) {
+  vertical-align: middle;
+}
+/* A table inside a padded panel: no header band, cells flush with the text. */
+.ad-table--plain :where(th) {
+  background: none;
+}
+.ad-table--plain :where(th, td) {
+  padding-left: 0;
+}
+.ad-table--zebra :where(tbody tr:nth-child(even)) {
+  background: var(--ad-zebra);
+}
+/* The table rules here are each one class, in this order: a later one wins,
+   and so does any single class in a page stylesheet. */
+:where(.ad-table) .ad-num {
+  text-align: right;
+}
+:where(.ad-table) .ad-center {
+  text-align: center;
+}
+/* The column of row checkboxes. */
+.ad-check-col {
+  width: 2rem;
+}
+/* A lone checkbox in a cell, in a 24px target. */
+.ad-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  cursor: pointer;
+}
+/* A row that needs attention: a tint and a bar on its leading edge. A row
+   that is both late and resolved is the resolved tint with the late bar. */
+.ad-tr--danger {
+  background: var(--ad-danger-tint);
+  box-shadow: inset 3px 0 0 var(--ad-danger);
+}
+.ad-tr--success {
+  background: var(--ad-success-tint);
+  box-shadow: inset 3px 0 0 var(--ad-success);
+}
+.ad-tr--danger.ad-tr--success {
+  box-shadow: inset 3px 0 0 var(--ad-danger);
+}
+.ad-table--hover :where(tbody tr:hover) {
+  background: var(--ad-sunken);
+}
+/* A heading row that splits a table into sections. */
+.ad-tr-group :where(th) {
+  background: var(--ad-surface);
+  border-top: 1px solid var(--ad-border);
+  color: var(--ad-ink);
+  font-size: 0.8125rem;
+}
+/* A column heading that sorts: a button that reads as the heading's own text.
+   `aria-sort` goes on the th. */
+.ad-sortbtn {
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+.ad-sortbtn:hover {
+  background: none;
+  color: var(--ad-ink);
+}
+@media (max-width: 719.98px) {
+  .ad-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .ad-table--stack,
+  .ad-table--stack tbody,
+  .ad-table--stack tr,
+  .ad-table--stack td {
+    display: block;
+  }
+  .ad-table--stack tbody tr {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--ad-border);
+  }
+  .ad-table--stack td {
+    padding: 0.125rem 0;
+    border: 0;
+  }
+  .ad-table--stack .ad-num,
+  .ad-table--stack .ad-center {
+    text-align: left;
+  }
+  .ad-table--stack td[data-label]::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 6.5rem;
+    padding-right: 0.5rem;
+    color: var(--ad-text-2);
+    font-size: 0.75rem;
+  }
+}
+
+/* The filter and action row above a table: filters left, counts and bulk
+   actions pushed right with `ad-toolbar-end`. */
+.ad-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--ad-sunken);
+  border-bottom: 1px solid var(--ad-border);
+  font-size: 0.8125rem;
+}
+.ad-toolbar-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-left: auto;
+}
+.ad-toolbar :where(label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--ad-text-2);
+}
+
+/* ---- Figures ------------------------------------------------------------ */
+/* A row of linked numbers. One border around the strip, hairlines between. */
+.ad-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  background: var(--ad-border);
+}
+.ad-stat {
+  display: block;
+  padding: 0.5rem 0.875rem;
+  background: var(--ad-surface);
+  color: inherit;
+  text-decoration: none;
+}
+a.ad-stat:hover {
+  background: var(--ad-zebra);
+}
+a.ad-stat:focus-visible {
+  outline-offset: -2px;
+}
+.ad-stat-label {
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.ad-stat-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.ad-stat-of {
+  color: var(--ad-text-3);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.ad-stat-sub {
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+}
+.ad-stat-sub--warning {
+  color: var(--ad-warning);
+}
+.ad-stat-sub--danger {
+  color: var(--ad-danger);
+}
+
+/* A bar: the track, and one or more fills laid along it. */
+.ad-bar {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ad-sunken);
+}
+.ad-bar--thin {
+  height: 0.25rem;
+}
+.ad-bar-fill {
+  background: var(--ad-info);
+}
+.ad-bar-fill--draft {
+  background: var(--ad-draft);
+}
+.ad-bar-fill--rest {
+  background: var(--ad-border);
+}
+.ad-bar-fill--danger {
+  background: var(--ad-danger);
+}
+.ad-bar-fill--warning {
+  background: var(--ad-warn-mark);
+}
+
+/* A run of days as small bars (the Spark component); the last one, today, is
+   marked. */
+.ad-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 1.75rem;
+}
+.ad-spark > * {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--ad-border);
+}
+.ad-spark > .ad-spark-today {
+  background: var(--ad-info);
+}
+
+/* ---- Forms -------------------------------------------------------------- */
+.ad-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+.ad-label {
+  color: var(--ad-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.ad-help {
+  margin: 0;
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+}
+.ad-error {
+  margin: 0;
+  color: var(--ad-danger);
+  font-size: 0.8125rem;
+}
+.ad-input--block {
+  width: 100%;
+}
+/* A group of controls under one legend, without the frame a browser draws. */
+.ad-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ad-fieldset > legend {
+  padding: 0;
+}
+.ad-input--mono {
+  font-family: var(--ad-mono);
+}
+/* Fields side by side where there is room. */
+.ad-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+/* A checkbox or radio with its label and an optional line under it. */
+.ad-check {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0 0.5rem;
+  align-items: start;
+}
+.ad-check > input {
+  margin-top: 0.1875rem;
+}
+.ad-check-help {
+  grid-column: 2;
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+}
+/* One setting: what it is on the left, its control on the right. Rows in a
+   run are ruled apart. */
+.ad-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem 1rem;
+  padding: 0.5rem 0;
+}
+.ad-setting + .ad-setting {
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-setting-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.ad-setting-name {
+  font-weight: 600;
+}
+.ad-setting-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* A choice between a few views. Buttons with aria-pressed, links with
+   aria-current, or tabs with aria-selected. */
+.ad-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--ad-radius);
+  background: var(--ad-sunken);
+}
+.ad-seg > :where(button, a) {
+  min-height: 1.5rem;
+  padding: 0.0625rem 0.625rem;
+  border: 0;
+  border-radius: var(--ad-radius-sm);
+  background: transparent;
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.ad-seg > :where([aria-pressed="true"], [aria-current], [aria-selected="true"]) {
+  background: var(--ad-surface);
+  color: var(--ad-ink);
+  box-shadow: 0 0 0 1px var(--ad-border);
+}
+
+/* A term with its value: label above, value under, in as many columns as fit. */
+.ad-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+.ad-dl dt {
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+}
+.ad-dl dd {
+  margin: 0;
+}
+
+/* ---- Floating things ---------------------------------------------------- */
+/* A menu or popover under the control that opened it. Its parent positions it. */
+.ad-menu {
+  z-index: 30;
+  min-width: 11rem;
+  padding: 0.25rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+  background: var(--ad-surface);
+  box-shadow: var(--ad-shadow-float);
+}
+.ad-menu-item {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 1.75rem;
+  padding: 0.1875rem 0.5rem;
+  border: 0;
+  border-radius: var(--ad-radius-sm);
+  background: transparent;
+  color: var(--ad-ink);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-align: left;
+  text-decoration: none;
+}
+/* Placed under the control that opened it, from its right edge (`--start`:
+   from its left). The parent is `position: relative`. */
+.ad-menu--below {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+}
+.ad-menu--start {
+  right: auto;
+  left: 0;
+}
+.ad-menu-item:hover,
+.ad-menu-item[aria-current],
+.ad-menu-item[aria-selected="true"] {
+  background: var(--ad-sunken);
+}
+.ad-menu-item--danger {
+  color: var(--ad-danger);
+}
+/* A pill that is a button: a filter that can be switched, a tag that can be removed. */
+.ad-chip {
+  min-height: 1.5rem;
+  padding: 0.0625rem 0.625rem;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: 999px;
+  background: var(--ad-surface);
+  color: var(--ad-ink);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.ad-chip[aria-pressed="true"] {
+  border-color: var(--ad-ink);
+  background: var(--ad-ink);
+  color: var(--ad-on-ink);
+}
+/* The buttons that end a form or a dialog: the primary first, then the rest. */
+.ad-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.ad-actions--end {
+  justify-content: flex-end;
+}
+/* Text to copy or read exactly: a link, a token, a pasted block. */
+.ad-code {
+  display: block;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-sunken);
+  font-family: var(--ad-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Utilities ---------------------------------------------------------- */
+.ad-muted {
+  color: var(--ad-text-2);
+}
+.ad-faint {
+  color: var(--ad-text-3);
+}
+.ad-small {
+  font-size: 0.75rem;
+}
+.ad-strong {
+  font-weight: 600;
+}
+.ad-num {
+  font-variant-numeric: tabular-nums;
+}
+.ad-nowrap {
+  white-space: nowrap;
+}
+.ad-prewrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ad-struck {
+  color: var(--ad-text-3);
+  text-decoration: line-through;
+}
+/* The address under a name. */
+.ad-email {
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.ad-danger-text {
+  color: var(--ad-danger);
+}
+.ad-warning-text {
+  color: var(--ad-warning);
+}
+.ad-success-text {
+  color: var(--ad-success);
+}
+.ad-list-reset {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A plain bulleted list inside a panel or a notice. */
+.ad-bullets {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+/* The same list when it can run long: it scrolls inside its own box. */
+.ad-bullets--scroll {
+  max-height: 12.5rem;
+  overflow-y: auto;
+}
+/* Rows of a short list inside a panel, ruled apart. */
+.ad-list > * {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3125rem 0;
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-list > :first-child {
+  border-top: 0;
+}
+.ad-list-end {
+  margin-left: auto;
+  text-align: right;
+}
+/* A target of an in-page link: the scroll padding on the document clears the
+   top bar; this adds a little air. */
+.ad-anchor {
+  scroll-margin-top: 0.75rem;
+}
+.ad-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
 import { listGroups, getDefaultAutoAssignEnabled } from "@/lib/groups/data";
 import { positionOptions } from "@/lib/positions/data";
 import { workingTermId } from "@/lib/terms/working";
@@ -8,8 +8,11 @@ import { GroupWindowsTable } from "@/components/admin/GroupWindowsTable";
 import { DefaultAssignmentPanel } from "@/components/admin/DefaultAssignmentPanel";
 import { StudentAssigner } from "@/components/admin/StudentAssigner";
 import { PopularShiftsPanel } from "@/components/admin/PopularShiftsPanel";
-import { Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Disclosure, PageSettings } from "@/components/admin/ui";
 import { getHighDemandMarksEnabled } from "@/lib/settings";
+
+export const metadata: Metadata = { title: "Groups and windows" };
 
 /**
  * Admin: groups & form windows (PLAN §13). Define groups, schedule their
@@ -43,22 +46,27 @@ export default async function AdminGroupsPage() {
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
 
   return (
-    <Page width="full">
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>Groups &amp; form windows</h1>
-      <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        A student can only open the availability form if they&apos;re in a group whose response
-        window is open. Students with no group are denied. Schedule a group&apos;s window below,
-        then assign students. Enable default assignment to sweep all ungrouped employees into the
-        group marked <strong>default</strong>.
-      </p>
+    <AdminPage title="Groups and windows">
+      <div className="ad-stack">
+        <Disclosure title="About this page">
+          <p className="ad-su-prose">
+            A student can only open the availability form if they&apos;re in a group whose response
+            window is open. Students with no group are denied. Schedule a group&apos;s window below,
+            then assign students. Enable default assignment to sweep all ungrouped employees into
+            the group marked <strong>default</strong>.
+          </p>
+        </Disclosure>
 
-      <GroupWindowsTable groups={groupViews} />
-      <PopularShiftsPanel initialEnabled={highDemandMarks} />
-      <DefaultAssignmentPanel initialEnabled={autoAssignEnabled} />
-      <StudentAssigner groups={groupOptions} positions={positions} />
-    </Page>
+        <PageSettings
+          summary={`Popular shift marks ${highDemandMarks ? "shown" : "hidden"} · Default assignment ${autoAssignEnabled ? "on" : "off"}`}
+        >
+          <PopularShiftsPanel initialEnabled={highDemandMarks} />
+          <DefaultAssignmentPanel initialEnabled={autoAssignEnabled} />
+        </PageSettings>
+
+        <GroupWindowsTable groups={groupViews} />
+        <StudentAssigner groups={groupOptions} positions={positions} />
+      </div>
+    </AdminPage>
   );
 }

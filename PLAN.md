@@ -47,7 +47,7 @@
   complete (the nightly backup cron is installed). The batch schedule email is
   removed (0.99, roadmap 6.1); a per-student, button-only schedule email replaces it
   (1.34). Next: the "Still open" loose ends.
-- **Version:** 1.65
+- **Version:** 1.67
 - **Last updated:** 2026-11-25
 - **Owner:** Student Supervisor (scheduler) @ GDEC
 
@@ -234,7 +234,7 @@ but `/change-requests` itself and the admin queue stay reachable.
   through the next three weeks, grouped by week, so the scheduler plans around them. Each
   entry carries a **resolved** checkbox the scheduler ticks once the trip is worked into
   the schedule (also on the per-student page's travel card); this review marker is
-  independent of the cutoff-derived `excused` flag. The hub's "Needs attention" panel
+  independent of the cutoff-derived `excused` flag. The overview's "Needs attention" panel
   warns about any unresolved trip **starting within two days** (§10b).
 - **Schedule-ready email** — **removed (0.99, roadmap 6.1; decided 2026-07-30)**. The
   `/admin/schedule-email` batch send (pick a group, preview the on-roster + submitted +
@@ -389,7 +389,7 @@ struck-through row on the per-student grid (§10a) showing the hours originally 
 cells that were never picked can't be selected, and a picked cell is clickable **only**
 to clear it, which removes it from the student's rows and the internal copy alike. The
 submission carries an `orphaned_selection` flag ("Shift removed") naming the dead shifts,
-which raises a **danger** alert on the hub and a red pill on the response list.
+which raises a **danger** alert on the overview and a red pill on the response list.
 
 A position with **no live blocks at all** (a ghost resolution creates one before its
 shifts exist) is *not* treated as orphaning everything: the carry-over is still pending,
@@ -528,11 +528,12 @@ earliest-starting block of the day-type; **Close** = latest-ending block. Notati
   (`AvailabilityForm` `Grid`) and the admin per-student grid (§10a
   `PrefGridCalculator`, which absorbed the old `PrefTable`) — so the non-adjacency is
   evident at a glance. Expressed in each grid's own styling
-  convention: the student grid takes an `avail-grid--weekend` table variant whose
-  column rules sit with the other `avail-*` classes in `globals.css` (positional
-  selectors, so they follow the column order), the admin grid a small `weekSplit`
-  per-column inline style; both amount to extra padding on the Sun side plus a
-  `borderLeft` on the Sat column, in that grid's border colour.
+  convention: the student grid takes an `sf-grid--weekend` table variant whose
+  column rules sit with the other grid classes in `student.css` (positional
+  selectors, so they follow the column order), the admin grid a per-column class
+  (`weekSplitClass` gives `ad-gr-sun` / `ad-gr-sat`, styled in `admin-grid.css`); both
+  amount to extra padding on the Sun side plus a left border on the Sat column, in
+  that grid's border colour.
   No copy, no model change, and the weekday grid is untouched. (Roadmap 1.8.)
 
 ### 7a. The canonical fortnight calendar (v1.15, authoritative)
@@ -901,8 +902,8 @@ Design and phases: `docs/semester-domains-plan.md`.
 
 ## 10. Admin View / Outputs
 
-- **Student finder:** ✅ for admins, every page's header carries a search box on the
-  right (`/` to focus) that filters the on-roster names and emails client-side and jumps
+- **Student finder:** ✅ for admins, the top bar of every page carries a search box
+  (`/` to focus) that filters the on-roster names and emails client-side and jumps
   to the student's page. Students never receive the roster (1.37).
 - **Response list:** all submissions, sortable/searchable, **fast prev/next
   navigation** between students and back to the full list (hard requirement). **Group +
@@ -967,7 +968,7 @@ Design and phases: `docs/semester-domains-plan.md`.
   selections, flags, extracurricular-file rows, and travel requests), every relayed proof
   file is best-effort moved to the Drive trash (1.42), and the running sheet is
   rebuilt so the row drops out. The **roster record stays** — only the response is gone.
-- **Sign-in analytics:** ✅ `/admin/analytics` (linked from the hub) reports who on the
+- **Sign-in analytics:** ✅ `/admin/analytics` (in the rail under Tools) reports who on the
   roster has logged in, who has not, and how recently, from a **`students.last_seen_at`**
   stamp written on any authenticated activity (see §11). Login is distinct from a form
   submission: a null stamp means the person has never signed in at all. The surface shows
@@ -1088,6 +1089,40 @@ with no position gets a notice instead of the calculator. Layout (see wireframe)
   was last authenticated (the `students.last_seen_at` stamp, §11) as a plain timestamp,
   or a red **"Never logged in"**. It is distinct from the response timestamps: it tracks
   whether they have signed in at all, not what they did in the form.
+
+### 10b. The admin console: overview, navigation, and where settings live (1.67)
+- **One shell.** Every admin page renders in the same frame: a section rail on the
+  left, a top bar that stays in view (student finder, semester switcher, the signed-in
+  email and Sign out), then the page with one heading. The rail groups every admin
+  page under **Daily** (Overview, Responses, Missing responses, Change requests,
+  Upcoming travel, Weekend closes), **Schedule** (Schedule, W2W plan, W2W positions),
+  **Setup** (Groups and windows, Positions and shifts, Roster import), **Settings**
+  (Semester, Email, Google Drive) and **Tools** (Sign-in analytics, Test accounts),
+  with a link to the student home at its foot. A student's page counts as Responses.
+  Under 960px the rail is a drawer behind a Menu button; on a wide screen it can fold
+  to icons (a student's page starts folded). The laptop (1280px) is the leading
+  viewport; phones stay usable (tables stack, the drawer).
+- **The overview (`/admin`)** answers "what needs me today?" first. **Needs
+  attention** lists only what is wrong, most urgent first (six shown, the rest under
+  "Show N more"), beside **Response progress** (the submitted / draft / not started
+  bar, the per-group table, and **Students to follow up** with copy-emails buttons).
+  Under them the daily queues are one strip of linked figures (To review, Change
+  requests, Flagged, Travel, and Shift lead closes once an inventory exists). **Least
+  staffed shifts**, **Recent submissions** and **System status** sit closed under
+  "More". The rail shows live counts on this page only. What counts as a problem, its
+  severity and its order are unchanged from 0.71 to 0.93 (see `docs/architecture.md`,
+  "Admin overview").
+- **Where settings live.** A filter that changes what a table shows is in that
+  table's toolbar. A page's own settings are in one closed section named **Settings**
+  above the page's content, with a one-line summary of the current values (change
+  requests, weekend closes, groups, schedule, upcoming travel). An action sits beside
+  the thing it acts on. A page links to a setting that lives on another page rather
+  than repeating it. The pages that are nothing but settings (Semester, Email, Google
+  Drive, Roster import, Test accounts) are open panels of setting rows.
+- **Accessibility:** WCAG 2.2 AA by construction, the same approach as the student
+  pages (1.64): tested colour pairs, one focus ring, a skip link, a title and one
+  heading per page, state never by colour alone, dialogs that hold focus and give it
+  back.
 
 ---
 
@@ -1237,7 +1272,7 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
 - The roster `Email` column **must equal the Google sign-in email** (`netid@wisc.edu`
   form), not a `first.last@wisc.edu` alias, or the lookup silently misses. **Confirmed:
   PC stores the NetID form.** Import lowercases and trims but cannot repair an alias, so
-  this stays a per-import check, not a solved problem: the admin hub warns on
+  this stays a per-import check, not a solved problem: the admin overview warns on
   alias-looking and non-`wisc.edu` roster emails (§10b, 0.89/0.91), and it leads the
   pre-send checklist in `README.md`.
 
@@ -1275,7 +1310,7 @@ training walkthroughs is `/admin/test-users` (§18b), which is a different mecha
     rule). **The periodic touch is not built** — nothing exercises the grant over an
     idle summer, so a long quiet stretch could expire it. Failure *detection* does ship
     (`drive_last_error_at` vs `drive_last_ok_at` raises the `drive-failing` alert on the
-    admin hub — §10b), but that fires after the fact; a keepalive ping is still open.
+    admin overview — §10b), but that fires after the fact; a keepalive ping is still open.
   - **Destination = a department-owned Shared Drive** folder if possible, so the
     pipeline survives staff turnover instead of dying with the admin's account.
   - **Folder layout (`DRIVE_FOLDER_ID` = root):** the **root holds the running
@@ -1453,7 +1488,8 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
   client — see docs/deploy.md).
 - **Monitoring:** ✅ `GET /api/health` (unauthenticated DB round-trip probe) is both the
   compose healthcheck and the external monitor's target. A live **UptimeRobot** status
-  page watches it; the admin hub links to it, and `README.md` carries its badge.
+  page watches it; the admin overview's System status panel links to it, and
+  `README.md` carries its badge.
 - **Ops backlog: empty.** The last outstanding item (the backup cron) was installed
   2026-07-30; verification commands are in `docs/deploy.md` § Backups.
 
@@ -1464,7 +1500,7 @@ signal `/me`, the admin dashboard, and non-response tracking all key off. Concre
 1. **Roster email key** — ✅ *resolved (v0.9):* the tracker's `Email` column stores the
    `netid@wisc.edu` form, which is what Google returns at sign-in. Aliases remain an
    **operational** risk per import (a hand-typed `first.last@wisc.edu` silently never
-   matches), so the admin hub warns on alias-shaped and non-`wisc.edu` roster emails and
+   matches), so the admin overview warns on alias-shaped and non-`wisc.edu` roster emails and
    the check leads the `README.md` pre-send list — §11.
 2. **Position ↔ title mapping** — ✅ *resolved (v0.63):* the mapping lives in the
    `roster_title_mappings` table, seeded once from the code fixture; unmapped titles
@@ -1684,6 +1720,39 @@ live in `README.md` § "Before you start" as a pre-send checklist.
 ---
 
 ## Changelog
+- **1.67 (2026-11-25)** — **The admin console has a new look and one layout.**
+  Presentation only: no loader, query, server action, form field name, auth check or
+  stored data changed, and there is no migration. Every admin page renders in a new
+  shell, `components/admin/AdminPage.tsx`: the section rail (`AdminNav`, grouped
+  Daily / Schedule / Setup / Settings / Tools, a drawer under 960px, foldable to icons
+  on a wide screen), a top bar that stays in view, and the page's one heading. The
+  breadcrumb header `AppHeader` became `components/AdminTools.tsx` (student finder,
+  semester switcher, the other-semester banner, and in the console the signed-in
+  email and Sign out). The styles are `app/admin.css` plus one file per area, scoped
+  to the shell's `.ad` root, in the same family as the student pages at tighter
+  metrics with the laptop (1280px) leading; `components/admin/ui.tsx` is now
+  class-based primitives, and `components/ui.tsx` and the old `globals.css` layout
+  classes are gone. Accessibility is WCAG 2.2 AA by construction (tested colour
+  pairs, one focus ring, a skip link, a title and one heading per page, state never by
+  colour alone), and the shared `Modal` now moves focus in, keeps Tab inside and
+  returns focus to what opened it, on the student pages too. What a scheduler will
+  notice beyond the styling: **settings are in one place per page** (view filters in
+  the table's toolbar, a closed "Settings" section with a one-line summary above the
+  content, actions beside what they act on); the overview leads with Needs attention
+  (six shown, the rest behind "Show N more") beside Response progress, the queues are
+  one strip, and Least staffed shifts, Recent submissions and System status are
+  closed under "More"; the lists share one toolbar-and-table pattern and Missing
+  responses is a table with a section per bucket; a student's page has a fixed
+  three-column order with Student details, coverage and the legend closed and the
+  rail folded; the schedule page uses the full width with its settings, run history
+  and compare closed; a position is a closed card that opens when it has warnings.
+  Every admin tab now has its own title, and page headings were aligned with the rail:
+  "Admin" is "Overview", "Non-responses" is "Missing responses", "SL weekend closes"
+  is "Weekend closes", "Google Drive connection" is "Google Drive", "Groups & form
+  windows" is "Groups and windows", "Positions and shift blocks" is "Positions and
+  shifts". The system-message preview on the Semester page now shows the notice
+  students actually see. See §10b and "Admin design system" in
+  `docs/architecture.md`.
 - **1.65 (2026-11-25)** — **Travel can stay open after the form closes.** A new
   per-term toggle on the Semester page (`/admin/terms`), "Keep travel open after the
   form closes" (`terms.travel_after_close`, migration `0056`, default off). With it on,

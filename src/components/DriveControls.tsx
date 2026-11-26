@@ -2,15 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { testDriveRelay, disconnectDrive } from "@/lib/drive/actions";
-import { primaryButtonStyle } from "@/components/ui";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleCheck, faCircleExclamation } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
+
+// Rendered only on /admin/drive, so it wears the console's classes (app/admin.css)
+// directly: this folder may not import the console's components.
 
 export function DriveControls({ connected }: { connected: boolean }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   if (!connected) {
+    // A plain anchor: this is an API route that redirects to Google.
     return (
-      <a href="/api/drive/connect" style={primaryButtonStyle}>
+      <a href="/api/drive/connect" className="ad-btn ad-btn--primary ad-btn--md">
         Connect Google Drive
       </a>
     );
@@ -32,22 +37,29 @@ export function DriveControls({ connected }: { connected: boolean }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", gap: 10 }}>
-        <button type="button" onClick={runTest} disabled={pending}>
+    <div className="ad-stack ad-stack--tight">
+      <div className="ad-row">
+        <button type="button" className="ad-btn" onClick={runTest} disabled={pending}>
           Test connection
         </button>
-        <button type="button" onClick={disconnect} disabled={pending} style={{ color: "#b00" }}>
-          Disconnect
-        </button>
-        <a href="/api/drive/connect" style={{ alignSelf: "center", fontSize: 14 }}>
+        <a href="/api/drive/connect" className="ad-btn">
           Reconnect
         </a>
+        <button
+          type="button"
+          className="ad-btn ad-btn--danger"
+          onClick={disconnect}
+          disabled={pending}
+        >
+          Disconnect
+        </button>
       </div>
       {result && (
-        <p role="status" style={{ color: result.ok ? "#196127" : "#b00", margin: 0, fontSize: 14 }}>
-          {result.ok ? "✓ " : "✗ "}
-          {result.text}
+        <p role={result.ok ? "status" : "alert"}>
+          <span className={`ad-status ad-status--${result.ok ? "ok" : "danger"}`}>
+            <FontAwesomeIcon icon={result.ok ? faCircleCheck : faCircleExclamation} aria-hidden />
+            <span>{result.text}</span>
+          </span>
         </p>
       )}
     </div>

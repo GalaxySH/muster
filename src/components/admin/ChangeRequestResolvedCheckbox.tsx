@@ -33,7 +33,7 @@ export function ChangeRequestResolvedCheckbox({
   }
 
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, whiteSpace: "nowrap", cursor: "pointer" }}>
+    <label className="ad-ls-check">
       <input
         type="checkbox"
         checked={status === "resolved"}

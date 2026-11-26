@@ -1,0 +1,350 @@
+/* The list pages: responses, missing responses, change requests, travel, analytics. Same convention as admin.css: one `ad-` prefixed class per rule;
+   this file's own are `ad-ls-`. */
+
+/* ---- The shared list ---------------------------------------------------- */
+/* The toolbar's filter controls flow as items of the toolbar itself. */
+.ad-ls-filters {
+  display: contents;
+}
+/* The search box takes the room the filters leave. */
+.ad-ls-search {
+  flex: 1 1 16rem;
+  max-width: 26rem;
+}
+.ad-ls-search input {
+  flex: 1;
+  min-width: 10rem;
+}
+.ad-ls-count {
+  color: var(--ad-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A row that opens the student's page when clicked. */
+.ad-ls-rowlink {
+  cursor: pointer;
+}
+/* The name line of a row: the name, then its small marks, on one line. A long
+   name is cut with an ellipsis (its title has it whole) so the marks never
+   drop under it and every row is two lines tall. Stacked on a phone it wraps. */
+.ad-ls-who {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem 0.375rem;
+  max-width: 20rem;
+}
+.ad-ls-name {
+  font-weight: 600;
+}
+.ad-ls-name--clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 719.98px) {
+  .ad-ls-who {
+    flex-wrap: wrap;
+    max-width: none;
+  }
+  .ad-ls-name--clip {
+    white-space: normal;
+  }
+}
+/* A cell whose long name may break anywhere instead of widening the table. */
+.ad-ls-break {
+  overflow-wrap: anywhere;
+}
+/* Marks side by side in a cell. */
+.ad-ls-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* The flags cell: every flag named, as its own pill, side by side and
+   wrapping. Only between the stacked phone layout and 1100px, where the table
+   has no room for them, is it a count (the names are in its title). */
+.ad-ls-flags-full {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.1875rem;
+}
+.ad-ls-flags-count {
+  display: none;
+}
+@media (min-width: 720px) and (max-width: 1099.98px) {
+  .ad-ls-flags-full {
+    display: none;
+  }
+  .ad-ls-flags-count {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1875rem;
+  }
+}
+@media (max-width: 719.98px) {
+  .ad-ls-flags-full {
+    justify-content: flex-start;
+  }
+}
+
+/* The scheduled half of an hours cell. */
+.ad-ls-hours-got {
+  color: var(--ad-info);
+}
+
+/* ---- Small controls ----------------------------------------------------- */
+/* A trigger that takes the look of whatever it wraps (a count, an icon). */
+.ad-ls-trigger {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  border-radius: var(--ad-radius-sm);
+  cursor: pointer;
+}
+.ad-ls-trigger:focus-visible {
+  outline: 2px solid var(--ad-ink);
+  outline-offset: 2px;
+}
+/* The icon button (`ad-btn ad-btn--icon`) at the size of a row's name line. */
+.ad-ls-iconbtn {
+  width: 1.5rem;
+  min-height: 1.5rem;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+}
+/* Copy emails, for the moment after it worked. */
+.ad-ls-copied {
+  border-color: var(--ad-success);
+  background: var(--ad-success-tint);
+  color: var(--ad-success);
+}
+.ad-ls-copied:hover {
+  background: var(--ad-success-tint);
+}
+/* A checkbox with a one-word label, in a row or a line of text. */
+.ad-ls-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ---- Sections of a table ------------------------------------------------ */
+/* The heading row of a section: its name, a line about it, an action. */
+.ad-ls-group th {
+  white-space: normal;
+}
+.ad-ls-grouphead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+.ad-ls-grouphint {
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.ad-ls-groupend {
+  margin-left: auto;
+}
+@media (max-width: 719.98px) {
+  .ad-ls-group th {
+    display: block;
+    padding: 0;
+  }
+}
+
+/* ---- Travel and change requests ----------------------------------------- */
+/* Two lines at most; the whole note stays in the DOM for the title and screen
+   readers. */
+.ad-ls-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 34rem;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--ad-text-2);
+}
+/* The proof thumbnail: flex, so the button leaves no baseline gap under it. */
+.ad-ls-proof {
+  display: flex;
+  flex-shrink: 0;
+}
+.ad-ls-comment {
+  max-width: 38rem;
+}
+.ad-ls-settings-link {
+  margin: 0;
+}
+
+/* ---- Analytics ---------------------------------------------------------- */
+/* A share of the roster: the figure, then its bar. */
+.ad-ls-share {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ad-ls-share > .ad-bar {
+  flex: 1;
+  min-width: 4rem;
+}
+.ad-ls-share-figure {
+  min-width: 2.5rem;
+  color: var(--ad-text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- One student's schedule (StudentSchedulePopup) ---------------------- */
+.ad-ls-popup-body {
+  margin-top: 0.5rem;
+}
+/* The floating card. Its width and the 8px margin match HOVER_WIDTH and
+   HOVER_MARGIN in the component, which places it. */
+.ad-ls-hovercard {
+  position: fixed;
+  z-index: 30;
+  display: block;
+  width: max-content;
+  max-width: 360px;
+  max-height: calc(100vh - 16px);
+  padding: 0.625rem;
+  overflow-y: auto;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  background: var(--ad-surface);
+  box-shadow: var(--ad-shadow-float);
+}
+.ad-ls-hoverwrap {
+  display: inline-block;
+}
+/* flex-start keeps the grids shrink-wrapped: stretched, the browser would
+   spread their columns across the full panel width. */
+.ad-ls-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.ad-ls-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.ad-ls-card-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.ad-ls-card-hours {
+  color: var(--ad-info);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.ad-ls-card-line {
+  font-size: 0.8125rem;
+}
+.ad-ls-legend {
+  color: var(--ad-text-2);
+  font-size: 0.6875rem;
+}
+.ad-ls-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+/* The read-only blocks-by-days grid. On touch devices and narrow viewports the
+   row label may wrap, so the table never overflows sideways. */
+.ad-ls-grid {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.ad-ls-grid :where(th) {
+  padding: 2px 6px;
+  font-weight: 500;
+}
+.ad-ls-grid :where(td) {
+  padding: 2px;
+}
+.ad-ls-grid-rowlabel {
+  padding: 2px 8px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+.ad-ls-grid-retired {
+  margin-left: 0.375rem;
+  color: var(--ad-text-2);
+  font-size: 0.625rem;
+}
+/* The week starts on Sunday, so Sun opens it and Sat closes it: the weekend
+   grid splits its two day columns with a wider gap and a rule. Positional, so
+   it follows the column order. */
+.ad-ls-grid--weekend th:last-child,
+.ad-ls-grid--weekend td:last-child {
+  border-left: 1px solid var(--ad-border);
+  padding-left: 10px;
+}
+.ad-ls-grid--weekend th:nth-last-child(2),
+.ad-ls-grid--weekend td:nth-last-child(2) {
+  padding-right: 10px;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .ad-ls-grid :where(td) {
+    padding: 2px 1px;
+  }
+  .ad-ls-grid-rowlabel {
+    padding: 2px 6px;
+    white-space: normal;
+  }
+}
+/* One day of one block: empty, or filled with the colour of who placed it. */
+.ad-ls-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-sm);
+  color: var(--ad-on-ink);
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+.ad-ls-cell--on {
+  position: relative;
+  border: 0;
+}
+/* Who placed it: the engine green, by hand violet. By hand also carries a dot
+   in its corner, as in the availability grid, so it is not colour alone. The
+   legend swatches take the same two classes. */
+.ad-ls-cell--engine {
+  background: var(--ad-success);
+}
+.ad-ls-cell--manual {
+  position: relative;
+  background: var(--ad-manual);
+}
+.ad-ls-cell--manual::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ad-on-ink);
+}

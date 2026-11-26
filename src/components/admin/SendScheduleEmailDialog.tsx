@@ -12,11 +12,11 @@
  * Loaded on demand by MarkScheduledButton, so Liquid and the sanitizer only
  * download when the dialog opens.
  */
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button, CheckRow, Field, Notice } from "@/components/admin/ui";
 import { sendScheduleEmail } from "@/lib/admin/schedule-email-actions";
 import { chicagoToday } from "@/lib/domain/time";
 import {
@@ -54,6 +54,7 @@ export function SendScheduleEmailDialog({
 }: ScheduleEmailDialogProps & { onClose: () => void }) {
   const router = useRouter();
   const termId = useRenderedTermId();
+  const firstShiftId = useId();
   const [today] = useState(() => chicagoToday(new Date()));
   // Minted once per opening, so a double click is one send (see the action).
   const [requestId] = useState(() => crypto.randomUUID());
@@ -92,13 +93,17 @@ export function SendScheduleEmailDialog({
   function send() {
     setError(null);
     startTransition(async () => {
-      const res = await sendScheduleEmail(p.studentEmail, {
-        ...fields,
-        subject: draft.subject,
-        body: draft.body,
-        includeCc,
-        requestId,
-      }, termId);
+      const res = await sendScheduleEmail(
+        p.studentEmail,
+        {
+          ...fields,
+          subject: draft.subject,
+          body: draft.body,
+          includeCc,
+          requestId,
+        },
+        termId,
+      );
       if (!res.ok) {
         setError(res.error ?? "Could not send.");
         return;
@@ -111,8 +116,16 @@ export function SendScheduleEmailDialog({
   if (sent) {
     return (
       <Modal label="Schedule email" onClose={onClose} maxWidth="480px">
-        <p style={{ margin: "0 0 12px", color: "var(--color-text-success)" }}>✓ {sent}</p>
-        <ActionButton onClick={onClose}>Done</ActionButton>
+        <div className="ad-stack ad-dg-body">
+          <Notice tone="success" role="status">
+            {sent}
+          </Notice>
+          <div className="ad-actions">
+            <Button variant="primary" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </div>
       </Modal>
     );
   }
@@ -121,49 +134,46 @@ export function SendScheduleEmailDialog({
 
   return (
     <Modal label="Send schedule email" onClose={onClose} maxWidth="680px">
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 14 }}>
+      <div className="ad-stack ad-dg-body">
         {!p.emailEnabled && (
-          <p style={{ margin: 0, color: "var(--color-text-danger)" }}>
+          <Notice tone="danger">
             Email sending is turned off. Turn it on in Email settings to send this.
-          </p>
+          </Notice>
         )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Start date</span>
+        <div className="ad-fields">
+          <Field label="Start date">
             <input
               type="date"
               value={fields.startDate}
               onChange={(e) => set("startDate", e.target.value)}
-              style={{ ...inputStyle, width: 180 }}
             />
-          </label>
+          </Field>
 
-          <div style={fieldStyle}>
-            <span style={labelStyle}>First shift time (only if it&apos;s tomorrow)</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <Field label="First shift time (only if it's tomorrow)" htmlFor={firstShiftId}>
+            <div className="ad-dg-inputrow">
               <input
+                id={firstShiftId}
                 aria-label="First shift time"
                 placeholder="e.g. 7:00 AM"
                 value={fields.firstShiftTime}
                 onChange={(e) => set("firstShiftTime", e.target.value)}
-                style={{ ...inputStyle, width: 180 }}
               />
               {suggestion && fields.firstShiftTime !== suggestion && (
                 <button
                   type="button"
                   onClick={() => set("firstShiftTime", suggestion)}
-                  style={linkButton}
+                  className="ad-linkbtn"
                 >
                   Use {suggestion} from the current schedule
                 </button>
               )}
             </div>
-          </div>
+          </Field>
         </div>
 
         <div>
-          <div role="tablist" aria-label="Email" style={{ display: "flex", gap: 4 }}>
+          <div role="tablist" aria-label="Email" className="ad-seg">
             <TabButton id="preview" tab={tab} onSelect={setTab}>
               Preview
             </TabButton>
@@ -173,65 +183,51 @@ export function SendScheduleEmailDialog({
           </div>
 
           {tab === "preview" ? (
-            <div role="tabpanel" aria-label="Preview" style={panelStyle}>
-              <div style={metaStyle}>
+            <div role="tabpanel" aria-label="Preview" className="ad-dg-tabpanel">
+              <div className="ad-dg-meta">
                 <div>From: {p.from}</div>
                 <div>To: {p.studentEmail}</div>
                 {includeCc && p.cc && <div>Cc: {p.cc}</div>}
                 {p.cc && <div>Replies go to: {p.cc}</div>}
               </div>
               {!preview ? (
-                <div style={{ color: "var(--color-text-secondary)" }}>
-                  Pick a start date to see the email.
-                </div>
+                <p className="ad-dg-previewnote ad-muted">Pick a start date to see the email.</p>
               ) : preview.ok ? (
                 <>
-                  <div style={{ fontWeight: 600, margin: "8px 0" }}>{preview.email.subject}</div>
+                  <div className="ad-dg-subject">{preview.email.subject}</div>
                   {/* Sanitized by renderScheduleEmail; the schedule table is app-built. */}
-                  <div dangerouslySetInnerHTML={{ __html: preview.email.html }} />
+                  <div
+                    className="ad-dg-emailbody"
+                    dangerouslySetInnerHTML={{ __html: preview.email.html }}
+                  />
                 </>
               ) : (
-                <div style={{ color: "var(--color-text-danger)" }}>
+                <p className="ad-dg-previewnote ad-danger-text">
                   The template has a problem: {preview.error}
-                </div>
+                </p>
               )}
             </div>
           ) : (
-            <div
-              role="tabpanel"
-              aria-label="Edit"
-              style={{ ...panelStyle, display: "flex", flexDirection: "column", gap: 8 }}
-            >
-              <label style={fieldStyle}>
-                <span style={labelStyle}>Subject</span>
+            <div role="tabpanel" aria-label="Edit" className="ad-dg-tabpanel ad-stack">
+              <Field label="Subject">
                 <input
                   value={draft.subject}
                   onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))}
-                  style={inputStyle}
+                  className="ad-input--block"
                 />
-              </label>
-              <label style={fieldStyle}>
-                <span style={labelStyle}>Email text</span>
+              </Field>
+              <Field label="Email text">
                 <textarea
                   value={draft.body}
                   onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                   rows={14}
-                  style={{ ...inputStyle, fontFamily: "var(--font-mono, monospace)", fontSize: 13 }}
+                  className="ad-input--block ad-input--mono"
                 />
-              </label>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  justifyContent: "space-between",
-                  fontSize: 13,
-                  color: "var(--color-text-secondary)",
-                }}
-              >
+              </Field>
+              <div className="ad-row ad-row--between ad-muted">
                 <span>Changes here only apply to this email.</span>
                 {edited && (
-                  <button type="button" onClick={() => setDraft(p.template)} style={linkButton}>
+                  <button type="button" onClick={() => setDraft(p.template)} className="ad-linkbtn">
                     Undo my changes
                   </button>
                 )}
@@ -241,32 +237,25 @@ export function SendScheduleEmailDialog({
         </div>
 
         {p.cc && (
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <CheckRow label={<>Also send to {p.cc}</>}>
             <input
               type="checkbox"
               checked={includeCc}
               onChange={(e) => setIncludeCc(e.target.checked)}
             />
-            Also send to {p.cc}
-          </label>
+          </CheckRow>
         )}
-        {p.marksScheduled && (
-          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
-            Sending also marks them scheduled.
-          </p>
-        )}
+        {p.marksScheduled && <p className="ad-muted">Sending also marks them scheduled.</p>}
 
         {shownError && (
-          <p role="alert" style={{ margin: 0, color: "var(--color-text-danger)" }}>
+          <ActionMessage ok={false} as="p">
             {shownError}
-          </p>
+          </ActionMessage>
         )}
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <ActionButton variant="secondary" onClick={onClose}>
-            Cancel
-          </ActionButton>
-          <ActionButton
+        <div className="ad-actions">
+          <Button
+            variant="primary"
             onClick={send}
             pending={pending}
             pendingLabel="Sending…"
@@ -275,7 +264,8 @@ export function SendScheduleEmailDialog({
             }
           >
             Send email
-          </ActionButton>
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
         </div>
       </div>
     </Modal>
@@ -293,62 +283,9 @@ function TabButton({
   onSelect: (t: Tab) => void;
   children: React.ReactNode;
 }) {
-  const active = id === tab;
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={() => onSelect(id)}
-      style={{
-        padding: "6px 14px",
-        border: "1px solid var(--color-border-secondary)",
-        borderBottomColor: active
-          ? "var(--color-background-secondary)"
-          : "var(--color-border-secondary)",
-        borderRadius: "var(--border-radius-md) var(--border-radius-md) 0 0",
-        background: active ? "var(--color-background-secondary)" : "transparent",
-        color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-        fontWeight: active ? 600 : 400,
-        fontSize: 13,
-        cursor: "pointer",
-        marginBottom: -1,
-      }}
-    >
+    <button type="button" role="tab" aria-selected={id === tab} onClick={() => onSelect(id)}>
       {children}
     </button>
   );
 }
-
-const fieldStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
-const labelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600 };
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "6px 8px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-};
-const panelStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "0 var(--border-radius-md) var(--border-radius-md) var(--border-radius-md)",
-  background: "var(--color-background-secondary)",
-};
-const metaStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: "var(--color-text-secondary)",
-  paddingBottom: 8,
-  borderBottom: "1px solid var(--color-border-tertiary)",
-};
-const linkButton: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "var(--color-text-info, #1a66cc)",
-  textDecoration: "underline",
-  cursor: "pointer",
-  fontSize: 13,
-};

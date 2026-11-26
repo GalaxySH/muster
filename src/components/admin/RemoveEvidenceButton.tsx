@@ -13,7 +13,7 @@ import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { removeCourseSchedule, removeExtracurricularFile } from "@/lib/evidence/actions";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
+import { ActionMessage, Button } from "@/components/admin/ui";
 
 type RemoveTarget = { kind: "course" } | { kind: "extracurricular"; rowId: string };
 
@@ -54,37 +54,41 @@ export function RemoveEvidenceButton(props: RemoveTarget & { studentEmail: strin
 
   return (
     <>
+      {/* Beside Replace in the card header, or smaller under a proof thumbnail. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label={copy.title}
-        style={props.kind === "course" ? headerLink : thumbLink}
+        className={
+          props.kind === "course"
+            ? "ad-linkbtn ad-linkbtn--danger"
+            : "ad-linkbtn ad-linkbtn--danger ad-small"
+        }
       >
         Remove
       </button>
 
       {open && (
         <Modal label={copy.title} onClose={close} maxWidth="420px">
-          <div style={boxStyle}>
-            <p style={{ margin: 0, fontSize: 14 }}>{copy.prompt} This deletes the file too.</p>
-            <p role="status" style={errorSlot}>
-              {error}
-            </p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                Cancel
-              </ActionButton>
-              {/* Destructive, so the outlined danger button the travel entry and
-                  response delete use rather than the primary one. */}
-              <button
-                type="button"
-                className="btn-hover"
+          <div className="ad-stack ad-dg-body">
+            <p>{copy.prompt} This deletes the file too.</p>
+            {error && (
+              <ActionMessage ok={false} as="p">
+                {error}
+              </ActionMessage>
+            )}
+            <div className="ad-actions">
+              <Button
+                variant="danger-fill"
                 onClick={remove}
-                disabled={pending}
-                style={dangerButton(pending)}
+                pending={pending}
+                pendingLabel="Removing…"
               >
-                {pending ? "Removing…" : "Remove"}
-              </button>
+                Remove
+              </Button>
+              <Button disabled={pending} onClick={close}>
+                Cancel
+              </Button>
             </div>
           </div>
         </Modal>
@@ -92,41 +96,3 @@ export function RemoveEvidenceButton(props: RemoveTarget & { studentEmail: strin
     </>
   );
 }
-
-/** A quiet danger link matching the Replace link it sits beside. */
-const headerLink: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  fontSize: 13,
-  fontWeight: 500,
-  color: "var(--color-text-danger)",
-  cursor: "pointer",
-};
-/** Smaller, to sit under a proof thumbnail beside its caption. */
-const thumbLink: React.CSSProperties = { ...headerLink, fontSize: 11 };
-
-const boxStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  width: "100%",
-  fontSize: 14,
-};
-/** Reserved room, so an error never moves the buttons. */
-const errorSlot: React.CSSProperties = {
-  margin: 0,
-  minHeight: 32,
-  fontSize: 13,
-  color: "var(--color-text-danger)",
-};
-const dangerButton = (pending: boolean): React.CSSProperties => ({
-  fontSize: 13,
-  padding: "5px 12px",
-  borderRadius: "var(--border-radius-md)",
-  cursor: pending ? "default" : "pointer",
-  border: "1px solid var(--color-border-danger, #d93025)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-danger)",
-  opacity: pending ? 0.5 : 1,
-});

@@ -1,0 +1,103 @@
+/* The admin overview (app/admin/page.tsx). Same convention as admin.css: one
+   `ad-` prefixed class per rule; this page's own are `ad-ov-`. */
+
+/* What is wrong, beside where the cycle stands. The attention list leads and
+   gets the wider column; under about 1000px of content they stack. */
+.ad-ov-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.ad-ov-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.4375rem 0;
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-ov-alerts > :first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.ad-ov-alert-icon {
+  flex: none;
+  margin-top: 0.1875rem;
+}
+.ad-ov-alert--danger .ad-ov-alert-icon {
+  color: var(--ad-danger);
+}
+.ad-ov-alert--warning .ad-ov-alert-icon {
+  color: var(--ad-warn-mark);
+}
+.ad-ov-alert-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ad-ov-progress {
+  height: 0.625rem;
+}
+.ad-ov-legend {
+  gap: 0.25rem 1rem;
+}
+/* A legend entry: a dot in the bar's colour, then the linked count. */
+.ad-ov-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  color: var(--ad-text-2);
+}
+.ad-ov-key::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ad-info);
+}
+.ad-ov-key--draft::before {
+  background: var(--ad-draft);
+}
+.ad-ov-key--rest::before {
+  background: var(--ad-border);
+  box-shadow: inset 0 0 0 1px var(--ad-border-strong);
+}
+.ad-ov-groups {
+  margin: 0.625rem 0 0;
+}
+.ad-ov-responded {
+  flex-wrap: nowrap;
+}
+.ad-ov-responded .ad-bar {
+  flex: 1;
+  min-width: 3.5rem;
+}
+.ad-ov-subhead span {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.ad-ov-follow {
+  margin-top: 0.5rem;
+}
+
+.ad-ov-cov > * {
+  display: block;
+}
+.ad-ov-cov .ad-bar {
+  margin-top: 0.25rem;
+}
+.ad-ov-system > * {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+}
+.ad-ov-system-name {
+  color: var(--ad-text-2);
+}
+.ad-ov-spark {
+  margin-top: 0.625rem;
+}
+/* No days to draw: no gap either. */
+.ad-ov-spark:empty {
+  display: none;
+}

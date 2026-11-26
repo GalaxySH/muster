@@ -2,8 +2,8 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ActionButton, InfoCard } from "@/components/ui";
 import { setChangeRequestsEnabled } from "@/lib/admin/actions";
+import { Button, Pill, SettingRow } from "./ui";
 
 /**
  * Whether the student-facing change-request form is offered (roadmap 3.1).
@@ -24,23 +24,23 @@ export function ChangeRequestsEnabledToggle({ enabled }: { enabled: boolean }) {
   }
 
   return (
-    <InfoCard
-      tone={enabled ? "success" : "info"}
-      title={enabled ? "Change request form is on" : "Change request form is off"}
-    >
-      <p style={{ marginTop: 0 }}>
-        {enabled
+    <SettingRow
+      name="Change request form"
+      help={
+        enabled
           ? "Students see a change-request card on their profile page and are pointed to the form from the intro step."
-          : "Students are told to email us instead. This queue and the form itself stay reachable by direct link."}
-      </p>
-      <ActionButton
+          : "Students are told to email us instead. This queue and the form itself stay reachable by direct link."
+      }
+    >
+      <Pill tone={enabled ? "success" : undefined}>{enabled ? "On" : "Off"}</Pill>
+      <Button
         onClick={toggle}
         variant={enabled ? "secondary" : "primary"}
         pending={pending}
         pendingLabel="Saving…"
       >
         {enabled ? "Turn off the form" : "Turn on the form"}
-      </ActionButton>
-    </InfoCard>
+      </Button>
+    </SettingRow>
   );
 }

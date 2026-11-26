@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass } from "@awesome.me/kit-925f6dce39/icons/sharp-duotone/solid";
+import { faMagnifyingGlass } from "@awesome.me/kit-925f6dce39/icons/classic/solid";
 
 /**
- * Jump straight to one student from any page (roadmap 4.1). AppHeader renders it
+ * Jump straight to one student from any page (roadmap 4.1). AdminTools renders it
  * for admins only, so an admin can look someone up without going back to the hub.
  *
  * The roster is small enough (~400 names) to ship to the client and filter

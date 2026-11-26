@@ -73,11 +73,7 @@ export function TermSwitcher({
   useTabsOnOneTerm(workingId);
 
   const working = terms.find((t) => t.id === workingId);
-  const name = (
-    <span style={{ fontSize: 13, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
-      {working?.name}
-    </span>
-  );
+  const name = <span className="term-name">{working?.name}</span>;
   if (terms.length < 2) return name;
 
   return (
@@ -86,14 +82,7 @@ export function TermSwitcher({
       value={workingId}
       disabled={pending}
       onChange={(e) => select(e.target.value)}
-      style={{
-        fontSize: 13,
-        padding: "3px 6px",
-        border: "1px solid var(--color-border-secondary)",
-        borderRadius: "var(--border-radius-md)",
-        background: "var(--color-background-primary)",
-        maxWidth: 180,
-      }}
+      className="term-select"
     >
       {terms.map((t) => (
         <option key={t.id} value={t.id}>
@@ -106,20 +95,14 @@ export function TermSwitcher({
 
 /**
  * A button that selects one semester: the banner's way back to the one students
- * are filling in. The banner styles it; anywhere else passes a style.
+ * are filling in, and a student's page's way to the semester a request is from.
+ * It is a bare button: the banner styles it (globals.css `.term-banner button`),
+ * and in the console it takes the base button look.
  */
-export function SelectTermButton({
-  termId,
-  label,
-  style,
-}: {
-  termId: string;
-  label: string;
-  style?: React.CSSProperties;
-}) {
+export function SelectTermButton({ termId, label }: { termId: string; label: string }) {
   const { pending, select } = useSelectTerm();
   return (
-    <button type="button" disabled={pending} onClick={() => select(termId)} style={style}>
+    <button type="button" disabled={pending} onClick={() => select(termId)}>
       {label}
     </button>
   );

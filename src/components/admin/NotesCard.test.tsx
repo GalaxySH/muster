@@ -28,7 +28,7 @@ describe("NotesCard", () => {
     const long = "First line\n" + "word ".repeat(200).trim();
     renderCard("scheduling", long);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.getByTitle("Double-click to edit").textContent).toBe(long);
+    expect(screen.getByText(long, { normalizer: (s) => s }).textContent).toBe(long);
   });
 
   it("says so when there is no note", () => {
@@ -87,7 +87,9 @@ describe("NotesCard", () => {
     fireEvent.change(box, { target: { value: "Evenings only" } });
     fireEvent.keyDown(box, { key: "Enter", ...modifier });
 
-    await waitFor(() => expect(saveStudent).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only", ""));
+    await waitFor(() =>
+      expect(saveStudent).toHaveBeenCalledWith("stu@wisc.edu", "Evenings only", ""),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -114,7 +116,7 @@ describe("NotesCard", () => {
     renderCard("scheduling");
     fireEvent.click(screen.getByRole("button", { name: "Edit scheduling notes" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("You are not signed in.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("You are not signed in.");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

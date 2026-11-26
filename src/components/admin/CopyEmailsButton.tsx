@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "./ui";
 
 /**
  * Copies a list of emails (comma-separated) to the clipboard, e.g. all
@@ -21,20 +22,10 @@ export function CopyEmailsButton({ emails, label }: { emails: string[]; label?: 
   }
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      style={{
-        fontSize: 13,
-        padding: "0.4rem 0.8rem",
-        borderRadius: "var(--border-radius-md, 6px)",
-        border: "0.5px solid var(--color-border-tertiary, #ccc)",
-        background: copied ? "var(--color-background-success, #e6f4ea)" : "var(--color-background-primary, #fff)",
-        color: copied ? "var(--color-text-success, #196127)" : "var(--color-text-primary, #222)",
-        cursor: "pointer",
-      }}
-    >
-      {copied ? "✓ Copied" : (label ?? `Copy ${emails.length} email${emails.length === 1 ? "" : "s"}`)}
-    </button>
+    <Button onClick={copy} className={copied ? "ad-ls-copied" : undefined}>
+      {copied
+        ? "✓ Copied"
+        : (label ?? `Copy ${emails.length} email${emails.length === 1 ? "" : "s"}`)}
+    </Button>
   );
 }

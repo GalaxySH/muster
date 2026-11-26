@@ -103,7 +103,7 @@ describe("PlanImportPanel", () => {
     await chooseFile(user);
 
     await user.click(screen.getByRole("button", { name: "Review import" }));
-    expect((await screen.findByRole("status")).textContent).toContain("Admins only.");
+    expect((await screen.findByRole("alert")).textContent).toContain("Admins only.");
   });
 
   it("asks for a file before it asks the server anything", async () => {
@@ -111,7 +111,7 @@ describe("PlanImportPanel", () => {
     render(<PlanImportPanel />);
     await user.click(screen.getByRole("button", { name: "Review import" }));
     expect(importShiftPlanFromUpload).not.toHaveBeenCalled();
-    expect((await screen.findByRole("status")).textContent).toContain(
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "Choose the W2W shift export (.csv) first.",
     );
   });

@@ -10,7 +10,7 @@
  */
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ActionButton, InfoCard } from "@/components/ui";
+import { ActionMessage, Button, Disclosure, Field, Panel, SettingRow } from "@/components/admin/ui";
 import { Modal } from "@/components/Modal";
 import { EMAIL_FONTS } from "@/lib/email/format";
 import {
@@ -108,216 +108,182 @@ export function ScheduleEmailSettingsPanel({
   }
 
   return (
-    <InfoCard>
-      <p style={{ marginTop: 0 }}>
-        The email you send a student from their page once their schedule is in When2Work.
-      </p>
-
-      <label style={labelStyle} htmlFor="se-subject">
-        Subject
-      </label>
-      <input
-        id="se-subject"
-        value={draft.subject}
-        onChange={(e) => set("subject", e.target.value)}
-        style={inputStyle}
-      />
-
-      <label style={labelStyle} htmlFor="se-body">
-        Email text
-      </label>
-      <textarea
-        id="se-body"
-        value={draft.body}
-        onChange={(e) => set("body", e.target.value)}
-        rows={12}
-        style={{ ...inputStyle, fontFamily: "var(--font-mono, monospace)", fontSize: 13 }}
-      />
-      <details style={{ margin: "6px 0 12px", fontSize: 13 }}>
-        <summary style={{ cursor: "pointer" }}>Variables you can use</summary>
-        <p style={{ margin: "6px 0" }}>
-          Write <code>{"{{ first_name }}"}</code> to insert a value. Wrap a paragraph in{" "}
-          <code>{"{% if first_shift_time %}"}</code> and <code>{"{% endif %}"}</code> to include it
-          only when that value is filled in. Blank lines separate paragraphs.
+    <Panel id="schedule-email" title="Schedule email">
+      <div className="ad-stack">
+        <p className="ad-muted">
+          The email you send a student from their page once their schedule is in When2Work.
         </p>
-        <p style={{ margin: "6px 0" }}>
-          Use <code>{"<b>"}</code>, <code>{"<i>"}</code>, <code>{"<u>"}</code> and{" "}
-          <code>{"<mark>"}</code> for bold, italics, underline and highlight, e.g.{" "}
-          <code>{"<b>Welcome!</b>"}</code>.
-        </p>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <tbody>
-            {SCHEDULE_EMAIL_VARIABLES.map((v) => (
-              <tr key={v.name} style={{ borderTop: "1px solid var(--color-border-tertiary)" }}>
-                <td style={{ padding: "4px 8px 4px 0", whiteSpace: "nowrap" }}>
-                  <code>{v.name}</code>
-                </td>
-                <td style={{ padding: "4px 0" }}>{v.about}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
 
-      <label style={labelStyle} htmlFor="se-font">
-        Font
-      </label>
-      <select
-        id="se-font"
-        value={draft.font}
-        onChange={(e) => set("font", e.target.value)}
-        style={{ ...inputStyle, width: "auto", minWidth: 220 }}
-      >
-        {EMAIL_FONTS.map((f) => (
-          <option key={f.id} value={f.id} style={f.stack ? { fontFamily: f.stack } : undefined}>
-            {f.label}
-          </option>
-        ))}
-      </select>
-
-      <div style={labelStyle}>Preview with sample values</div>
-      <div style={previewStyle}>
-        {preview.ok ? (
-          <>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>{preview.email.subject}</div>
-            {/* Sanitized by renderScheduleEmail; the schedule table is app-built. */}
-            <div dangerouslySetInnerHTML={{ __html: preview.email.html }} />
-          </>
-        ) : (
-          <div style={{ color: "var(--color-text-danger)" }}>
-            The template has a problem: {preview.error}
-          </div>
-        )}
-      </div>
-
-      <label style={labelStyle} htmlFor="se-cc">
-        Cc email
-      </label>
-      <input
-        id="se-cc"
-        value={draft.cc}
-        onChange={(e) => set("cc", e.target.value)}
-        placeholder="team@wisc.edu"
-        style={inputStyle}
-      />
-      <p style={hintStyle}>
-        You can send it a copy when you send the email. Student replies always go here.
-      </p>
-
-      <div style={labelStyle}>Sender</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <input
-          aria-label="Sender name"
-          value={draft.fromName}
-          onChange={(e) => set("fromName", e.target.value)}
-          style={{ ...inputStyle, width: "auto", flex: "1 1 180px" }}
-        />
-        <span style={{ display: "flex", alignItems: "center", gap: 2, flex: "1 1 220px" }}>
+        <Field label="Subject" htmlFor="se-subject">
           <input
-            aria-label="Sender address"
-            value={draft.fromLocal}
-            onChange={(e) => set("fromLocal", e.target.value)}
-            style={{ ...inputStyle, width: "auto", flex: 1 }}
+            id="se-subject"
+            value={draft.subject}
+            onChange={(e) => set("subject", e.target.value)}
+            className="ad-input--block"
           />
-          <span style={{ fontSize: 14 }}>@{domain}</span>
-        </span>
+        </Field>
+
+        <Field label="Email text" htmlFor="se-body">
+          <textarea
+            id="se-body"
+            value={draft.body}
+            onChange={(e) => set("body", e.target.value)}
+            rows={12}
+            className="ad-input--block ad-input--mono"
+          />
+        </Field>
+        <Disclosure title="Variables you can use" panel={false}>
+          <p>
+            Write <code>{"{{ first_name }}"}</code> to insert a value. Wrap a paragraph in{" "}
+            <code>{"{% if first_shift_time %}"}</code> and <code>{"{% endif %}"}</code> to include
+            it only when that value is filled in. Blank lines separate paragraphs.
+          </p>
+          <p>
+            Use <code>{"<b>"}</code>, <code>{"<i>"}</code>, <code>{"<u>"}</code> and{" "}
+            <code>{"<mark>"}</code> for bold, italics, underline and highlight, e.g.{" "}
+            <code>{"<b>Welcome!</b>"}</code>.
+          </p>
+          <table className="ad-table ad-se-vars">
+            <thead>
+              <tr>
+                <th scope="col">Variable</th>
+                <th scope="col">What it inserts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {SCHEDULE_EMAIL_VARIABLES.map((v) => (
+                <tr key={v.name}>
+                  <td>
+                    <code>{v.name}</code>
+                  </td>
+                  <td>{v.about}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Disclosure>
+
+        <Field label="Font" htmlFor="se-font">
+          <select
+            id="se-font"
+            value={draft.font}
+            onChange={(e) => set("font", e.target.value)}
+            className="ad-se-font"
+          >
+            {EMAIL_FONTS.map((f) => (
+              <option key={f.id} value={f.id} style={f.stack ? { fontFamily: f.stack } : undefined}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <div className="ad-field">
+          <div className="ad-label">Preview with sample values</div>
+          <div className="ad-se-preview">
+            {preview.ok ? (
+              <>
+                <div className="ad-se-preview-subject">{preview.email.subject}</div>
+                {/* Sanitized by renderScheduleEmail; the schedule table is app-built. */}
+                <div dangerouslySetInnerHTML={{ __html: preview.email.html }} />
+              </>
+            ) : (
+              <div className="ad-danger-text">The template has a problem: {preview.error}</div>
+            )}
+          </div>
+        </div>
+
+        <Field
+          label="Cc email"
+          htmlFor="se-cc"
+          help="You can send it a copy when you send the email. Student replies always go here."
+        >
+          <input
+            id="se-cc"
+            value={draft.cc}
+            onChange={(e) => set("cc", e.target.value)}
+            placeholder="team@wisc.edu"
+            className="ad-input--block"
+          />
+        </Field>
+
+        <fieldset className="ad-fieldset ad-se-sender">
+          <legend className="ad-label">Sender</legend>
+          <input
+            aria-label="Sender name"
+            value={draft.fromName}
+            onChange={(e) => set("fromName", e.target.value)}
+            className="ad-se-sender-name"
+          />
+          <span className="ad-se-sender-address">
+            <input
+              aria-label="Sender address"
+              value={draft.fromLocal}
+              onChange={(e) => set("fromLocal", e.target.value)}
+            />
+            <span>@{domain}</span>
+          </span>
+        </fieldset>
       </div>
 
-      <label
-        style={{ display: "flex", gap: 8, alignItems: "center", margin: "14px 0", fontSize: 14 }}
+      <SettingRow
+        name={<label htmlFor="se-marks">Mark the student scheduled when you send it</label>}
       >
         <input
+          id="se-marks"
           type="checkbox"
           checked={draft.marksScheduled}
           onChange={(e) => set("marksScheduled", e.target.checked)}
         />
-        Mark the student scheduled when you send it
-      </label>
+      </SettingRow>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <ActionButton onClick={save} pending={pendingSave} pendingLabel="Saving…" disabled={!dirty}>
+      <div className="ad-actions">
+        <Button
+          variant="primary"
+          onClick={save}
+          pending={pendingSave}
+          pendingLabel="Saving…"
+          disabled={!dirty}
+        >
           Save
-        </ActionButton>
-        <ActionButton
-          variant="secondary"
-          onClick={test}
-          pending={pendingTest}
-          pendingLabel="Sending…"
-          disabled={dirty}
-        >
+        </Button>
+        <Button onClick={test} pending={pendingTest} pendingLabel="Sending…" disabled={dirty}>
           Send a test to me
-        </ActionButton>
-        <ActionButton
-          variant="secondary"
-          onClick={() => setConfirmReset(true)}
-          disabled={atDefault}
-        >
+        </Button>
+        <Button onClick={() => setConfirmReset(true)} disabled={atDefault}>
           Reset to default
-        </ActionButton>
+        </Button>
       </div>
-      <p style={hintStyle}>
+      <p className="ad-help ad-se-after-help">
         {dirty
           ? "Save your changes to send a test."
           : `The test goes only to ${adminEmail}, filled with sample values.`}
       </p>
       {msg && (
-        <p
-          role="status"
-          style={{
-            margin: "8px 0 0",
-            fontSize: 13,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.ok ? "✓ " : "✗ "}
+        <ActionMessage ok={msg.ok} as="p" className="ad-se-after-help">
           {msg.text}
-        </p>
+        </ActionMessage>
       )}
       {confirmReset && (
         <Modal label="Reset to default" onClose={() => setConfirmReset(false)} maxWidth="440px">
-          <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Reset the email to the default?</p>
-          <p style={{ margin: "0 0 16px" }}>
+          <p className="ad-strong">Reset the email to the default?</p>
+          <p>
             The subject, email text and font go back to the default version, and any changes you
             made to them are lost. The cc email, sender and other settings stay as they are.
           </p>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <ActionButton variant="secondary" onClick={() => setConfirmReset(false)}>
-              Cancel
-            </ActionButton>
-            <ActionButton onClick={reset} pending={pendingReset} pendingLabel="Resetting…">
+          <div className="ad-actions ad-actions--end">
+            <Button onClick={() => setConfirmReset(false)}>Cancel</Button>
+            <Button
+              variant="danger-fill"
+              onClick={reset}
+              pending={pendingReset}
+              pendingLabel="Resetting…"
+            >
               Reset
-            </ActionButton>
+            </Button>
           </div>
         </Modal>
       )}
-    </InfoCard>
+    </Panel>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  fontWeight: 600,
-  margin: "12px 0 4px",
-};
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "6px 8px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  fontSize: 14,
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-};
-const hintStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: "var(--color-text-secondary)",
-  margin: "4px 0 0",
-};
-const previewStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  border: "1px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-md)",
-  background: "var(--color-background-primary)",
-  fontSize: 14,
-};

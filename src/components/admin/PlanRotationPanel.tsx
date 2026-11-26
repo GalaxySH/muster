@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setPlanRotationWeek } from "@/lib/w2w/actions";
+import { ActionMessage, CheckRow } from "@/components/admin/ui";
 
 /**
  * Correct the current plan's weekend rotation without re-uploading it. The
@@ -18,7 +19,7 @@ export function PlanRotationPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   function pick(week: "a" | "b") {
     if (week === rotationWeek) return;
@@ -33,16 +34,19 @@ export function PlanRotationPanel({
     setMsg(null);
     startTransition(async () => {
       const res = await setPlanRotationWeek(planId, week);
-      setMsg(res.ok ? `Now rotation ${week.toUpperCase()}.` : (res.error ?? "Failed."));
+      setMsg({
+        ok: res.ok,
+        text: res.ok ? `Now rotation ${week.toUpperCase()}.` : (res.error ?? "Failed."),
+      });
       if (res.ok) router.refresh();
     });
   }
 
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Weekend rotation</span>
+    <div className="ad-pl-rotation" role="radiogroup" aria-label="Weekend rotation">
+      <span className="ad-pl-rotation-label">Weekend rotation:</span>
       {(["a", "b"] as const).map((week) => (
-        <label key={week} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 14 }}>
+        <CheckRow key={week} label={`Week ${week.toUpperCase()}`}>
           <input
             type="radio"
             name="rotationWeek"
@@ -50,10 +54,9 @@ export function PlanRotationPanel({
             disabled={pending}
             onChange={() => pick(week)}
           />
-          Week {week.toUpperCase()}
-        </label>
+        </CheckRow>
       ))}
-      {msg && <span style={{ fontSize: 13 }}>{msg}</span>}
+      {msg && <ActionMessage ok={msg.ok}>{msg.text}</ActionMessage>}
     </div>
   );
 }

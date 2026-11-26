@@ -9,10 +9,11 @@
  * Picks are the exception and the copy says so, because "your picks are kept"
  * is the part an admin would otherwise have to discover.
  */
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { changeStudentPosition } from "@/lib/positions/actions";
+import { ActionMessage, Button, Field } from "@/components/admin/ui";
 
 export interface StudentPositionChangerProps {
   studentEmail: string;
@@ -27,6 +28,7 @@ export function StudentPositionChanger({
 }: StudentPositionChangerProps) {
   const termId = useRenderedTermId();
   const router = useRouter();
+  const selectId = useId();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -69,15 +71,15 @@ export function StudentPositionChanger({
   }
 
   return (
-    <div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Change position</div>
-      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+    <Field label="Change position" htmlFor={selectId}>
+      <div className="ad-row">
         <select
+          id={selectId}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           disabled={pending}
           aria-label="New position"
-          style={select}
+          className="ad-st-grow"
         >
           <option value="">Pick a position</option>
           {choices.map((o) => (
@@ -86,42 +88,20 @@ export function StudentPositionChanger({
             </option>
           ))}
         </select>
-        <button type="button" onClick={submit} disabled={pending || !chosen} style={button}>
-          {pending ? "Moving..." : "Move"}
-        </button>
+        <Button onClick={submit} pending={pending} pendingLabel="Moving..." disabled={!chosen}>
+          Move
+        </Button>
       </div>
-      {msg && (
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 12,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.text}
-        </div>
-      )}
-    </div>
+      {msg &&
+        (msg.ok ? (
+          <p role="status" className="ad-help ad-success-text">
+            {msg.text}
+          </p>
+        ) : (
+          <ActionMessage ok={false} as="p">
+            {msg.text}
+          </ActionMessage>
+        ))}
+    </Field>
   );
 }
-
-const select: React.CSSProperties = {
-  flex: "1 1 10rem",
-  minWidth: 0,
-  fontSize: 13,
-  padding: "4px 6px",
-  borderRadius: 6,
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-primary)",
-};
-
-const button: React.CSSProperties = {
-  fontSize: 13,
-  padding: "4px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-secondary)",
-  color: "var(--color-text-primary)",
-  cursor: "pointer",
-};

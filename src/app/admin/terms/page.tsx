@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/lib/auth/session";
-import { AppHeader, Crumb } from "@/components/AppHeader";
-import { InfoCard, Page } from "@/components/ui";
+import { AdminPage } from "@/components/admin/AdminPage";
+import { Notice } from "@/components/admin/ui";
 import { TermDetailsForm } from "@/components/admin/TermDetailsForm";
 import { MakeCurrentPanel, StartSemesterPanel } from "@/components/admin/StartSemesterPanel";
 import { systemMessageTone, termNamesIn } from "@/lib/domain/terms";
@@ -14,6 +15,8 @@ import {
   workingTerm,
   workingTermId,
 } from "@/lib/terms/working";
+
+export const metadata: Metadata = { title: "Semester" };
 
 /**
  * Admin: the working semester's own details (docs/semester-domains-plan.md
@@ -44,50 +47,50 @@ export default async function AdminTermPage() {
   const staleNames = termNamesIn(`${scheduleEmail.subject}\n${scheduleEmail.body}`, otherNames);
 
   return (
-    <Page>
-      <AppHeader>
-        <Crumb href="/admin" label="Admin" />
-      </AppHeader>
-      <h1>Semester</h1>
-      <p style={{ color: "var(--color-text-secondary)", maxWidth: 720 }}>
-        {isCurrent
+    <AdminPage
+      title="Semester"
+      width="form"
+      description={
+        isCurrent
           ? "The semester Muster is collecting availability for."
-          : `An earlier semester. Students are filling in ${current.name}.`}
-      </p>
+          : `An earlier semester. Students are filling in ${current.name}.`
+      }
+    >
+      <div className="ad-stack">
+        {staleNames.length > 0 && (
+          <Notice tone="warning" title="The schedule email names another semester">
+            <p>
+              It mentions {staleNames.join(" and ")}.{" "}
+              <Link href="/admin/email-settings">Update the schedule email</Link>
+            </p>
+          </Notice>
+        )}
 
-      {staleNames.length > 0 && (
-        <InfoCard tone="warning" title="The schedule email names another semester">
-          <p style={{ margin: 0, fontSize: 14 }}>
-            It mentions {staleNames.join(" and ")}.{" "}
-            <Link href="/admin/email-settings">Update the schedule email</Link>
-          </p>
-        </InfoCard>
-      )}
-
-      {/* Keyed by the semester: starting a new one must not leave the old one's draft in the form. */}
-      <TermDetailsForm
-        key={`details-${term.id}`}
-        details={{
-          name: term.name,
-          startsOn: term.startsOn,
-          endsOn: term.endsOn,
-          newHireCutoff: term.newHireCutoff,
-          scheduleNote: term.scheduleNote,
-          systemMessage: term.systemMessage,
-          systemMessageTone: systemMessageTone(term.systemMessageTone),
-          closeRequirement: term.closeRequirement,
-        }}
-        travel={{
-          cutoffMs: travelCutoff.cutoff.getTime(),
-          isCustom: travelCutoff.isCustom,
-          lateAccepted: lateTravelPolicy === "accept-and-flag",
-          afterClose: term.travelAfterClose,
-        }}
-      />
-      {!isCurrent && (
-        <MakeCurrentPanel working={{ id: term.id, name: term.name }} current={current} />
-      )}
-      <StartSemesterPanel current={current} />
-    </Page>
+        {/* Keyed by the semester: starting a new one must not leave the old one's draft in the form. */}
+        <TermDetailsForm
+          key={`details-${term.id}`}
+          details={{
+            name: term.name,
+            startsOn: term.startsOn,
+            endsOn: term.endsOn,
+            newHireCutoff: term.newHireCutoff,
+            scheduleNote: term.scheduleNote,
+            systemMessage: term.systemMessage,
+            systemMessageTone: systemMessageTone(term.systemMessageTone),
+            closeRequirement: term.closeRequirement,
+          }}
+          travel={{
+            cutoffMs: travelCutoff.cutoff.getTime(),
+            isCustom: travelCutoff.isCustom,
+            lateAccepted: lateTravelPolicy === "accept-and-flag",
+            afterClose: term.travelAfterClose,
+          }}
+        />
+        {!isCurrent && (
+          <MakeCurrentPanel working={{ id: term.id, name: term.name }} current={current} />
+        )}
+        <StartSemesterPanel current={current} />
+      </div>
+    </AdminPage>
   );
 }

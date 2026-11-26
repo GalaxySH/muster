@@ -11,8 +11,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
-import { ActionButton } from "@/components/ui";
-import { dangerPillStyle, successPillStyle, warningPillStyle } from "@/components/admin/ui";
+import { ActionMessage, Button, CheckRow, Field, Notice, Pill } from "@/components/admin/ui";
 import { buildPlan, parsePaste, type OnFile, type Plan, type Step } from "@/lib/admin/form-paste";
 import { applyPlan, type PasteActions, type StepResult } from "@/lib/admin/form-paste-apply";
 import { saveSchedulerNotes } from "@/lib/admin/actions";
@@ -99,53 +98,59 @@ export function FormPasteButton({
     if (!plan) return;
     startTransition(async () => {
       setResults(
-        await applyPlan({ student: studentEmail, plan, chosen, onFile, actions: pasteActions(termId) }),
+        await applyPlan({
+          student: studentEmail,
+          plan,
+          chosen,
+          onFile,
+          actions: pasteActions(termId),
+        }),
       );
     });
   }
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} style={triggerStyle}>
-        Paste form response
-      </button>
+      <Button onClick={() => setOpen(true)}>Paste form response</Button>
 
       {open && (
         <Modal label="Paste a Google Form response" onClose={close} maxWidth="720px">
           {results ? (
             <ResultList results={results} onDone={close} />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 14 }}>
+            <div className="ad-stack ad-dg-body">
               {!plan && (
                 <>
-                  <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                  <p className="ad-muted">
                     In the response sheet, pick the row and use Muster &gt; Copy response for
                     Muster. Then paste it here.
                   </p>
-                  <textarea
-                    autoFocus
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="MUSTER-FORM v1"
-                    style={pasteBox}
-                  />
+                  <Field label="Response">
+                    <textarea
+                      autoFocus
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      placeholder="MUSTER-FORM v1"
+                      className="ad-input--block ad-input--mono ad-dg-paste"
+                    />
+                  </Field>
                   {read && "error" in read && (
-                    <p role="alert" style={{ margin: 0, color: "var(--color-text-danger)" }}>
+                    <ActionMessage ok={false} as="p">
                       {read.error}
-                    </p>
+                    </ActionMessage>
                   )}
                 </>
               )}
 
               {plan && (
                 <>
-                  <div style={{ fontWeight: 600 }}>{plan.name}</div>
+                  <div className="ad-strong">{plan.name}</div>
                   {plan.warnings.map((w) => (
-                    <div key={w} style={warningBox}>
+                    <Notice key={w} tone="warning">
                       {w}
-                    </div>
+                    </Notice>
                   ))}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div className="ad-stack ad-stack--tight">
                     {plan.steps.map((s) => (
                       <StepRow
                         key={s.id}
@@ -159,35 +164,26 @@ export function FormPasteButton({
                 </>
               )}
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  justifyContent: "flex-end",
-                  alignItems: "center",
-                }}
-              >
-                {badDates && (
-                  <span style={{ fontSize: 13, color: "var(--color-text-danger)" }}>
-                    Fix the travel dates first.
-                  </span>
-                )}
-                {plan && (
-                  <ActionButton variant="secondary" disabled={pending} onClick={() => setText("")}>
-                    Paste another
-                  </ActionButton>
-                )}
-                <ActionButton variant="secondary" disabled={pending} onClick={close}>
-                  Cancel
-                </ActionButton>
-                <ActionButton
+              {badDates && <p className="ad-error">Fix the travel dates first.</p>}
+
+              <div className="ad-actions">
+                <Button
+                  variant="primary"
                   pending={pending}
                   pendingLabel="Applying…"
                   disabled={!plan || chosen.length === 0 || badDates}
                   onClick={apply}
                 >
                   {chosen.length === 1 ? "Apply 1 change" : `Apply ${chosen.length} changes`}
-                </ActionButton>
+                </Button>
+                {plan && (
+                  <Button disabled={pending} onClick={() => setText("")}>
+                    Paste another
+                  </Button>
+                )}
+                <Button disabled={pending} onClick={close}>
+                  Cancel
+                </Button>
               </div>
             </div>
           )}
@@ -209,18 +205,13 @@ function StepRow({
   onDates: (d: { start: string; end: string }) => void;
 }) {
   return (
-    <div style={{ ...rowStyle, opacity: on ? 1 : 0.65 }}>
-      <input
-        type="checkbox"
-        checked={on}
-        onChange={(e) => onToggle(e.target.checked)}
-        aria-label={step.label}
-        style={{ marginTop: 3 }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{step.label}</div>
+    <div className={on ? "ad-dg-step" : "ad-dg-step ad-dg-step--off"}>
+      <CheckRow label={step.label}>
+        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} />
+      </CheckRow>
+      <div className="ad-dg-step-body">
         {step.kind === "travel" ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="ad-dg-step-dates">
             <input
               type="date"
               value={step.start}
@@ -236,13 +227,15 @@ function StepRow({
             />
           </div>
         ) : (
-          <div style={valueStyle}>{step.value}</div>
+          <div className="ad-prewrap">{step.value}</div>
         )}
         {step.kind === "travel" && step.travelNote && (
-          <div style={subtle}>Note: {step.travelNote}</div>
+          <div className="ad-dg-step-note">Note: {step.travelNote}</div>
         )}
-        {step.current && step.kind !== "notes" && <div style={subtle}>On file: {step.current}</div>}
-        {step.note && <div style={subtle}>{step.note}</div>}
+        {step.current && step.kind !== "notes" && (
+          <div className="ad-dg-step-note">On file: {step.current}</div>
+        )}
+        {step.note && <div className="ad-dg-step-note">{step.note}</div>}
       </div>
     </div>
   );
@@ -251,72 +244,26 @@ function StepRow({
 function ResultList({ results, onDone }: { results: StepResult[]; onDone: () => void }) {
   const failed = results.filter((r) => !r.ok).length;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
-      <p style={{ margin: 0 }}>
+    <div className="ad-stack ad-dg-body">
+      <Notice tone={failed === 0 ? "success" : "warning"} role="status">
         {failed === 0
           ? "All changes applied."
           : `${failed} of ${results.length} didn't apply. The rest did.`}
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      </Notice>
+      <div className="ad-stack ad-stack--tight">
         {results.map((r) => (
-          <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-            <span style={r.ok ? successPillStyle : dangerPillStyle}>
-              {r.ok ? "done" : "failed"}
-            </span>
+          <div key={r.id} className="ad-dg-result">
+            <Pill tone={r.ok ? "success" : "danger"}>{r.ok ? "done" : "failed"}</Pill>
             <span>{r.label}</span>
-            {r.error && <span style={{ color: "var(--color-text-danger)" }}>{r.error}</span>}
+            {r.error && <span className="ad-danger-text">{r.error}</span>}
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <ActionButton onClick={onDone}>Done</ActionButton>
+      <div className="ad-actions">
+        <Button variant="primary" onClick={onDone}>
+          Done
+        </Button>
       </div>
     </div>
   );
 }
-
-/** Matches the other quiet header controls (e.g. "New change request"). */
-const triggerStyle: React.CSSProperties = {
-  fontSize: 13,
-  padding: "5px 12px",
-  borderRadius: "var(--border-radius-md)",
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-primary)",
-  cursor: "pointer",
-};
-
-const pasteBox: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  height: 120,
-  padding: 8,
-  fontFamily: "monospace",
-  fontSize: 12,
-  resize: "vertical",
-};
-
-const warningBox: React.CSSProperties = {
-  ...warningPillStyle,
-  display: "block",
-  whiteSpace: "normal",
-  borderRadius: "var(--border-radius-md)",
-  padding: "6px 10px",
-  fontSize: 13,
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  alignItems: "flex-start",
-  padding: "8px 10px",
-  border: "1px solid var(--color-border-tertiary)",
-  borderRadius: "var(--border-radius-md)",
-};
-
-const valueStyle: React.CSSProperties = { whiteSpace: "pre-wrap", overflowWrap: "anywhere" };
-const subtle: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--color-text-tertiary)",
-  overflowWrap: "anywhere",
-};

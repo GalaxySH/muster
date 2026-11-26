@@ -54,6 +54,13 @@ function renderCell(people: CellPerson[], supply = people.filter((p) => p.offere
 describe("SlotCell dialog", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("names the cell by its day and shift, with the count the title gives", () => {
+    renderCell([], 4);
+    const cell = screen.getByRole("button");
+    expect(cell).toHaveAccessibleName("Mon, 8a to 12p: 4 could work this shift");
+    expect(cell).toHaveAttribute("title", "4 could work this shift");
+  });
+
   it("lists the people the count is made of", async () => {
     renderCell([person({ email: "amy@wisc.edu", displayName: "Amy Ames" })]);
     await userEvent.click(screen.getByRole("button"));

@@ -35,13 +35,16 @@ function rows(counts: Record<string, number> = {}) {
   );
 }
 
-/** The one block row's cell under `dayLabel`. Columns and cells line up 1:1. */
+/**
+ * The one block row's cell under `dayLabel`. The row opens with its own header
+ * (the shift), so its cells line up with the columns after the first.
+ */
 const cellOf = (table: HTMLElement, dayLabel: string) => {
   const column = within(table)
     .getAllByRole("columnheader")
     .findIndex((th) => th.textContent === dayLabel);
   const row = within(table).getAllByRole("row")[1]!;
-  return within(row).getAllByRole("cell")[column]!;
+  return within(row).getAllByRole("cell")[column - 1]!;
 };
 
 const weekdayTable = () => screen.getAllByRole("table")[0]!;
@@ -55,6 +58,19 @@ describe("CoverageGrid", () => {
     expect(cellOf(weekdayTable(), "Mon")).toHaveTextContent("3/2");
     expect(cellOf(weekdayTable(), "Tue")).toHaveTextContent("1/2");
     expect(cellOf(weekdayTable(), "Wed")).toHaveTextContent("0/2");
+  });
+
+  it("names each cell by position, day, shift and count", () => {
+    render(
+      <CoverageGrid rows={rows({ "wd|mon": 3 })} assignedCells={null} positionName="Cashier" />,
+    );
+    const mon = within(cellOf(weekdayTable(), "Mon")).getByRole("button");
+    expect(mon).toHaveAccessibleName(/^Cashier, Mon, .+: 3\/2\. 3 could work this shift$/);
+    expect(mon).toHaveAttribute("title", "3 could work this shift");
+    // Every cell has its own name: no two read the same.
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.every((n) => n?.startsWith("Cashier, "))).toBe(true);
   });
 
   it("counts the run's seats when one is passed, and both rotation weeks on the weekend", () => {
@@ -74,20 +90,20 @@ describe("CoverageGrid", () => {
 
   it("sets the two tables side by side by default", () => {
     render(<CoverageGrid rows={rows()} assignedCells={null} />);
-    expect(layoutOf()).not.toHaveStyle({ flexDirection: "column" });
-    expect(layoutOf()).toHaveStyle({ flexWrap: "wrap" });
+    expect(layoutOf()).toHaveClass("ad-gr-cov-layout");
+    expect(layoutOf()).not.toHaveClass("ad-gr-cov-layout--stacked");
   });
 
   it("stacks weekdays above weekends when asked, each table scrolling on its own", () => {
     render(<CoverageGrid rows={rows()} assignedCells={null} stacked />);
-    expect(layoutOf()).toHaveStyle({ flexDirection: "column" });
+    expect(layoutOf()).toHaveClass("ad-gr-cov-layout--stacked");
     expect(weekendTable().parentElement!.parentElement).toBe(layoutOf());
     const headings = within(layoutOf())
       .getAllByRole("heading")
       .map((h) => h.textContent);
     expect(headings).toEqual(["Weekdays", "Weekends"]);
     for (const table of [weekdayTable(), weekendTable()]) {
-      expect(table.parentElement).toHaveStyle({ overflowX: "auto" });
+      expect(table.parentElement).toHaveClass("ad-gr-cov-block");
     }
   });
 
@@ -102,7 +118,9 @@ describe("CoverageGrid", () => {
   const nightCloseBlock = block({ id: "close", start: 20 * 60, end: 23 * 60 });
 
   it("drops the Target column and tier/close pills in compact mode", () => {
-    render(<CoverageGrid rows={buildCoverageRows([nightCloseBlock], [])} assignedCells={null} compact />);
+    render(
+      <CoverageGrid rows={buildCoverageRows([nightCloseBlock], [])} assignedCells={null} compact />,
+    );
     const headers = within(weekdayTable())
       .getAllByRole("columnheader")
       .map((th) => th.textContent);

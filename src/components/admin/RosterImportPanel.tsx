@@ -21,7 +21,7 @@ import { importRosterFromUpload, type RosterGuardBlock } from "@/lib/roster/acti
 import type { ImportSummary, PositionChangeSummary } from "@/lib/roster/import";
 import { validateRosterUpload } from "@/lib/roster/upload-validation";
 import { formatCloseDate } from "@/lib/domain/close-claims";
-import { ActionButton, InfoCard } from "@/components/ui";
+import { Button, CheckRow, Field, Notice } from "@/components/admin/ui";
 
 const SKIP_REASON_LABEL: Record<string, string> = {
   missing_email: "no email in the row",
@@ -86,94 +86,95 @@ export function RosterImportPanel({ defaultSheet }: { defaultSheet?: string }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-          disabled={pending}
-          onChange={() => setError(null)}
-          style={{ fontSize: 14 }}
-        />
-        <label style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-          Sheet
+    <div className="ad-stack">
+      <div className="ad-row ad-row--end">
+        <Field label="Roster tracker (.xlsx or .csv)">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            disabled={pending}
+            onChange={() => setError(null)}
+          />
+        </Field>
+        <Field label="Sheet">
           <input
             type="text"
             value={sheetName}
             onChange={(e) => setSheetName(e.target.value)}
             placeholder={defaultSheet}
             disabled={pending}
-            style={{ fontSize: 14, padding: "4px 6px", width: 120 }}
+            className="ad-se-sheet"
           />
-        </label>
-        <ActionButton onClick={() => runImport()} pending={pending} pendingLabel="Importing…">
+        </Field>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => runImport()}
+          pending={pending}
+          pendingLabel="Importing…"
+        >
           Import roster
-        </ActionButton>
+        </Button>
       </div>
 
-      {error && (
-        <p role="status" style={{ color: "#b00", margin: 0, fontSize: 14 }}>
-          ✗ {error}
-        </p>
+      {error && !guard && (
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
       )}
       {guard && (
-        <div role="status" style={guardBox}>
-          <p style={{ margin: "0 0 6px", fontWeight: 600 }}>
+        <Notice tone="danger" role="alert" title={error ?? undefined}>
+          <p className="ad-strong">
             These {guard.absent.length} students would be taken off the {termName} roster:
           </p>
-          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+          <ul className="ad-bullets ad-bullets--scroll">
             {guard.absent.map((email) => (
               <li key={email}>{email}</li>
             ))}
           </ul>
-          <div style={overrideRow}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div className="ad-se-notice-actions">
+            <CheckRow label="Take them off the roster">
               <input
                 type="checkbox"
                 checked={allowMass}
                 onChange={(e) => setAllowMass(e.target.checked)}
                 disabled={pending}
               />
-              Take them off the roster
-            </label>
-            <ActionButton onClick={() => runImport()} pending={pending} pendingLabel="Importing…">
+            </CheckRow>
+            <Button onClick={() => runImport()} pending={pending} pendingLabel="Importing…">
               Import again
-            </ActionButton>
+            </Button>
           </div>
-        </div>
+        </Notice>
       )}
       {closesPrompt && (
-        <div role="status" style={guardBox}>
-          <p style={{ margin: "0 0 6px", fontWeight: 600 }}>
+        <Notice tone="warning" role="status">
+          <p className="ad-strong">
             These leads are leaving the roster and still hold weekend closes from today on. Take
             them off these closes?
           </p>
-          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+          <ul className="ad-bullets ad-bullets--scroll">
             {closesPrompt.map((c) => (
               <li key={`${c.email}-${c.date}`}>
                 {c.email} · {formatCloseDate(c.date)}
               </li>
             ))}
           </ul>
-          <div style={overrideRow}>
-            <ActionButton
+          <div className="ad-se-notice-actions">
+            <Button
+              variant="primary"
               onClick={() => runImport(true)}
               pending={pending}
               pendingLabel="Importing…"
             >
               Take them off
-            </ActionButton>
-            <ActionButton
-              onClick={() => runImport(false)}
-              pending={pending}
-              pendingLabel="Importing…"
-              variant="secondary"
-            >
+            </Button>
+            <Button onClick={() => runImport(false)} pending={pending} pendingLabel="Importing…">
               Keep them on
-            </ActionButton>
+            </Button>
           </div>
-        </div>
+        </Notice>
       )}
       {summary && <SummaryReport summary={summary} termName={termName} />}
     </div>
@@ -203,42 +204,46 @@ function SummaryReport({ summary, termName }: { summary: ImportSummary; termName
   const positions = Object.entries(summary.byPosition).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div role="status" style={reportBox}>
-      <p style={{ margin: "0 0 8px", color: "#196127", fontWeight: 600 }}>✓ Imported into {termName}.</p>
-      <ul style={{ margin: "0 0 8px", paddingLeft: 20, fontSize: 14 }}>
-        <li>
-          Read <strong>{summary.sheetRows}</strong> rows from{" "}
-          {summary.sheetName ? <>sheet “{summary.sheetName}”</> : <>the CSV</>}
-        </li>
-        <li>
-          <strong>{summary.studentsUpserted}</strong> students added or refreshed (on roster)
-        </li>
-        <li>
-          <strong>{summary.adminsUpserted}</strong> admins added or refreshed
-        </li>
-        <li>
-          <strong>{summary.deactivatedByAbsence.length}</strong> taken off the roster (no longer in
-          the sheet)
-        </li>
-      </ul>
+    <div role="status" className="ad-stack">
+      <Notice tone="success" title={`Imported into ${termName}.`} />
+      <dl className="ad-dl">
+        <div>
+          <dt>
+            Rows read from {summary.sheetName ? <>sheet “{summary.sheetName}”</> : <>the CSV</>}
+          </dt>
+          <dd className="ad-strong ad-num">{summary.sheetRows}</dd>
+        </div>
+        <div>
+          <dt>Students added or refreshed (on roster)</dt>
+          <dd className="ad-strong ad-num">{summary.studentsUpserted}</dd>
+        </div>
+        <div>
+          <dt>Admins added or refreshed</dt>
+          <dd className="ad-strong ad-num">{summary.adminsUpserted}</dd>
+        </div>
+        <div>
+          <dt>Taken off the roster (no longer in the sheet)</dt>
+          <dd className="ad-strong ad-num">{summary.deactivatedByAbsence.length}</dd>
+        </div>
+      </dl>
 
       {summary.movedToAdmin.length > 0 && (
-        <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
+        <p className="ad-muted">
           Promoted to supervisor, now an admin and off the student roster:{" "}
           {summary.movedToAdmin.join(", ")}
         </p>
       )}
 
       {positions.length > 0 && (
-        <p style={{ margin: "0 0 8px", fontSize: 14, color: "#444" }}>
+        <p className="ad-muted">
           By position: {positions.map(([pos, n]) => `${pos} ${n}`).join(" · ")}
         </p>
       )}
 
       {summary.positionChanges.length > 0 && (
-        <div style={{ fontSize: 14, color: "#444" }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>Position changes:</p>
-          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+        <div>
+          <p className="ad-strong">Position changes:</p>
+          <ul className="ad-bullets">
             {summary.positionChanges.map((c, i) => (
               <li key={`${c.email}-${i}`}>
                 {c.email}: {c.from ?? "no position"} to {c.to ?? "no position"}.{" "}
@@ -250,30 +255,30 @@ function SummaryReport({ summary, termName }: { summary: ImportSummary; termName
       )}
 
       {unmapped.length > 0 && (
-        <InfoCard tone="danger" style={{ margin: "0 0 8px", fontSize: 14 }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            Titles with no matching position (students imported without one):
-          </p>
-          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+        <Notice
+          tone="danger"
+          title="Titles with no matching position (students imported without one):"
+        >
+          <ul className="ad-bullets">
             {unmapped.map(([title, n]) => (
               <li key={title}>
                 “{title}” × {n}
               </li>
             ))}
           </ul>
-          <p style={{ margin: 0 }}>
+          <p>
             <Link href="/admin/positions">Resolve these titles on the positions page</Link>
           </p>
-        </InfoCard>
+        </Notice>
       )}
 
       {summary.deactivatedByAbsence.length > 0 && (
-        <div style={quietBox}>
-          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
+        <div className="ad-se-box">
+          <p className="ad-strong">
             Taken off the roster because this sheet doesn’t list them (
             {summary.deactivatedByAbsence.length}):
           </p>
-          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+          <ul className="ad-bullets ad-bullets--scroll">
             {summary.deactivatedByAbsence.map((email) => (
               <li key={email}>{email}</li>
             ))}
@@ -282,11 +287,9 @@ function SummaryReport({ summary, termName }: { summary: ImportSummary; termName
       )}
 
       {summary.closesReleased.length > 0 && (
-        <div style={quietBox}>
-          <p style={{ margin: "0 0 4px", fontWeight: 600 }}>
-            Closes opened up ({summary.closesReleased.length}):
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+        <div className="ad-se-box">
+          <p className="ad-strong">Closes opened up ({summary.closesReleased.length}):</p>
+          <ul className="ad-bullets ad-bullets--scroll">
             {summary.closesReleased.map((c) => (
               <li key={`${c.email}-${c.date}`}>
                 {c.email} · {formatCloseDate(c.date)}
@@ -297,9 +300,9 @@ function SummaryReport({ summary, termName }: { summary: ImportSummary; termName
       )}
 
       {summary.skipped.length > 0 && (
-        <div style={{ fontSize: 13, color: "#666" }}>
-          <p style={{ margin: "8px 0 4px" }}>Skipped rows:</p>
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
+        <div className="ad-small ad-muted">
+          <p>Skipped rows:</p>
+          <ul className="ad-bullets">
             {summary.skipped.map((s, i) => (
               <li key={i}>
                 {s.detail} · {SKIP_REASON_LABEL[s.reason] ?? s.reason}
@@ -311,37 +314,3 @@ function SummaryReport({ summary, termName }: { summary: ImportSummary; termName
     </div>
   );
 }
-
-const reportBox: React.CSSProperties = {
-  border: "1px solid #cde3cd",
-  background: "#f4faf4",
-  borderRadius: 8,
-  padding: "0.8rem 1rem",
-};
-
-/** The refused-import box: who would have gone, plus the override. */
-const guardBox: React.CSSProperties = {
-  border: "1px solid #f0e2b6",
-  background: "#fdf8e9",
-  color: "#6b5900",
-  borderRadius: 6,
-  padding: "0.6rem 0.8rem",
-  fontSize: 14,
-};
-
-/** Same shape, for a change that was applied as intended. */
-const quietBox: React.CSSProperties = {
-  ...guardBox,
-  border: "1px solid #e2e2e2",
-  background: "#f6f6f6",
-  color: "#444",
-  margin: "0 0 8px",
-};
-
-const overrideRow: React.CSSProperties = {
-  marginTop: 10,
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  flexWrap: "wrap",
-};

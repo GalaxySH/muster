@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ScheduleStudentRow } from "@/lib/schedule/data";
-import { formatDayLabel, keptTagStyle } from "@/components/admin/ui";
+import { Pill, formatDayLabel } from "@/components/admin/ui";
 import { FROZEN_LABEL } from "@/components/admin/schedule-ui";
 import {
   StudentScheduleHover,
@@ -41,35 +41,36 @@ export function ScheduleStudentTable({ students }: { students: ScheduleStudentRo
   }
 
   const arrow = (key: SortKey) => (key === sort ? (dir === 1 ? " ▲" : " ▼") : "");
+  const ariaSort = (key: SortKey) =>
+    key === sort ? (dir === 1 ? "ascending" : "descending") : undefined;
+  const th = (key: SortKey, label: string, num = false) => (
+    <th scope="col" aria-sort={ariaSort(key)} className={num ? "ad-num" : undefined}>
+      <button type="button" className="ad-sortbtn" onClick={() => toggleSort(key)}>
+        {label}
+        {arrow(key)}
+      </button>
+    </th>
+  );
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table
-        className="zebra-table"
-        style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}
-      >
-        <thead>
-          <tr>
-            <Th onClick={() => toggleSort("name")} align="left">
-              Student{arrow("name")}
-            </Th>
-            <Th onClick={() => toggleSort("position")} align="left">
-              Position{arrow("position")}
-            </Th>
-            <Th onClick={() => toggleSort("hours")}>Hours{arrow("hours")}</Th>
-            <Th onClick={() => toggleSort("days")}>Days{arrow("days")}</Th>
-            <Th onClick={() => toggleSort("rotation")}>Rotation{arrow("rotation")}</Th>
-            <th style={{ ...thStyle, textAlign: "left" }}>Shifts</th>
-            <Th onClick={() => toggleSort("scheduled")}>Scheduled{arrow("scheduled")}</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((s) => (
-            <StudentRow key={s.email} s={s} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <table className="ad-table ad-table--stack ad-table--zebra">
+      <thead>
+        <tr>
+          {th("name", "Student")}
+          {th("position", "Position")}
+          {th("hours", "Hours", true)}
+          {th("days", "Days", true)}
+          {th("rotation", "Rotation")}
+          <th scope="col">Shifts</th>
+          {th("scheduled", "Scheduled")}
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((s) => (
+          <StudentRow key={s.email} s={s} />
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -98,106 +99,73 @@ function StudentRow({ s }: { s: ScheduleStudentRow }) {
   const short = s.assignedMinutes + 1e-6 < s.targetMinutes;
   return (
     <tr>
-      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
+      <td data-label="Student" className="ad-nowrap">
         <StudentScheduleHover email={s.email}>
           <Link href={`/admin/students/${encodeURIComponent(s.email)}`}>{s.displayName}</Link>
         </StudentScheduleHover>
-        {s.fillIn && <span style={warningTag}>no response</span>}
+        {s.fillIn && (
+          <>
+            {" "}
+            <Pill tone="warning">no response</Pill>
+          </>
+        )}
         {s.lateStart && (
-          <span
-            style={warningTag}
-            title={`Starts after ${formatDayLabel(s.lateStart.expectedStart)}`}
-          >
-            starts late
-          </span>
+          <>
+            {" "}
+            <Pill
+              tone="warning"
+              title={`Starts after ${formatDayLabel(s.lateStart.expectedStart)}`}
+            >
+              starts late
+            </Pill>
+          </>
         )}
       </td>
-      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
+      <td data-label="Position" className="ad-nowrap">
         {s.positionName ?? "-"}
       </td>
-      <td
-        style={{
-          ...tdStyle,
-          whiteSpace: "nowrap",
-          color: short ? "#8a5a00" : undefined,
-          fontWeight: short ? 600 : undefined,
-        }}
-      >
-        {hoursLabel(s.assignedMinutes)} of {hoursLabel(s.targetMinutes)}h
-        {s.belowMinHours && <span style={dangerTag}>below minimum</span>}
+      <td data-label="Hours" className="ad-num ad-nowrap">
+        <span className={short ? "ad-warning-text ad-strong" : undefined}>
+          {hoursLabel(s.assignedMinutes)} of {hoursLabel(s.targetMinutes)}h
+        </span>
+        {s.belowMinHours && (
+          <>
+            {" "}
+            <Pill tone="danger">below minimum</Pill>
+          </>
+        )}
         {/* The engine refuses to schedule anyone past their cap, so this pill
             means a hand edit or a kept row, never a fresh placement. Both pills
             need a hand fix. */}
-        {s.overMaxHours && <span style={dangerTag}>over maximum</span>}
+        {s.overMaxHours && (
+          <>
+            {" "}
+            <Pill tone="danger">over maximum</Pill>
+          </>
+        )}
       </td>
-      <td style={tdStyle}>{s.daysUsed}</td>
-      <td style={tdStyle}>{s.cohort ? ROTATION_LABEL[s.cohort] : "-"}</td>
-      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
+      <td data-label="Days" className="ad-num">
+        {s.daysUsed}
+      </td>
+      <td data-label="Rotation">{s.cohort ? ROTATION_LABEL[s.cohort] : "-"}</td>
+      <td data-label="Shifts" className="ad-nowrap">
         {s.cells.length === 0 ? (
-          <span style={{ color: "var(--color-text-secondary)" }}>none</span>
+          <span className="ad-muted">none</span>
         ) : (
           <StudentScheduleModalLink email={s.email} displayName={s.displayName}>
-            <span style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
+            <span className="ad-sc-shiftlink">
               {s.cells.length} {s.cells.length === 1 ? "shift" : "shifts"}
             </span>
           </StudentScheduleModalLink>
         )}
-        {s.frozenReason && <span style={keptTagStyle}>{FROZEN_LABEL[s.frozenReason]}</span>}
+        {s.frozenReason && (
+          <>
+            {" "}
+            <Pill>{FROZEN_LABEL[s.frozenReason]}</Pill>
+          </>
+        )}
       </td>
-      <td style={tdStyle}>{s.scheduled ? "✓" : ""}</td>
+      <td data-label="Scheduled">{s.scheduled ? "✓" : ""}</td>
     </tr>
   );
 }
-
-function Th({
-  children,
-  onClick,
-  align,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  align?: "left";
-}) {
-  return (
-    <th
-      onClick={onClick}
-      style={{
-        ...thStyle,
-        textAlign: align ?? "center",
-        cursor: "pointer",
-        userSelect: "none",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-
-const thStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  fontWeight: 600,
-  color: "var(--color-text-secondary)",
-  borderBottom: "1px solid var(--color-border-secondary)",
-  textAlign: "center",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  textAlign: "center",
-  borderBottom: "1px solid var(--color-border-secondary)",
-};
-
-/** Worth a look, not a failure: no response of their own, a late start. */
-const warningTag: React.CSSProperties = {
-  ...keptTagStyle,
-  background: "#fdf0d5",
-  color: "#8a5a00",
-};
-
-/** Something the scheduler has to fix by hand. */
-const dangerTag: React.CSSProperties = {
-  ...keptTagStyle,
-  background: "#fce8e6",
-  color: "#b3261e",
-};

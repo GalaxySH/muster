@@ -7,12 +7,7 @@
   --color-text-secondary: #4a5568;
   --color-text-tertiary: #8a94a6;
   --color-text-info: #1a66cc;
-  --color-text-success: #196127;
   --color-text-warning: #946c00;
-  --color-text-danger: #b00020;
-  /* Hours a student hasn't offered but would get anyway (the auto-assigned
-     weekend): additional, optional, not their own pick. */
-  --color-text-auto: #d1497a;
 
   --color-background-primary: #ffffff;
   --color-background-secondary: #f4f6fa;
@@ -21,8 +16,9 @@
 
   --color-border-secondary: #ccd2de;
   --color-border-tertiary: #e2e6ee;
+  /* The edge of a control (the finder, the semester select): 3.8:1 on white. */
+  --color-border-control: #8a8279;
   --color-border-warning: #e0c060;
-  --color-border-danger: #d93025;
 
   --border-radius-md: 6px;
   --border-radius-lg: 10px;
@@ -39,130 +35,75 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Shared page container. Every top-level `<main>` uses `.page` (+ one width
-   modifier) so content is left-aligned with one comfortable, responsive width
-   vocabulary instead of the per-page ad-hoc maxWidth/centering it replaced.
-   Horizontal padding shrinks on narrow viewports for mobile. */
-.page {
-  width: 100%;
-  margin: 0; /* left-aligned, never auto-centered */
-  padding: 2rem clamp(1rem, 4vw, 2rem);
-  color: var(--color-text-primary);
-}
-.page--narrow {
-  max-width: 480px;
-}
-.page--default {
-  max-width: 720px;
-}
-.page--wide {
-  max-width: 1000px;
-}
-/* Full-bleed: wide admin surfaces (the response-review dashboard, groups &
-   form windows) fill the screen so their tables never need sideways scroll. */
-.page--full {
-  max-width: none;
-}
-
-/* Responsive admin table. A normal table on wide screens (the min-width keeps
-   columns readable inside a horizontal-scroll wrapper); under 720px the header
-   row hides and each row stacks into a labeled block, with each cell's column
-   name rendered from its data-label, so nothing gets cut off on mobile. */
-.stack-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.stack-table th {
-  padding: 4px 8px;
-  font-weight: 500;
-  font-size: 13px;
-  text-align: left;
-  color: var(--color-text-secondary);
-}
-.stack-table td {
-  padding: 8px;
-  vertical-align: top;
-}
-.stack-table tbody tr {
-  border-top: 0.5px solid var(--color-border-secondary);
-}
-/* Zebra striping (opt-in per table): alternate row shading so a wide row can
-   be followed across its columns, spreadsheet style. On the stacked mobile
-   layout the shading keeps separating one row's block from the next. */
-.zebra-table tbody tr:nth-child(even) {
-  background: var(--color-background-secondary);
-}
-
-/* Ruled columns (opt-in): a hairline between cells so a dense row reads as a
-   grid instead of a run of words. Table mode only; the stacked mobile layout
-   has no columns to rule. The last column drops its rule so a row never ends
-   on a dangling line. */
-@media (min-width: 720px) {
-  .ruled-table th,
-  .ruled-table td {
-    border-right: 1px solid var(--color-border-tertiary);
-  }
-  .ruled-table th:last-child,
-  .ruled-table td:last-child {
-    border-right: none;
-  }
-}
-
-/* Row hover (opt-in): the row under the cursor dims, so a click target that
-   spans the whole width is unmistakable. Used with a pointer cursor by the
-   tables whose rows navigate. */
-.hover-table tbody tr:hover {
-  background: var(--color-border-tertiary);
-}
-
-@media (min-width: 720px) {
-  .stack-table {
-    min-width: 680px;
-  }
-  /* Narrow tables with few columns (the hub's group-progress table) size to
-     their container instead of forcing the generic table width. */
-  .stack-table--fit {
-    min-width: 0;
-  }
-}
-@media (max-width: 719.98px) {
-  .stack-table thead {
-    display: none;
-  }
-  .stack-table,
-  .stack-table tbody,
-  .stack-table tr,
-  .stack-table td {
-    display: block;
-  }
-  .stack-table tbody tr {
-    padding: 8px 0;
-  }
-  .stack-table td {
-    padding: 3px 0;
-  }
-  .stack-table td[data-label]::before {
-    content: attr(data-label);
-    display: inline-block;
-    min-width: 104px;
-    padding-right: 8px;
-    color: var(--color-text-secondary);
-    font-size: 12px;
-  }
-}
-
-/* The shared page header (components/AppHeader.tsx): breadcrumbs on the left
-   and, for admins, the student finder pushed to the right. When the crumbs
-   leave no room the finder wraps to its own row, still right-aligned; on a
-   phone it takes that row's full width. */
-.app-header {
+/* What an admin gets at the top of every page (components/AdminTools.tsx): the
+   student finder, the semester, and on the console who is signed in. The
+   finder takes the room that is left; on a phone it takes a full row. Sized in
+   rem, so it follows the reader's text size on the console and on the student
+   pages alike. */
+.admin-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin: 0 0 16px;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+}
+.admin-tools-account {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+.admin-tools-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .admin-tools-email {
+    display: none;
+  }
+}
+/* The semester being worked in: its name, or the select that changes it
+   (components/TermSwitcher.tsx). */
+.term-name {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.term-select {
+  max-width: min(11.25rem, 100%);
+  min-height: 1.75rem;
+  padding: 0.1875rem 0.375rem;
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+}
+/* A form whose only control is a link in a line of text (Sign out). */
+.inline-form {
+  display: inline;
+}
+/* A submit drawn as a link in a line of text (components/SubmitButton.tsx). */
+.text-link-button {
+  min-height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-info);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Still a link while it waits or is hovered, also inside the console, whose
+   base button would give it a fill. */
+.text-link-button:hover,
+.text-link-button:disabled {
+  border: none;
+  background: none;
 }
 /* Shown to an admin working in a semester students are not filling in. */
 .term-banner {
@@ -171,45 +112,46 @@ body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 12px;
-  padding: 8px 12px;
+  gap: 0.375rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-warning);
   border-radius: var(--border-radius-md);
   background: var(--color-background-warning);
   color: var(--color-text-warning);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .term-banner button {
+  min-height: 1.5rem;
   border: 1px solid currentColor;
   border-radius: var(--border-radius-md);
   background: none;
   color: inherit;
-  font-size: 13px;
-  padding: 3px 10px;
+  font-size: 0.8125rem;
+  padding: 0.1875rem 0.625rem;
   cursor: pointer;
 }
 .student-search {
   position: relative;
-  flex: 0 1 300px;
+  flex: 0 1 18.75rem;
   min-width: 0;
-  margin-left: auto;
+  margin-right: auto;
 }
 .student-search-field {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   background: var(--color-background-primary);
-  border: 1px solid var(--color-border-secondary);
+  border: 1px solid var(--color-border-control);
   border-radius: var(--border-radius-md);
-  padding: 5px 10px;
+  padding: 0.3125rem 0.625rem;
   cursor: text;
 }
 .student-search-field:focus-within {
   border-color: var(--color-text-info);
 }
 .student-search-icon {
-  color: var(--color-text-tertiary);
-  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
 }
 .student-search-input {
   flex: 1;
@@ -217,17 +159,17 @@ body {
   border: 0;
   outline: 0;
   padding: 0;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-family: var(--font-sans);
   background: transparent;
   color: var(--color-text-primary);
 }
 .student-search-kbd {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  border: 0.5px solid var(--color-border-tertiary);
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 4px;
-  padding: 0 4px;
+  padding: 0 0.25rem;
 }
 .student-search-menu {
   position: absolute;
@@ -235,13 +177,13 @@ body {
   top: 100%;
   left: 0;
   right: 0;
-  margin-top: 4px;
+  margin-top: 0.25rem;
   background: var(--color-background-primary);
   border: 1px solid var(--color-border-secondary);
   border-radius: var(--border-radius-md);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  padding: 4px;
-  max-height: 320px;
+  padding: 0.25rem;
+  max-height: 20rem;
   overflow-y: auto;
 }
 .student-search-item {
@@ -250,12 +192,12 @@ body {
   align-items: flex-start;
   gap: 1px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 0.3125rem 0.5rem;
   border: 0;
   border-radius: var(--border-radius-md);
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
@@ -265,7 +207,7 @@ body {
   color: var(--color-text-info);
 }
 .student-search-empty {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   cursor: default;
 }
 .student-search-email {
@@ -273,8 +215,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
 }
 @media (max-width: 640px) {
   .student-search {
@@ -288,24 +230,25 @@ body {
     display: none;
   }
   .student-search-field {
-    padding: 8px 12px;
+    padding: 0.5rem 0.75rem;
   }
   .student-search-input {
-    font-size: 16px;
+    font-size: 1rem;
   }
   .student-search-item {
-    padding: 9px 10px;
-    font-size: 15px;
+    padding: 0.5625rem 0.625rem;
+    font-size: 0.9375rem;
   }
   .student-search-menu {
-    max-height: min(320px, 50vh);
+    max-height: min(20rem, 50vh);
   }
 }
 
-/* The admin's /me dashboard button (components/AdminHomeRedirect.tsx): a darker
-   fill wipes across it, and the redirect fires when the wipe ends. Reduced
-   motion swaps the wipe for a colour fade over the same time, so the
-   animationend that triggers the redirect still arrives. */
+/* The admin's /me dashboard button (components/AdminHomeRedirect.tsx): a student
+   primary button (student.css .sf-btn) that a darker fill wipes across; the
+   redirect fires when the wipe ends. Reduced motion swaps the wipe for a colour
+   fade over the same time, so the animationend that triggers the redirect
+   still arrives. */
 .admin-redirect {
   position: relative;
   overflow: hidden;
@@ -318,9 +261,12 @@ body {
 .admin-redirect-fill {
   position: absolute;
   inset: 0;
-  background: #0b3d80;
+  background: var(--sf-accent-strong);
   transform-origin: left center;
   animation: admin-redirect-wipe var(--redirect-ms, 4000ms) linear forwards;
+}
+.admin-redirect-status {
+  margin-top: 0.5rem;
 }
 @keyframes admin-redirect-wipe {
   from {
@@ -341,199 +287,6 @@ body {
   }
   to {
     opacity: 1;
-  }
-}
-
-/* Admin hub shell (app/admin/page.tsx): the nav rail beside the status body.
-   On a wide screen the rail is a grid column sized to its own content, and every
-   link is one compact row, so the whole rail fits a desktop screen without
-   scrolling. Under 960px it becomes a slide-out drawer opened by the floating
-   menu button (components/admin/AdminNav.tsx), so the status content owns the
-   page. The rail's look mirrors panelStyle in components/admin/ui.tsx; it lives
-   here because the drawer must restyle it. */
-.admin-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "body";
-  gap: 14px;
-}
-.admin-shell-body {
-  grid-area: body;
-  min-width: 0;
-}
-.admin-shell-nav {
-  grid-area: nav;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--color-background-primary);
-  border: 1px solid var(--color-border-secondary);
-  padding: 0.7rem 0.75rem;
-}
-.admin-nav-toggle,
-.admin-nav-backdrop {
-  display: none;
-}
-@media (min-width: 960px) {
-  .admin-shell {
-    grid-template-columns: 236px minmax(0, 1fr);
-    grid-template-areas: "nav body";
-  }
-  .admin-shell-nav {
-    border-radius: var(--border-radius-lg);
-    /* Hug the links instead of stretching to the body's height: with the rail
-       this short, a stretched panel is mostly empty space. */
-    align-self: start;
-  }
-}
-@media (max-width: 959.98px) {
-  .admin-shell-nav {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 940;
-    width: min(320px, 86vw);
-    overflow-y: auto;
-    border-width: 0 1px 0 0;
-    transform: translateX(-105%);
-    visibility: hidden;
-    transition:
-      transform 0.2s ease,
-      visibility 0.2s;
-  }
-  .admin-shell-nav--open {
-    transform: translateX(0);
-    visibility: visible;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
-  }
-  .admin-nav-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 930;
-    background: rgba(0, 0, 0, 0.5);
-  }
-  .admin-nav-toggle {
-    position: fixed;
-    right: 14px;
-    bottom: 14px;
-    z-index: 950;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    border: 1px solid var(--color-border-secondary);
-    border-radius: 999px;
-    background: var(--color-background-primary);
-    color: var(--color-text-primary);
-    font-family: var(--font-sans);
-    font-size: 14px;
-    font-weight: 600;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
-    cursor: pointer;
-  }
-}
-
-/* Column alignment for stack-tables, applied only in table mode so stacked
-   rows on mobile stay left-aligned under their data-labels. */
-@media (min-width: 720px) {
-  .stack-table .cell-right {
-    text-align: right;
-  }
-  .stack-table .cell-center {
-    text-align: center;
-  }
-}
-
-/* Hover affordance for the admin header controls. These are styled with inline
-   `style` objects, which can't express a pseudo-class, so the hover lives here
-   and each control opts in with the class. Darkening by filter rather than
-   setting a background keeps one rule working on every base colour (the white
-   links, the green "scheduled" toggle, the red delete button). */
-.btn-hover {
-  transition:
-    filter 0.12s ease,
-    box-shadow 0.12s ease;
-}
-.btn-hover:hover:not(:disabled):not([aria-disabled="true"]) {
-  filter: brightness(0.94);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
-  cursor: pointer;
-}
-
-/* The read-only schedule grid in the admin student popup
-   (src/components/admin/StudentSchedulePopup.tsx). The student availability
-   form has its own grid in student.css (.sf-grid). On touch devices and narrow
-   viewports the row label may wrap, so the table never overflows sideways. */
-.avail-grid {
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.avail-grid th {
-  padding: 2px 6px;
-  font-weight: 500;
-}
-.avail-grid td {
-  padding: 2px;
-}
-.avail-grid .avail-rowlabel {
-  padding: 2px 8px;
-  font-weight: 400;
-  text-align: right;
-  white-space: nowrap;
-}
-/* The scheduling week starts on Sunday, so Sun opens the week and Sat closes it
-   rather than the two forming one contiguous weekend (PLAN §7). The weekend grid
-   splits its two day columns (Sun first, then Sat) with a wider gap plus a thin
-   vertical rule; the admin grid (PrefGridCalculator) draws the same split. The
-   selectors are positional, so they follow the column order. Weekday grids are
-   untouched. */
-.avail-grid--weekend th:last-child,
-.avail-grid--weekend td:last-child {
-  border-left: 1px solid #ccc;
-  padding-left: 10px;
-}
-.avail-grid--weekend th:nth-last-child(2),
-.avail-grid--weekend td:nth-last-child(2) {
-  padding-right: 10px;
-}
-
-@media (pointer: coarse), (max-width: 640px) {
-  .avail-grid td {
-    padding: 2px 1px;
-  }
-  .avail-grid .avail-rowlabel {
-    padding: 2px 6px;
-    white-space: normal;
-  }
-}
-
-/* Response-list flags cell: individual pills when there's room (wide table
-   mode, and stacked mobile rows where each cell owns the full width), a
-   compact count on mid-width screens where the column would crowd. */
-.flags-expanded {
-  display: none;
-}
-@media (min-width: 1100px) {
-  .flags-expanded {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-  }
-  .flags-count {
-    display: none;
-  }
-}
-@media (max-width: 719.98px) {
-  .flags-expanded {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 3px;
-  }
-  .flags-count {
-    display: none;
   }
 }
 
@@ -562,6 +315,29 @@ body {
   padding: 0.9rem;
   background: var(--color-background-primary);
   border-radius: var(--border-radius-lg);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+/* The panel takes focus when it opens; the ring belongs on the controls. */
+.modal-panel:focus {
+  outline: none;
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.modal-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.modal-close {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 8px;
+  line-height: 1;
 }
 @media (max-width: 719.98px) {
   .modal-overlay {
@@ -572,48 +348,5 @@ body {
     max-height: 100vh;
     padding: 0.6rem;
     border-radius: 0;
-  }
-}
-
-/* Per-student response header (app/admin/students/[email]/page.tsx): the identity
-   block and the action buttons share one card. Each group wraps within itself, so a
-   narrow screen stacks the buttons instead of letting them run off the card's edge.
-   On mobile the action bar takes the full width and tightens its spacing, packing
-   the buttons into a neat block. */
-.response-identity,
-.response-actionbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.response-actionbar {
-  justify-content: flex-end;
-}
-@media (max-width: 719.98px) {
-  .response-actionbar {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 6px;
-  }
-}
-
-/* Upcoming-travel row (components/admin/UpcomingTravelRow.tsx). On a wide screen
-   the dates column keeps one width (enough for a pill and the longest range), so
-   the thumbnails beside it line up from row to row. On a phone that width goes
-   to the name column instead, and the position gets its own line and drops the
-   separator rather than leaving it dangling after the name. */
-@media (min-width: 720px) {
-  .travel-row-right {
-    min-width: 190px;
-  }
-}
-@media (max-width: 719.98px) {
-  .travel-row-position {
-    display: block;
-  }
-  .travel-row-sep {
-    display: none;
   }
 }

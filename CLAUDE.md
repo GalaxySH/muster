@@ -84,8 +84,8 @@ and module seams for the Tier 2 features (2.1–2.5), SL weekend-close picking (
 schedule change requests (3.1),
 edit-window enforcement, the Drive folder layout, admin views, the evidence/Drive relay,
 the availability form, the wizard form-flow + unified navigation, groups & form windows,
-the magic-link fallback + email/digest settings, the test-account manager, and the
-roster import. **Read the relevant section before editing a subsystem, and update it
+the magic-link fallback + email/digest settings, the test-account manager, the
+roster import, and the two design systems (student 1.64, admin 1.67). **Read the relevant section before editing a subsystem, and update it
 alongside code changes** (same rule as PLAN.md).
 
 Auth surfaces: `/signin`, protected `/me` and `/admin`, `/api/auth/[...nextauth]`,
@@ -107,7 +107,8 @@ signs in as any `@wisc.edu` email without OAuth — a Credentials provider gated
 - `docs/architecture.md` — the per-subsystem layering notes (see above).
 - `docs/wireframes/*.html` — static HTML mockups of admin surfaces. They use CSS
   custom properties (`--color-*`, `--font-sans`, `--border-radius-*`) and Tabler
-  icons (`ti ti-*`); design references, not wired-up components.
+  icons (`ti ti-*`); design references, not wired-up components. They predate the
+  admin design system (1.67), which is what the console actually looks like.
 
 ### Settled stack decisions (beyond PLAN.md §14)
 
@@ -296,6 +297,19 @@ These are non-obvious and pervade the data model — internalize them before edi
 
 When adding rules, extend the domain layer test-first; wire DB/UI around it rather
 than embedding logic in routes or components.
+
+**Admin UI (1.67):** every admin page renders in `components/admin/AdminPage.tsx` (the
+`.ad` root, the section rail `AdminNav`, the top bar with `components/AdminTools.tsx`,
+the page's one `h1` from `title`) and exports `metadata` with its title; a new page
+also goes in the `NAV` list in `AdminNav.tsx`. Build from the primitives in
+`components/admin/ui.tsx` (`Panel`, `Notice`, `Button`, `Field`, `Disclosure`, ...)
+rather than inline styles. Styles live in `app/admin.css` plus one `app/admin-*.css`
+per area: a component rule is a single `ad-` prefixed class, a bare-element rule is
+`:where(.ad) :where(el)`, and colours come from the `--ad-*` tokens. A page's settings
+go in one `PageSettings` section above its content, view filters in the table's
+toolbar. Student pages have their own system (`components/student/`, `app/student*.css`,
+`sf-` classes); the two never style each other. Read "Admin design system" and
+"Student design system" in `docs/architecture.md` first.
 
 **Module boundaries (hard rule):** Muster is three peer modules with an admin console
 composing them. **The form core** (`lib/{availability,evidence,flow,roster,groups,changes,closes,drive,email,positions,test-accounts}`,

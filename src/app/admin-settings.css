@@ -1,0 +1,94 @@
+/* Roster import, email, Google Drive, test accounts. Same convention as
+   admin.css: one `ad-` prefixed class per rule; this file's own are `ad-se-`. */
+
+.ad-se-sheet {
+  width: 9rem;
+}
+
+.ad-se-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.625rem;
+}
+
+/* A change the import applied as intended: quiet, set apart from the page. */
+.ad-se-box {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-sunken);
+}
+.ad-se-box > p {
+  margin-bottom: 0.25rem;
+}
+
+.ad-se-font {
+  min-width: 13.75rem;
+  max-width: 100%;
+  align-self: flex-start;
+}
+.ad-se-preview {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+  background: var(--ad-surface);
+  overflow-x: auto;
+}
+.ad-se-preview-subject {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+.ad-se-vars td:first-child {
+  white-space: nowrap;
+}
+
+/* The sender: a name, then the address with its fixed domain. */
+.ad-se-sender {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ad-se-sender > legend {
+  margin-bottom: 0.1875rem;
+}
+.ad-se-sender-name {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+.ad-se-sender-address {
+  display: flex;
+  flex: 1 1 14rem;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.ad-se-sender-address > input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The test-account form: one narrow column. */
+.ad-se-create {
+  display: grid;
+  gap: 0.625rem;
+  max-width: 26rem;
+}
+.ad-se-create > button {
+  justify-self: start;
+}
+.ad-se-row-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 719.98px) {
+  .ad-se-row-actions {
+    justify-content: flex-start;
+  }
+}
+.ad-bullets + p {
+  margin-top: 0.5rem;
+}
+.ad-se-after-help {
+  margin-top: 0.5rem;
+}

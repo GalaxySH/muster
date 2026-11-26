@@ -1,0 +1,105 @@
+/* Semester, groups and windows, positions and shifts. Same convention as admin.css: one `ad-` prefixed class per rule;
+   this file's own are `ad-su-`. */
+
+/* A titled group of fields or controls inside a panel. Groups in a run are
+   ruled apart. */
+.ad-su-group {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--ad-border-soft);
+}
+.ad-su-group:first-child,
+.ad-su-group--first {
+  padding-top: 0;
+  border-top: 0;
+}
+.ad-su-group:last-child {
+  padding-bottom: 0;
+}
+/* Blocks under a group's fields: a checkbox, a wide field, a preview. */
+.ad-su-below {
+  margin-top: 0.75rem;
+}
+/* A field that should not run the width of the panel. */
+.ad-su-narrow {
+  max-width: 12rem;
+}
+.ad-su-medium {
+  max-width: 28rem;
+}
+/* A paragraph of explanation at a readable measure. */
+.ad-su-prose {
+  max-width: 46rem;
+  margin: 0;
+  color: var(--ad-text-2);
+}
+
+/* The system message as students see it. `sf-scope` on the same element
+   brings the student tokens and nothing else (student.css). */
+.ad-su-preview > .sf-notice {
+  margin: 0;
+}
+
+/* What a new semester starts with: three short lists side by side. */
+.ad-su-outcome {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+}
+/* A group's name with its tags and its inline actions. */
+.ad-su-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+}
+/* The message a row action leaves under its buttons. */
+.ad-su-rowmsg {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+/* The student picker: a list that scrolls inside its own box, headings pinned. */
+.ad-su-scroll {
+  max-height: 20rem;
+  overflow: auto;
+}
+.ad-su-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* A setting whose control is a checkbox with its own line of help. */
+.ad-su-setting-control {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  max-width: 26rem;
+}
+
+/* A position's title in its closed row: the name, then its tags. */
+.ad-su-pos-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+.ad-su-pos-summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.5rem;
+}
+
+/* The shift blocks of one day type: a table of inputs. */
+.ad-su-blocks-cap {
+  width: min(4rem, 100%);
+}
+.ad-su-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.375rem;
+}

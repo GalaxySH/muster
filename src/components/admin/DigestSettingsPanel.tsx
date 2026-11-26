@@ -6,13 +6,22 @@
  * env allowlist has no role in digest delivery. With no recipients the digest
  * sends nothing even while on.
  *
- * Delivery is the in-app scheduler (lib/changes/scheduler.ts), so the card
- * carries the server-computed run health and the last-run stamp: the title
- * never claims a plain "on" while the scheduler provably is not running.
+ * Delivery is the in-app scheduler (lib/changes/scheduler.ts), so the panel
+ * carries the server-computed run health and the last-run stamp: an "On" that
+ * provably is not running comes with a notice saying so.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ActionButton, InfoCard } from "@/components/ui";
+import {
+  ActionMessage,
+  Button,
+  Field,
+  Notice,
+  Panel,
+  Pill,
+  SettingRow,
+  Status,
+} from "@/components/admin/ui";
 import { setChangeDigestEnabled, setChangeDigestRecipients } from "@/lib/admin/actions";
 import type { DigestRunHealth } from "@/lib/changes/digest-health";
 
@@ -63,13 +72,10 @@ export function DigestSettingsPanel({
   const configured = recipients.length > 0;
   const broken = health === "never-ran" || health === "stale";
 
-  const title = !enabled
-    ? "Change-request digest is off"
-    : health === "never-ran"
+  const brokenTitle =
+    health === "never-ran"
       ? "Change-request digest is on, but it is not running"
-      : health === "stale"
-        ? "Change-request digest is on, but it has stopped running"
-        : "Change-request digest is on";
+      : "Change-request digest is on, but it has stopped running";
 
   const healthNote =
     health === "disabled"
@@ -83,81 +89,63 @@ export function DigestSettingsPanel({
             : null;
 
   return (
-    <InfoCard
-      tone={!enabled ? "info" : broken ? "danger" : health === "ok" && configured ? "success" : "info"}
-      title={title}
+    <Panel
+      id="digest"
+      title="Daily digest"
+      aside={<Pill tone={enabled ? "success" : undefined}>{enabled ? "On" : "Off"}</Pill>}
     >
-      <p style={{ marginTop: 0 }}>
-        A daily email summarizing new schedule change requests, sent each morning at 7 AM
-        Central.{" "}
-        {enabled
-          ? configured
-            ? "It goes to the recipients below."
-            : "Add at least one recipient below or nothing is sent."
-          : "No digest is sent while it is off."}
-      </p>
-      <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}>
-        Last run: {fmtTime(lastRunAt)}
-      </p>
-      {enabled && healthNote && (
-        <p
-          style={{
-            fontSize: 14,
-            color: broken ? "var(--color-text-danger)" : "var(--color-text-secondary)",
-            margin: "0 0 10px",
-          }}
-        >
-          {healthNote}
-        </p>
-      )}
-      <ActionButton
-        onClick={toggle}
-        variant={enabled ? "secondary" : "primary"}
-        pending={pendingToggle}
-        pendingLabel="Saving…"
+      <SettingRow
+        name="Change-request digest"
+        help={
+          <>
+            A daily email summarizing new schedule change requests, sent each morning at 7 AM
+            Central.{" "}
+            {enabled
+              ? configured
+                ? "It goes to the recipients below."
+                : "Add at least one recipient below or nothing is sent."
+              : "No digest is sent while it is off."}
+          </>
+        }
       >
-        {enabled ? "Turn off the digest" : "Turn on the digest"}
-      </ActionButton>
+        <Button onClick={toggle} pending={pendingToggle} pendingLabel="Saving…">
+          {enabled ? "Turn off the digest" : "Turn on the digest"}
+        </Button>
+      </SettingRow>
 
-      <div style={{ marginTop: 14 }}>
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-          Recipients
-        </label>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={2}
-          placeholder="scheduler@wisc.edu, backup@example.com"
-          style={{
-            width: "100%",
-            padding: "6px 8px",
-            border: "1px solid var(--color-border-secondary)",
-            borderRadius: "var(--border-radius-md)",
-            fontSize: 14,
-            fontFamily: "inherit",
-          }}
-        />
-        <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "4px 0 8px" }}>
-          Separate addresses with commas or new lines. Any email address works.
-        </p>
-        <ActionButton onClick={save} pending={pendingSave} pendingLabel="Saving…">
-          Save recipients
-        </ActionButton>
-        {msg && (
-          <p
-            role="status"
-            style={{
-              margin: "8px 0 0",
-              fontSize: 13,
-              color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-            }}
-          >
-            {msg.ok ? "✓ " : "✗ "}
-            {msg.text}
-          </p>
+      <div className="ad-stack">
+        {enabled && health === "ok" ? (
+          <Status tone="ok">Last run: {fmtTime(lastRunAt)}</Status>
+        ) : (
+          <p className="ad-muted">Last run: {fmtTime(lastRunAt)}</p>
         )}
+        {enabled && broken && (
+          <Notice tone="danger" title={brokenTitle}>
+            {healthNote}
+          </Notice>
+        )}
+        {enabled && !broken && healthNote && <p className="ad-muted">{healthNote}</p>}
+
+        <Field
+          label="Recipients"
+          help="Separate addresses with commas or new lines. Any email address works."
+        >
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            placeholder="scheduler@wisc.edu, backup@example.com"
+            className="ad-input--block"
+          />
+        </Field>
       </div>
-    </InfoCard>
+      <div className="ad-actions">
+        <Button variant="primary" onClick={save} pending={pendingSave} pendingLabel="Saving…">
+          Save recipients
+        </Button>
+        {msg && <ActionMessage ok={msg.ok}>{msg.text}</ActionMessage>}
+      </div>
+    </Panel>
   );
 }
 

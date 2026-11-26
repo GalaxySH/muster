@@ -1,0 +1,132 @@
+/* The dialogs and popups opened from a student's page. Same convention as
+   admin.css: one `ad-` prefixed class per rule; this file's own are `ad-dg-`. */
+
+/* A text-link action that follows other text on its line (a date, a checkbox). */
+.ad-dg-inline {
+  margin-left: 0.625rem;
+}
+
+/* ---- Notes card --------------------------------------------------------- */
+.ad-dg-notes-body {
+  margin: 0;
+}
+
+/* ---- Mark scheduled: a button with a caret menu joined to it ------------- */
+.ad-dg-split {
+  position: relative;
+  display: inline-flex;
+}
+.ad-dg-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ad-dg-split-caret {
+  margin-left: -1px;
+  padding-inline: 0.5rem;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* Scheduled: the check icon and the word say it; the green backs them up. */
+.ad-dg-split--on > .ad-btn:not(:disabled) {
+  border-color: var(--ad-success);
+  background: var(--ad-success-tint);
+  color: var(--ad-success);
+}
+
+/* ---- Sign-in link ------------------------------------------------------- */
+.ad-dg-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.ad-dg-link > input {
+  flex: 1;
+  min-width: 0;
+}
+.ad-dg-link > .ad-btn {
+  flex: none;
+}
+
+/* ---- Schedule email ----------------------------------------------------- */
+/* A text input with a link-like action beside it. */
+.ad-dg-inputrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+}
+/* The email as it will arrive: who it goes to, the subject, then the body. */
+.ad-dg-meta {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ad-border-soft);
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+}
+.ad-dg-subject {
+  margin: 0.5rem 0;
+  font-weight: 600;
+}
+.ad-dg-tabpanel {
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+}
+.ad-dg-emailbody {
+  overflow-x: auto;
+}
+
+/* ---- Form paste --------------------------------------------------------- */
+.ad-dg-paste {
+  height: 7.5rem;
+}
+/* One change read from the paste: its checkbox and name, then the value. */
+.ad-dg-step {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--ad-border-soft);
+  border-radius: var(--ad-radius);
+}
+.ad-dg-step--off {
+  background: var(--ad-zebra);
+  color: var(--ad-text-2);
+}
+.ad-dg-step > .ad-check {
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+}
+.ad-dg-step-body {
+  padding-left: 1.5rem;
+}
+.ad-dg-step-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ad-dg-step-note {
+  color: var(--ad-text-3);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+/* What happened to each change after Apply. */
+.ad-dg-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+}
+
+/* A dialog's content. It opens from inside a small or muted line of the page,
+   so it sets its own text rather than inheriting that line's. */
+.ad-dg-body {
+  color: var(--ad-ink);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+/* A line in the preview that stands in for the email. */
+.ad-dg-previewnote {
+  margin: 0.5rem 0 0;
+}

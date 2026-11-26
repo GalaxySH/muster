@@ -14,6 +14,7 @@ import {
   deleteGroup,
 } from "@/lib/groups/actions";
 import { CopyEmailsButton } from "@/components/admin/CopyEmailsButton";
+import { ActionMessage, Button, Panel, Pill, VisuallyHidden } from "@/components/admin/ui";
 
 export interface GroupView {
   id: string;
@@ -30,35 +31,36 @@ export interface GroupView {
 /** Group list with inline window scheduling, rename, create, and delete (PLAN §13). */
 export function GroupWindowsTable({ groups }: { groups: GroupView[] }) {
   return (
-    <section style={card}>
-      <h2 style={h2}>Groups</h2>
-      <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+    <Panel flush title="Groups">
+      <p className="ad-panel-pad ad-panel-pad--bottom ad-muted ad-small">
         Pick the open and close dates. The window starts and ends at{" "}
         <strong>00:00 (midnight)</strong> on each date. <strong>No edit</strong> keeps accepting new
         submissions while open but makes each student read-only once they finish.
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table className="stack-table">
-          <thead>
-            <tr>
-              <th>Group</th>
-              <th>Members</th>
-              <th>Opens</th>
-              <th>Closes</th>
-              <th>Status</th>
-              <th>After submit</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <GroupRow key={g.id} group={g} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <table className="ad-table ad-table--stack ad-table--middle">
+        <thead>
+          <tr>
+            <th scope="col">Group</th>
+            <th scope="col" className="ad-num">
+              Members
+            </th>
+            <th scope="col">Opens</th>
+            <th scope="col">Closes</th>
+            <th scope="col">Status</th>
+            <th scope="col">After submit</th>
+            <th scope="col">
+              <VisuallyHidden>Actions</VisuallyHidden>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => (
+            <GroupRow key={g.id} group={g} />
+          ))}
+        </tbody>
+      </table>
       <CreateGroup />
-    </section>
+    </Panel>
   );
 }
 
@@ -140,25 +142,35 @@ function GroupRow({ group }: { group: GroupView }) {
     <tr>
       <td data-label="Group">
         {editingName ? (
-          <span style={{ display: "inline-flex", gap: 6 }}>
-            <input value={name} onChange={(e) => setName(e.target.value)} style={input} />
-            <button type="button" disabled={pending} onClick={saveName}>
+          <span className="ad-su-name">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label={`Name of ${group.name}`}
+            />
+            <Button disabled={pending} onClick={saveName}>
               Save
-            </button>
+            </Button>
           </span>
         ) : (
-          <>
+          <span className="ad-su-name">
             <strong>{group.name}</strong>
-            {group.isDefault && <span style={badge}>default</span>}
-            {isTestGroup && <span style={badge}>test accounts</span>}
-            <button type="button" onClick={() => setEditingName(true)} style={linkBtn}>
+            {group.isDefault && <Pill>default</Pill>}
+            {isTestGroup && <Pill>test accounts</Pill>}
+            <button
+              type="button"
+              onClick={() => setEditingName(true)}
+              className="ad-linkbtn ad-small"
+              aria-label={`rename ${group.name}`}
+            >
               rename
             </button>
             {!group.isDefault && !isTestGroup && (
               <button
                 type="button"
                 disabled={pending}
-                style={linkBtn}
+                className="ad-linkbtn ad-small"
+                aria-label={`make ${group.name} the default`}
                 onClick={() => {
                   if (
                     confirm(
@@ -172,10 +184,10 @@ function GroupRow({ group }: { group: GroupView }) {
                 make default
               </button>
             )}
-          </>
+          </span>
         )}
       </td>
-      <td data-label="Members" style={{ whiteSpace: "nowrap" }}>
+      <td data-label="Members" className="ad-num ad-nowrap">
         {group.memberCount}
         {group.memberEmails.length > 0 && (
           <>
@@ -185,29 +197,26 @@ function GroupRow({ group }: { group: GroupView }) {
         )}
       </td>
       <td data-label="Opens">
-        <input type="date" value={opens} onChange={(e) => setOpens(e.target.value)} style={input} />
+        <input
+          type="date"
+          value={opens}
+          onChange={(e) => setOpens(e.target.value)}
+          aria-label={`${group.name} opens`}
+        />
       </td>
       <td data-label="Closes">
         <input
           type="date"
           value={closes}
           onChange={(e) => setCloses(e.target.value)}
-          style={input}
+          aria-label={`${group.name} closes`}
         />
       </td>
       <td data-label="Status">
         <StatusChip state={state} />
       </td>
       <td data-label="After submit">
-        <label
-          style={{
-            display: "inline-flex",
-            gap: 6,
-            alignItems: "center",
-            fontSize: 13,
-            whiteSpace: "nowrap",
-          }}
-        >
+        <label className="ad-row ad-nowrap">
           <input
             type="checkbox"
             checked={lockAfterSubmit}
@@ -217,35 +226,29 @@ function GroupRow({ group }: { group: GroupView }) {
           No edit
         </label>
       </td>
-      <td style={{ whiteSpace: "nowrap" }}>
-        <button type="button" disabled={pending} onClick={saveWindow}>
-          Save window
-        </button>{" "}
-        {!group.isDefault && !isTestGroup && (
-          <button
-            type="button"
-            disabled={pending}
-            style={{ color: "var(--color-text-danger)" }}
-            onClick={() => {
-              if (confirm(`Delete group "${group.name}"? Its members become ungrouped.`)) {
-                act(() => deleteGroup(group.id), "Deleted.");
-              }
-            }}
-          >
-            Delete
-          </button>
-        )}
+      <td>
+        <div className="ad-row">
+          <Button disabled={pending} onClick={saveWindow}>
+            Save window
+          </Button>
+          {!group.isDefault && !isTestGroup && (
+            <Button
+              variant="danger"
+              disabled={pending}
+              onClick={() => {
+                if (confirm(`Delete group "${group.name}"? Its members become ungrouped.`)) {
+                  act(() => deleteGroup(group.id), "Deleted.");
+                }
+              }}
+            >
+              Delete
+            </Button>
+          )}
+        </div>
         {msg && (
-          <div
-            style={{
-              fontSize: 12,
-              marginTop: 4,
-              color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-            }}
-          >
-            {msg.ok ? "✓ " : "✗ "}
+          <ActionMessage ok={msg.ok} as="div" className="ad-su-rowmsg">
             {msg.text}
-          </div>
+          </ActionMessage>
         )}
       </td>
     </tr>
@@ -273,42 +276,32 @@ function CreateGroup() {
   }
 
   return (
-    <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="ad-row ad-panel-pad ad-panel-pad--top">
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="New group name"
-        style={input}
+        aria-label="New group name"
       />
-      <button type="button" onClick={create} disabled={pending || !name.trim()}>
+      <Button onClick={create} disabled={pending || !name.trim()}>
         Create group
-      </button>
-      {err && <span style={{ color: "var(--color-text-danger)", fontSize: 13 }}>{err}</span>}
+      </Button>
+      {err && <ActionMessage ok={false}>{err}</ActionMessage>}
     </div>
   );
 }
 
-function StatusChip({ state }: { state: WindowState }) {
-  const map: Record<WindowState, { label: string; color: string; bg: string }> = {
-    open: { label: "open", color: "#196127", bg: "#e6f4ea" },
-    before: { label: "opens later", color: "#946c00", bg: "#fff4d6" },
-    closed: { label: "closed", color: "#b00", bg: "#fce8e6" },
-    unconfigured: { label: "not scheduled", color: "#555", bg: "#eee" },
+const WINDOW_PILL: Record<WindowState, { label: string; tone?: "success" | "warning" | "danger" }> =
+  {
+    open: { label: "open", tone: "success" },
+    before: { label: "opens later", tone: "warning" },
+    closed: { label: "closed", tone: "danger" },
+    unconfigured: { label: "not scheduled" },
   };
-  const s = map[state];
-  return (
-    <span
-      style={{
-        background: s.bg,
-        color: s.color,
-        borderRadius: 10,
-        padding: "1px 8px",
-        fontSize: 12,
-      }}
-    >
-      {s.label}
-    </span>
-  );
+
+function StatusChip({ state }: { state: WindowState }) {
+  const s = WINDOW_PILL[state];
+  return <Pill tone={s.tone}>{s.label}</Pill>;
 }
 
 // date <-> instant helpers (shared with the travel cutoff in TermDetailsForm). The input is a
@@ -323,35 +316,3 @@ export function localInputToIso(value: string): string | null {
   const d = new Date(`${value}T00:00`); // local midnight on the chosen date
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};
-const h2: React.CSSProperties = { fontSize: 16, marginTop: 0 };
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 13,
-};
-const badge: React.CSSProperties = {
-  marginLeft: 8,
-  background: "var(--color-background-secondary, #eef)",
-  color: "var(--color-text-secondary)",
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-};
-const linkBtn: React.CSSProperties = {
-  marginLeft: 8,
-  background: "none",
-  border: "none",
-  color: "var(--color-text-link, #1a66cc)",
-  cursor: "pointer",
-  fontSize: 12,
-  padding: 0,
-};

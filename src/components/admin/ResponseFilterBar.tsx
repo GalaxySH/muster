@@ -78,23 +78,12 @@ export function ResponseFilterBar({
   }
 
   return (
-    <div
-      // No margin of its own: the response list renders this inside its control
-      // panel and owns the spacing around it.
-      style={{
-        display: "flex",
-        gap: 12,
-        alignItems: "center",
-        flexWrap: "wrap",
-      }}
-    >
-      <label style={labelStyle}>
+    // No box of its own: the response list renders these into its toolbar, and
+    // each label flows as one of the toolbar's items.
+    <div className="ad-ls-filters">
+      <label>
         Group
-        <select
-          value={group ?? ""}
-          onChange={(e) => navigate({ group: e.target.value })}
-          style={selectStyle}
-        >
+        <select value={group ?? ""} onChange={(e) => navigate({ group: e.target.value })}>
           <option value="">All groups</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
@@ -105,13 +94,9 @@ export function ResponseFilterBar({
         </select>
       </label>
 
-      <label style={labelStyle}>
+      <label>
         Position
-        <select
-          value={position ?? ""}
-          onChange={(e) => navigate({ position: e.target.value })}
-          style={selectStyle}
-        >
+        <select value={position ?? ""} onChange={(e) => navigate({ position: e.target.value })}>
           <option value="">All positions</option>
           {positions.map((p) => (
             <option key={p.id} value={p.id}>
@@ -122,13 +107,9 @@ export function ResponseFilterBar({
         </select>
       </label>
 
-      <label style={labelStyle}>
+      <label>
         Flags
-        <select
-          value={flag ?? ""}
-          onChange={(e) => navigate({ flag: e.target.value })}
-          style={selectStyle}
-        >
+        <select value={flag ?? ""} onChange={(e) => navigate({ flag: e.target.value })}>
           {FLAG_FILTER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -137,13 +118,9 @@ export function ResponseFilterBar({
         </select>
       </label>
 
-      <label style={labelStyle}>
+      <label>
         Review
-        <select
-          value={review ?? ""}
-          onChange={(e) => navigate({ review: e.target.value })}
-          style={selectStyle}
-        >
+        <select value={review ?? ""} onChange={(e) => navigate({ review: e.target.value })}>
           {REVIEW_FILTER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -152,7 +129,7 @@ export function ResponseFilterBar({
         </select>
       </label>
 
-      <label style={labelStyle}>
+      <label>
         Started
         <select
           value={started ?? ""}
@@ -162,7 +139,6 @@ export function ResponseFilterBar({
               e.target.value ? { started: e.target.value } : { started: "", startedDate: "" },
             )
           }
-          style={selectStyle}
         >
           {STARTED_MODE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -170,25 +146,21 @@ export function ResponseFilterBar({
             </option>
           ))}
         </select>
-        {started && (
-          <input
-            type="date"
-            value={startedDate ?? ""}
-            onChange={(e) => navigate({ startedDate: e.target.value })}
-            style={selectStyle}
-          />
-        )}
       </label>
+      {started && (
+        <input
+          type="date"
+          aria-label="Started date"
+          value={startedDate ?? ""}
+          onChange={(e) => navigate({ startedDate: e.target.value })}
+        />
+      )}
 
       {/* "Submission", not "Show": the off-roster checkbox next door already
           leads with Show, and two controls opening the same way read as one. */}
-      <label style={labelStyle}>
+      <label>
         Submission
-        <select
-          value={status ?? ""}
-          onChange={(e) => navigate({ status: e.target.value })}
-          style={selectStyle}
-        >
+        <select value={status ?? ""} onChange={(e) => navigate({ status: e.target.value })}>
           {STATUS_FILTER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -197,7 +169,7 @@ export function ResponseFilterBar({
         </select>
       </label>
 
-      <label style={labelStyle}>
+      <label>
         <input
           type="checkbox"
           checked={roster === "all"}
@@ -208,20 +180,3 @@ export function ResponseFilterBar({
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  fontSize: 13,
-  color: "var(--color-text-secondary)",
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: "6px 8px",
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontSize: 14,
-  background: "var(--color-background-primary)",
-  fontFamily: "var(--font-sans)",
-};

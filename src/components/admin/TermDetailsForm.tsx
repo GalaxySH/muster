@@ -19,7 +19,8 @@
 import { useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
-import { ActionButton, SystemMessage } from "@/components/ui";
+import { Notice as StudentNotice } from "@/components/student/ui";
+import { ActionMessage, Button, CheckRow, Field, Panel } from "@/components/admin/ui";
 import { saveTermDetails } from "@/lib/admin/term-actions";
 import { setLateTravelAccepted, setTravelAfterClose, setTravelCutoff } from "@/lib/admin/actions";
 import { toLocalInput, localInputToIso } from "@/components/admin/GroupWindowsTable";
@@ -120,224 +121,222 @@ export function TermDetailsForm({
   }
 
   return (
-    <section style={card}>
-      <h2 style={{ fontSize: 16, marginTop: 0 }}>Details</h2>
-      <div style={grid}>
-        <label style={field}>
-          <span style={labelText}>Name</span>
-          <input
-            type="text"
-            value={draft.name}
-            maxLength={TERM_NAME_MAX}
-            onChange={(e) => set("name", e.target.value)}
-            style={input}
-          />
-        </label>
-        <label style={field}>
-          <span style={labelText}>First day</span>
-          <input
-            type="date"
-            value={draft.startsOn}
-            onChange={(e) => set("startsOn", e.target.value)}
-            style={input}
-          />
-        </label>
-        <label style={field}>
-          <span style={labelText}>Last day</span>
-          <input
-            type="date"
-            value={draft.endsOn}
-            onChange={(e) => set("endsOn", e.target.value)}
-            style={input}
-          />
-        </label>
-        <label style={field}>
-          <span style={labelText}>New hires start on</span>
-          <input
-            type="date"
-            value={draft.newHireCutoff}
-            onChange={(e) => set("newHireCutoff", e.target.value)}
-            style={input}
-          />
-          <span style={hint}>Anyone hired on or after this date counts as a new hire.</span>
-        </label>
-        <label style={field}>
-          <span style={labelText}>Closes per Shift Lead</span>
-          <input
-            type="number"
-            min={0}
-            max={MAX_CLOSE_REQUIREMENT}
-            step={1}
-            value={Number.isNaN(draft.closeRequirement) ? "" : draft.closeRequirement}
-            onChange={(e) => set("closeRequirement", e.target.valueAsNumber)}
-            style={input}
-          />
-          <span style={hint}>
-            New Shift Leads start with this many weekend closes. Change a lead&apos;s own number on
-            the Closes page.
-          </span>
-        </label>
-        <label style={field}>
-          <span style={labelText}>Travel excusal cutoff</span>
-          <input
-            type="date"
-            value={cutoff}
-            onChange={(e) => {
-              setMsg(null);
-              setResetCutoff(false);
-              setCutoff(e.target.value);
-            }}
-            style={input}
-          />
-          <span style={hint}>
-            Students can add travel until midnight on this date, in every group.
-            {!travel.isCustom &&
-              !cutoffDirty &&
-              " This is the default, the day before the semester starts."}
-            {resetCutoff && " Back to the default once you save."}
-            {travel.isCustom && !resetCutoff && (
-              <>
-                {" "}
-                <button type="button" onClick={resetToDefault} style={linkButton}>
-                  Reset to default
-                </button>
-              </>
-            )}
-          </span>
-        </label>
-      </div>
-      <label style={lateToggle}>
-        <input
-          type="checkbox"
-          checked={lateAccepted}
-          onChange={(e) => {
-            setMsg(null);
-            setLateAccepted(e.target.checked);
-          }}
-        />
-        <span>
-          Accept late travel
-          <span style={{ ...hint, display: "block" }}>
-            Students can keep adding travel after the cutoff. Those entries are marked late and are
-            not excused.
-          </span>
-        </span>
-      </label>
-      <label style={lateToggle}>
-        <input
-          type="checkbox"
-          checked={afterClose}
-          onChange={(e) => {
-            setMsg(null);
-            setAfterClose(e.target.checked);
-          }}
-        />
-        <span>
-          Keep travel open after the form closes
-          <span style={{ ...hint, display: "block" }}>
-            If the cutoff is after a group&apos;s close date, students in that group can still add
-            travel until the cutoff. The rest of the form stays closed.
-          </span>
-        </span>
-      </label>
-      <label style={{ ...field, marginTop: 14 }}>
-        <span style={labelText}>Schedule note</span>
-        <textarea
-          value={draft.scheduleNote}
-          maxLength={SCHEDULE_NOTE_MAX}
-          rows={2}
-          onChange={(e) => set("scheduleNote", e.target.value)}
-          style={{ ...input, fontFamily: "inherit", width: "100%" }}
-        />
-        <span style={hint}>Students see this when they finish the form.</span>
-      </label>
-      <label style={{ ...field, marginTop: 14 }}>
-        <span style={labelText}>System message</span>
-        <textarea
-          value={draft.systemMessage}
-          maxLength={SYSTEM_MESSAGE_MAX}
-          rows={3}
-          onChange={(e) => set("systemMessage", e.target.value)}
-          style={{ ...input, fontFamily: "inherit", width: "100%" }}
-        />
-        <span style={hint}>
-          Students see this at the top of their home page. Leave it empty to show no message.
-        </span>
-      </label>
-      <label style={{ ...field, marginTop: 14, maxWidth: 190 }}>
-        <span style={labelText}>Message color</span>
-        <select
-          value={draft.systemMessageTone}
-          onChange={(e) => set("systemMessageTone", e.target.value as SystemMessageTone)}
-          style={input}
-        >
-          {SYSTEM_MESSAGE_TONES.map((tone) => (
-            <option key={tone} value={tone}>
-              {TONE_LABELS[tone]}
-            </option>
-          ))}
-        </select>
-      </label>
-      {draft.systemMessage.trim() && (
-        <SystemMessage text={draft.systemMessage.trim()} tone={draft.systemMessageTone} />
-      )}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
-        <ActionButton onClick={save} pending={pending} pendingLabel="Saving…" disabled={!dirty}>
-          Save details
-        </ActionButton>
-        {msg && (
-          <span
-            role="status"
-            style={{
-              fontSize: 13,
-              color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-            }}
+    <Panel title="Details">
+      <section className="ad-su-group ad-su-group--first">
+        <h3 className="ad-minititle">Dates</h3>
+        <div className="ad-fields">
+          <Field label="Name" htmlFor="term-name">
+            <input
+              id="term-name"
+              type="text"
+              value={draft.name}
+              maxLength={TERM_NAME_MAX}
+              onChange={(e) => set("name", e.target.value)}
+            />
+          </Field>
+          <Field label="First day" htmlFor="term-starts">
+            <input
+              id="term-starts"
+              type="date"
+              value={draft.startsOn}
+              onChange={(e) => set("startsOn", e.target.value)}
+            />
+          </Field>
+          <Field label="Last day" htmlFor="term-ends">
+            <input
+              id="term-ends"
+              type="date"
+              value={draft.endsOn}
+              onChange={(e) => set("endsOn", e.target.value)}
+            />
+          </Field>
+          <Field
+            label="New hires start on"
+            htmlFor="term-new-hires"
+            help="Anyone hired on or after this date counts as a new hire."
           >
-            {msg.ok ? "✓ " : "✗ "}
-            {msg.text}
-          </span>
-        )}
+            <input
+              id="term-new-hires"
+              type="date"
+              value={draft.newHireCutoff}
+              onChange={(e) => set("newHireCutoff", e.target.value)}
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section id="closes" className="ad-su-group ad-anchor">
+        <h3 className="ad-minititle">Shift Leads</h3>
+        <div className="ad-su-medium">
+          <Field
+            label="Closes per Shift Lead"
+            htmlFor="term-closes"
+            help={
+              <>
+                New Shift Leads start with this many weekend closes. Change a lead&apos;s own number
+                on the Closes page.
+              </>
+            }
+          >
+            <input
+              id="term-closes"
+              className="ad-su-narrow"
+              type="number"
+              min={0}
+              max={MAX_CLOSE_REQUIREMENT}
+              step={1}
+              value={Number.isNaN(draft.closeRequirement) ? "" : draft.closeRequirement}
+              onChange={(e) => set("closeRequirement", e.target.valueAsNumber)}
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section id="travel" className="ad-su-group ad-anchor">
+        <h3 className="ad-minititle">Travel</h3>
+        <div className="ad-su-medium">
+          <Field
+            label="Travel excusal cutoff"
+            htmlFor="term-travel-cutoff"
+            help={
+              <>
+                Students can add travel until midnight on this date, in every group.
+                {!travel.isCustom &&
+                  !cutoffDirty &&
+                  " This is the default, the day before the semester starts."}
+                {resetCutoff && " Back to the default once you save."}
+                {travel.isCustom && !resetCutoff && (
+                  <>
+                    {" "}
+                    <button type="button" onClick={resetToDefault} className="ad-linkbtn">
+                      Reset to default
+                    </button>
+                  </>
+                )}
+              </>
+            }
+          >
+            <input
+              id="term-travel-cutoff"
+              className="ad-su-narrow"
+              type="date"
+              value={cutoff}
+              onChange={(e) => {
+                setMsg(null);
+                setResetCutoff(false);
+                setCutoff(e.target.value);
+              }}
+            />
+          </Field>
+        </div>
+        <div className="ad-stack ad-stack--tight ad-su-below">
+          <CheckRow
+            label="Accept late travel"
+            help="Students can keep adding travel after the cutoff. Those entries are marked late and are not excused."
+          >
+            <input
+              type="checkbox"
+              checked={lateAccepted}
+              onChange={(e) => {
+                setMsg(null);
+                setLateAccepted(e.target.checked);
+              }}
+            />
+          </CheckRow>
+          <CheckRow
+            label="Keep travel open after the form closes"
+            help={
+              <>
+                If the cutoff is after a group&apos;s close date, students in that group can still
+                add travel until the cutoff. The rest of the form stays closed.
+              </>
+            }
+          >
+            <input
+              type="checkbox"
+              checked={afterClose}
+              onChange={(e) => {
+                setMsg(null);
+                setAfterClose(e.target.checked);
+              }}
+            />
+          </CheckRow>
+        </div>
+      </section>
+
+      <section className="ad-su-group">
+        <h3 className="ad-minititle">Messages</h3>
+        <div className="ad-stack">
+          <Field
+            label="Schedule note"
+            htmlFor="term-schedule-note"
+            help="Students see this when they finish the form."
+          >
+            <textarea
+              id="term-schedule-note"
+              className="ad-input--block"
+              value={draft.scheduleNote}
+              maxLength={SCHEDULE_NOTE_MAX}
+              rows={2}
+              onChange={(e) => set("scheduleNote", e.target.value)}
+            />
+          </Field>
+          <Field
+            label="System message"
+            htmlFor="term-system-message"
+            help="Students see this at the top of their home page. Leave it empty to show no message."
+          >
+            <textarea
+              id="term-system-message"
+              className="ad-input--block"
+              value={draft.systemMessage}
+              maxLength={SYSTEM_MESSAGE_MAX}
+              rows={3}
+              onChange={(e) => set("systemMessage", e.target.value)}
+            />
+          </Field>
+          <div className="ad-su-narrow">
+            <Field label="Message color" htmlFor="term-message-tone">
+              <select
+                id="term-message-tone"
+                value={draft.systemMessageTone}
+                onChange={(e) => set("systemMessageTone", e.target.value as SystemMessageTone)}
+              >
+                {SYSTEM_MESSAGE_TONES.map((tone) => (
+                  <option key={tone} value={tone}>
+                    {TONE_LABELS[tone]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {draft.systemMessage.trim() && (
+            <div className="ad-field">
+              <span className="ad-label">Preview</span>
+              {/* The student design's own notice, as /me renders it. */}
+              <div className="sf-scope ad-su-preview">
+                <StudentNotice tone={draft.systemMessageTone} role="note">
+                  <p className="sf-prewrap">{draft.systemMessage.trim()}</p>
+                </StudentNotice>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="ad-actions">
+        <Button
+          variant="primary"
+          size="md"
+          onClick={save}
+          pending={pending}
+          pendingLabel="Saving…"
+          disabled={!dirty}
+        >
+          Save details
+        </Button>
+        {msg && <ActionMessage ok={msg.ok}>{msg.text}</ActionMessage>}
       </div>
-    </section>
+    </Panel>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-secondary)",
-  borderRadius: "var(--border-radius-lg)",
-  padding: "1rem 1.2rem",
-  margin: "1.2rem 0",
-};
-const grid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: 14,
-  alignItems: "start",
-};
-const field: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
-const labelText: React.CSSProperties = { fontSize: 13, fontWeight: 600 };
-const hint: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)" };
-const lateToggle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "flex-start",
-  marginTop: 14,
-  fontSize: 14,
-  cursor: "pointer",
-};
-const linkButton: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "var(--color-text-link, #1a66cc)",
-  cursor: "pointer",
-  fontSize: 13,
-};
-const input: React.CSSProperties = {
-  padding: 6,
-  borderRadius: "var(--border-radius-md)",
-  border: "0.5px solid var(--color-border-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: 14,
-  boxSizing: "border-box",
-};

@@ -19,7 +19,7 @@ export function ShowResolvedToggle({ showResolved }: { showResolved: boolean }) 
   }
 
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+    <label>
       <input
         type="checkbox"
         checked={showResolved}

@@ -69,15 +69,17 @@ someone with no row was never part of that term.
   `domain/terms.ts` (`validateTermDetails`, `termYearFor`, `termNamesIn`). The
   system message (1.62) is the term's `systemMessage` and `systemMessageTone`:
   `/me` reads the current term's and shows it first, to people on the roster, as a
-  student-design `Notice` in that colour. The form's preview is `SystemMessage`
-  (`components/ui.tsx`), the same text and colour in the console's card style. Empty
+  student-design `Notice` in that colour. The form's preview renders that same
+  `Notice` (1.67; before that it was a console-styled `SystemMessage` card that no
+  longer matched what students saw). Empty
   means none, and a new term starts with none. Saving the details never
   moves the travel cutoff, even when the first day changes. The travel cutoff
   and the late-travel toggle sit in the same details card (1.63) and save with
   it, through their own actions (`setTravelCutoff`, `setLateTravelAccepted`). The
   page warns when the saved schedule email names
-  another term (`listOtherTermNames`). `AppHeader` shows the term's name to admins,
-  and the hub nav is grouped into "This semester" and "All semesters".
+  another term (`listOtherTermNames`). `AdminTools` (the console's top bar) shows the
+  term's name to admins. The nav was grouped into "This semester" and "All semesters"
+  until 1.67, which regrouped the rail by job (see "Admin design system").
 - **Who resolves the term.** Request-side loaders call `workingTermId()`
   themselves: they are defined as "the working term's" data. **A server action or
   route handler resolves the term once, at the top, and passes it down (1.58).**
@@ -432,20 +434,20 @@ the per-student page renders **all** of a student's requests in the working term
 independent of the submission, each anchored as `#change-request-<id>`. A link to one
 (`changeRequestAdminPath`) also carries `?request=<id>`, so when it names this student's
 request in another semester the card says which, with a switch button, instead of
-silently missing (`requestInOtherTerm` in `data.ts`). It is one card among the others in
-that page's column-packed dashboard (v0.68), last in DOM order so it packs into the final
-slot, and the request list is the card's own scroll container (`changeList`, max 48vh) so
-a long history never stretches the page below the other cards. Three cards buck the
-"position doesn't matter" packing and are pinned to the **front** of the flow so the
-scheduler reads them as a group: **availability preferences** first (item #1, so it's top
-of the left column), then the automatic **flags**, then **course schedule**. The flags
-card is submission-gated, so for an unstarted response it drops out and course schedule
-becomes item #2. Under the CSS multi-column masonry, filling proceeds column-by-column, so
-the group stays contiguous (the short flags card packs under preferences or at the top of
-the next column, with course schedule right after it). Nothing else in the flow is
-ordered. That means the dashboard
-container renders unconditionally and the submission-dependent cards are conditional
-children of it, not the other way around. The queue at
+silently missing (`requestInOtherTerm` in `data.ts`). It is the first card of the
+page's right column, and the request list is the card's own scroll container (max 48vh)
+so a long history never stretches the page below the other cards. Since 1.67 the page is
+**three fixed columns** (`.ad-st-cols` in `admin-student.css`), so a card is in the same
+place on every student: the grid, the automatic **flags** and the position's coverage on
+the left; what the student sent in the middle (course schedule, extracurriculars,
+travel, weekend closes); what came after on the right (change requests, the two notes,
+Student details). Under 1200px the middle and right columns stack beside the grid, and
+under 960px everything stacks in that order. (From v0.68 to 1.66 this was a CSS
+multi-column masonry with three cards pinned to the front; the fixed order replaced it
+because a card's position moved with the content of the others.) The columns
+render unconditionally and the submission-dependent cards are conditional
+children of them, not the other way around. A student with no position has no left
+column (`ad-st-cols--noleft`). The queue at
 `/admin/change-requests` lists the working term's open requests oldest first (name + email +
 permanent/one-time per row) with
 rows deep-linking to that anchor; an off-by-default **Show resolved** toggle
@@ -647,16 +649,17 @@ put different hours on the same rows. It is null before the first run and for an
 run holds nothing for, which is what lets the Hours cell tell "not scheduled" from
 "scheduled zero hours"; it is independent of the `scheduled` mark, because the run is
 what says how many hours somebody has. This is a console-side read composing
-`schedule/data.ts` (`loadCurrentRunRow`), the same direction as the popup's loader. The list itself (`ResponseList`) is a full-bleed
-`.stack-table` on a `width="full"` page (v0.64), matching the groups table: rows stack
+`schedule/data.ts` (`loadCurrentRunRow`), the same direction as the popup's loader. The list itself (`ResponseList`) is a full-width
+`ad-table ad-table--stack` (the console's table, which replaced `.stack-table` in 1.67)
+on a `width="full"` page, like every other list: rows stack
 into labeled blocks under 720px; the Flags cell is width-adaptive via the CSS-only
-`.flags-expanded`/`.flags-count` pair in globals.css (individual red pills at ≥1100px
-and in stacked mobile rows, the compact count + alert pills between); an open
+`.ad-ls-flags-full`/`.ad-ls-flags-count` pair in `admin-lists.css` (individual red pills
+on a wide screen and in stacked mobile rows, the compact count + alert pills between); an open
 change-request count pill sits next to the name (nothing at zero); a `missing` row shows
 the red status badge, dashes for its submission-only cells, and no delete control.
-It also opts into `.ruled-table` and `.hover-table` (globals.css, 1.27): a hairline
-between columns in table mode only, and a row that dims under the cursor to match the
-fact that the whole row is the link. **The filters and the search share one panel** above
+It also takes `ad-table--zebra` and `ad-table--hover` (`admin.css`; the 1.27
+`.ruled-table` / `.hover-table` classes in globals.css are gone): banded rows, and a row
+that dims under the cursor to match the fact that the whole row is the link. **The filters and the search share one panel** above
 the table: the page builds `ResponseFilterBar` and hands it to `ResponseList` as the
 `filters` prop, because filtering and searching are one job and the search term is
 client state the table owns. The element is keyed at the page, since React cannot tell a
@@ -692,9 +695,10 @@ card, and the empty evidence cards (each with a quick link to add entries on the
 student's behalf; see the evidence section) all still render, while the **Flags panel is
 deliberately hidden until the student has started** (against an empty selection every
 check would read as failing) and a student with no position gets a notice instead of the
-calculator. The header rings red (`--color-border-danger`) with a draft/missing badge
-until the response is submitted; its button-shaped controls opt into the `.btn-hover`
-class in `globals.css`, since inline style objects can't express `:hover`.
+calculator. The header carries a red bar on its leading edge (`ad-st-head--unsubmitted`) with a
+draft/missing pill until the response is submitted; its controls are the console's
+`Button` / `ButtonLink`, whose hover states are in `admin.css` (the `.btn-hover` class
+that inline style objects needed is gone).
 
 **Header timestamps (v0.82).** `ResponseStamps` renders both submission stamps as two
 label→value rows in one tinted panel: **Submitted** (write-once first submit, "not yet"
@@ -870,7 +874,7 @@ cards). The rest:
   (`kind: "scheduling" | "student"`): the full text as `pre-wrap` paragraphs (never a
   text box, never truncated; "No notes." when empty), edited in a modal opened by the
   header's **Edit** or a **double-click** on the text, and saved by Save or
-  **Ctrl/Cmd+Enter** (`submitOnCtrlEnter` in `components/ui.tsx`, 1.41, which clicks the
+  **Ctrl/Cmd+Enter** (`submitOnCtrlEnter` in `components/form-keys.ts`, 1.41, which clicks the
   form's submit button so a pending save can't go twice; the extracurricular details and
   change-request Edit dialogs use it too, the schedule email dialog does not). Scheduling notes save through
   `saveSchedulerNotes` (`lib/admin/actions.ts`), student notes through
@@ -895,10 +899,11 @@ cards). The rest:
   `role="note"` span, not a control, and it is absent in Edit schedule and when the run
   gives them no weekend.
 
-## Admin hub (roadmap 4.1, PLAN §10b, v0.68)
+## Admin overview (roadmap 4.1, PLAN §10b, v0.68; laid out anew in 1.67)
 
 `/admin` used to be 13 bare links and loaded no data. It is now the daily entry point,
-and it answers "what needs me today?" before it offers navigation.
+titled **Overview** (older notes call it "the hub"), and it answers "what needs me
+today?" before it offers navigation.
 
 Three layers, and the split is the point:
 
@@ -994,45 +999,44 @@ hardcoded. **It ranks, it does not alarm**: no per-block headcount target is mod
 a low count is only low *relative to other blocks*. When nobody has picked anything the
 panel does not render at all (every block tied at zero is an empty cycle, not a shortage).
 
-Layout is full-bleed, split by a two-column shell (`.admin-shell` in `globals.css`): the
-nav rail on the left is **one** panel holding every admin surface, grouped under
-Review / Configuration / Email headers with the live counts as pills; the status
-body on the right runs response progress paired with the alert card across the top, then
-the tile strip, then a CSS multi-column masonry (`masonryStyle`) that packs the remaining
-panels into as many columns as the body allows. Under 960px the rail becomes a
-**slide-out drawer** behind a floating menu button (`AdminNav`, the only client piece:
-open state + Escape; the nav content stays server-rendered and passes through as
-children), so the status content owns a phone screen. The rail's panel look lives on the
-`.admin-shell-nav` class rather than inline style because the drawer media query must
-restyle it.
+**Layout (1.67).** The page renders in the console's shell (`AdminPage`, see "Admin
+design system") and is the only page that passes it `navCounts`, so the rail shows live
+counts here and nowhere else (the other pages do not load the dashboard). The body
+(`admin-overview.css`, `ad-ov-`) runs top to bottom: **Needs attention** beside
+**Response progress** (`.ad-ov-top`, two columns that stack when each would be under
+24rem); the alert panel shows `ALERTS_SHOWN` (6) rows and folds the rest under a
+"Show N more" disclosure, and the progress panel holds the bar, the per-group table and
+**Students to follow up** with its copy-emails buttons. Then the daily queues as one
+`StatStrip` of linked figures (To review, Change requests, Flagged, Travel, Shift lead
+closes when there is an inventory). Then a closed **More** disclosure holding Least
+staffed shifts, Recent submissions and System status in a CSS multi-column masonry
+(`.ad-masonry`). Nothing in the body may force page-level horizontal scroll. From v0.72
+to 1.66 the rail was part of this page only (`.admin-shell` in `globals.css`, `NavCard`
+rows grouped Review / Configuration / Email, later This semester / All semesters) and
+the body was a tile strip over a masonry of open panels; 1.67 moved the rail into the
+shell every admin page shares and closed what is looked at less often.
 
-The rail is sized so **the whole thing fits one desktop screen without scrolling** (13
-links + 3 headers ≈ 536px), which is what the `NavCard` shape is for: one 30px row of
-icon + label + count, no descriptive second line, the label ellipsized rather than
-wrapped so every row stays the same height, and a count that needs explaining carrying
-it as a `title`/`aria-label` instead of widening the pill. On desktop the rail hugs its
-links (`align-self: start`) rather than stretching to the body's height; that has to
-stay inside the `min-width: 960px` query, since the drawer is `position: fixed` and
-would otherwise stop short of the viewport foot. Signing out is a text link beside the
-admin email in the page header (`SignOutLink`), not a rail item. Nothing in the body may force page-level horizontal scroll: the hero grid
-floors its columns at `min(420px, 100%)`, and the group-progress table opts out of the
-generic stack-table width (`.stack-table--fit`). The admin primitives the per-student view had kept
-private (`StatTile`, `SectionLabel`, `panelStyle`, `cardStyle`, `chipStyle`, `bannerStyle`,
-`masonryStyle`, `cardsGridStyle`, the pills) now live in **`components/admin/ui.tsx`** and
-both surfaces import them. That file is presentational only. The helpers shaped by the
+A count in the rail that needs explaining carries it as a `title`/`aria-label` instead
+of widening the pill. Signing out is a text link beside the admin email in the top bar
+(`SignOutLink`, rendered by `AdminTools`), not a rail item.
+
+The admin primitives live in **`components/admin/ui.tsx`** (class-based since 1.67; the
+style objects it used to export, `StatTile` and `SectionLabel` are gone, see "Admin
+design system"). That file is presentational only. The helpers shaped by the
 generator (`FROZEN_LABEL`, `Bar`, `toneColor`, `barColor`, plus the engine/manual fill
 colors) live next door in **`components/admin/schedule-ui.tsx`**, which is the one admin
 UI module allowed to type-import `HealthBar`/`HealthTone` and `FrozenReason` (plan item
 A2). The split is what lets a travel or responses page import the shared kit without
 taking on the engine's vocabulary. The student finder (`components/StudentQuickSearch.tsx`)
-is not part of the hub any more: since 1.37 the shared `AppHeader` renders it for admins on
-every page. `AppHeader` is an async server component that resolves the session itself and
+is not part of the overview: since 1.37 it is rendered for admins on every page, by
+`components/AdminTools.tsx` (named `AppHeader` until 1.67, when its breadcrumbs went).
+`AdminTools` is an async server component that resolves the session itself and
 calls `listRosterNames` (`roster/lookup.ts`) only when `isAdmin`, so the roster never ships
-to a student's page; that gate is what `AppHeader.test.tsx` pins. Both files sit in the form
+to a student's page; that gate is what `AdminTools.test.tsx` pins. Both files sit in the form
 core (`src/components/*.tsx`), which is why neither may import `components/admin` or
 `lib/admin`. The finder is a client island: the roster is small enough to filter locally,
 so results are instant and there is no request per keystroke (`/` focuses it). Its layout
-lives in `globals.css` (`.app-header`, `.student-search-*`) so it can wrap to a full-width
+lives in `globals.css` (`.admin-tools`, `.student-search-*`) so it can wrap to a full-width
 row under 640px and grow its tap targets on coarse pointers.
 
 The **`review` filter** (`response-filters.ts`, `todo` | `done`) exists so the To-review
@@ -1068,8 +1072,8 @@ in-memory throttle is enough; a restart just means the next request writes.
 Two read surfaces. The per-student view has a **Last seen** card (kept last in the card
 order) showing the timestamp or a red "Never logged in" (`loadStudentDetail` now selects
 `lastSeenAt`; formatting is local to the page). The
-**`/admin/analytics`** page (linked from the hub nav rail) is the same loader + pure-view
-split the hub uses: `admin/analytics.ts` reads one thin on-roster row per student joined
+**`/admin/analytics`** page (in the rail under Tools) is the same loader + pure-view
+split the overview uses: `admin/analytics.ts` reads one thin on-roster row per student joined
 to submission status, and `admin/analytics-view.ts` (pure, TDD) buckets it into the
 signed-in count/share, the never→signed-in→submitted funnel, last-active recency windows,
 and the never-signed-in follow-up list. The funnel's "submitted" bucket keys on
@@ -1159,8 +1163,9 @@ only** (refused by default; stored late/unexcused under the accept-late toggle) 
 adding an entry is the excusal call, so it stores `excused: true` past the cutoff either
 way. The caller is `components/admin/AddEvidenceButton.tsx`, the **Add** link in the
 Course schedule / Travel / Extracurriculars card headers on `/admin/students/[email]`
-(`SectionLabel` takes an
-`action` slot): one modal per kind, the same fields as the student form, with the
+(the card is a `Panel`, and the link sits in its
+`aside` slot; before 1.67 this was `SectionLabel`'s `action`): one modal per kind, the
+same fields as the student form, with the
 extracurricular details box prefilled from the submission so the admin edits rather than
 replaces the student's text (details are one column, not per file). The **course-schedule
 kind** (v0.81) is the same component against `uploadCourseSchedule`, which already took the
@@ -1321,8 +1326,8 @@ server's auto-assigned cell distinctly (★, never re-sent as a manual pick) and
 `confirm()` on same-tab link clicks, since the App Router can't block route changes);
 the dirty snapshot resets on each successful save.
 
-The grid's cells are styled by the `.avail-*` block in `globals.css` (its only styling
-path; the inline style objects it replaced are gone). Under
+The grid's cells are styled by the `.sf-grid` / `.sf-cell` rules in `student.css` (1.64;
+before that the `.avail-*` block in `globals.css`, which 1.67 deleted). Under
 `@media (pointer: coarse), (max-width: 640px)` the cells become **44×44** rather than the
 desktop 30×26, meeting the platform touch-target floor: most students fill this form on a
 phone, and a mis-tap silently flips a preference that then reaches the scheduler as if it
@@ -1379,10 +1384,12 @@ links (a check once a later step is unlocked) and locked steps show a lock and a
 links, so it can't jump ahead of the data, mirroring the per-step "Next" gates. The
 introduction and the final review are not numbered steps; they pass `progressLabel`
 (and `/exit` passes `stepsDone`). For an admin, `StudentPage` also renders the console's
-`components/AppHeader.tsx` under the top bar (semester switcher, student finder, the
+`components/AdminTools.tsx` under the top bar (semester switcher, student finder, the
 other-semester banner), since admins reach `/course-schedule` and `/travel` on a
-student's behalf. Admin pages keep rendering `AppHeader` directly (Home plus an `Admin`
-`Crumb`).
+student's behalf. Admin pages render in `components/admin/AdminPage.tsx`, whose top bar
+holds the same `AdminTools` (with the signed-in email and Sign out) and whose section
+rail is the navigation; there are no breadcrumbs (`AppHeader` and its `Crumb` went in
+1.67). A page opened from a list passes `back` and gets a link to that list.
 
 Pages: `/me` (hub: confirm-info card / continue / review rows), `/intro`, the data steps
 (`/course-schedule`, `/availability`, `/travel`, SL-only `/closes`), and `/exit`
@@ -1406,13 +1413,15 @@ The student pages have their own look, separate from the admin console's.
   (`student-pages.css`, `student-evidence.css`, `student-requests.css`) additionally
   nest every rule under `.sf`. The two exceptions are the `html:has(.sf)` and
   `html:has(.sf-actionbar)` scroll-padding rules, which keep a focused control clear of
-  the sticky bars. So nothing there reaches an admin page, and the admin's `globals.css`
-  tokens, `.page` shell and `components/ui.tsx` primitives are untouched. The reverse
-  case is the console's `AppHeader`, which `StudentPage` renders for an admin inside
-  `.sf-admin-tools`: those rules reset the inherited text styles, the student focus ring
-  is listed by region so it leaves the header out, and the header's own Home breadcrumb
-  is hidden there because the top bar already has Home. A component both sides render
-  (`EvidenceThumb`, `TravelDateRange`'s stacked layout, `Modal`) keeps its admin look.
+  the sticky bars. So nothing there reaches an admin page. (When this was written the
+  console still had the `.page` shell and `components/ui.tsx`; 1.67 replaced both, see
+  "Admin design system".) The reverse
+  case is the console's `AdminTools`, which `StudentPage` renders for an admin inside
+  `.sf-admin-tools`: those rules reset the inherited text styles and set the row
+  against the right edge, and the student focus ring
+  is listed by region so it leaves the tools out. A component both sides render
+  (`EvidenceThumb`, `TravelDateRange`'s stacked layout, `Modal`) keeps its own look
+  there, drawn from the `--color-*` tokens in `globals.css`.
 - **Primitives.** `components/student/ui.tsx` (no hooks, usable from server pages):
   `Button`, `ButtonLink`, `Card`, `Notice`, `Pill`, `ActionBar`, `StepActions` (the
   Back and gated Continue bar every step shares), `StatusLine`, `VisuallyHidden`.
@@ -1438,6 +1447,133 @@ The student pages have their own look, separate from the admin console's.
   how many requirements are left, debounced so a run of taps is announced once. Its
   Continue button is never a dead control: pressed with requirements unmet
   (`aria-disabled`), it saves nothing and moves focus to the Requirements card.
+
+## Admin design system (1.67)
+
+The admin console has its own look: the same family as the student pages (warm
+neutrals, ink, the red accent used sparingly) at tighter metrics, for a dense desktop
+tool. The laptop (1280px) leads; under 960px the rail becomes a drawer and under 720px
+tables stack. It is presentation only: no loader, query, server action, FormData name
+or auth check changed with it.
+
+- **Scope, and the one convention.** Only `components/admin/AdminPage.tsx` renders the
+  `.ad` root, which sets the `--ad-*` custom properties. Every admin stylesheet follows
+  one rule: a component rule is a **single `ad-` prefixed class** (`.ad-panel`), and a
+  rule on a bare element is `:where(.ad) :where(el)`, which scopes it without raising
+  its specificity. So any class, and any inline style, still wins over a base rule,
+  and nothing here reaches a student page. A per-area file may nest a bare element
+  under one of its own classes (the grids do).
+- **The shell.** `AdminPage` is what every admin page renders in: a skip link, the
+  section rail (`AdminNav`), a sticky top bar holding `AdminTools` (student finder,
+  semester switcher, the other-semester banner, the signed-in email and Sign out), and
+  `<main>`. Props: `title` (the page's one `<h1>`; a student's page draws its own and
+  leaves it out), `description` (one line under it), `back` (the list the page was
+  opened from), `actions` (right of the title), `width` (`full` for tables, the
+  overview, a student's page and the schedule; `form` for pages that are mostly
+  fields), `navCounts` (only the overview passes them) and `rail="icons"` (start the
+  rail folded; a student's page does). Each page still does its own sign-in and admin
+  check before rendering it; the shell is not a gate.
+- **The rail.** `AdminNav` (client) holds the one list of admin pages, grouped
+  **Daily / Schedule / Setup / Settings / Tools**, plus a Student home link. The
+  current entry is the **longest href the path sits under** (`/admin/schedule/plan` is
+  the plan, not the schedule), and a student's page belongs to Responses. Under 960px
+  it is a drawer behind a Menu button in the top bar: opening moves focus in, Escape
+  or the backdrop closes it and returns focus to the button. On a wide screen a button
+  at its foot folds it to icons for as long as the page is open (it is component
+  state, not remembered between pages); the labels stay in the markup, so each link
+  keeps its name. A new admin page is added to the `NAV` list there.
+- **Primitives.** `components/admin/ui.tsx` (no hooks, usable from server pages and
+  client components, and it knows no module): `Panel`, `Notice`, `Pill`, `Button`
+  (with a `pending` label swap), `ButtonLink`, `ExternalLink`, `Disclosure`,
+  `PageSettings`, `SettingRow`, `Field`, `CheckRow`, `StatStrip` / `Stat`, `Status`,
+  `ActionMessage`, `EmptyState`, `EmptyMark`, `VisuallyHidden`, plus the
+  `ROTATION_TAG_LABEL` and `formatDayLabel` helpers. They are class-based, so a
+  stylesheet and a media query can reach them; the style objects the file used to
+  export (`panelStyle`, `cardStyle`, the table and button styles), `StatTile` and
+  `SectionLabel` are gone. Tables are plain `<table className="ad-table">` with the
+  modifiers `--stack` (labeled blocks under 720px, from each cell's `data-label`),
+  `--zebra`, `--hover` and `--middle`. Anything shaped by the generator stays in
+  `components/admin/schedule-ui.tsx`. `components/ui.tsx` is deleted (`Page`,
+  `InfoCard`, `SystemMessage`, `ActionButton`, the shared button styles); its one
+  non-visual helper, `submitOnCtrlEnter`, is in `components/form-keys.ts`.
+- **Where settings live.** Four places, so a setting is always where the last one was:
+  (1) a filter that changes what a table shows is in that table's toolbar
+  (`.ad-toolbar`); (2) a page's own settings are in **one** closed `PageSettings`
+  section titled "Settings", above the page's content, with a one-line `summary` of
+  the current values (it opens by itself when the page cannot work until something is
+  set, as weekend closes does with no inventory); (3) a run or row action sits beside
+  what it acts on; (4) a page **links** to a setting that lives on another page rather
+  than moving or repeating it (Upcoming travel points at the Semester page). The
+  pages that are only settings (Semester, Email, Google Drive, Roster import, Test
+  accounts) are `width="form"` pages of open panels with `SettingRow`s.
+- **Stylesheets.** `app/admin.css` holds the tokens (with the tested contrast pairs
+  listed at its top), the base element rules, the shell and the primitives. One file
+  per area sits beside it, each with its own class prefix, all imported in
+  `app/layout.tsx`:
+
+  | File | Prefix | Covers |
+  | --- | --- | --- |
+  | `admin-overview.css` | `ad-ov-` | the overview |
+  | `admin-lists.css` | `ad-ls-` | responses, missing responses, change requests, travel, analytics |
+  | `admin-student.css` | `ad-st-` | a student's page and the components only it renders |
+  | `admin-dialogs.css` | `ad-dg-` | the dialogs and popups opened from a student's page |
+  | `admin-grid.css` | `ad-gr-` | the preference grid, the coverage grid, the slot dialog, the schedule health bar |
+  | `admin-schedule.css` | `ad-sc-` | the schedule page and its run controls |
+  | `admin-plan.css` | `ad-pl-` | W2W plan, W2W positions, weekend closes |
+  | `admin-setup.css` | `ad-su-` | Semester, groups and windows, positions and shifts |
+  | `admin-settings.css` | `ad-se-` | roster import, email, Google Drive, test accounts |
+
+  A hex colour belongs in a token block (`admin.css`, or the few grid-only ones at the
+  top of `admin-grid.css`, which lists its own pairs), not in a rule or an inline
+  style. Inline `style` is kept for values that are data (a bar's width).
+- **Page patterns.** Lists share one pattern, a toolbar over a dense table
+  (`ResponseList` is the model); Missing responses is one table with a heading row per
+  bucket. A student's page is three fixed columns with Student details, coverage and
+  the grid's legend closed by default. The schedule page uses the full width with its
+  settings, run history and compare closed. A position is a closed card
+  (`PositionCard`) that opens when it has warnings, unsaved edits or a result to show.
+- **Accessibility (WCAG 2.2 AA) by construction.** Colours are used in the tested
+  pairs at the top of `admin.css` (text 4.5:1 or better, control borders and state
+  marks 3:1 or better). One `:focus-visible` ring for every control, and
+  `scroll-padding-top` keeps a focused control clear of the sticky top bar. A bare
+  `<button>` is the secondary button, so no control keeps the browser's look. State
+  never rests on colour alone: notices and `Status` carry an icon, pills carry text.
+  An action's result renders through `ActionMessage` (`role="status"` for a success,
+  `role="alert"` for an error). On touch pointers inputs are 16px and buttons taller.
+  Every admin page exports `metadata` with its own title (the layout's `%s | Muster`
+  template) and has one `<h1>`. `Modal` (below) holds focus.
+- **Shared with the student pages, and how the two stay apart.** The two systems
+  never style each other: `sf-` classes exist only under `StudentPage`, `ad-` classes
+  only under `AdminPage`, and neither side's stylesheets have a rule on the other's
+  prefix, with the one exception of the preview below. Four things cross:
+  - `components/AdminTools.tsx` (the old `AppHeader`, minus its breadcrumbs) is in the
+    form core because both shells render it: `AdminPage` in its top bar with
+    `account`, `StudentPage` inside `.sf-admin-tools` for an admin acting for a
+    student. Its own classes (`.admin-tools`, `.term-banner`, `.student-search-*`) are
+    in `globals.css`, outside both systems.
+  - `components/Modal.tsx` (classes in `globals.css`), `EvidenceThumb` and
+    `TravelDateRange` (inline styles) read the older `--color-*` /
+    `--border-radius-*` tokens. Inside
+    `.ad` those names are **remapped** to the `--ad-*` values, so the shared pieces
+    join the console's palette there and keep the `globals.css` values on a student
+    page. `Modal` now moves focus into the panel when it opens (unless a field
+    inside asked for it with `autoFocus`), keeps Tab inside, closes on Escape and
+    returns focus to whatever opened it. That is a behaviour change on the student
+    pages too (the evidence lightbox).
+  - The Semester page's system-message preview is the one place the console renders
+    a student primitive: `TermDetailsForm` imports the student `Notice` and wraps it
+    in an element with both `sf` (for the student tokens) and `ad-su-preview-sf`
+    (which undoes `.sf`'s page layout, and holds the one `ad-` rule that names an
+    `sf-` class), so the preview is exactly what `/me` shows.
+    The console may import `components/student`; nothing imports the other way.
+  - `components/AdminHomeRedirect.tsx` (the admin's card on `/me`) is a student-side
+    component and uses the student button classes.
+- **What `globals.css` still holds.** The `--color-*` tokens, the shared pieces above
+  and the admin's redirect card on `/me` (`.admin-redirect*`). The console's former
+  layout and table classes were deleted with the redesign: `.page*`, `.admin-shell*`,
+  `.admin-nav-*`, `.app-header`, `.stack-table*`, `.zebra-table`, `.ruled-table`,
+  `.hover-table`, `.btn-hover`, `.flags-expanded`, `.avail-grid*`,
+  `.response-actionbar`, `.response-identity`.
 
 ## Groups & form-windows layering (`src/lib/groups/` + `src/components/admin/`)
 
@@ -2057,8 +2193,9 @@ coverage view, no generator yet. Standard layering:
   passes `compact` (v1.38), which drops the Target column and the Night/Evening/Close
   pills and tightens cell padding; `/admin/schedule` doesn't set it, so its grid is
   unchanged.
-- **UI** `/admin/schedule` (server page, `force-dynamic`, hub nav under Review):
-  summary `StatTile` row, then per-position panels with weekday/weekend tables,
+- **UI** `/admin/schedule` (server page, `force-dynamic`, in the rail under Schedule):
+  a summary row of figures (`StatTile` then, a `StatStrip` since 1.67), then
+  per-position panels with weekday/weekend tables,
   status-tinted cells (`count/target`), Night/Evening/Close tags, and a per-position
   "N people short" readout. Read-only when this section was written; the page has
   since gained client islands (`GenerateScheduleButton`, `ScheduleParamsForm`,

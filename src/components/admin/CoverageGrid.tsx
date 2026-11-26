@@ -9,13 +9,12 @@
  * could work it.
  */
 import { SlotCell } from "@/components/admin/SlotCell";
-import { tableTdStyle, tableThStyle } from "@/components/admin/ui";
+import { Pill, cx } from "@/components/admin/ui";
 import { demandCellKey } from "@/lib/domain/demand";
 import {
   assignedCellCount,
   coverageStatus,
   type CoverageRow,
-  type CoverageStatus,
 } from "@/lib/domain/scheduling/coverage";
 import { formatSpan } from "@/lib/domain/time";
 import { DAY_LABEL, type DayType } from "@/lib/domain/types";
@@ -34,6 +33,7 @@ export function CoverageGrid({
   assignedCells,
   stacked = false,
   compact = false,
+  positionName,
 }: {
   rows: readonly CoverageRow[];
   assignedCells: AssignedCellMap;
@@ -48,32 +48,41 @@ export function CoverageGrid({
    * scrolling next to a single position's other cards.
    */
   compact?: boolean;
+  /** Whose shifts these are, for the name of each cell. */
+  positionName?: string;
 }) {
   if (rows.length === 0) {
-    return (
-      <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>
-        No blocks configured.
-      </p>
-    );
+    return <p className="ad-muted">No blocks configured.</p>;
   }
 
-  const thStyle = compact ? compactThStyle : tableThStyle;
+  const tableClass = cx(
+    "ad-table ad-gr-cov-table",
+    stacked && "ad-gr-cov-table--fill",
+    compact && "ad-gr-cov-table--compact",
+  );
+  // On the schedule page each grid sits in a panel with its own heading. The
+  // compact one, on a student page, opens from a disclosure with none above it.
+  const Heading = compact ? "h2" : "h3";
 
   return (
-    <div style={stacked ? stackedLayout : sideBySideLayout}>
+    <div className={stacked ? "ad-gr-cov-layout ad-gr-cov-layout--stacked" : "ad-gr-cov-layout"}>
       {DAY_TYPES.map(({ dayType, label }) => {
         const dayRows = rows.filter((r) => r.dayType === dayType);
         if (dayRows.length === 0) return null;
         return (
-          <div key={dayType} style={{ overflowX: "auto" }}>
-            <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>{label}</h3>
-            <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+          <div key={dayType} className="ad-gr-cov-block">
+            <Heading>{label}</Heading>
+            <table className={tableClass}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, textAlign: "left" }}>Shift</th>
-                  {!compact && <th style={thStyle}>Target</th>}
+                  <th scope="col">Shift</th>
+                  {!compact && (
+                    <th scope="col" className="ad-center">
+                      Target
+                    </th>
+                  )}
                   {dayRows[0]!.cells.map((c) => (
-                    <th key={c.day} style={thStyle}>
+                    <th key={c.day} scope="col" className="ad-center">
                       {DAY_LABEL[c.day]}
                     </th>
                   ))}
@@ -86,6 +95,7 @@ export function CoverageGrid({
                     row={row}
                     assignedCells={assignedCells}
                     compact={compact}
+                    positionName={positionName}
                   />
                 ))}
               </tbody>
@@ -101,23 +111,37 @@ function CoverageTableRow({
   row,
   assignedCells,
   compact,
+  positionName,
 }: {
   row: CoverageRow;
   assignedCells: AssignedCellMap;
   compact: boolean;
+  positionName?: string;
 }) {
-  const tdStyle = compact ? compactTdStyle : tableTdStyle;
   return (
     <tr>
-      <td style={{ ...tdStyle, textAlign: "left", whiteSpace: "nowrap" }}>
+      <th scope="row">
         {formatSpan(row.start, row.end)}
-        {!compact && row.tier === "night" && <span style={nightTag}>Night</span>}
-        {!compact && row.tier === "evening" && <span style={eveningTag}>Evening</span>}
-        {!compact && row.isClose && <span style={closeTag}>Close</span>}
-      </td>
-      {!compact && (
-        <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>{row.target ?? "-"}</td>
-      )}
+        {!compact && row.tier === "night" && (
+          <>
+            {" "}
+            <Pill>Night</Pill>
+          </>
+        )}
+        {!compact && row.tier === "evening" && (
+          <>
+            {" "}
+            <Pill>Evening</Pill>
+          </>
+        )}
+        {!compact && row.isClose && (
+          <>
+            {" "}
+            <Pill tone="info">Close</Pill>
+          </>
+        )}
+      </th>
+      {!compact && <td className="ad-center ad-muted">{row.target ?? "-"}</td>}
       {row.cells.map((cell) => {
         const counts = assignedCells?.get(demandCellKey(row.blockId, cell.day));
         const assigned = assignedCells ? assignedCellCount(row.dayType, counts) : 0;
@@ -135,10 +159,12 @@ function CoverageTableRow({
             dayLabel={DAY_LABEL[cell.day]}
             shiftLabel={formatSpan(row.start, row.end)}
             supply={cell.count}
-            style={{ ...tdStyle, ...coverageStatusStyles[status] }}
+            positionName={positionName}
+            value={cell.target === null ? shown : `${shown}/${cell.target}`}
+            className={`ad-center ad-gr-cov ad-gr-cov--${status}`}
           >
             {shown}
-            {cell.target !== null && <span style={{ opacity: 0.65 }}>/{cell.target}</span>}
+            {cell.target !== null && <span className="ad-gr-cov-target">/{cell.target}</span>}
           </SlotCell>
         );
       })}
@@ -150,53 +176,10 @@ function CoverageTableRow({
 export function CoverageLegend() {
   return (
     <>
-      <span style={{ ...legendChip, ...coverageStatusStyles.ok }}>meets target</span>{" "}
-      <span style={{ ...legendChip, ...coverageStatusStyles.short }}>short</span>{" "}
-      <span style={{ ...legendChip, ...coverageStatusStyles.severe }}>under half</span>{" "}
-      <span style={legendChip}>no target</span>
+      <span className="ad-pill ad-gr-cov--ok">meets target</span>{" "}
+      <span className="ad-pill ad-gr-cov--short">short</span>{" "}
+      <span className="ad-pill ad-gr-cov--severe">under half</span>{" "}
+      <span className="ad-pill">no target</span>
     </>
   );
 }
-
-const sideBySideLayout: React.CSSProperties = {
-  display: "flex",
-  gap: 28,
-  flexWrap: "wrap",
-  alignItems: "flex-start",
-};
-/** Full-width rows, so each table's own scroll kicks in at the card's edge. */
-const stackedLayout: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 14,
-};
-
-const compactThStyle: React.CSSProperties = { ...tableThStyle, padding: "3px 6px" };
-const compactTdStyle: React.CSSProperties = { ...tableTdStyle, padding: "3px 6px" };
-
-export const coverageStatusStyles: Record<CoverageStatus, React.CSSProperties> = {
-  ok: { background: "#e6f4ea", color: "#196127" },
-  short: { background: "#fff4e0", color: "#8a5a00" },
-  severe: { background: "#fce8e6", color: "#b3261e" },
-  none: { color: "var(--color-text-secondary)" },
-};
-
-export const legendChip: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 12,
-  background: "var(--color-background-secondary)",
-  color: "inherit",
-  textDecoration: "none",
-};
-
-const tagBase: React.CSSProperties = {
-  borderRadius: 10,
-  padding: "1px 8px",
-  fontSize: 11,
-  marginLeft: 6,
-  whiteSpace: "nowrap",
-};
-const nightTag: React.CSSProperties = { ...tagBase, background: "#efeafd", color: "#5b3fbf" };
-const eveningTag: React.CSSProperties = { ...tagBase, background: "#fff4e0", color: "#8a5a00" };
-const closeTag: React.CSSProperties = { ...tagBase, background: "#e7f0fb", color: "#1a66cc" };

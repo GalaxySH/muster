@@ -4,12 +4,13 @@
  * Move one student into another form-window group, or out of every group, from
  * their own page. The same assign/unassign actions /admin/groups runs, applied
  * to a single email, so a manual pick here clears the sticky auto marker the
- * same way. Sits under the position changer and borrows its look.
+ * same way.
  */
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRenderedTermId } from "@/components/RenderedTerm";
 import { useRouter } from "next/navigation";
 import { assignStudents, unassignStudents } from "@/lib/groups/actions";
+import { ActionMessage, Button, Field } from "@/components/admin/ui";
 
 export interface StudentGroupChangerProps {
   studentEmail: string;
@@ -27,6 +28,7 @@ export function StudentGroupChanger({
 }: StudentGroupChangerProps) {
   const termId = useRenderedTermId();
   const router = useRouter();
+  const selectId = useId();
   const [pending, startTransition] = useTransition();
   const current = currentGroupId ?? NO_GROUP;
   const [target, setTarget] = useState(current);
@@ -51,18 +53,17 @@ export function StudentGroupChanger({
   }
 
   return (
-    <div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Group</div>
-      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+    <Field label="Group" htmlFor={selectId}>
+      <div className="ad-row">
         <select
+          id={selectId}
           value={target}
           onChange={(e) => {
             setTarget(e.target.value);
             setMsg(null);
           }}
           disabled={pending}
-          aria-label="Group"
-          style={select}
+          className="ad-st-grow"
         >
           <option value={NO_GROUP}>No group</option>
           {options.map((o) => (
@@ -71,48 +72,25 @@ export function StudentGroupChanger({
             </option>
           ))}
         </select>
-        <button
-          type="button"
+        <Button
           onClick={submit}
-          disabled={pending || target === current}
-          style={button}
+          pending={pending}
+          pendingLabel="Saving..."
+          disabled={target === current}
         >
-          {pending ? "Saving..." : "Save"}
-        </button>
+          Save
+        </Button>
       </div>
-      {msg && (
-        <div
-          role="status"
-          style={{
-            marginTop: 6,
-            fontSize: 12,
-            color: msg.ok ? "var(--color-text-success)" : "var(--color-text-danger)",
-          }}
-        >
-          {msg.text}
-        </div>
-      )}
-    </div>
+      {msg &&
+        (msg.ok ? (
+          <p role="status" className="ad-help ad-success-text">
+            {msg.text}
+          </p>
+        ) : (
+          <ActionMessage ok={false} as="p">
+            {msg.text}
+          </ActionMessage>
+        ))}
+    </Field>
   );
 }
-
-const select: React.CSSProperties = {
-  flex: "1 1 10rem",
-  minWidth: 0,
-  fontSize: 13,
-  padding: "4px 6px",
-  borderRadius: 6,
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-primary)",
-  color: "var(--color-text-primary)",
-};
-
-const button: React.CSSProperties = {
-  fontSize: 13,
-  padding: "4px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--color-border-secondary)",
-  background: "var(--color-background-secondary)",
-  color: "var(--color-text-primary)",
-  cursor: "pointer",
-};

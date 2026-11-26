@@ -1,0 +1,353 @@
+/* A student's page (app/admin/students/[email]) and the components only it
+   renders. Same convention as admin.css: one `ad-` prefixed class per rule;
+   this file's own are `ad-st-`. */
+
+/* ---- Header ------------------------------------------------------------- */
+/* Who this is and the walk on the left, the actions on the right; they wrap
+   onto two rows when the width runs out. */
+.ad-st-head-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.625rem 1rem;
+}
+/* Anything short of a submitted response: a red bar on the leading edge,
+   beside the pill that names the state. */
+.ad-st-head--unsubmitted {
+  box-shadow: inset 3px 0 0 var(--ad-danger);
+}
+.ad-st-identity {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.ad-st-namerow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+}
+.ad-st-walk {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.ad-st-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  margin-top: 0.25rem;
+  color: var(--ad-text-2);
+  font-size: 0.8125rem;
+}
+.ad-st-email {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+/* Submitted and Last updated: each a label and its value on one line. */
+.ad-st-stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.875rem;
+  margin: 0;
+  font-size: 0.75rem;
+}
+.ad-st-stamps > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3125rem;
+}
+.ad-st-stamps dt {
+  color: var(--ad-text-3);
+}
+/* No specificity of its own, so `ad-faint` on a value still wins. */
+:where(.ad-st-stamps dd) {
+  margin: 0;
+  color: var(--ad-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ad-st-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+/* The destructive action, ruled off from the routine ones before it. */
+.ad-st-danger-zone {
+  display: inline-flex;
+  margin-left: 0.25rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--ad-border);
+}
+@media (max-width: 719.98px) {
+  .ad-st-actions {
+    justify-content: flex-start;
+  }
+}
+/* Position, bounds, requested hours and days: one ruled-off line of facts. */
+.ad-st-facts {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin-top: 0.625rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ad-border-soft);
+}
+
+/* ---- The name and the jump list (JumpMenu) ------------------------------ */
+.ad-st-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  min-width: 0;
+}
+.ad-st-name {
+  overflow-wrap: anywhere;
+}
+.ad-st-jump-details {
+  position: relative;
+}
+.ad-st-jump-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--ad-border-strong);
+  border-radius: 999px;
+  color: var(--ad-text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  list-style: none;
+  white-space: nowrap;
+}
+.ad-st-jump-toggle::-webkit-details-marker {
+  display: none;
+}
+.ad-st-jump-toggle:hover {
+  background: var(--ad-sunken);
+}
+.ad-st-jump-menu {
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 2rem));
+  max-height: 20rem;
+  overflow-y: auto;
+}
+.ad-st-jump-menu > [aria-current] {
+  font-weight: 600;
+}
+
+/* ---- The requested hours, edited in place (RequestedHoursEditor) -------- */
+/* Reads as the figure; the dotted underline says it can be clicked. */
+.ad-st-figure {
+  display: inline-flex;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0 0.125rem;
+  border: 0;
+  border-radius: var(--ad-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted var(--ad-border-strong);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.ad-st-figure:hover {
+  background: var(--ad-sunken);
+}
+.ad-st-hours {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: top;
+}
+.ad-st-hours-input {
+  width: 4.5em;
+}
+/* A select that takes the room its button leaves (the position and group pickers). */
+.ad-st-grow {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+/* ---- The three columns -------------------------------------------------- */
+/* Named columns, so a card sits in the same place on every student. One
+   column under 960px, in source order: left, middle, right. From 960px the
+   grid takes the wide column and the other two stack beside it; from 1200px
+   all three sit side by side. */
+.ad-st-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "left"
+    "mid"
+    "right";
+  gap: 0.75rem;
+  align-items: start;
+}
+.ad-st-cols--noleft {
+  grid-template-areas:
+    "mid"
+    "right";
+}
+.ad-st-col-left {
+  grid-area: left;
+}
+.ad-st-col-mid {
+  grid-area: mid;
+}
+.ad-st-col-right {
+  grid-area: right;
+}
+@media (min-width: 960px) {
+  .ad-st-cols {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "left mid"
+      "left right";
+  }
+  .ad-st-cols--noleft {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: "mid right";
+  }
+}
+@media (min-width: 1200px) {
+  .ad-st-cols {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: "left mid right";
+  }
+  .ad-st-cols--noleft {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "mid right";
+  }
+}
+/* The quiet word after a panel's heading. */
+.ad-st-titlenote {
+  color: var(--ad-text-2);
+  font-weight: 400;
+}
+.ad-st-last {
+  margin-bottom: 0;
+}
+
+/* Flags: a stored flag is its pill, what it says, and the way to clear it. */
+.ad-st-flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+}
+.ad-st-flag-detail {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+/* The mark on a check that neither passed nor failed. */
+.ad-st-neutral-mark {
+  display: inline-block;
+  width: 0.875rem;
+  color: var(--ad-text-2);
+  text-align: center;
+}
+
+/* Extracurricular proofs, each with its Remove underneath. */
+.ad-st-proofs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+.ad-st-proof {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+/* A travel entry (an `ad-entry`): the proof thumbnail beside the text. */
+.ad-st-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+}
+.ad-st-entry-thumb {
+  flex: none;
+}
+.ad-st-entry-body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ad-st-entry-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.25rem;
+}
+/* Stands in for a thumbnail on an entry with no proof, keeping the rows aligned. */
+.ad-st-noproof {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 2.75rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+  background: var(--ad-sunken);
+  color: var(--ad-text-3);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.ad-st-closes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Change requests: every entry whole, the panel as tall as they need. */
+.ad-st-reqs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ad-st-req {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+}
+/* Day and shift on the left, the status controls on the right. In a narrow
+   column or at large text the controls drop under the title. */
+.ad-st-req-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+/* Free text, so a long unbroken shift string wraps instead of pushing the controls out. */
+.ad-st-req-title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ad-st-req-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ad-st-req-comment {
+  margin: 0.25rem 0 0;
+}
+.ad-st-req-files {
+  margin-top: 0.375rem;
+}

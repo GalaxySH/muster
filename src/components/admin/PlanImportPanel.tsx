@@ -18,7 +18,7 @@ import {
   type PlanImportResult,
 } from "@/lib/admin/plan-import-actions";
 import { validateW2wCsvUpload } from "@/lib/w2w/upload-validation";
-import { ActionButton } from "@/components/ui";
+import { Button, CheckRow, Disclosure, Notice } from "@/components/admin/ui";
 
 export function PlanImportPanel() {
   const termId = useRenderedTermId();
@@ -89,34 +89,37 @@ export function PlanImportPanel() {
   const confirming = staged !== null && preview !== null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div className="ad-stack">
+      <div className="ad-row">
         <input
           ref={fileRef}
           type="file"
           accept=".csv,text/csv"
+          aria-label="W2W shift export (.csv)"
           disabled={pending || confirming}
           onChange={() => {
             setError(null);
             cancel();
           }}
-          style={{ fontSize: 14 }}
         />
-        <ActionButton
+        <Button
+          variant={confirming ? "secondary" : "primary"}
           onClick={review}
           pending={pending && !confirming}
           disabled={confirming}
           pendingLabel="Reading…"
         >
           Review import
-        </ActionButton>
+        </Button>
       </div>
       <div
-        style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+        className="ad-pl-rotation"
+        role="radiogroup"
+        aria-label="The exported week is weekend rotation"
       >
-        <span>The exported week is weekend rotation:</span>
+        <span className="ad-pl-rotation-label">The exported week is weekend rotation:</span>
         {(["a", "b"] as const).map((week) => (
-          <label key={week} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <CheckRow key={week} label={`Week ${week.toUpperCase()}`}>
             <input
               type="radio"
               name="rotationWeek"
@@ -125,40 +128,33 @@ export function PlanImportPanel() {
               onChange={() => setRotationWeek(week)}
               disabled={pending || confirming}
             />
-            Week {week.toUpperCase()}
-          </label>
+          </CheckRow>
         ))}
       </div>
-      <label style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+      <CheckRow label="Set staffing targets from this plan">
         <input
           type="checkbox"
           checked={applyCapacity}
           onChange={(e) => setApplyCapacity(e.target.checked)}
           disabled={pending || confirming}
         />
-        Set staffing targets from this plan
-      </label>
-      <label style={{ fontSize: 14, display: "flex", alignItems: "flex-start", gap: 6 }}>
+      </CheckRow>
+      <CheckRow
+        label="Make the names on this plan the current schedule"
+        help="Copies the shifts exactly as they are in the file and replaces the schedule Muster holds now. Nothing is worked out or filled in."
+      >
         <input
           type="checkbox"
           checked={createRun}
           onChange={(e) => setCreateRun(e.target.checked)}
           disabled={pending || confirming}
-          style={{ marginTop: 3 }}
         />
-        <span>
-          Make the names on this plan the current schedule
-          <span style={{ display: "block", color: "#555", fontSize: 13 }}>
-            Copies the shifts exactly as they are in the file and replaces the schedule Muster holds
-            now. Nothing is worked out or filled in.
-          </span>
-        </span>
-      </label>
+      </CheckRow>
 
       {error && (
-        <p role="status" style={{ color: "#b00", margin: 0, fontSize: 14 }}>
-          ✗ {error}
-        </p>
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
       )}
       {confirming && (
         <ConfirmPanel
@@ -169,11 +165,12 @@ export function PlanImportPanel() {
         />
       )}
       {applied && preview && (
-        <div role="status" style={resultBox}>
-          <p style={{ margin: "0 0 6px", color: "#196127", fontWeight: 600 }}>
-            ✓ Imported {preview.rowCount} shifts. This is now the current plan.
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14 }}>
+        <Notice
+          tone="success"
+          role="status"
+          title={<>Imported {preview.rowCount} shifts. This is now the current plan.</>}
+        >
+          <ul className="ad-bullets">
             {applied.runAssignments !== null && (
               <li>
                 {applied.runAssignments} shifts are now the current schedule, for{" "}
@@ -185,7 +182,7 @@ export function PlanImportPanel() {
             )}
             <li>{preview.matchedCount} shifts match a Muster block</li>
           </ul>
-        </div>
+        </Notice>
       )}
     </div>
   );
@@ -206,9 +203,9 @@ function ConfirmPanel({
   return (
     // No live region: the error line above is one already, and two of them
     // announce the same failure twice.
-    <div style={confirmBox}>
-      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Check this before importing</p>
-      <ul style={{ margin: "0 0 10px", paddingLeft: 20, fontSize: 14 }}>
+    <div className="ad-pl-confirm">
+      <p className="ad-pl-confirm-title">Check this before importing</p>
+      <ul className="ad-bullets">
         <li>
           {p.rowCount} shifts read, {p.matchedCount} of them match a Muster block
         </li>
@@ -238,13 +235,13 @@ function ConfirmPanel({
       <DeltaList label="W2W positions with no mapping" list={p.unknownPositions} />
       <DeltaList label="Rows that read oddly" list={p.issues} />
 
-      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-        <ActionButton onClick={onImport} pending={pending} pendingLabel="Importing…">
+      <div className="ad-actions">
+        <Button variant="primary" onClick={onImport} pending={pending} pendingLabel="Importing…">
           Import
-        </ActionButton>
-        <button type="button" onClick={onCancel} disabled={pending}>
+        </Button>
+        <Button onClick={onCancel} disabled={pending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -264,30 +261,13 @@ function DeltaList({
   if (list.total === 0) return null;
   const hidden = list.total - list.sample.length;
   return (
-    <details style={{ fontSize: 14, marginBottom: 6 }}>
-      <summary style={{ cursor: "pointer" }}>
-        {countInLabel ? label : `${label} (${list.total})`}
-      </summary>
-      <ul style={{ margin: "4px 0 0", paddingLeft: 20, maxHeight: 200, overflowY: "auto" }}>
+    <Disclosure panel={false} title={countInLabel ? label : `${label} (${list.total})`}>
+      <ul className="ad-bullets ad-bullets--scroll">
         {list.sample.map((line) => (
           <li key={line}>{line}</li>
         ))}
         {hidden > 0 && <li>and {hidden} more</li>}
       </ul>
-    </details>
+    </Disclosure>
   );
 }
-
-const resultBox: React.CSSProperties = {
-  border: "1px solid #cde3cd",
-  background: "#f4faf4",
-  borderRadius: 8,
-  padding: "0.8rem 1rem",
-};
-
-const confirmBox: React.CSSProperties = {
-  border: "1px solid #d9d2b8",
-  background: "#fdfaf0",
-  borderRadius: 8,
-  padding: "0.8rem 1rem",
-};

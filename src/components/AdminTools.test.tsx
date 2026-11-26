@@ -9,8 +9,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 vi.mock("@/lib/terms/select-action", () => ({ selectTerm: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/auth/session", () => ({ getAppSession: vi.fn() }));
 vi.mock("@/lib/roster/lookup", () => ({ listRosterNames: vi.fn() }));
+vi.mock("@/lib/auth/actions", () => ({ signOutAction: vi.fn() }));
 
-import { AppHeader } from "./AppHeader";
+import { AdminTools } from "./AdminTools";
 import { getAppSession } from "@/lib/auth/session";
 import { listRosterNames } from "@/lib/roster/lookup";
 import { selectTerm } from "@/lib/terms/select-action";
@@ -30,12 +31,12 @@ function signIn(isAdmin: boolean | null) {
 }
 
 async function renderHeader() {
-  render(await AppHeader({}));
+  render(await AdminTools({}));
 }
 
 const finder = () => screen.queryByRole("textbox", { name: /find a student/i });
 
-describe("AppHeader student finder", () => {
+describe("AdminTools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listRosterNames).mockResolvedValue(roster);
@@ -45,7 +46,15 @@ describe("AppHeader student finder", () => {
     signIn(true);
     await renderHeader();
     expect(finder()).not.toBeNull();
-    expect(screen.getByRole("link", { name: /home/i })).toBeTruthy();
+  });
+
+  it("shows who is signed in and the way out only where asked", async () => {
+    signIn(true);
+    await renderHeader();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    render(await AdminTools({ account: true }));
+    expect(screen.getByText("me@wisc.edu")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 
   it("never reads the roster for a student", async () => {
